@@ -1,0 +1,525 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Microsoft.EntityFrameworkCore;
+using SOPRO.Application.Models.Explosion;
+using SOPRO.Core.Entities;
+using SOPRO.Data.Context;
+
+namespace SOPRO.Application.Services
+{
+    // ╔══════════════════════════════════════════════════════════════════════════╗
+    // ║  ExplosionInsumosService — v2.0  (Metodología OPUS Planet)             ║
+    // ║                                                                         ║
+    // ║  METODOLOGÍA:                                                           ║
+    // ║  El importe de cada insumo en la explosión se obtiene distribuyendo     ║
+    // ║  el importe del concepto (ya redondeado con el motor) en proporción     ║
+    // ║  al peso de cada componente dentro del CD unitario de la matriz,        ║
+    // ║  recalculado en el momento con los PUs actuales del catálogo.           ║
+    // ║                                                                         ║
+    // ║  Para insumos normales:                                                 ║
+    // ║    Importe = acumulado de proporciones                                  ║
+    // ║    PU      = del catálogo (fijo)                                        ║
+    // ║    Cantidad = INFERIDA = Importe / PU                                   ║
+    // ║                                                                         ║
+    // ║  Para insumos %MO (PU variable por APU):                               ║
+    // ║    Importe  = acumulado de proporciones                                 ║
+    // ║    Cantidad = acumulada físicamente (comp.Cantidad × cant.concepto)     ║
+    // ║    PU       = INFERIDO = Importe / Cantidad  (promedio ponderado)       ║
+    // ║                                                                         ║
+    // ║  Garantía: Σ importes explosión ≈ CD presupuesto                       ║
+    // ║  (diferencia residual = solo el redondeo de proporciones)              ║
+    // ╚══════════════════════════════════════════════════════════════════════════╝
+
+    public sealed class ExplosionInsumosService
+    {
+        // ════════════════════════════════════════════════════════════════════════
+        // ENTRADA PRINCIPAL
+        // ════════════════════════════════════════════════════════════════════════
+
+        public ExplosionCalculationResult Calculate(
+            SOPROContext context, int proyectoId, string filtro)
+        {
+            var proyecto = context.Proyectos
+                .AsNoTracking()
+                .FirstOrDefault(p => p.Id == proyectoId);
+
+            if (proyecto == null)
+                return new ExplosionCalculationResult();
+
+            var motor = new MotorCalculoSopro(proyecto);
+
+            var conceptos = context.ConceptosPresupuesto
+                .Where(c => c.ProyectoId == proyectoId && !c.EsAgrupador && c.MatrizId != null)
+                .AsNoTracking()
+                .ToList();
+
+            if (conceptos.Count == 0)
+                return new ExplosionCalculationResult();
+
+            // Cargar TODAS las matrices del proyecto con sus navegaciones en una sola query
+            var todasMatrices = context.Matrices
+                .Include(m => m.Componentes).ThenInclude(c => c.Material)
+                .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
+                .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
+                .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
+                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
+                    .ThenInclude(a => a.Componentes).ThenInclude(c => c.Material)
+                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
+                    .ThenInclude(a => a.Componentes).ThenInclude(c => c.ManoDeObra)
+                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
+                    .ThenInclude(a => a.Componentes).ThenInclude(c => c.Maquinaria)
+                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
+                    .ThenInclude(a => a.Componentes).ThenInclude(c => c.Herramienta)
+                .Where(m => m.ProyectoId == proyectoId)
+                .AsNoTracking()
+                .ToList();
+
+            var matrizPorId = todasMatrices.ToDictionary(m => m.Id);
+
+            // Resolver referencias de auxiliares anidados
+            foreach (var mat in todasMatrices)
+                foreach (var comp in mat.Componentes)
+                    if (comp.AuxiliarId.HasValue &&
+                        matrizPorId.TryGetValue(comp.AuxiliarId.Value, out var aux))
+                        comp.Auxiliar = aux;
+
+            // Asignar matrices a conceptos
+            foreach (var concepto in conceptos)
+                if (concepto.MatrizId.HasValue &&
+                    matrizPorId.TryGetValue(concepto.MatrizId.Value, out var mat))
+                    concepto.Matriz = mat;
+
+            // ── Acumuladores por tipo de insumo ──────────────────────────────────
+            var materiales   = new Dictionary<int, InsumoAcum>();
+            var manoObra     = new Dictionary<int, InsumoAcum>();
+            var maquinaria   = new Dictionary<int, InsumoAcum>();
+            var herramientas = new Dictionary<int, InsumoAcum>();
+
+            foreach (var concepto in conceptos)
+            {
+                if (concepto.Matriz == null) continue;
+
+                // Importe del concepto con precisión de pantalla
+                decimal importeConcepto = motor.Multiplicar(
+                    concepto.Cantidad, concepto.CostoDirectoUnitario);
+
+                if (importeConcepto == 0m) continue;
+
+                ExplotarMatriz(motor, concepto.Matriz, importeConcepto, concepto.Cantidad,
+                               materiales, manoObra, maquinaria, herramientas);
+            }
+
+            var result = new ExplosionCalculationResult();
+            TransferirAResultado(result.Materiales,   materiales);
+            TransferirAResultado(result.ManoObra,     manoObra);
+            TransferirAResultado(result.Maquinaria,   maquinaria);
+            TransferirAResultado(result.Herramientas, herramientas);
+
+            // Total explosión = suma de todos los importes acumulados
+            result.CostoDirectoTotal =
+                motor.SumarImportes(result.Materiales.Values.Select(i => i.Cantidad))
+              + motor.SumarImportes(result.ManoObra.Values.Select(i => i.Cantidad))
+              + motor.SumarImportes(result.Maquinaria.Values.Select(i => i.Cantidad))
+              + motor.SumarImportes(result.Herramientas.Values.Select(i => i.Cantidad));
+
+            // CD del presupuesto (para mostrar diferencia residual)
+            result.CostoDirectoPresupuesto = motor.SumarCostoDirecto(conceptos);
+
+            result.Rows = BuildRows(result, filtro ?? "Todos", motor);
+            return result;
+        }
+
+        // ════════════════════════════════════════════════════════════════════════
+        // EXPLOSIÓN RECURSIVA DE UNA MATRIZ
+        // ════════════════════════════════════════════════════════════════════════
+
+        private static void ExplotarMatriz(
+            MotorCalculoSopro motor,
+            Matriz matriz,
+            decimal importeBase,       // importe del concepto (o auxiliar padre) a distribuir
+            decimal cantidadBase,      // cantidad del concepto (para acumular cantidad física)
+            Dictionary<int, InsumoAcum> materiales,
+            Dictionary<int, InsumoAcum> manoObra,
+            Dictionary<int, InsumoAcum> maquinaria,
+            Dictionary<int, InsumoAcum> herramientas)
+        {
+            if (matriz?.Componentes == null || matriz.Componentes.Count == 0) return;
+
+            // ── Paso 1: recalcular los importes unitarios de cada componente
+            //           con el motor y los PUs actuales del catálogo ────────────
+            var importesUnitarios = CalcularImportesUnitarios(motor, matriz.Componentes);
+
+            decimal cdUnitarioMatriz = importesUnitarios.Values.Sum();
+            if (cdUnitarioMatriz == 0m) return;  // matriz vacía o sin PUs
+
+            // ── Paso 2: distribuir importeBase con reconciliación final ─────────
+            // Primero calculamos todos los importes redondeados para saber cuánto
+            // queda de residuo, y lo absorbemos en el último componente elegible.
+            var distribComp = new List<(ComponenteMatriz comp, decimal importeComp)>();
+            decimal sumaDistribuida = 0m;
+            foreach (var comp in matriz.Componentes)
+            {
+                if (!importesUnitarios.TryGetValue(comp.Id, out decimal importeUnitComp)) continue;
+                if (importeUnitComp == 0m) continue;
+                decimal importeComp = motor.RedondearImporte(
+                    importeBase * importeUnitComp / cdUnitarioMatriz);
+                if (importeComp == 0m) continue;
+                distribComp.Add((comp, importeComp));
+                sumaDistribuida += importeComp;
+            }
+
+            // Residuo = importeBase - sumaDistribuida (puede ser +0.01 o -0.01)
+            decimal residuo = motor.RedondearImporte(importeBase - sumaDistribuida);
+            if (residuo != 0m && distribComp.Count > 0)
+            {
+                // Absorber en el último componente no-auxiliar elegible
+                int idxAjuste = distribComp.FindLastIndex(
+                    t => t.comp.TipoComponente != TipoComponenteMatriz.Auxiliar);
+                if (idxAjuste >= 0)
+                {
+                    var (compAjuste, impAjuste) = distribComp[idxAjuste];
+                    distribComp[idxAjuste] = (compAjuste, impAjuste + residuo);
+                }
+                else
+                {
+                    // Si todos son auxiliares, ajustar el último
+                    var (compAjuste, impAjuste) = distribComp[distribComp.Count - 1];
+                    distribComp[distribComp.Count - 1] = (compAjuste, impAjuste + residuo);
+                }
+            }
+
+            foreach (var (comp, importeComp) in distribComp)
+            {
+                // Cantidad física: cantidadBase × cantidad del componente en la receta
+                decimal cantidadFisica = cantidadBase * comp.Cantidad;
+
+                switch (comp.TipoComponente)
+                {
+                    case TipoComponenteMatriz.Material when comp.Material != null && comp.MaterialId.HasValue:
+                        Acumular(materiales, comp.MaterialId.Value,
+                            comp.Material.Clave, comp.Material.Descripcion,
+                            comp.Material.Unidad, importeComp, cantidadFisica,
+                            puFijo: comp.Material.PrecioUnitario,
+                            esPorcentual: false);
+                        break;
+
+                    case TipoComponenteMatriz.ManoDeObra when comp.ManoDeObra != null && comp.ManoDeObraId.HasValue:
+                        Acumular(manoObra, comp.ManoDeObraId.Value,
+                            comp.ManoDeObra.Clave, comp.ManoDeObra.Descripcion,
+                            comp.ManoDeObra.Unidad, importeComp, cantidadFisica,
+                            puFijo: comp.ManoDeObra.EsPorcentajeMO ? 0m : comp.ManoDeObra.SalarioReal,
+                            esPorcentual: comp.ManoDeObra.EsPorcentajeMO);
+                        break;
+
+                    case TipoComponenteMatriz.Maquinaria when comp.Maquinaria != null && comp.MaquinariaId.HasValue:
+                        Acumular(maquinaria, comp.MaquinariaId.Value,
+                            comp.Maquinaria.Clave, comp.Maquinaria.Descripcion,
+                            "hr", importeComp, cantidadFisica,
+                            puFijo: comp.Maquinaria.CostoHorario,
+                            esPorcentual: false);
+                        break;
+
+                    case TipoComponenteMatriz.Herramienta when comp.Herramienta != null && comp.HerramientaId.HasValue:
+                        Acumular(herramientas, comp.HerramientaId.Value,
+                            comp.Herramienta.Clave, comp.Herramienta.Descripcion,
+                            comp.Herramienta.Unidad, importeComp, cantidadFisica,
+                            puFijo: comp.Herramienta.EsPorcentajeMO ? 0m : comp.Herramienta.PrecioUnitario,
+                            esPorcentual: comp.Herramienta.EsPorcentajeMO);
+                        break;
+
+                    case TipoComponenteMatriz.Auxiliar when comp.Auxiliar != null:
+                        // Recursión: el auxiliar recibe su porción del importe
+                        // cantidadFisica pasa como cantidadBase para el nivel siguiente
+                        ExplotarMatriz(motor, comp.Auxiliar, importeComp, cantidadFisica,
+                                       materiales, manoObra, maquinaria, herramientas);
+                        break;
+                }
+            }
+        }
+
+        // ════════════════════════════════════════════════════════════════════════
+        // CÁLCULO DE IMPORTES UNITARIOS FRESCOS (PUs actuales + motor)
+        // ════════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Recalcula el importe unitario de cada componente con los PUs actuales
+        /// del catálogo y el motor de redondeo. No usa comp.Importe de BD.
+        /// Maneja correctamente la base MO para los insumos %MO.
+        /// Devuelve un dict ComponenteId → importeUnitario.
+        /// </summary>
+        private static Dictionary<int, decimal> CalcularImportesUnitarios(
+            MotorCalculoSopro motor, ICollection<ComponenteMatriz> componentes)
+        {
+            var resultado = new Dictionary<int, decimal>();
+
+            // Paso A: calcular baseMO = MO normal + cuadrillas (misma lógica que MatrixComponentCalculationService)
+            decimal baseMO = 0m;
+
+            foreach (var comp in componentes)
+            {
+                decimal imp = 0m;
+
+                if (comp.TipoComponente == TipoComponenteMatriz.ManoDeObra
+                    && comp.ManoDeObra != null && !comp.ManoDeObra.EsPorcentajeMO)
+                {
+                    imp = motor.Multiplicar(comp.Cantidad, comp.ManoDeObra.SalarioReal);
+                    baseMO += imp;
+                }
+                else if (comp.TipoComponente == TipoComponenteMatriz.Auxiliar
+                         && comp.Auxiliar?.Tipo == TipoMatriz.Cuadrilla
+                         && comp.Auxiliar != null)
+                {
+                    imp = motor.Multiplicar(comp.Cantidad, comp.Auxiliar.CostoDirecto);
+                    baseMO += imp;
+                }
+
+                if (imp > 0m)
+                    resultado[comp.Id] = imp;
+            }
+
+            // Paso B: calcular el resto con baseMO ya conocido
+            foreach (var comp in componentes)
+            {
+                if (resultado.ContainsKey(comp.Id)) continue;  // ya calculado en paso A
+
+                decimal imp = comp.TipoComponente switch
+                {
+                    TipoComponenteMatriz.Material when comp.Material != null =>
+                        motor.Multiplicar(comp.Cantidad, comp.Material.PrecioUnitario),
+
+                    TipoComponenteMatriz.Maquinaria when comp.Maquinaria != null =>
+                        motor.Multiplicar(comp.Cantidad, comp.Maquinaria.CostoHorario),
+
+                    TipoComponenteMatriz.ManoDeObra when comp.ManoDeObra?.EsPorcentajeMO == true =>
+                        motor.RedondearImporte(comp.Cantidad * baseMO),
+
+                    TipoComponenteMatriz.Herramienta when comp.Herramienta != null =>
+                        comp.Herramienta.EsPorcentajeMO
+                            ? motor.RedondearImporte(comp.Cantidad * baseMO)
+                            : motor.Multiplicar(comp.Cantidad, comp.Herramienta.PrecioUnitario),
+
+                    TipoComponenteMatriz.Auxiliar when comp.Auxiliar != null
+                        && comp.Auxiliar.Tipo != TipoMatriz.Cuadrilla =>
+                        motor.Multiplicar(comp.Cantidad, comp.Auxiliar.CostoDirecto),
+
+                    _ => 0m
+                };
+
+                if (imp > 0m)
+                    resultado[comp.Id] = imp;
+            }
+
+            return resultado;
+        }
+
+        // ════════════════════════════════════════════════════════════════════════
+        // ACUMULADOR DE INSUMOS
+        // ════════════════════════════════════════════════════════════════════════
+
+        private static void Acumular(
+            Dictionary<int, InsumoAcum> dic, int key,
+            string clave, string descripcion, string unidad,
+            decimal importeRedondeado,
+            decimal cantidadFisica,
+            decimal puFijo,
+            bool esPorcentual)
+        {
+            if (dic.TryGetValue(key, out var existing))
+            {
+                existing.ImporteAcumulado += importeRedondeado;
+                existing.CantidadFisicaAcumulada += cantidadFisica;
+            }
+            else
+            {
+                dic[key] = new InsumoAcum
+                {
+                    Clave                  = clave        ?? string.Empty,
+                    Descripcion            = descripcion   ?? string.Empty,
+                    Unidad                 = unidad        ?? string.Empty,
+                    ImporteAcumulado       = importeRedondeado,
+                    CantidadFisicaAcumulada = cantidadFisica,
+                    PuFijo                 = puFijo,
+                    EsPorcentual           = esPorcentual
+                };
+            }
+        }
+
+        // ════════════════════════════════════════════════════════════════════════
+        // TRANSFERIR AL MODELO DE SALIDA (con cantidad e inferencias)
+        // ════════════════════════════════════════════════════════════════════════
+
+        private static void TransferirAResultado(
+            Dictionary<int, ExplosionInsumoAccumulated> destino,
+            Dictionary<int, InsumoAcum> origen)
+        {
+            foreach (var kvp in origen)
+            {
+                var src = kvp.Value;
+
+                // Cantidad del reporte:
+                //   Normal:     INFERIDA = ImporteAcumulado / PU_catálogo
+                //   Porcentual: acumulada físicamente (no tiene sentido inferir sin PU fijo)
+                decimal cantidadReporte;
+                decimal puReporte;
+
+                if (src.EsPorcentual)
+                {
+                    // PU inferido = ImporteAcumulado / CantidadFísica (promedio ponderado)
+                    cantidadReporte = src.CantidadFisicaAcumulada;
+                    puReporte = src.CantidadFisicaAcumulada > 0m
+                        ? src.ImporteAcumulado / src.CantidadFisicaAcumulada
+                        : 0m;
+                }
+                else
+                {
+                    // Cantidad inferida = ImporteAcumulado / PU_catálogo
+                    puReporte = src.PuFijo;
+                    cantidadReporte = puReporte > 0m
+                        ? src.ImporteAcumulado / puReporte
+                        : src.CantidadFisicaAcumulada;  // fallback si PU es 0
+                }
+
+                // Nota sobre campos de ExplosionInsumoAccumulated:
+                //   Cantidad      → IMPORTE acumulado (lo que usa la UI como total)
+                //   CantidadFisica → CANTIDAD del reporte:
+                //                    • Normal:     INFERIDA = ImporteAcumulado / PU_catálogo
+                //                    • Porcentual: FÍSICA acumulada (PU es inferido)
+                destino[kvp.Key] = new ExplosionInsumoAccumulated
+                {
+                    Clave          = src.Clave,
+                    Descripcion    = src.Descripcion,
+                    Unidad         = src.Unidad,
+                    Cantidad       = src.ImporteAcumulado,   // importe total
+                    CantidadFisica = cantidadReporte,         // inferida (normal) o física (%MO)
+                    PrecioUnitario = puReporte,               // fijo (normal) o inferido (%MO)
+                    EsPorcentual   = src.EsPorcentual
+                };
+            }
+        }
+
+        // ════════════════════════════════════════════════════════════════════════
+        // CONSTRUCCIÓN DE FILAS DE DISPLAY
+        // ════════════════════════════════════════════════════════════════════════
+
+        private static List<ExplosionRowDisplay> BuildRows(
+            ExplosionCalculationResult data, string filtro, MotorCalculoSopro motor)
+        {
+            var rows = new List<ExplosionRowDisplay>();
+
+            if (filtro == "Todos" || filtro == "Materiales")
+                AddSection(rows, "MATERIALES",   data.Materiales,   data.CostoDirectoTotal, motor);
+            if (filtro == "Todos" || filtro == "Mano de Obra")
+                AddSection(rows, "MANO DE OBRA", data.ManoObra,     data.CostoDirectoTotal, motor);
+            if (filtro == "Todos" || filtro == "Herramientas")
+                AddSection(rows, "HERRAMIENTAS", data.Herramientas, data.CostoDirectoTotal, motor);
+            if (filtro == "Todos" || filtro == "Maquinaria")
+                AddSection(rows, "MAQUINARIA",   data.Maquinaria,   data.CostoDirectoTotal, motor);
+
+            if (filtro == "Todos")
+            {
+                rows.Add(new ExplosionRowDisplay { Kind = ExplosionRowKind.Vacia });
+                rows.Add(new ExplosionRowDisplay
+                {
+                    Kind         = ExplosionRowKind.TotalGeneral,
+                    Descripcion  = "TOTAL DEL REPORTE",
+                    ImporteTexto = motor.FormatImporte(data.CostoDirectoTotal),
+                    Porcentaje   = 1.0m
+                });
+
+                decimal diferencia = data.CostoDirectoTotal - data.CostoDirectoPresupuesto;
+                decimal pctDif = data.CostoDirectoPresupuesto > 0m
+                    ? diferencia / data.CostoDirectoPresupuesto
+                    : 0m;
+
+                rows.Add(new ExplosionRowDisplay
+                {
+                    Kind         = ExplosionRowKind.Referencia,
+                    Descripcion  = "Costo Directo (Presupuesto)",
+                    ImporteTexto = motor.FormatImporte(data.CostoDirectoPresupuesto),
+                    Porcentaje   = 0m
+                });
+                rows.Add(new ExplosionRowDisplay
+                {
+                    Kind         = ExplosionRowKind.Referencia,
+                    Descripcion  = "Diferencia por redondeo",
+                    ImporteTexto = motor.FormatImporte(diferencia),
+                    Porcentaje   = pctDif
+                });
+            }
+
+            return rows;
+        }
+
+        private static void AddSection(
+            List<ExplosionRowDisplay> rows,
+            string titulo,
+            Dictionary<int, ExplosionInsumoAccumulated> dic,
+            decimal costoDirectoTotal,
+            MotorCalculoSopro motor)
+        {
+            if (dic.Count == 0) return;
+
+            rows.Add(new ExplosionRowDisplay
+            {
+                Kind        = ExplosionRowKind.Encabezado,
+                Descripcion = titulo
+            });
+
+            foreach (var kvp in dic.OrderBy(x => x.Value.Clave))
+            {
+                var ins     = kvp.Value;
+                // ins.Cantidad = ImporteAcumulado (campo reutilizado para compatibilidad)
+                decimal importe = ins.Cantidad;
+                decimal pct     = costoDirectoTotal > 0m ? importe / costoDirectoTotal : 0m;
+
+                // Usar el flag EsPorcentual del modelo — no re-detectar por heurísticas
+                bool esPct = ins.EsPorcentual;
+
+                // Normal:     CantidadFisica = inferida, PrecioUnitario = fijo del catálogo
+                // Porcentual: CantidadFisica = física acumulada, PrecioUnitario = inferido
+                string cantTexto = esPct ? "—" : motor.FormatCantidad(ins.CantidadFisica);
+                string puTexto   = esPct
+                    ? (ins.PrecioUnitario > 0m ? motor.FormatImporte(ins.PrecioUnitario) : "—")
+                    : motor.FormatImporte(ins.PrecioUnitario);
+
+                rows.Add(new ExplosionRowDisplay
+                {
+                    Kind                = ExplosionRowKind.Detalle,
+                    Clave               = ins.Clave,
+                    Descripcion         = ins.Descripcion,
+                    Unidad              = ins.Unidad,
+                    CantidadTexto       = cantTexto,
+                    PrecioUnitarioTexto = puTexto,
+                    ImporteTexto        = motor.FormatImporte(importe),
+                    Porcentaje          = pct
+                });
+            }
+
+            decimal totalSeccion = motor.SumarImportes(dic.Values.Select(i => i.Cantidad));
+            rows.Add(new ExplosionRowDisplay
+            {
+                Kind         = ExplosionRowKind.Total,
+                Descripcion  = $"TOTAL {titulo}",
+                ImporteTexto = motor.FormatImporte(totalSeccion),
+                Porcentaje   = costoDirectoTotal > 0m ? totalSeccion / costoDirectoTotal : 0m
+            });
+            rows.Add(new ExplosionRowDisplay { Kind = ExplosionRowKind.Vacia });
+        }
+
+        // ════════════════════════════════════════════════════════════════════════
+        // CLASE INTERNA DE ACUMULACIÓN (privada, solo en este servicio)
+        // ════════════════════════════════════════════════════════════════════════
+
+        private sealed class InsumoAcum
+        {
+            public string  Clave                   { get; set; } = string.Empty;
+            public string  Descripcion             { get; set; } = string.Empty;
+            public string  Unidad                  { get; set; } = string.Empty;
+            public decimal ImporteAcumulado         { get; set; }
+            public decimal CantidadFisicaAcumulada  { get; set; }
+            public decimal PuFijo                   { get; set; }
+            public bool    EsPorcentual             { get; set; }
+        }
+    }
+}

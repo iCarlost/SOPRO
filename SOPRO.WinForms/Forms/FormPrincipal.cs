@@ -1,0 +1,268 @@
+using Microsoft.EntityFrameworkCore;
+using SOPRO.Application.Models;
+using SOPRO.Application.Services;
+using SOPRO.Core.Entities;
+using SOPRO.Data.Context;
+using System;
+using System.IO;
+using System.Linq;
+using System.Windows.Forms;
+
+namespace SOPRO.WinForms.Forms
+{
+    public partial class FormPrincipal : Form
+    {
+        private readonly ProjectWorkspaceService _workspaceService;
+        private readonly ProjectLifecycleService _projectLifecycleService;
+        private ProjectSession? _currentSession;
+
+        private SOPROContext? _currentContext => _currentSession?.Context;
+        private Proyecto? _currentProject => _currentSession?.Project;
+
+        public FormPrincipal() : this(new ProjectWorkspaceService(), new ProjectLifecycleService(new ProjectWorkspaceService()))
+        {
+        }
+
+        public FormPrincipal(ProjectWorkspaceService workspaceService, ProjectLifecycleService projectLifecycleService)
+        {
+            _workspaceService = workspaceService;
+            _projectLifecycleService = projectLifecycleService;
+
+            InitializeComponent();
+            LoadRecentProjects();
+        }
+
+        private void LoadRecentProjects()
+        {
+            if (dgvRecientes == null) return;
+
+            dgvRecientes.Columns.Clear();
+            dgvRecientes.Rows.Clear();
+
+            dgvRecientes.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "colNombre",
+                HeaderText = "Nombre del Proyecto",
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+                ReadOnly = true
+            });
+
+            dgvRecientes.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "colFecha",
+                HeaderText = "Última Modificación",
+                Width = 200,
+                ReadOnly = true
+            });
+
+            dgvRecientes.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "colRuta",
+                HeaderText = "Ruta",
+                Width = 150,
+                ReadOnly = true,
+                Visible = false
+            });
+
+            dgvRecientes.Columns.Add(new DataGridViewButtonColumn
+            {
+                Name = "colEliminar",
+                HeaderText = string.Empty,
+                Text = "🗑",
+                UseColumnTextForButtonValue = true,
+                Width = 50
+            });
+
+            var recentProjects = _workspaceService.GetRecentProjects();
+            foreach (var project in recentProjects)
+            {
+                dgvRecientes.Rows.Add(
+                    project.Name,
+                    project.LastModified.ToString("dd/MMM/yyyy HH:mm"),
+                    project.FilePath);
+            }
+
+            if (dgvRecientes.Rows.Count == 0)
+            {
+                dgvRecientes.Rows.Add("(No hay proyectos recientes)", string.Empty, string.Empty, string.Empty);
+            }
+        }
+
+        private void BtnNuevoProyecto_Click(object sender, EventArgs e)
+        {
+            using var formNuevo = new FormDatosProyecto();
+            if (formNuevo.ShowDialog() != DialogResult.OK)
+            {
+                return;
+            }
+
+            try
+            {
+                _currentSession = _projectLifecycleService.CreateProject(formNuevo.Proyecto);
+
+                MessageBox.Show(
+                    $"Proyecto '{_currentProject?.Nombre}' creado exitosamente.",
+                    "Proyecto Creado",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
+                LoadRecentProjects();
+                AbrirProyecto(_currentProject!);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Error al crear el proyecto:\n{ex.Message}",
+                    "Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void BtnAbrirProyecto_Click(object sender, EventArgs e)
+        {
+            using var openDialog = new OpenFileDialog
+            {
+                Title = "Abrir Proyecto SOPRO",
+                Filter = "Proyecto SOPRO (*.db)|*.db",
+                InitialDirectory = _workspaceService.ProjectsFolder
+            };
+
+            if (openDialog.ShowDialog() != DialogResult.OK)
+            {
+                return;
+            }
+
+            OpenProjectPath(openDialog.FileName);
+        }
+
+        private void dgvRecientes_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.RowIndex >= dgvRecientes.Rows.Count)
+                return;
+
+            var nombreProyecto = dgvRecientes.Rows[e.RowIndex].Cells["colNombre"].Value?.ToString();
+            if (string.IsNullOrEmpty(nombreProyecto) || nombreProyecto.Contains("(No hay proyectos"))
+                return;
+
+            if (e.ColumnIndex == dgvRecientes.Columns["colEliminar"].Index)
+                return;
+
+            var projectPath = dgvRecientes.Rows[e.RowIndex].Cells["colRuta"].Value?.ToString();
+            if (string.IsNullOrEmpty(projectPath) || !File.Exists(projectPath))
+                return;
+
+            OpenProjectPath(projectPath);
+        }
+
+        private void dgvRecientes_CellClick(object sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.RowIndex >= dgvRecientes.Rows.Count)
+                return;
+
+            if (e.ColumnIndex != dgvRecientes.Columns["colEliminar"].Index)
+                return;
+
+            var nombreProyecto = dgvRecientes.Rows[e.RowIndex].Cells["colNombre"].Value?.ToString();
+            if (string.IsNullOrEmpty(nombreProyecto) || nombreProyecto.Contains("(No hay proyectos"))
+                return;
+
+            var projectPath = dgvRecientes.Rows[e.RowIndex].Cells["colRuta"].Value?.ToString();
+            if (string.IsNullOrEmpty(projectPath))
+                return;
+
+            var result = MessageBox.Show(
+                $"¿Está seguro de eliminar el proyecto '{nombreProyecto}'?\n\nEsta acción no se puede deshacer.",
+                "Confirmar Eliminación",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (result != DialogResult.Yes)
+                return;
+
+            try
+            {
+                var formsToClose = System.Windows.Forms.Application.OpenForms.Cast<Form>()
+                    .Where(f => f is FormProyecto)
+                    .ToList();
+
+                foreach (var form in formsToClose)
+                {
+                    form.Close();
+                    form.Dispose();
+                }
+
+                CloseCurrentSession();
+                Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+
+                if (_workspaceService.DeleteProjectFile(projectPath))
+                {
+                    MessageBox.Show(
+                        $"Proyecto '{nombreProyecto}' eliminado exitosamente.",
+                        "Eliminado",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+
+                LoadRecentProjects();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Error al eliminar el proyecto:\n{ex.Message}",
+                    "Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void BtnCatalogosMaestros_Click(object sender, EventArgs e)
+        {
+            MessageBox.Show(
+                "Función de Catálogos Maestros próximamente...",
+                "En Desarrollo",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+
+        private void AbrirProyecto(Proyecto proyecto)
+        {
+            this.Hide();
+
+            var formProyecto = new FormProyecto(_currentContext!, proyecto);
+            formProyecto.FormClosed += (s, e) =>
+            {
+                CloseCurrentSession();
+                this.Show();
+                LoadRecentProjects();
+            };
+
+            formProyecto.Show();
+        }
+
+        private void OpenProjectPath(string projectPath)
+        {
+            try
+            {
+                _currentSession = _projectLifecycleService.OpenProject(projectPath);
+                AbrirProyecto(_currentProject!);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Error al abrir el proyecto:\n{ex.Message}",
+                    "Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void CloseCurrentSession()
+        {
+            _projectLifecycleService.CloseProjectSession(_currentSession);
+            _currentSession = null;
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+    }
+}
