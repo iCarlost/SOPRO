@@ -39,6 +39,9 @@ namespace SOPRO.WinForms.Forms
         private bool _cboProyectoLoading;
         private bool _showingSearchResults;
         private bool _suppressPersistentSelectionSync;
+        private bool _skipSelectionSyncOnce;
+        private string? _pendingCtrlToggleRemoveKey;
+        private int _pendingCtrlToggleRemoveRowIndex = -1;
         private string _searchScopeTag = ScopeAllTag;
         private System.Windows.Forms.Timer? _searchDebounceTimer;
 
@@ -72,6 +75,8 @@ namespace SOPRO.WinForms.Forms
             PopulateProyectoCombo();
             dgvInsumos.SelectionChanged += dgvInsumos_SelectionChanged;
             dgvInsumos.KeyDown += dgvInsumos_KeyDown;
+            dgvInsumos.CellMouseDown += dgvInsumos_CellMouseDown;
+            dgvInsumos.CellMouseUp += dgvInsumos_CellMouseUp;
             CargarInsumosActuales();
         }
 
@@ -406,7 +411,57 @@ namespace SOPRO.WinForms.Forms
 
         private void dgvInsumos_SelectionChanged(object? sender, EventArgs e)
         {
+            if (_skipSelectionSyncOnce)
+            {
+                _skipSelectionSyncOnce = false;
+                return;
+            }
+
             RefreshAccumulatedSelectionFromGrid();
+        }
+
+        private void dgvInsumos_CellMouseDown(object? sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.Button != MouseButtons.Left) return;
+
+            var isCtrl = (Control.ModifierKeys & Keys.Control) == Keys.Control;
+            if (!isCtrl) return;
+
+            var row = dgvInsumos.Rows[e.RowIndex];
+            var key = BuildSelectionKey(row.Tag);
+            if (string.IsNullOrWhiteSpace(key)) return;
+
+            if (_selectedItems.ContainsKey(key))
+            {
+                _pendingCtrlToggleRemoveKey = key;
+                _pendingCtrlToggleRemoveRowIndex = e.RowIndex;
+                _skipSelectionSyncOnce = true;
+            }
+        }
+
+        private void dgvInsumos_CellMouseUp(object? sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.RowIndex < 0) return;
+            if (_pendingCtrlToggleRemoveRowIndex != e.RowIndex || string.IsNullOrWhiteSpace(_pendingCtrlToggleRemoveKey))
+                return;
+
+            var row = dgvInsumos.Rows[e.RowIndex];
+
+            _selectedItems.Remove(_pendingCtrlToggleRemoveKey);
+
+            _suppressPersistentSelectionSync = true;
+            try
+            {
+                row.Selected = false;
+                ApplyAccumulatedState(row, reselectVisibleRow: false);
+            }
+            finally
+            {
+                _suppressPersistentSelectionSync = false;
+            }
+
+            _pendingCtrlToggleRemoveKey = null;
+            _pendingCtrlToggleRemoveRowIndex = -1;
         }
 
         private void dgvInsumos_KeyDown(object? sender, KeyEventArgs e)
