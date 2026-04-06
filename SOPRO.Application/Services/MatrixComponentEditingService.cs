@@ -91,7 +91,8 @@ namespace SOPRO.Application.Services
             }
 
             component.Material.PrecioUnitario = unitPrice;
-            component.Importe = Round(component.Cantidad * Round(unitPrice, decimalesImporte), decimalesImporte);
+            var motor = new MotorCalculoSopro(decimalesImporte, decimalesImporte, 4);
+            component.Importe = motor.Multiplicar(component.Cantidad, unitPrice);
             return MatrixComponentEditResult.Ok();
         }
 
@@ -106,9 +107,5 @@ namespace SOPRO.Application.Services
                 || decimal.TryParse(clean, NumberStyles.Any, CultureInfo.CurrentCulture, out value);
         }
 
-        private static decimal Round(decimal value, int decimals)
-        {
-            return Math.Round(value, decimals, MidpointRounding.AwayFromZero);
-        }
     }
 }

@@ -115,6 +115,13 @@ namespace SOPRO.Application.Services
             return RedondearImporte(cantidad * puVisible);
         }
 
+        /// <summary>
+        /// Calcula un importe sobre una base monetaria usando la misma política de
+        /// precisión visible del motor. Útil para %MO y herramienta porcentual.
+        /// </summary>
+        public decimal CalcularImporteSobreBase(decimal factor, decimal baseImporte)
+            => Multiplicar(factor, baseImporte);
+
         // ════════════════════════════════════════════════════════════════════════
         // CASCADA DE PORCENTAJES CON REDONDEO EN CADA PASO VISIBLE
         // ════════════════════════════════════════════════════════════════════════
