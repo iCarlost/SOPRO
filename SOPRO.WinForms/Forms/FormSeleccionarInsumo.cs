@@ -39,14 +39,11 @@ namespace SOPRO.WinForms.Forms
         private bool _cboProyectoLoading;
         private bool _showingSearchResults;
         private bool _suppressPersistentSelectionSync;
-        private bool _skipSelectionSyncOnce;
-        private string? _pendingCtrlToggleRemoveKey;
-        private int _pendingCtrlToggleRemoveRowIndex = -1;
         private string _searchScopeTag = ScopeAllTag;
         private System.Windows.Forms.Timer? _searchDebounceTimer;
 
-        private static readonly Color AccumulatedRowBackColor = Color.FromArgb(232, 245, 233);
-        private static readonly Color AccumulatedRowSelectionBackColor = Color.FromArgb(200, 230, 201);
+        private static readonly Color AccumulatedRowBackColor = SystemColors.Highlight;
+        private static readonly Color AccumulatedRowSelectionBackColor = SystemColors.Highlight;
 
         public List<object> InsumosSeleccionados { get; private set; }
         public List<ComponenteMatriz> ComponentesSeleccionados { get; private set; }
@@ -75,8 +72,6 @@ namespace SOPRO.WinForms.Forms
             PopulateProyectoCombo();
             dgvInsumos.SelectionChanged += dgvInsumos_SelectionChanged;
             dgvInsumos.KeyDown += dgvInsumos_KeyDown;
-            dgvInsumos.CellMouseDown += dgvInsumos_CellMouseDown;
-            dgvInsumos.CellMouseUp += dgvInsumos_CellMouseUp;
             CargarInsumosActuales();
         }
 
@@ -365,7 +360,7 @@ namespace SOPRO.WinForms.Forms
 
             row.DefaultCellStyle.BackColor = isAccumulated ? AccumulatedRowBackColor : Color.White;
             row.DefaultCellStyle.SelectionBackColor = isAccumulated ? AccumulatedRowSelectionBackColor : SystemColors.Highlight;
-            row.DefaultCellStyle.SelectionForeColor = SystemColors.HighlightText;
+            row.DefaultCellStyle.SelectionForeColor = Color.White;
 
             // La selección persistente ya se comunica con color de fondo suave.
             // No debemos forzar row.Selected porque eso estorba la selección múltiple
@@ -411,57 +406,7 @@ namespace SOPRO.WinForms.Forms
 
         private void dgvInsumos_SelectionChanged(object? sender, EventArgs e)
         {
-            if (_skipSelectionSyncOnce)
-            {
-                _skipSelectionSyncOnce = false;
-                return;
-            }
-
             RefreshAccumulatedSelectionFromGrid();
-        }
-
-        private void dgvInsumos_CellMouseDown(object? sender, DataGridViewCellMouseEventArgs e)
-        {
-            if (e.RowIndex < 0 || e.Button != MouseButtons.Left) return;
-
-            var isCtrl = (Control.ModifierKeys & Keys.Control) == Keys.Control;
-            if (!isCtrl) return;
-
-            var row = dgvInsumos.Rows[e.RowIndex];
-            var key = BuildSelectionKey(row.Tag);
-            if (string.IsNullOrWhiteSpace(key)) return;
-
-            if (_selectedItems.ContainsKey(key))
-            {
-                _pendingCtrlToggleRemoveKey = key;
-                _pendingCtrlToggleRemoveRowIndex = e.RowIndex;
-                _skipSelectionSyncOnce = true;
-            }
-        }
-
-        private void dgvInsumos_CellMouseUp(object? sender, DataGridViewCellMouseEventArgs e)
-        {
-            if (e.RowIndex < 0) return;
-            if (_pendingCtrlToggleRemoveRowIndex != e.RowIndex || string.IsNullOrWhiteSpace(_pendingCtrlToggleRemoveKey))
-                return;
-
-            var row = dgvInsumos.Rows[e.RowIndex];
-
-            _selectedItems.Remove(_pendingCtrlToggleRemoveKey);
-
-            _suppressPersistentSelectionSync = true;
-            try
-            {
-                row.Selected = false;
-                ApplyAccumulatedState(row, reselectVisibleRow: false);
-            }
-            finally
-            {
-                _suppressPersistentSelectionSync = false;
-            }
-
-            _pendingCtrlToggleRemoveKey = null;
-            _pendingCtrlToggleRemoveRowIndex = -1;
         }
 
         private void dgvInsumos_KeyDown(object? sender, KeyEventArgs e)
@@ -621,7 +566,13 @@ namespace SOPRO.WinForms.Forms
 
         private Dictionary<string, object> ObtenerSeleccionEfectiva()
         {
-            var effective = new Dictionary<string, object>(_selectedItems, StringComparer.OrdinalIgnoreCase);
+            // Si ya hay acumulados persistentes, Enter/Agregar debe respetar
+            // exclusivamente esa selección. Un clic simple posterior solo sirve
+            // para moverse por el grid y no debe colarse como un insumo extra.
+            if (_selectedItems.Count > 0)
+                return new Dictionary<string, object>(_selectedItems, StringComparer.OrdinalIgnoreCase);
+
+            var effective = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
             foreach (DataGridViewRow row in dgvInsumos.SelectedRows)
             {
@@ -692,7 +643,7 @@ namespace SOPRO.WinForms.Forms
                 }
             }
 
-            RegisterUsageForSelection();
+            RegisterUsageForSelection(seleccionEfectiva);
 
             InsumosSeleccionados.Clear();
             foreach (var componente in ComponentesSeleccionados)
@@ -715,9 +666,9 @@ namespace SOPRO.WinForms.Forms
             Close();
         }
 
-        private void RegisterUsageForSelection()
+        private void RegisterUsageForSelection(IReadOnlyDictionary<string, object> seleccionEfectiva)
         {
-            foreach (var item in _selectedItems.Values)
+            foreach (var item in seleccionEfectiva.Values)
             {
                 switch (item)
                 {
