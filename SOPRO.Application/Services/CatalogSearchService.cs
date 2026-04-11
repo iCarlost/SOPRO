@@ -40,6 +40,7 @@ namespace SOPRO.Application.Services
             var results = new List<CatalogSearchResultDto>();
             var usageLookup = _projectUsageService.GetUsageLookup();
             var currentPath = NormalizePath(currentContext.DatabasePath);
+            _projectIndexService.RefreshKnownProjects(currentPath);
 
             if (includeCurrentProject)
             {
@@ -108,10 +109,12 @@ namespace SOPRO.Application.Services
 
             return results
                 .OrderByDescending(r => r.Score)
-                .ThenByDescending(r => r.FrecuenciaUso)
                 .ThenByDescending(r => r.EsActual)
                 .ThenByDescending(r => r.EsFavorito)
+                .ThenByDescending(r => r.EsReciente)
+                .ThenByDescending(r => r.FrecuenciaUso)
                 .ThenBy(r => r.Clave)
+                .ThenBy(r => r.Descripcion)
                 .Take(Math.Max(1, maxResults))
                 .ToList();
         }
@@ -257,31 +260,100 @@ namespace SOPRO.Application.Services
 
             if (!string.IsNullOrWhiteSpace(claveNorm))
             {
-                if (claveNorm == query) score += 140m;
-                else if (claveNorm.StartsWith(query, StringComparison.OrdinalIgnoreCase)) score += 110m;
-                else if (claveNorm.Contains(query, StringComparison.OrdinalIgnoreCase)) score += 70m;
+                if (claveNorm == query) score += 160m;
+                else if (claveNorm.StartsWith(query, StringComparison.OrdinalIgnoreCase)) score += 130m;
+                else if (claveNorm.Contains(query, StringComparison.OrdinalIgnoreCase)) score += 78m;
             }
 
             if (!string.IsNullOrWhiteSpace(descNorm))
             {
-                if (descNorm == query) score += 150m;
-                else if (descNorm.StartsWith(query, StringComparison.OrdinalIgnoreCase)) score += 120m;
-                else if (descNorm.Contains(query, StringComparison.OrdinalIgnoreCase)) score += 95m;
+                if (descNorm == query) score += 175m;
+                else if (descNorm.StartsWith(query, StringComparison.OrdinalIgnoreCase)) score += 145m;
+                else if (descNorm.Contains(query, StringComparison.OrdinalIgnoreCase)) score += 105m;
             }
 
             var terms = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            foreach (var term in terms)
+            if (terms.Length > 0)
             {
-                if (!string.IsNullOrWhiteSpace(claveNorm) && claveNorm.Contains(term, StringComparison.OrdinalIgnoreCase))
-                    score += 8m;
-                if (!string.IsNullOrWhiteSpace(descNorm) && descNorm.Contains(term, StringComparison.OrdinalIgnoreCase))
-                    score += 14m;
+                bool allTermsInClave = !string.IsNullOrWhiteSpace(claveNorm);
+                bool allTermsInDesc = !string.IsNullOrWhiteSpace(descNorm);
+                bool orderedInClave = !string.IsNullOrWhiteSpace(claveNorm);
+                bool orderedInDesc = !string.IsNullOrWhiteSpace(descNorm);
+                int lastClaveIndex = -1;
+                int lastDescIndex = -1;
+
+                foreach (var term in terms)
+                {
+                    if (!string.IsNullOrWhiteSpace(claveNorm))
+                    {
+                        int claveIndex = claveNorm.IndexOf(term, StringComparison.OrdinalIgnoreCase);
+                        if (claveIndex >= 0)
+                        {
+                            score += 10m;
+                            if (claveNorm.Contains($" {term}", StringComparison.OrdinalIgnoreCase))
+                                score += 4m;
+                            if (claveIndex == 0 || (claveIndex > 0 && claveNorm[claveIndex - 1] == ' '))
+                                score += 7m;
+                            if (orderedInClave)
+                            {
+                                if (claveIndex < lastClaveIndex) orderedInClave = false;
+                                else lastClaveIndex = claveIndex;
+                            }
+                        }
+                        else
+                        {
+                            allTermsInClave = false;
+                            orderedInClave = false;
+                        }
+                    }
+                    else
+                    {
+                        allTermsInClave = false;
+                        orderedInClave = false;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(descNorm))
+                    {
+                        int descIndex = descNorm.IndexOf(term, StringComparison.OrdinalIgnoreCase);
+                        if (descIndex >= 0)
+                        {
+                            score += 18m;
+                            if (descNorm.Contains($" {term}", StringComparison.OrdinalIgnoreCase))
+                                score += 6m;
+                            if (descIndex == 0 || (descIndex > 0 && descNorm[descIndex - 1] == ' '))
+                                score += 10m;
+                            if (orderedInDesc)
+                            {
+                                if (descIndex < lastDescIndex) orderedInDesc = false;
+                                else lastDescIndex = descIndex;
+                            }
+                        }
+                        else
+                        {
+                            allTermsInDesc = false;
+                            orderedInDesc = false;
+                        }
+                    }
+                    else
+                    {
+                        allTermsInDesc = false;
+                        orderedInDesc = false;
+                    }
+                }
+
+                if (allTermsInDesc) score += 36m;
+                if (allTermsInClave) score += 20m;
+                if (orderedInDesc && terms.Length > 1) score += 24m;
+                if (orderedInClave && terms.Length > 1) score += 12m;
             }
 
-            if (isCurrent) score += 35m;
-            if (isFavorite) score += 18m;
-            if (isRecent) score += 9m;
-            if (frecuenciaUso > 0) score += Math.Min(frecuenciaUso, 20) * 6m;
+            if (!string.IsNullOrWhiteSpace(descNorm) && descNorm.Length > query.Length)
+                score += Math.Max(0m, 10m - Math.Min(10m, descNorm.Length - query.Length));
+
+            if (isCurrent) score += 55m;
+            if (isFavorite) score += 26m;
+            if (isRecent) score += 14m;
+            if (frecuenciaUso > 0) score += Math.Min(frecuenciaUso, 20) * 7m;
 
             return score;
         }
@@ -298,9 +370,13 @@ namespace SOPRO.Application.Services
 
         private static string NormalizeQuery(string? value)
         {
-            return string.IsNullOrWhiteSpace(value)
-                ? string.Empty
-                : string.Join(' ', value.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+
+            var normalized = value.Trim().ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
+            var chars = normalized.Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray();
+            return string.Join(' ', new string(chars).Normalize(System.Text.NormalizationForm.FormC)
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries));
         }
 
         private static DateTime? GetProjectReferenceDate(string? path)

@@ -38,6 +38,7 @@ namespace SOPRO.WinForms.Forms
         private SoproButton btnDepurarRibbon;
         private System.Windows.Forms.Label lblSepGlobal;
         private SoproButton btnAplicarATodas;
+        private SoproButton btnConsolidarInsumos;
         private System.Windows.Forms.ToolTip toolTipRibbon;
         private System.Windows.Forms.Label lblTitulo;
         private System.Windows.Forms.Label lblProyecto;
@@ -99,6 +100,7 @@ namespace SOPRO.WinForms.Forms
             btnWrapRibbon = new SoproButton();
             lblSepReporte = new Label();
             btnAplicarATodas = new SoproButton();
+            btnConsolidarInsumos = new SoproButton();
             lblSepGlobal = new Label();
             btnColorTexto = new Button();
             btnColorFondo = new Button();
@@ -264,6 +266,7 @@ namespace SOPRO.WinForms.Forms
             panelRibbon.Controls.Add(btnBuscarRibbon);
             panelRibbon.Controls.Add(btnWrapRibbon);
             panelRibbon.Controls.Add(lblSepReporte);
+            panelRibbon.Controls.Add(btnConsolidarInsumos);
             panelRibbon.Controls.Add(btnAplicarATodas);
             panelRibbon.Controls.Add(lblSepGlobal);
             panelRibbon.Controls.Add(btnColorTexto);
@@ -450,6 +453,30 @@ namespace SOPRO.WinForms.Forms
             lblSepReporte.Size = new Size(1, 79);
             lblSepReporte.TabIndex = 20;
             // 
+            // 
+            // btnConsolidarInsumos
+            // 
+            btnConsolidarInsumos.FlatAppearance.BorderSize = 0;
+            btnConsolidarInsumos.FlatStyle = FlatStyle.Flat;
+            btnConsolidarInsumos.Font = new Font("Segoe UI", 8.5F);
+            btnConsolidarInsumos.ForeColor = Color.Silver;
+            btnConsolidarInsumos.Image = (Image)resources.GetObject("btnAplicarATodas.Image");
+            btnConsolidarInsumos.ImageAlign = ContentAlignment.MiddleLeft;
+            btnConsolidarInsumos.Location = new Point(850, 52);
+            btnConsolidarInsumos.Margin = new Padding(3, 4, 3, 4);
+            btnConsolidarInsumos.Name = "btnConsolidarInsumos";
+            btnConsolidarInsumos.Padding = new Padding(9, 0, 11, 0);
+            btnConsolidarInsumos.Size = new Size(122, 32);
+            btnConsolidarInsumos.SoproContentPadding = new Padding(9, 0, 11, 0);
+            btnConsolidarInsumos.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
+            btnConsolidarInsumos.SoproIcon = Helpers.SoproIconType.Consolidar;
+            btnConsolidarInsumos.SoproMinimumAutoWidth = 86;
+            btnConsolidarInsumos.TabIndex = 29;
+            btnConsolidarInsumos.Text = "Consolidar";
+            btnConsolidarInsumos.TextImageRelation = TextImageRelation.ImageBeforeText;
+            toolTipRibbon.SetToolTip(btnConsolidarInsumos, "Consolidar insumos seleccionados en el catálogo activo");
+            btnConsolidarInsumos.UseVisualStyleBackColor = false;
+            btnConsolidarInsumos.Click += btnConsolidarInsumos_Click;
             // btnAplicarATodas
             // 
             btnAplicarATodas.FlatAppearance.BorderSize = 0;

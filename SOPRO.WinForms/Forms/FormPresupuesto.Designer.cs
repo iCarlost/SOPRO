@@ -12,7 +12,7 @@ namespace SOPRO.WinForms.Forms
         private System.Windows.Forms.ToolStripButton btnToggleMatrices;
         private System.Windows.Forms.ToolStripButton btnCerrar;
         private System.Windows.Forms.SplitContainer splitContainer;
-        private System.Windows.Forms.DataGridView dgvPresupuesto;
+        private SOPRO.WinForms.Controls.PresupuestoDataGridView dgvPresupuesto;
         private System.Windows.Forms.Panel panelMatrices;
         private System.Windows.Forms.StatusStrip statusStrip;
         private System.Windows.Forms.ToolStripStatusLabel lblTotalConceptos;
@@ -43,7 +43,7 @@ namespace SOPRO.WinForms.Forms
             btnExplosion = new ToolStripButton();
             btnCerrar = new ToolStripButton();
             splitContainer = new SplitContainer();
-            dgvPresupuesto = new DataGridView();
+            dgvPresupuesto = new SOPRO.WinForms.Controls.PresupuestoDataGridView();
             panelMatrices = new Panel();
             statusStrip = new StatusStrip();
             lblTotalConceptos = new ToolStripStatusLabel();

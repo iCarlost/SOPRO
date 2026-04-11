@@ -75,6 +75,9 @@ namespace SOPRO.WinForms.Helpers
                 case SoproIconType.Explosion:
                     DrawExplosion(g, color, size);
                     break;
+                case SoproIconType.Consolidar:
+                    DrawConsolidar(g, color, size);
+                    break;
             }
 
             return bmp;
@@ -448,6 +451,36 @@ namespace SOPRO.WinForms.Helpers
             path.AddArc(x, y + height - diameter, diameter, diameter, 90, 90);
             path.CloseFigure();
             return path;
+        }
+
+
+        private static void DrawConsolidar(Graphics g, Color color, int size)
+        {
+            var previousSmoothing = g.SmoothingMode;
+            var previousInterpolation = g.InterpolationMode;
+            var previousPixelOffset = g.PixelOffsetMode;
+            g.SmoothingMode = SmoothingMode.None;
+            g.InterpolationMode = InterpolationMode.NearestNeighbor;
+            g.PixelOffsetMode = PixelOffsetMode.None;
+
+            using var pen = new Pen(color, 1f);
+            using var solid = new SolidBrush(color);
+
+            g.DrawRectangle(pen, 2, 3, 4, 4);
+            g.DrawRectangle(pen, 2, size - 7, 4, 4);
+            g.DrawRectangle(pen, size - 7, (size / 2) - 2, 4, 4);
+            g.DrawLine(pen, 6, 5, size - 8, (size / 2));
+            g.DrawLine(pen, 6, size - 5, size - 8, (size / 2));
+            g.FillPolygon(solid, new[]
+            {
+                new Point(size - 3, size / 2),
+                new Point(size - 8, (size / 2) - 3),
+                new Point(size - 8, (size / 2) + 3)
+            });
+
+            g.SmoothingMode = previousSmoothing;
+            g.InterpolationMode = previousInterpolation;
+            g.PixelOffsetMode = previousPixelOffset;
         }
 
         private enum VerticalPlacement

@@ -17,6 +17,7 @@ namespace SOPRO.WinForms.Helpers
         AlinearAbajo,
         Columnas,
         Matrices,
-        Explosion
+        Explosion,
+        Consolidar
     }
 }

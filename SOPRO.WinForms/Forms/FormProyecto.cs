@@ -21,6 +21,7 @@ namespace SOPRO.WinForms.Forms
         private IGridFormato _formActivo = null;
         private IRecalculable _formActivoRecalculable = null;
         private IBusquedaGrid _formActivoBuscable = null;
+        private IConsolidacionInsumos _formActivoConsolidable = null;
         private bool _restaurandoEstadoArbol = false;
         private const int SidebarExpandedWidth = 250;
         private const int SidebarCollapsedWidth = 60;
@@ -66,6 +67,7 @@ namespace SOPRO.WinForms.Forms
             InicializarRibbon();
             DesactivarRibbon();
             btnDepurarRibbon.Enabled = true;
+            btnConsolidarInsumos.Enabled = false;
             HabilitarControlesFormato(false);
 
             treeMenu.AfterExpand += treeMenu_AfterExpand;
@@ -561,6 +563,8 @@ namespace SOPRO.WinForms.Forms
                 _formActivo = null;
                 _formActivoRecalculable = null;
                 _formActivoBuscable = null;
+                if (_formActivoConsolidable != null) _formActivoConsolidable.EstadoConsolidacionCambiado -= FormActivoConsolidacionCambiada;
+                _formActivoConsolidable = null;
             }
 
             // Buscar si el form activo implementa IGridFormato
@@ -570,6 +574,8 @@ namespace SOPRO.WinForms.Forms
                 _formActivo = gf;
                 _formActivoRecalculable = tabControl.SelectedTab.Controls[0] as IRecalculable;
                 _formActivoBuscable = tabControl.SelectedTab.Controls[0] as IBusquedaGrid;
+                _formActivoConsolidable = tabControl.SelectedTab.Controls[0] as IConsolidacionInsumos;
+                if (_formActivoConsolidable != null) _formActivoConsolidable.EstadoConsolidacionCambiado += FormActivoConsolidacionCambiada;
                 _formActivo.ColumnaSeleccionadaCambiada += FormActivo_ColumnaSeleccionadaCambiada;
                 btnExcelRibbon.Enabled = true;
                 btnPdfRibbon.Enabled = true;
@@ -577,6 +583,7 @@ namespace SOPRO.WinForms.Forms
                 btnWrapRibbon.Enabled = _formActivo.GridPrincipal != null;
                 btnRecalcularRibbon.Enabled = _formActivoRecalculable != null;
                 btnDepurarRibbon.Enabled = true;
+                btnConsolidarInsumos.Enabled = _formActivoConsolidable?.ConsolidacionDisponible == true;
                 AplicarTemaCompletoRibbon();
 
                 // Si es el presupuesto, recalcular P.U. e importes con la configuración actual
@@ -626,6 +633,7 @@ namespace SOPRO.WinForms.Forms
                 btnWrapRibbon.Enabled = _formActivo.GridPrincipal != null;
                 btnRecalcularRibbon.Enabled = _formActivoRecalculable != null;
                 btnDepurarRibbon.Enabled = true;
+                btnConsolidarInsumos.Enabled = _formActivoConsolidable?.ConsolidacionDisponible == true;
                 HabilitarControlesFormato(false);
                 lblColumna.Text = tabControl.SelectedTab?.Controls.Count > 0 && tabControl.SelectedTab.Controls[0] is FormFSR
                     ? "Factor de Salario Real"
@@ -640,6 +648,20 @@ namespace SOPRO.WinForms.Forms
         }
 
 
+        private void FormActivoConsolidacionCambiada(object sender, EventArgs e)
+        {
+            btnConsolidarInsumos.Enabled = _formActivoConsolidable?.ConsolidacionDisponible == true;
+        }
+
+        private void btnConsolidarInsumos_Click(object sender, EventArgs e)
+        {
+            if (_formActivoConsolidable == null)
+                return;
+
+            _formActivoConsolidable.EjecutarConsolidacion();
+            btnConsolidarInsumos.Enabled = _formActivoConsolidable.ConsolidacionDisponible;
+        }
+
         private void ConfigurarIconosRibbon()
         {
             ConfigurarBotonIcono(btnBuscarRibbon, "Buscar", SoproIconType.Buscar, 16, showText: true);
@@ -649,6 +671,7 @@ namespace SOPRO.WinForms.Forms
             ConfigurarBotonIcono(btnRecalcularRibbon, "Recalcular", SoproIconType.Recalcular, 16, showText: true);
             ConfigurarBotonIcono(btnDepurarRibbon, "Depurar", SoproIconType.Depurar, 16, showText: true);
             ConfigurarBotonIcono(btnAplicarATodas, "Aplicar", SoproIconType.AplicarATodas, 16, showText: true);
+            ConfigurarBotonIcono(btnConsolidarInsumos, "Consolidar", SoproIconType.Consolidar, 16, showText: true);
 
             ConfigurarBotonIcono(btnAlinIzq, string.Empty, SoproIconType.AlinearIzquierda, 16, showText: false);
             ConfigurarBotonIcono(btnAlinCen, string.Empty, SoproIconType.AlinearCentro, 16, showText: false);
@@ -814,6 +837,7 @@ namespace SOPRO.WinForms.Forms
 
             AplicarTemaBotonRibbon(btnBuscarRibbon, false);
             AplicarTemaBotonRibbon(btnAplicarATodas, false);
+            AplicarTemaBotonRibbon(btnConsolidarInsumos, false);
             AplicarTemaBotonRibbon(btnExcelRibbon, false);
             AplicarTemaBotonRibbon(btnPdfRibbon, false);
             AplicarTemaBotonRibbon(btnRecalcularRibbon, false);
@@ -861,6 +885,7 @@ namespace SOPRO.WinForms.Forms
             btnWrapRibbon.Enabled = false;
             btnRecalcularRibbon.Enabled = false;
             btnDepurarRibbon.Enabled = true;
+            btnConsolidarInsumos.Enabled = false;
             HabilitarControlesFormato(false);
             lblColumna.Text      = "-- sin seleccion --";
             lblColumna.ForeColor = Color.Gray;

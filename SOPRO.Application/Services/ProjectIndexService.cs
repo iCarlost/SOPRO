@@ -14,6 +14,7 @@ namespace SOPRO.Application.Services
         };
 
         private readonly ProjectWorkspaceService _workspaceService;
+        private DateTime _lastDiscoveryUtc = DateTime.MinValue;
         private string IndexFilePath => Path.Combine(_workspaceService.LocalDataFolder, "selector-project-index.json");
 
         private string CatalogIndexFolder => Path.Combine(_workspaceService.LocalDataFolder, "selector-catalog-index");
@@ -21,6 +22,88 @@ namespace SOPRO.Application.Services
         public ProjectIndexService(ProjectWorkspaceService workspaceService)
         {
             _workspaceService = workspaceService ?? throw new ArgumentNullException(nameof(workspaceService));
+        }
+
+
+        public void RefreshKnownProjects(string? currentProjectPath = null, bool force = false)
+        {
+            if (!force && DateTime.UtcNow - _lastDiscoveryUtc < TimeSpan.FromSeconds(15))
+                return;
+
+            var entries = LoadEntries();
+            bool changed = false;
+
+            void UpsertDiscoveredProject(string? projectPath, string? projectName = null)
+            {
+                if (string.IsNullOrWhiteSpace(projectPath) || !File.Exists(projectPath))
+                    return;
+
+                string normalizedPath;
+                try
+                {
+                    normalizedPath = NormalizePath(projectPath);
+                }
+                catch
+                {
+                    return;
+                }
+
+                var existing = entries.FirstOrDefault(x => string.Equals(x.ProjectPath, normalizedPath, StringComparison.OrdinalIgnoreCase));
+                if (existing == null)
+                {
+                    entries.Add(new ProjectIndexEntry
+                    {
+                        ProjectPath = normalizedPath,
+                        ProjectName = ResolveProjectName(normalizedPath, projectName),
+                        LastOpenedUtc = SafeGetLastWriteUtc(normalizedPath)
+                    });
+                    changed = true;
+                    return;
+                }
+
+                var resolvedName = ResolveProjectName(normalizedPath, projectName);
+                if (!string.Equals(existing.ProjectName, resolvedName, StringComparison.Ordinal))
+                {
+                    existing.ProjectName = resolvedName;
+                    changed = true;
+                }
+
+                if (existing.LastOpenedUtc == default)
+                {
+                    existing.LastOpenedUtc = SafeGetLastWriteUtc(normalizedPath);
+                    changed = true;
+                }
+            }
+
+            foreach (var recent in _workspaceService.GetRecentProjects(200))
+                UpsertDiscoveredProject(recent.FilePath, recent.Name);
+
+            if (!string.IsNullOrWhiteSpace(currentProjectPath))
+            {
+                UpsertDiscoveredProject(currentProjectPath, Path.GetFileNameWithoutExtension(currentProjectPath));
+
+                try
+                {
+                    var currentDirectory = Path.GetDirectoryName(NormalizePath(currentProjectPath));
+                    if (!string.IsNullOrWhiteSpace(currentDirectory) && Directory.Exists(currentDirectory))
+                    {
+                        foreach (var siblingProject in Directory.GetFiles(currentDirectory, "*.db", SearchOption.TopDirectoryOnly))
+                            UpsertDiscoveredProject(siblingProject, Path.GetFileNameWithoutExtension(siblingProject));
+                    }
+                }
+                catch
+                {
+                    // Ignorar directorios inaccesibles o rutas inválidas.
+                }
+            }
+
+            foreach (var indexed in EnumerateCatalogIndexedProjects())
+                UpsertDiscoveredProject(indexed.ProjectPath, indexed.ProjectName);
+
+            if (changed)
+                SaveEntries(entries);
+
+            _lastDiscoveryUtc = DateTime.UtcNow;
         }
 
         public void RegisterProjectOpened(string projectPath, string? projectName = null)
@@ -251,6 +334,44 @@ namespace SOPRO.Application.Services
 
             var json = JsonSerializer.Serialize(normalized, JsonOptions);
             File.WriteAllText(IndexFilePath, json);
+        }
+
+        private IEnumerable<(string ProjectPath, string? ProjectName)> EnumerateCatalogIndexedProjects()
+        {
+            var folder = Path.Combine(_workspaceService.LocalDataFolder, "selector-catalog-index");
+            if (!Directory.Exists(folder))
+                yield break;
+
+            foreach (var file in Directory.GetFiles(folder, "*.json", SearchOption.TopDirectoryOnly))
+            {
+                ProjectCatalogIndexFile? index = null;
+                try
+                {
+                    var json = File.ReadAllText(file);
+                    index = JsonSerializer.Deserialize<ProjectCatalogIndexFile>(json, JsonOptions);
+                }
+                catch
+                {
+                    index = null;
+                }
+
+                if (index == null || string.IsNullOrWhiteSpace(index.ProjectPath))
+                    continue;
+
+                yield return (index.ProjectPath, index.ProjectName);
+            }
+        }
+
+        private static DateTime SafeGetLastWriteUtc(string projectPath)
+        {
+            try
+            {
+                return File.Exists(projectPath) ? File.GetLastWriteTimeUtc(projectPath) : DateTime.UtcNow;
+            }
+            catch
+            {
+                return DateTime.UtcNow;
+            }
         }
 
         private static RecentProjectInfo ToRecentProjectInfo(ProjectIndexEntry entry)

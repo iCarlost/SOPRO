@@ -72,6 +72,7 @@ namespace SOPRO.WinForms.Forms
             PopulateProyectoCombo();
             dgvInsumos.SelectionChanged += dgvInsumos_SelectionChanged;
             dgvInsumos.KeyDown += dgvInsumos_KeyDown;
+            dgvInsumos.CellDoubleClick += dgvInsumos_CellDoubleClick;
             CargarInsumosActuales();
         }
 
@@ -418,6 +419,14 @@ namespace SOPRO.WinForms.Forms
             btnAceptar.PerformClick();
         }
 
+        private void dgvInsumos_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex < 0) return;
+            if (e.ColumnIndex >= 0)
+                dgvInsumos.CurrentCell = dgvInsumos.Rows[e.RowIndex].Cells[e.ColumnIndex];
+            btnAceptar.PerformClick();
+        }
+
         private static string? BuildSelectionKey(object? tag)
         {
             return tag switch
@@ -445,27 +454,27 @@ namespace SOPRO.WinForms.Forms
             _searchDebounceTimer.Start();
         }
 
-        private void ApplyFilterToGrid()
+        private void ApplyFilterToGrid(bool forceCurrentReload = false)
         {
             var busqueda = txtBuscar.Text.Trim();
             if (string.IsNullOrWhiteSpace(busqueda))
             {
-                ApplyEmptyScopeState();
+                ApplyEmptyScopeState(forceCurrentReload);
                 return;
             }
             EjecutarBusquedaTransversal(busqueda);
         }
 
-        private void ApplyEmptyScopeState()
+        private void ApplyEmptyScopeState(bool forceCurrentReload = false)
         {
             if (_searchScopeTag == ScopeCurrentTag)
             {
-                ShowCurrentProjectBase("Mostrando insumos del proyecto actual.");
+                ShowCurrentProjectBase("Mostrando insumos del proyecto actual.", forceCurrentReload);
                 return;
             }
             if (_searchScopeTag == ScopeAllTag)
             {
-                ShowCurrentProjectBase(SelectorUiDefaults.BuildAllScopePrompt("insumos"));
+                ShowCurrentProjectBase(SelectorUiDefaults.BuildAllScopePrompt("insumos"), forceCurrentReload);
                 return;
             }
             if (_searchScopeTag == ScopeRecentTag)
@@ -481,10 +490,10 @@ namespace SOPRO.WinForms.Forms
             CargarInsumosExternos(_searchScopeTag);
         }
 
-        private void ShowCurrentProjectBase(string statusMessage)
+        private void ShowCurrentProjectBase(string statusMessage, bool forceReload = false)
         {
             var hasCurrentBaseLoaded = !_showingSearchResults && string.IsNullOrWhiteSpace(_externalProjectPath) && dgvInsumos.Rows.Count > 0;
-            if (!hasCurrentBaseLoaded) CargarInsumosActuales();
+            if (forceReload || !hasCurrentBaseLoaded) CargarInsumosActuales();
             lblStatus.Text = statusMessage;
         }
 
@@ -691,6 +700,7 @@ namespace SOPRO.WinForms.Forms
         private void btnNuevoInsumo_Click(object sender, EventArgs e)
         {
             int? nuevoId = null;
+            string? nuevoTag = null;
             switch (_tipoComponente)
             {
                 case TipoComponenteMatriz.Material:
@@ -701,11 +711,29 @@ namespace SOPRO.WinForms.Forms
                     }
                     break;
                 case TipoComponenteMatriz.ManoDeObra:
-                    var proyFSR = _context.Proyectos.Find(_proyectoId);
-                    using (var form = new FormEditarManoObra(_context, _proyectoId, proyecto: proyFSR))
+                    if (rbMOCuadrillas.Checked)
                     {
-                        if (form.ShowDialog(this) == DialogResult.OK)
-                            nuevoId = _context.ManoDeObra.Where(m => m.ProyectoId == _proyectoId).OrderByDescending(m => m.Id).Select(m => (int?)m.Id).FirstOrDefault();
+                        using (var form = new FormEditarMatriz(_context, _proyectoId, tipoInicial: TipoMatriz.Cuadrilla))
+                        {
+                            if (form.ShowDialog(this) == DialogResult.OK)
+                            {
+                                nuevoId = _context.Matrices
+                                    .Where(m => m.ProyectoId == _proyectoId && m.Tipo == TipoMatriz.Cuadrilla)
+                                    .OrderByDescending(m => m.Id)
+                                    .Select(m => (int?)m.Id)
+                                    .FirstOrDefault();
+                                nuevoTag = "Cuadrilla";
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var proyFSR = _context.Proyectos.Find(_proyectoId);
+                        using (var form = new FormEditarManoObra(_context, _proyectoId, proyecto: proyFSR))
+                        {
+                            if (form.ShowDialog(this) == DialogResult.OK)
+                                nuevoId = _context.ManoDeObra.Where(m => m.ProyectoId == _proyectoId).OrderByDescending(m => m.Id).Select(m => (int?)m.Id).FirstOrDefault();
+                        }
                     }
                     break;
                 case TipoComponenteMatriz.Maquinaria:
@@ -737,12 +765,24 @@ namespace SOPRO.WinForms.Forms
                 _searchScopeTag = ScopeCurrentTag;
                 SelectScopeInCombo();
                 CargarInsumosActuales();
+                dgvInsumos.ClearSelection();
                 foreach (DataGridViewRow row in dgvInsumos.Rows)
                 {
-                    if (Convert.ToInt32(row.Cells["colId"].Value) == nuevoId.Value)
+                    var rowId = Convert.ToInt32(row.Cells["colId"].Value);
+                    var rowTag = row.Tag;
+                    var isExpectedTag = nuevoTag == null ||
+                        (rowTag is SelectableInsumoDto dto && string.Equals(dto.Tag, nuevoTag, StringComparison.OrdinalIgnoreCase)) ||
+                        (rowTag is ExternalProjectInsumoOption ext && string.Equals(ext.Tag, nuevoTag, StringComparison.OrdinalIgnoreCase));
+
+                    if (rowId == nuevoId.Value && isExpectedTag)
                     {
+                        var targetCell = row.Cells.Cast<DataGridViewCell>().FirstOrDefault(c => c.Visible) ?? row.Cells[0];
                         row.Selected = true;
-                        dgvInsumos.FirstDisplayedScrollingRowIndex = row.Index;
+                        dgvInsumos.CurrentCell = targetCell;
+                        if (row.Index >= 0)
+                            dgvInsumos.FirstDisplayedScrollingRowIndex = row.Index;
+                        dgvInsumos.Focus();
+                        BeginInvoke(new Action(() => dgvInsumos.Focus()));
                         break;
                     }
                 }
@@ -752,7 +792,7 @@ namespace SOPRO.WinForms.Forms
         private void rbFiltroMO_CheckedChanged(object sender, EventArgs e)
         {
             if (_tipoComponente != TipoComponenteMatriz.ManoDeObra) return;
-            ApplyFilterToGrid();
+            ApplyFilterToGrid(forceCurrentReload: true);
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)

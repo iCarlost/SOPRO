@@ -16,7 +16,7 @@ using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
 {
-    public partial class FormCatalogoMaquinaria : Form, IGridFormato, IBusquedaGrid, IRecalculable
+    public partial class FormCatalogoMaquinaria : Form, IGridFormato, IBusquedaGrid, IRecalculable, IConsolidacionInsumos
     {
         public static event EventHandler InsumosModificados;
 
@@ -27,6 +27,9 @@ namespace SOPRO.WinForms.Forms
         private Maquinaria _maquinariaSeleccionada;
         private List<ColumnaMaquinaria> _columnasConfig = new List<ColumnaMaquinaria>();
         private bool _cargandoColumnas = false;
+        private readonly InsumoConsolidationService _consolidationService = new();
+
+        public event EventHandler EstadoConsolidacionCambiado;
         private List<Maquinaria> _listaActual = new List<Maquinaria>();
 
         // ── IGridFormato ──────────────────────────────────────────────────────
@@ -191,6 +194,83 @@ namespace SOPRO.WinForms.Forms
 
             dgvMaquinaria.ColumnHeaderMouseClick += (s, e) => NotificarColumnaSeleccionada(e.ColumnIndex);
             dgvMaquinaria.ColumnWidthChanged += DgvMaquinaria_ColumnWidthChanged;
+        }
+
+        public bool ConsolidacionDisponible => _proyectoId.HasValue && dgvMaquinaria.SelectedRows.Count >= 2;
+        public string NombreTipoConsolidacion => "Maquinaria / Equipo";
+
+        public IReadOnlyList<ConsolidacionInsumoItem> ObtenerSeleccionConsolidable()
+        {
+            return dgvMaquinaria.SelectedRows
+                .Cast<DataGridViewRow>()
+                .Select(r => r.DataBoundItem as Maquinaria)
+                .Where(x => x != null)
+                .GroupBy(x => x.Id)
+                .Select(g => g.First())
+                .Select(x => new ConsolidacionInsumoItem
+                {
+                    Id = x.Id,
+                    Clave = x.Clave ?? string.Empty,
+                    Descripcion = x.Descripcion ?? string.Empty,
+                    Unidad = "hr",
+                    Precio = x.CostoHorario,
+                    PrecioEtiqueta = string.Format("Costo horario: {0:N4}", x.CostoHorario)
+                })
+                .ToList();
+        }
+
+        public void EjecutarConsolidacion()
+        {
+            if (!_proyectoId.HasValue)
+            {
+                MessageBox.Show("La consolidación solo está disponible dentro de un proyecto.", "Consolidar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var seleccion = dgvMaquinaria.SelectedRows
+                .Cast<DataGridViewRow>()
+                .Select(r => r.DataBoundItem as Maquinaria)
+                .Where(x => x != null)
+                .GroupBy(x => x.Id)
+                .Select(g => g.First())
+                .ToList();
+
+            if (seleccion.Count < 2)
+            {
+                MessageBox.Show("Seleccione al menos dos registros del proyecto para consolidar.", "Consolidar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (seleccion.Any(x => x.Origen == OrigenInsumo.Maestro))
+            {
+                MessageBox.Show("La consolidación solo admite registros del proyecto actual.\n\nQuite de la selección cualquier insumo del catálogo maestro e intente de nuevo.", "Consolidar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var items = ObtenerSeleccionConsolidable();
+            using var dlg = new FormConsolidarInsumos(NombreTipoConsolidacion, items, baseId =>
+                _consolidationService.ObtenerPreview(_context, _proyectoId.Value, ConsolidacionInsumoTipo.Maquinaria, baseId, seleccion.Select(x => x.Id).ToList()));
+
+            if (dlg.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            try
+            {
+                Cursor = Cursors.WaitCursor;
+                var resultado = _consolidationService.Consolidar(_context, _proyectoId.Value, ConsolidacionInsumoTipo.Maquinaria, dlg.InsumoBaseId, seleccion.Select(x => x.Id).ToList());
+                CargarMaquinaria();
+                InsumosModificados?.Invoke(this, EventArgs.Empty);
+                EstadoConsolidacionCambiado?.Invoke(this, EventArgs.Empty);
+                MessageBox.Show($"Consolidación completada.\n\nRegistros sustituidos: {resultado.RegistrosConsolidados}\nComponentes actualizados: {resultado.ComponentesActualizados}\nMatrices afectadas: {resultado.MatricesAfectadas}\nConceptos impactados: {resultado.ConceptosAfectados}", "Consolidar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"No fue posible consolidar los insumos:\n{ex.Message}", "Consolidar", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                Cursor = Cursors.Default;
+            }
         }
 
         // ── Grid ──────────────────────────────────────────────────────────────
@@ -564,6 +644,7 @@ namespace SOPRO.WinForms.Forms
 
             btnEditar.Enabled = haySeleccion && !(enProyecto && esMaestro);
             btnEliminar.Enabled = haySeleccion && !(enProyecto && esMaestro);
+            EstadoConsolidacionCambiado?.Invoke(this, EventArgs.Empty);
             btnCalcularCosto.Enabled = haySeleccion && !(enProyecto && esMaestro);
         }
 

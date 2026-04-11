@@ -14,13 +14,14 @@ using System.Windows.Forms;
 
 namespace SOPRO.WinForms.Forms
 {
-    public partial class FormMatrices : Form, IGridFormato, IBusquedaGrid, IRecalculable
+    public partial class FormMatrices : Form, IGridFormato, IBusquedaGrid, IRecalculable, IConsolidacionInsumos
     {
         private readonly SOPROContext _context;
         private readonly Repository<Matriz> _repository;
         private readonly MatrixCatalogViewService _matrixCatalogViewService = new();
         private readonly MatrixUsageLookupService _matrixUsageLookupService = new();
         private readonly MatrixDeleteFlowService _matrixDeleteFlowService = new();
+        private readonly MatrixConsolidationService _matrixConsolidationService = new();
         private readonly int _proyectoId;
         private readonly bool _modoEmbebido;
         private readonly EventHandler _onInsumos;
@@ -35,6 +36,7 @@ namespace SOPRO.WinForms.Forms
         public DataGridView GridPrincipal => dgvMatrices;
         public DataGridView GridBusqueda => dgvMatrices;
         public event EventHandler ColumnaSeleccionadaCambiada;
+        public event EventHandler EstadoConsolidacionCambiado;
 
         private ColumnaMatriz _colMatRibbon;
         private ColumnaPersonalizada _columnaRibbon;
@@ -170,6 +172,100 @@ namespace SOPRO.WinForms.Forms
         }
 
         public void RecargarMatrices() => CargarMatrices();
+
+        public bool ConsolidacionDisponible
+        {
+            get
+            {
+                var seleccion = ObtenerMatricesSeleccionadas();
+                if (seleccion.Count < 2) return false;
+                var tipos = seleccion.Select(x => x.Tipo).Distinct().ToList();
+                return tipos.Count == 1 && tipos[0] != TipoMatriz.APU;
+            }
+        }
+
+        public string NombreTipoConsolidacion
+        {
+            get
+            {
+                var tipo = ObtenerMatricesSeleccionadas().Select(x => x.Tipo).Distinct().SingleOrDefault();
+                return tipo switch
+                {
+                    TipoMatriz.Basico => "Matrices básicas",
+                    TipoMatriz.Cuadrilla => "Cuadrillas",
+                    _ => "Matrices"
+                };
+            }
+        }
+
+        public IReadOnlyList<ConsolidacionInsumoItem> ObtenerSeleccionConsolidable()
+        {
+            return ObtenerMatricesSeleccionadas()
+                .Select(x => new ConsolidacionInsumoItem
+                {
+                    Id = x.Id,
+                    Clave = x.Clave ?? string.Empty,
+                    Descripcion = x.Descripcion ?? string.Empty,
+                    Unidad = x.Unidad ?? string.Empty,
+                    Precio = x.CostoDirecto,
+                    PrecioEtiqueta = string.Format("Costo directo: {0:N4}", x.CostoDirecto)
+                })
+                .ToList();
+        }
+
+        public void EjecutarConsolidacion()
+        {
+            var seleccion = ObtenerMatricesSeleccionadas();
+            if (seleccion.Count < 2)
+            {
+                MessageBox.Show("Seleccione al menos dos matrices del mismo tipo para consolidar.", "Consolidar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var tipos = seleccion.Select(x => x.Tipo).Distinct().ToList();
+            if (tipos.Count != 1 || tipos[0] == TipoMatriz.APU)
+            {
+                MessageBox.Show("Solo se pueden consolidar matrices del mismo tipo y únicamente Básicos o Cuadrillas.", "Consolidar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var tipo = tipos[0];
+            var items = ObtenerSeleccionConsolidable();
+            using var dlg = new FormConsolidarInsumos(NombreTipoConsolidacion, items, baseId =>
+                _matrixConsolidationService.ObtenerPreview(_context, _proyectoId, tipo, baseId, seleccion.Select(x => x.Id).ToList()));
+
+            if (dlg.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            try
+            {
+                Cursor = Cursors.WaitCursor;
+                var resultado = _matrixConsolidationService.Consolidar(_context, _proyectoId, tipo, dlg.InsumoBaseId, seleccion.Select(x => x.Id).ToList());
+                CargarMatrices();
+                EstadoConsolidacionCambiado?.Invoke(this, EventArgs.Empty);
+                MessageBox.Show($"Consolidación completada.\n\nRegistros sustituidos: {resultado.RegistrosConsolidados}\nComponentes actualizados: {resultado.ComponentesActualizados}\nMatrices afectadas: {resultado.MatricesAfectadas}\nConceptos impactados: {resultado.ConceptosAfectados}", "Consolidar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"No fue posible consolidar las matrices:\n{ex.Message}", "Consolidar", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                Cursor = Cursors.Default;
+            }
+        }
+
+        private List<Matriz> ObtenerMatricesSeleccionadas()
+        {
+            return dgvMatrices.SelectedRows
+                .Cast<DataGridViewRow>()
+                .Where(r => !r.IsNewRow)
+                .Select(r => (r.DataBoundItem as MatrixGridRowDisplay)?.Source)
+                .Where(x => x != null)
+                .GroupBy(x => x.Id)
+                .Select(g => g.First())
+                .ToList();
+        }
 
         private void ConfigurarGrid()
         {
@@ -480,7 +576,45 @@ namespace SOPRO.WinForms.Forms
             itemEliminar.Enabled = _matrizSeleccionada != null;
             itemEliminar.Click += async (_, __) => await EliminarMatricesSeleccionadasAsync();
 
+            _menuMatrices.Items.Add(new ToolStripSeparator());
+
+            var itemDonde = new ToolStripMenuItem("📋  Dónde se usa");
+            itemDonde.Enabled = n == 1 && _matrizSeleccionada != null && _matrizSeleccionada.Tipo != TipoMatriz.APU;
+            if (_matrizSeleccionada == null || _matrizSeleccionada.Tipo == TipoMatriz.APU)
+            {
+                var sinUso = itemDonde.DropDownItems.Add(_matrizSeleccionada?.Tipo == TipoMatriz.APU
+                    ? "(No aplica para matrices APU)"
+                    : "(Sin selección)");
+                sinUso.Enabled = false;
+            }
+            else
+            {
+                var referencias = _matrixUsageLookupService.FindUsageReferences(_context, _proyectoId, _matrizSeleccionada.Id);
+                if (referencias.Count == 0)
+                {
+                    var sinUso = itemDonde.DropDownItems.Add("(Sin uso en ninguna matriz)");
+                    sinUso.Enabled = false;
+                }
+                else
+                {
+                    foreach (var referencia in referencias)
+                    {
+                        var itemUso = itemDonde.DropDownItems.Add(referencia.DisplayLabel);
+                        var matrizUso = referencia.Source;
+                        itemUso.Click += (_, __) => AbrirEditorMatriz(matrizUso);
+                    }
+                }
+            }
+            _menuMatrices.Items.Add(itemDonde);
+
             _menuMatrices.Show(Cursor.Position);
+        }
+
+
+        private void AbrirEditorMatriz(Matriz matriz)
+        {
+            using var form = new FormEditarMatriz(_context, _proyectoId, matriz);
+            form.ShowDialog(this);
         }
 
         private void btnNuevo_Click(object sender, EventArgs e)
@@ -640,6 +774,7 @@ namespace SOPRO.WinForms.Forms
             btnEditar.Enabled = hay;
             btnEliminar.Enabled = hay;
             btnCopiar.Enabled = hay;
+            EstadoConsolidacionCambiado?.Invoke(this, EventArgs.Empty);
         }
 
         private void ExportarCatalogoMatrices()

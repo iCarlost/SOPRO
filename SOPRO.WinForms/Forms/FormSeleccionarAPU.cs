@@ -83,6 +83,7 @@ namespace SOPRO.WinForms.Forms
             _selectorContextService = new SelectorContextService(workspaceService);
             _projectUsageService    = new ProjectUsageService(workspaceService);
             _catalogSearchService   = new CatalogSearchService(_projectIndexService, _projectUsageService);
+            _projectIndexService.RefreshKnownProjects(_context.DatabasePath, force: true);
             _projectNameActual      = _context.Proyectos.Find(_proyectoId)?.Nombre
                                       ?? Path.GetFileNameWithoutExtension(_context.DatabasePath);
 
@@ -156,7 +157,7 @@ namespace SOPRO.WinForms.Forms
             _cboTipo.Items.Add(new TipoFiltroOption("Básico",    TipoMatriz.Basico));
             _cboTipo.Items.Add(new TipoFiltroOption("Cuadrilla", TipoMatriz.Cuadrilla));
             _cboTipo.SelectedIndex = 0;
-            _cboTipo.SelectedIndexChanged += (_, __) => ApplyFilterToGrid();
+            _cboTipo.SelectedIndexChanged += (_, __) => HandleTipoFiltroChanged();
             _cboTipo.Visible = true;
         }
 
@@ -502,6 +503,59 @@ namespace SOPRO.WinForms.Forms
         // ════════════════════════════════════════════════════════════════════
         // Filtro de grid
         // ════════════════════════════════════════════════════════════════════
+
+        private void HandleTipoFiltroChanged()
+        {
+            if (string.IsNullOrWhiteSpace(txtBuscar.Text)
+                && (_searchScopeTag == ScopeAllTag || _searchScopeTag == ScopeCurrentTag))
+            {
+                CargarMatricesProyectoActual();
+                if (_searchScopeTag == ScopeCurrentTag)
+                    lblStatus.Text = "Mostrando matrices del proyecto actual.";
+                else
+                    lblStatus.Text = SelectorUiDefaults.BuildAllScopePrompt("matrices");
+                EnsureVisibleSelection();
+                return;
+            }
+
+            ApplyFilterToGrid();
+        }
+
+        private void FocusMatrixRowById(int matrizId, string? statusMessage = null)
+        {
+            try
+            {
+                foreach (DataGridViewRow r in dgvMatrices.Rows)
+                {
+                    if (Convert.ToInt32(r.Cells["colId"].Value) != matrizId) continue;
+
+                    dgvMatrices.ClearSelection();
+                    r.Selected = true;
+                    foreach (DataGridViewColumn col in dgvMatrices.Columns)
+                    {
+                        if (!col.Visible) continue;
+                        dgvMatrices.CurrentCell = r.Cells[col.Index];
+                        break;
+                    }
+                    if (r.Index >= 0 && r.Index < dgvMatrices.Rows.Count)
+                        dgvMatrices.FirstDisplayedScrollingRowIndex = r.Index;
+
+                    dgvMatrices.Focus();
+                    if (dgvMatrices.CurrentCell != null)
+                    {
+                        try { dgvMatrices.BeginEdit(false); dgvMatrices.EndEdit(); } catch { }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(statusMessage))
+                        lblStatus.Text = statusMessage;
+                    return;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // celda invisible / grid sin estado válido
+            }
+        }
 
         private void txtBuscar_TextChanged(object sender, EventArgs e)
         {
@@ -929,16 +983,7 @@ namespace SOPRO.WinForms.Forms
                 .FirstOrDefault();
             if (ultima == null) return;
 
-            foreach (DataGridViewRow r in dgvMatrices.Rows)
-            {
-                if (Convert.ToInt32(r.Cells["colId"].Value) == ultima.Id)
-                {
-                    r.Selected = true;
-                    dgvMatrices.FirstDisplayedScrollingRowIndex = r.Index;
-                    lblStatus.Text = $"Matriz '{ultima.Clave}' creada y seleccionada.";
-                    break;
-                }
-            }
+            FocusMatrixRowById(ultima.Id, $"Matriz '{ultima.Clave}' creada y seleccionada.");
         }
 
         private void btnEditarMatriz_Click(object sender, EventArgs e)
@@ -958,25 +1003,7 @@ namespace SOPRO.WinForms.Forms
             if (form.ShowDialog(this) != DialogResult.OK) return;
 
             CargarMatricesProyectoActual();
-            try
-            {
-                foreach (DataGridViewRow r in dgvMatrices.Rows)
-                {
-                    if (Convert.ToInt32(r.Cells["colId"].Value) != matrizId) continue;
-                    r.Selected = true;
-                    foreach (DataGridViewColumn col in dgvMatrices.Columns)
-                    {
-                        if (!col.Visible) continue;
-                        dgvMatrices.CurrentCell = r.Cells[col.Index];
-                        break;
-                    }
-                    if (r.Index >= 0 && r.Index < dgvMatrices.Rows.Count)
-                        dgvMatrices.FirstDisplayedScrollingRowIndex = r.Index;
-                    break;
-                }
-            }
-            catch (InvalidOperationException) { /* celda invisible */ }
-            lblStatus.Text = $"Matriz '{matriz.Clave}' actualizada.";
+            FocusMatrixRowById(matrizId, $"Matriz '{matriz.Clave}' actualizada.");
         }
 
         private void btnProyectoActual_Click(object sender, EventArgs e)

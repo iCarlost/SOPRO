@@ -15,6 +15,9 @@ namespace SOPRO.WinForms.Controls
         private readonly int _proyectoId;
         private DataGridView _dgvPresupuesto;
         private int _filaActual = -1;
+        private int _ultimaFilaCargada = -1;
+        private int? _ultimoConceptoId = null;
+        private int? _ultimaMatrizId = null;
         private Matriz _matrizActual = null;
 
         public event EventHandler<int> MatrizActualizada;
@@ -52,7 +55,9 @@ namespace SOPRO.WinForms.Controls
             dgv.CurrentCellChanged += (s, e) =>
             {
                 if (dgv.CurrentRow != null)
-                    CargarMatrizDeFila(dgv.CurrentRow.Index);
+                    CargarMatrizDeFila(dgv.CurrentRow.Index, false);
+                else
+                    MostrarSinSeleccion();
             };
         }
         
@@ -62,10 +67,10 @@ namespace SOPRO.WinForms.Controls
         /// </summary>
         public void NotificarFilaCambiada(int fila)
         {
-            CargarMatrizDeFila(fila);
+            CargarMatrizDeFila(fila, true);
         }
 
-        private void CargarMatrizDeFila(int fila)
+        private void CargarMatrizDeFila(int fila, bool forceReload)
         {
             if (_dgvPresupuesto == null || fila < 0 || fila >= _dgvPresupuesto.Rows.Count)
             { MostrarSinSeleccion(); return; }
@@ -73,20 +78,54 @@ namespace SOPRO.WinForms.Controls
             _filaActual = fila;
             var concepto = _dgvPresupuesto.Rows[fila].Tag as ConceptoPresupuesto;
 
-            if (concepto == null || concepto.EsAgrupador || concepto.MatrizId == null)
-            { MostrarSinSeleccion(); return; }
+            if (concepto == null)
+            {
+                MostrarSinSeleccion("Selecciona un concepto del presupuesto para ver su APU", "");
+                return;
+            }
 
-            // Cargar la matriz FRESCA desde BD cada vez
+            if (concepto.EsAgrupador)
+            {
+                MostrarSinSeleccion("El elemento seleccionado es un agrupador", "Selecciona una fila tipo concepto para consultar o editar su APU.");
+                return;
+            }
+
+            if (concepto.MatrizId == null)
+            {
+                MostrarSinSeleccion("Concepto sin APU asignada", "Usa la columna P.U. o la búsqueda inteligente en Descripción para vincular una matriz.");
+                return;
+            }
+
+            bool mismaFila = _ultimaFilaCargada == fila;
+            bool mismoConcepto = _ultimoConceptoId == concepto.Id;
+            bool mismaMatriz = _ultimaMatrizId == concepto.MatrizId;
+
+            if (!forceReload && mismaFila && mismoConcepto && mismaMatriz && _matrizActual != null)
+            {
+                ActualizarInfoConcepto(concepto);
+                ActualizarNavegacion();
+                return;
+            }
+
+            // Cargar la matriz FRESCA desde BD solo cuando realmente cambia el concepto/matriz
             _matrizActual = _context.Matrices
                 .Include(m => m.Componentes).ThenInclude(c => c.Material)
                 .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
                 .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
                 .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
                 .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
-                .AsNoTracking()  // Sin tracking para siempre leer BD fresca
+                .AsNoTracking()
                 .FirstOrDefault(m => m.Id == concepto.MatrizId);
 
-            if (_matrizActual == null) { MostrarSinSeleccion(); return; }
+            if (_matrizActual == null)
+            {
+                MostrarSinSeleccion("No se pudo cargar la APU asociada", "La fila apunta a una matriz inexistente o no disponible.");
+                return;
+            }
+
+            _ultimaFilaCargada = fila;
+            _ultimoConceptoId = concepto.Id;
+            _ultimaMatrizId = concepto.MatrizId;
 
             MostrarMatriz(_matrizActual, concepto);
             ActualizarNavegacion();
@@ -95,7 +134,7 @@ namespace SOPRO.WinForms.Controls
         private void MostrarMatriz(Matriz matriz, ConceptoPresupuesto concepto)
         {
             _lblTituloMatriz.Text = $"APU:  {matriz.Clave}  —  {matriz.Descripcion}";
-            _lblInfoMatriz.Text   = $"Unidad: {matriz.Unidad}   |   Concepto en presupuesto: {concepto.Clave} - {concepto.Descripcion}";
+            ActualizarInfoConcepto(concepto, matriz);
             _panelBotonesAgregar.Enabled = true;
 
             _dgvComponentes.Rows.Clear();
@@ -189,11 +228,23 @@ namespace SOPRO.WinForms.Controls
             _lblDir.Text = $"Costo Directo: {dir.ToStringImporte()}";
         }
 
-        private void MostrarSinSeleccion()
+        private void ActualizarInfoConcepto(ConceptoPresupuesto concepto, Matriz matriz = null)
+        {
+            var matrizInfo = matriz ?? _matrizActual;
+            string unidad = matrizInfo?.Unidad ?? concepto?.Unidad ?? "—";
+            string claveConcepto = string.IsNullOrWhiteSpace(concepto?.Clave) ? "(sin clave)" : concepto.Clave;
+            string descripcionConcepto = string.IsNullOrWhiteSpace(concepto?.Descripcion) ? "(sin descripción)" : concepto.Descripcion;
+            _lblInfoMatriz.Text = $"Unidad: {unidad}   |   Concepto en presupuesto: {claveConcepto} - {descripcionConcepto}";
+        }
+
+        private void MostrarSinSeleccion(string titulo = "Selecciona un concepto en el presupuesto para ver y editar su APU", string info = "")
         {
             _matrizActual = null;
-            _lblTituloMatriz.Text = "Selecciona un concepto en el presupuesto para ver y editar su APU";
-            _lblInfoMatriz.Text   = "";
+            _ultimaFilaCargada = -1;
+            _ultimoConceptoId = null;
+            _ultimaMatrizId = null;
+            _lblTituloMatriz.Text = titulo;
+            _lblInfoMatriz.Text   = info;
             _panelBotonesAgregar.Enabled = false;
             _dgvComponentes.Rows.Clear();
             _lblMat.Text = "Mat: —"; _lblMO.Text = "M.O.: —";
@@ -287,7 +338,7 @@ namespace SOPRO.WinForms.Controls
                 }
 
                 // Refrescar el panel con datos frescos
-                CargarMatrizDeFila(_filaActual);
+                CargarMatrizDeFila(_filaActual, true);
             }
             catch (Exception ex)
             {

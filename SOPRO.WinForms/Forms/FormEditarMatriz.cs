@@ -26,7 +26,12 @@ namespace SOPRO.WinForms.Forms
         private readonly int _proyectoId;
         private readonly Matriz _matriz;
         private readonly bool _esNuevo;
+        private readonly TipoMatriz? _tipoInicialForzado;
         private readonly List<ComponenteMatriz> _componentesTemp = new List<ComponenteMatriz>();
+        private Color _grpDatosBackColorOriginal;
+        private readonly Color _colorApu = Color.FromArgb(245, 248, 252);
+        private readonly Color _colorBasico = Color.FromArgb(255, 248, 220);
+        private readonly Color _colorCuadrilla = Color.FromArgb(230, 242, 255);
         
         private decimal _totalMaterial = 0;
         private decimal _baseManoObra = 0;
@@ -36,12 +41,13 @@ namespace SOPRO.WinForms.Forms
         private decimal _totalBasicos = 0;
         private decimal _costoDirectoTotal = 0;
         
-        public FormEditarMatriz(SOPROContext context, int proyectoId, Matriz matriz = null)
+        public FormEditarMatriz(SOPROContext context, int proyectoId, Matriz matriz = null, TipoMatriz? tipoInicial = null)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _proyectoId = proyectoId;
             _matriz = matriz;
             _esNuevo = (matriz == null);
+            _tipoInicialForzado = _esNuevo ? tipoInicial : null;
             
             // Establecer proyecto para formateo
             var proyecto = context.Proyectos.Find(proyectoId);
@@ -52,6 +58,7 @@ namespace SOPRO.WinForms.Forms
             FormatoHelper.ConfiguracionCambiada += OnConfiguracionCambiada;
             
             InitializeComponent();
+            _grpDatosBackColorOriginal = grpDatos.BackColor;
             
             dgvComponentes.AplicarEstiloSOPRO();
 ConfigurarGrid();
@@ -62,10 +69,31 @@ ConfigurarGrid();
             }
             else
             {
+                AplicarTipoInicialSiCorresponde();
                 AplicarConfiguracionTipo();
             }
         }
         
+
+        private void AplicarTipoInicialSiCorresponde()
+        {
+            if (!_esNuevo || !_tipoInicialForzado.HasValue)
+                return;
+
+            switch (_tipoInicialForzado.Value)
+            {
+                case TipoMatriz.Cuadrilla:
+                    rbCuadrilla.Checked = true;
+                    break;
+                case TipoMatriz.Basico:
+                    rbBasico.Checked = true;
+                    break;
+                default:
+                    rbAPU.Checked = true;
+                    break;
+            }
+        }
+
         private void ConfigurarGrid()
         {
             dgvComponentes.AutoGenerateColumns = false;
@@ -499,6 +527,29 @@ ConfigurarGrid();
             {
                 cboUnidad.Text = configuration.SuggestedUnit;
             }
+
+            ActualizarIdentidadVisual(tipoSeleccionado);
+        }
+
+        private void ActualizarIdentidadVisual(TipoMatriz tipoSeleccionado)
+        {
+            switch (tipoSeleccionado)
+            {
+                case TipoMatriz.Cuadrilla:
+                    Text = "Editor de Cuadrillas";
+                    grpDatos.BackColor = _colorCuadrilla;
+                    break;
+                case TipoMatriz.Basico:
+                    Text = "Editor de Básicos";
+                    grpDatos.BackColor = _colorBasico;
+                    break;
+                default:
+                    Text = "Editor de Matriz (APU)";
+                    grpDatos.BackColor = _colorApu == Color.Empty ? _grpDatosBackColorOriginal : _colorApu;
+                    break;
+            }
+
+            grpDatos.ForeColor = SystemColors.ControlText;
         }
         
         private void btnCancelar_Click(object sender, EventArgs e)
