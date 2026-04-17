@@ -11,6 +11,7 @@ using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Models;
+using SOPRO.WinForms.Undo;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -38,6 +39,17 @@ namespace SOPRO.WinForms.Forms
         private readonly BindingList<ActividadLookupItem> _actividadesLookup = new();
         private bool _cancelandoEdicionDependencia = false;
         private ComboBox? _comboDependenciaActivo = null;
+        private readonly UndoManager _undoManager = new();
+        private bool _isUndoRedo;
+        private int _undoActividadRowIndex = -1;
+        private int _undoActividadColumnIndex = -1;
+        private string _undoActividadColumnName = string.Empty;
+        private object? _undoActividadOldValue;
+        private int _undoDependenciaRowIndex = -1;
+        private int _undoDependenciaColumnIndex = -1;
+        private string _undoDependenciaColumnName = string.Empty;
+        private object? _undoDependenciaOldValue;
+
 
         private TabPage? _tabCurvaS;
         private SplitContainer? _splitCurvaS;
@@ -114,6 +126,17 @@ namespace SOPRO.WinForms.Forms
             // Suscribirse a cambios de configuración de decimales
             FormDatosProyecto.DecimalesActualizados += OnDecimalesActualizados;
             this.FormClosed += (s, e) => FormDatosProyecto.DecimalesActualizados -= OnDecimalesActualizados;
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == (Keys.Control | Keys.Z) && TryUndoPrograma())
+                return true;
+
+            if (keyData == (Keys.Control | Keys.Y) && TryRedoPrograma())
+                return true;
+
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         private void OnDecimalesActualizados(object sender, EventArgs e)
@@ -1793,10 +1816,28 @@ namespace SOPRO.WinForms.Forms
             if (e.RowIndex < 0)
                 return;
 
+            _undoActividadRowIndex = -1;
+            _undoActividadColumnIndex = -1;
+            _undoActividadColumnName = string.Empty;
+            _undoActividadOldValue = null;
+
             if (dgvActividades.Rows[e.RowIndex].DataBoundItem is ActivityGridRowDto dto && dto.EsResumen)
             {
                 e.Cancel = true;
                 lblEstado.Text = $"El agrupador '{dto.Clave}' se calcula automáticamente a partir de sus hijos.";
+                return;
+            }
+
+            if (dgvActividades.Rows[e.RowIndex].DataBoundItem is ActivityGridRowDto dtoEditable)
+            {
+                var columnName = dgvActividades.Columns[e.ColumnIndex].Name;
+                if (EsColumnaUndoActividad(columnName))
+                {
+                    _undoActividadRowIndex = e.RowIndex;
+                    _undoActividadColumnIndex = e.ColumnIndex;
+                    _undoActividadColumnName = columnName;
+                    _undoActividadOldValue = ObtenerValorUndoActividad(dtoEditable, columnName);
+                }
             }
         }
 
@@ -2079,6 +2120,25 @@ namespace SOPRO.WinForms.Forms
                     RegenerarPeriodosYDistribuciones(programaId, tipoPeriodo);
                 });
 
+                if (!_isUndoRedo
+                    && e.RowIndex == _undoActividadRowIndex
+                    && e.ColumnIndex == _undoActividadColumnIndex
+                    && EsColumnaUndoActividad(_undoActividadColumnName))
+                {
+                    var oldValue = _undoActividadOldValue;
+                    var newValue = ObtenerValorUndoActividad(dto, _undoActividadColumnName);
+                    if (!SonValoresUndoIguales(oldValue, newValue))
+                    {
+                        int rowIndex = e.RowIndex;
+                        string columnName = _undoActividadColumnName;
+                        string descripcion = $"Editar {columnName} en programa";
+                        _undoManager.Push(new DelegateUndoableAction(
+                            descripcion,
+                            () => AplicarUndoRedoActividadCelda(rowIndex, columnName, oldValue),
+                            () => AplicarUndoRedoActividadCelda(rowIndex, columnName, newValue)));
+                    }
+                }
+
                 lblEstado.Text = $"Actividad '{dto.Clave}' actualizada.";
                 RecargarProgramaDiferido(gridState);
             }
@@ -2089,6 +2149,10 @@ namespace SOPRO.WinForms.Forms
             }
             finally
             {
+                _undoActividadRowIndex = -1;
+                _undoActividadColumnIndex = -1;
+                _undoActividadColumnName = string.Empty;
+                _undoActividadOldValue = null;
                 _cargando = false;
                 SetOcupado(false);
             }
@@ -2228,6 +2292,25 @@ namespace SOPRO.WinForms.Forms
         private void dgvDependencias_CellBeginEdit(object? sender, DataGridViewCellCancelEventArgs e)
         {
             _cancelandoEdicionDependencia = false;
+            _undoDependenciaRowIndex = -1;
+            _undoDependenciaColumnIndex = -1;
+            _undoDependenciaColumnName = string.Empty;
+            _undoDependenciaOldValue = null;
+
+            if (e.RowIndex < 0 || e.RowIndex >= dgvDependencias.Rows.Count)
+                return;
+
+            if (dgvDependencias.Rows[e.RowIndex].DataBoundItem is DependenciaEditableRow row)
+            {
+                var columnName = dgvDependencias.Columns[e.ColumnIndex].Name;
+                if (EsColumnaUndoDependencia(columnName))
+                {
+                    _undoDependenciaRowIndex = e.RowIndex;
+                    _undoDependenciaColumnIndex = e.ColumnIndex;
+                    _undoDependenciaColumnName = columnName;
+                    _undoDependenciaOldValue = ObtenerValorUndoDependencia(row, columnName);
+                }
+            }
         }
 
         private void dgvDependencias_EditingControlShowing(object? sender, DataGridViewEditingControlShowingEventArgs e)
@@ -2279,6 +2362,25 @@ namespace SOPRO.WinForms.Forms
 
                 NormalizarDependenciaEditada(row);
                 GuardarDependenciasActuales();
+
+                if (!_isUndoRedo
+                    && e.RowIndex == _undoDependenciaRowIndex
+                    && e.ColumnIndex == _undoDependenciaColumnIndex
+                    && EsColumnaUndoDependencia(_undoDependenciaColumnName))
+                {
+                    var oldValue = _undoDependenciaOldValue;
+                    var newValue = ObtenerValorUndoDependencia(row, _undoDependenciaColumnName);
+                    if (!SonValoresUndoIguales(oldValue, newValue))
+                    {
+                        int rowIndex = e.RowIndex;
+                        string columnName = _undoDependenciaColumnName;
+                        string descripcion = $"Editar {columnName} en dependencias";
+                        _undoManager.Push(new DelegateUndoableAction(
+                            descripcion,
+                            () => AplicarUndoRedoDependenciaCelda(rowIndex, columnName, oldValue),
+                            () => AplicarUndoRedoDependenciaCelda(rowIndex, columnName, newValue)));
+                    }
+                }
             }
             catch (IndexOutOfRangeException)
             {
@@ -2289,6 +2391,13 @@ namespace SOPRO.WinForms.Forms
             {
                 // DataGridView puede quedar transitoriamente sin fila enlazada al cancelar edición con ESC.
                 _cancelandoEdicionDependencia = false;
+            }
+            finally
+            {
+                _undoDependenciaRowIndex = -1;
+                _undoDependenciaColumnIndex = -1;
+                _undoDependenciaColumnName = string.Empty;
+                _undoDependenciaOldValue = null;
             }
         }
 
@@ -2484,6 +2593,149 @@ namespace SOPRO.WinForms.Forms
                 e.FormattingApplied = true;
                 return;
             }
+        }
+
+        private bool EsColumnaUndoActividad(string columnName)
+        {
+            return columnName == "colFechaInicio"
+                || columnName == "colFechaFin"
+                || columnName == "colDuracionDias"
+                || columnName == "colRendimientoDiario"
+                || columnName == "colFrentes"
+                || columnName == "colCantidad"
+                || columnName == "colDescripcion"
+                || columnName == "colUnidad"
+                || columnName == "colClave";
+        }
+
+        private bool EsColumnaUndoDependencia(string columnName)
+        {
+            return columnName == "colDepClave"
+                || columnName == "colDepTipo"
+                || columnName == "colDepLag";
+        }
+
+        private static bool SonValoresUndoIguales(object? a, object? b)
+        {
+            if (a is DateTime da && b is DateTime db)
+                return da.Date == db.Date;
+
+            if (a is null && b is null)
+                return true;
+
+            return Equals(a, b);
+        }
+
+        private object? ObtenerValorUndoActividad(ActivityGridRowDto dto, string columnName)
+        {
+            return columnName switch
+            {
+                "colClave" => dto.Clave,
+                "colDescripcion" => dto.Descripcion,
+                "colUnidad" => dto.Unidad,
+                "colCantidad" => dto.CantidadTotal,
+                "colFechaInicio" => dto.FechaInicioProgramada,
+                "colFechaFin" => dto.FechaFinProgramada,
+                "colDuracionDias" => dto.DuracionDiasHabiles,
+                "colRendimientoDiario" => dto.RendimientoDiario,
+                "colFrentes" => dto.FrentesTrabajo,
+                _ => null
+            };
+        }
+
+        private object? ObtenerValorUndoDependencia(DependenciaEditableRow row, string columnName)
+        {
+            return columnName switch
+            {
+                "colDepClave" => row.ActividadOrigenId,
+                "colDepTipo" => row.TipoDependencia,
+                "colDepLag" => row.DesfaseDias,
+                _ => null
+            };
+        }
+
+        private bool TryUndoPrograma()
+        {
+            if (!_undoManager.CanUndo)
+                return false;
+
+            try
+            {
+                _isUndoRedo = true;
+                return _undoManager.Undo();
+            }
+            finally
+            {
+                _isUndoRedo = false;
+            }
+        }
+
+        private bool TryRedoPrograma()
+        {
+            if (!_undoManager.CanRedo)
+                return false;
+
+            try
+            {
+                _isUndoRedo = true;
+                return _undoManager.Redo();
+            }
+            finally
+            {
+                _isUndoRedo = false;
+            }
+        }
+
+        private void AplicarUndoRedoActividadCelda(int rowIndex, string columnName, object? value)
+        {
+            if (rowIndex < 0 || rowIndex >= dgvActividades.Rows.Count)
+                return;
+
+            var row = dgvActividades.Rows[rowIndex];
+            if (row.DataBoundItem is not ActivityGridRowDto dto)
+                return;
+
+            switch (columnName)
+            {
+                case "colClave": dto.Clave = value?.ToString() ?? string.Empty; break;
+                case "colDescripcion": dto.Descripcion = value?.ToString() ?? string.Empty; break;
+                case "colUnidad": dto.Unidad = value?.ToString() ?? string.Empty; break;
+                case "colCantidad": dto.CantidadTotal = value is decimal decCant ? decCant : Convert.ToDecimal(value ?? 0m); break;
+                case "colFechaInicio": dto.FechaInicioProgramada = value is DateTime fi ? fi : (DateTime?)value; break;
+                case "colFechaFin": dto.FechaFinProgramada = value is DateTime ff ? ff : (DateTime?)value; break;
+                case "colDuracionDias": dto.DuracionDiasHabiles = value is int dias ? dias : Convert.ToInt32(value ?? 0); break;
+                case "colRendimientoDiario": dto.RendimientoDiario = value is decimal decRend ? decRend : Convert.ToDecimal(value ?? 0m); break;
+                case "colFrentes": dto.FrentesTrabajo = value is int fr ? fr : Convert.ToInt32(value ?? 0); break;
+                default: return;
+            }
+
+            var columnIndex = dgvActividades.Columns[columnName].Index;
+            dgvActividades.CurrentCell = row.Cells[columnIndex];
+            row.Cells[columnIndex].Value = value;
+            dgvActividades_CellEndEdit(dgvActividades, new DataGridViewCellEventArgs(columnIndex, rowIndex));
+        }
+
+        private void AplicarUndoRedoDependenciaCelda(int rowIndex, string columnName, object? value)
+        {
+            if (rowIndex < 0 || rowIndex >= dgvDependencias.Rows.Count)
+                return;
+
+            var gridRow = dgvDependencias.Rows[rowIndex];
+            if (gridRow.DataBoundItem is not DependenciaEditableRow row)
+                return;
+
+            switch (columnName)
+            {
+                case "colDepClave": row.ActividadOrigenId = value is int id ? id : (int?)value; break;
+                case "colDepTipo": row.TipoDependencia = value?.ToString() ?? TipoDependenciaActividad.FS.ToString(); break;
+                case "colDepLag": row.DesfaseDias = value is int lag ? lag : Convert.ToInt32(value ?? 0); break;
+                default: return;
+            }
+
+            var columnIndex = dgvDependencias.Columns[columnName].Index;
+            dgvDependencias.CurrentCell = gridRow.Cells[columnIndex];
+            gridRow.Cells[columnIndex].Value = value;
+            dgvDependencias_CellEndEdit(dgvDependencias, new DataGridViewCellEventArgs(columnIndex, rowIndex));
         }
 
         private void Dgv_DataError(object? sender, DataGridViewDataErrorEventArgs e)

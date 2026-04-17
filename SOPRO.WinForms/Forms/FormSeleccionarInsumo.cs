@@ -70,8 +70,16 @@ namespace SOPRO.WinForms.Forms
             ConfigurarFormulario();
             InitializeFavoritosContextMenu();
             PopulateProyectoCombo();
+            KeyPreview = true;
+            Shown += FormSeleccionarInsumo_Shown;
+            KeyDown += FormSeleccionarInsumo_KeyDown;
+            txtBuscar.KeyDown += txtBuscar_KeyDown;
             dgvInsumos.SelectionChanged += dgvInsumos_SelectionChanged;
             dgvInsumos.KeyDown += dgvInsumos_KeyDown;
+<<<<<<< HEAD
+=======
+            dgvInsumos.KeyPress += dgvInsumos_KeyPress;
+>>>>>>> vesrion deploy con nuevas funcionalidades.
             dgvInsumos.CellDoubleClick += dgvInsumos_CellDoubleClick;
             CargarInsumosActuales();
         }
@@ -405,6 +413,96 @@ namespace SOPRO.WinForms.Forms
             return string.IsNullOrWhiteSpace(t) ? null : t;
         }
 
+        private void FormSeleccionarInsumo_Shown(object? sender, EventArgs e)
+        {
+            FocusSearchBox();
+        }
+
+        private void FormSeleccionarInsumo_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.KeyCode != Keys.Escape) return;
+
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            btnCancelar.PerformClick();
+        }
+
+        private void txtBuscar_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Down || e.KeyCode == Keys.Up)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                MoveGridSelection(e.KeyCode == Keys.Down ? 1 : -1);
+                return;
+            }
+
+            if (e.KeyCode == Keys.Enter)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                btnAceptar.PerformClick();
+                return;
+            }
+
+            if (e.KeyCode == Keys.Escape)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                btnCancelar.PerformClick();
+            }
+        }
+
+        private void dgvInsumos_KeyPress(object? sender, KeyPressEventArgs e)
+        {
+            if (char.IsControl(e.KeyChar)) return;
+
+            e.Handled = true;
+            RedirectTypedCharacterToSearch(e.KeyChar);
+        }
+
+        private void RedirectTypedCharacterToSearch(char keyChar)
+        {
+            FocusSearchBox();
+            txtBuscar.SelectedText = keyChar.ToString();
+            txtBuscar.SelectionStart = txtBuscar.TextLength;
+        }
+
+        private void FocusSearchBox()
+        {
+            if (!txtBuscar.CanFocus) return;
+            txtBuscar.Focus();
+            txtBuscar.SelectionStart = txtBuscar.TextLength;
+            txtBuscar.SelectionLength = 0;
+        }
+
+        private void MoveGridSelection(int delta)
+        {
+            if (dgvInsumos.Rows.Count == 0) return;
+
+            var visibleRows = dgvInsumos.Rows.Cast<DataGridViewRow>().Where(r => r.Visible).ToList();
+            if (visibleRows.Count == 0) return;
+
+            var currentRow = dgvInsumos.CurrentRow;
+            var currentIndex = currentRow != null ? visibleRows.IndexOf(currentRow) : -1;
+            var targetIndex = currentIndex < 0
+                ? (delta >= 0 ? 0 : visibleRows.Count - 1)
+                : Math.Max(0, Math.Min(visibleRows.Count - 1, currentIndex + delta));
+
+            var targetRow = visibleRows[targetIndex];
+            dgvInsumos.ClearSelection();
+            targetRow.Selected = true;
+
+            var targetCell = targetRow.Cells.Cast<DataGridViewCell>()
+                .FirstOrDefault(c => c.Visible && c.OwningColumn.Visible)
+                ?? targetRow.Cells[0];
+
+            dgvInsumos.CurrentCell = targetCell;
+            if (targetRow.Index >= 0)
+                dgvInsumos.FirstDisplayedScrollingRowIndex = targetRow.Index;
+            dgvInsumos.Focus();
+        }
+
         private void dgvInsumos_SelectionChanged(object? sender, EventArgs e)
         {
             RefreshAccumulatedSelectionFromGrid();
@@ -412,10 +510,44 @@ namespace SOPRO.WinForms.Forms
 
         private void dgvInsumos_KeyDown(object? sender, KeyEventArgs e)
         {
-            if (e.KeyCode != Keys.Enter) return;
+            if (e.KeyCode == Keys.Enter)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                btnAceptar.PerformClick();
+                return;
+            }
 
-            e.Handled = true;
-            e.SuppressKeyPress = true;
+            if (e.KeyCode == Keys.Escape)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                btnCancelar.PerformClick();
+                return;
+            }
+
+            if (e.KeyCode == Keys.Back)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                FocusSearchBox();
+                return;
+            }
+
+            if (e.KeyCode == Keys.Delete)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                FocusSearchBox();
+                txtBuscar.Clear();
+            }
+        }
+
+        private void dgvInsumos_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex < 0) return;
+            if (e.ColumnIndex >= 0)
+                dgvInsumos.CurrentCell = dgvInsumos.Rows[e.RowIndex].Cells[e.ColumnIndex];
             btnAceptar.PerformClick();
         }
 

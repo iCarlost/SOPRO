@@ -9,11 +9,18 @@ namespace SOPRO.WinForms.Forms
         private System.Windows.Forms.ToolStrip panelToolbar;
         private System.Windows.Forms.ToolStripButton btnColumnas;
         private System.Windows.Forms.ToolStripButton btnExplosion;
+        private System.Windows.Forms.ToolStripButton btnImportarExcel;
         private System.Windows.Forms.ToolStripButton btnToggleMatrices;
         private System.Windows.Forms.ToolStripButton btnCerrar;
         private System.Windows.Forms.SplitContainer splitContainer;
         private SOPRO.WinForms.Controls.PresupuestoDataGridView dgvPresupuesto;
         private System.Windows.Forms.Panel panelMatrices;
+        private System.Windows.Forms.ToolStrip workspaceToolbar;
+        private System.Windows.Forms.ToolStripLabel lblWorkspaceTitulo;
+        private System.Windows.Forms.ToolStripButton btnWorkspaceMatriz;
+        private System.Windows.Forms.ToolStripButton btnWorkspaceSelector;
+        private System.Windows.Forms.ToolStripButton btnWorkspaceCerrar;
+        private System.Windows.Forms.Panel panelMatricesHost;
         private System.Windows.Forms.StatusStrip statusStrip;
         private System.Windows.Forms.ToolStripStatusLabel lblTotalConceptos;
         private System.Windows.Forms.ToolStripStatusLabel lblCostoDirecto;
@@ -41,10 +48,17 @@ namespace SOPRO.WinForms.Forms
             btnToggleMatrices = new ToolStripButton();
             btnColumnas = new ToolStripButton();
             btnExplosion = new ToolStripButton();
+            btnImportarExcel = new ToolStripButton();
             btnCerrar = new ToolStripButton();
             splitContainer = new SplitContainer();
             dgvPresupuesto = new SOPRO.WinForms.Controls.PresupuestoDataGridView();
             panelMatrices = new Panel();
+            workspaceToolbar = new ToolStrip();
+            lblWorkspaceTitulo = new ToolStripLabel();
+            btnWorkspaceMatriz = new ToolStripButton();
+            btnWorkspaceSelector = new ToolStripButton();
+            btnWorkspaceCerrar = new ToolStripButton();
+            panelMatricesHost = new Panel();
             statusStrip = new StatusStrip();
             lblTotalConceptos = new ToolStripStatusLabel();
             lblCostoDirecto = new ToolStripStatusLabel();
@@ -67,7 +81,7 @@ namespace SOPRO.WinForms.Forms
             // 
             panelToolbar.BackColor = Color.FromArgb(240, 240, 240);
             panelToolbar.GripStyle = ToolStripGripStyle.Hidden;
-            panelToolbar.Items.AddRange(new ToolStripItem[] { btnToggleMatrices, btnColumnas, btnExplosion, btnCerrar });
+            panelToolbar.Items.AddRange(new ToolStripItem[] { btnToggleMatrices, btnColumnas, btnImportarExcel, btnExplosion, btnCerrar });
             panelToolbar.Location = new Point(0, 68);
             panelToolbar.Name = "panelToolbar";
             panelToolbar.Padding = new Padding(8, 4, 8, 4);
@@ -93,6 +107,17 @@ namespace SOPRO.WinForms.Forms
             btnColumnas.Size = new Size(80, 19);
             btnColumnas.Text = "⚙ Columnas";
             btnColumnas.Click += btnColumnas_Click;
+            // 
+            // 
+            // btnImportarExcel
+            // 
+            btnImportarExcel.BackColor = SystemColors.Control;
+            btnImportarExcel.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            btnImportarExcel.ForeColor = Color.Black;
+            btnImportarExcel.Name = "btnImportarExcel";
+            btnImportarExcel.Size = new Size(103, 19);
+            btnImportarExcel.Text = "📥 Importar Excel";
+            btnImportarExcel.Click += btnImportarExcel_Click;
             // 
             // btnExplosion
             // 
@@ -157,11 +182,76 @@ namespace SOPRO.WinForms.Forms
             // panelMatrices
             // 
             panelMatrices.BackColor = Color.FromArgb(250, 250, 250);
+            panelMatrices.Controls.Add(panelMatricesHost);
+            panelMatrices.Controls.Add(workspaceToolbar);
             panelMatrices.Dock = DockStyle.Fill;
             panelMatrices.Location = new Point(0, 0);
             panelMatrices.Name = "panelMatrices";
             panelMatrices.Size = new Size(150, 46);
             panelMatrices.TabIndex = 0;
+            // 
+            // workspaceToolbar
+            // 
+            workspaceToolbar.BackColor = Color.FromArgb(240, 244, 248);
+            workspaceToolbar.GripStyle = ToolStripGripStyle.Hidden;
+            workspaceToolbar.ImageScalingSize = new Size(20, 20);
+            workspaceToolbar.Items.AddRange(new ToolStripItem[] { lblWorkspaceTitulo, btnWorkspaceCerrar, btnWorkspaceMatriz, btnWorkspaceSelector });
+            workspaceToolbar.Location = new Point(0, 0);
+            workspaceToolbar.Name = "workspaceToolbar";
+            workspaceToolbar.Padding = new Padding(6, 4, 6, 4);
+            workspaceToolbar.Size = new Size(150, 31);
+            workspaceToolbar.TabIndex = 0;
+            workspaceToolbar.Text = "workspaceToolbar";
+            // 
+            // lblWorkspaceTitulo
+            // 
+            lblWorkspaceTitulo.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            lblWorkspaceTitulo.ForeColor = Color.FromArgb(31, 78, 121);
+            lblWorkspaceTitulo.Name = "lblWorkspaceTitulo";
+            lblWorkspaceTitulo.Size = new Size(137, 20);
+            lblWorkspaceTitulo.Text = "Área de trabajo: Matriz";
+            // 
+            // btnWorkspaceMatriz
+            // 
+            btnWorkspaceMatriz.Alignment = ToolStripItemAlignment.Right;
+            btnWorkspaceMatriz.BackColor = Color.FromArgb(221, 235, 247);
+            btnWorkspaceMatriz.DisplayStyle = ToolStripItemDisplayStyle.Text;
+            btnWorkspaceMatriz.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            btnWorkspaceMatriz.ForeColor = Color.FromArgb(31, 78, 121);
+            btnWorkspaceMatriz.Name = "btnWorkspaceMatriz";
+            btnWorkspaceMatriz.Size = new Size(52, 20);
+            btnWorkspaceMatriz.Text = "Matriz";
+            btnWorkspaceMatriz.Click += btnWorkspaceMatriz_Click;
+            // 
+            // btnWorkspaceCerrar
+            // 
+            btnWorkspaceCerrar.Alignment = ToolStripItemAlignment.Right;
+            btnWorkspaceCerrar.DisplayStyle = ToolStripItemDisplayStyle.Text;
+            btnWorkspaceCerrar.Font = new Font("Segoe UI", 9F);
+            btnWorkspaceCerrar.ForeColor = Color.FromArgb(150, 0, 0);
+            btnWorkspaceCerrar.Name = "btnWorkspaceCerrar";
+            btnWorkspaceCerrar.Size = new Size(49, 20);
+            btnWorkspaceCerrar.Text = "Cerrar";
+            btnWorkspaceCerrar.Click += btnWorkspaceCerrar_Click;
+            // 
+            // btnWorkspaceSelector
+            // 
+            btnWorkspaceSelector.Alignment = ToolStripItemAlignment.Right;
+            btnWorkspaceSelector.DisplayStyle = ToolStripItemDisplayStyle.Text;
+            btnWorkspaceSelector.Font = new Font("Segoe UI", 9F);
+            btnWorkspaceSelector.Name = "btnWorkspaceSelector";
+            btnWorkspaceSelector.Size = new Size(80, 20);
+            btnWorkspaceSelector.Text = "Selector APU";
+            btnWorkspaceSelector.Click += btnWorkspaceSelector_Click;
+            // 
+            // panelMatricesHost
+            // 
+            panelMatricesHost.BackColor = Color.FromArgb(250, 250, 250);
+            panelMatricesHost.Dock = DockStyle.Fill;
+            panelMatricesHost.Location = new Point(0, 31);
+            panelMatricesHost.Name = "panelMatricesHost";
+            panelMatricesHost.Size = new Size(150, 15);
+            panelMatricesHost.TabIndex = 1;
             // 
             // statusStrip
             // 
@@ -263,6 +353,8 @@ namespace SOPRO.WinForms.Forms
             splitContainer.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)splitContainer).EndInit();
             splitContainer.ResumeLayout(false);
+            workspaceToolbar.ResumeLayout(false);
+            workspaceToolbar.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)dgvPresupuesto).EndInit();
             statusStrip.ResumeLayout(false);
             statusStrip.PerformLayout();

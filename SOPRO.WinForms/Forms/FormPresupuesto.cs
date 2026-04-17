@@ -7,7 +7,9 @@ using SOPRO.Application.DTOs.Matrices;
 using SOPRO.Application.Models.ExternalProjects;
 using SOPRO.Application.Services;
 using SOPRO.WinForms.Helpers;
+using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Services;
+using SOPRO.WinForms.Undo;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -24,113 +26,10 @@ namespace SOPRO.WinForms.Forms
         private bool _cargando = false;
         private bool _asignandoMatriz = false; // Suprime CellValueChanged durante asignación programática
         private Controls.PanelMatricesEmbebido _panelMatricesEmbebido;
+        private SelectorApuEmbebidoControl? _selectorApuEmbebido;
+        private int _selectorApuEmbebidoRowIndex = -1;
         private EventHandler _onInsumosModificados; // Guardado para poder desuscribir al cerrar
         private bool _validacionAperturaMostrada = false;
-        private readonly ExternalMatrixImportService _externalMatrixImportService = new();
-        private readonly ProjectIndexService _projectIndexService;
-        private readonly ProjectUsageService _projectUsageService;
-        private readonly CatalogSearchService _catalogSearchService;
-        private ListBox? _lstApuAutocomplete;
-        private TextBox? _txtDescripcionEnEdicion;
-        private List<CatalogSearchResultDto> _apuAutocompleteSource = new();
-        private bool _suppressDescripcionAutocomplete;
-        private bool _mouseDownEnAutocomplete;
-        private bool _confirmandoSeleccionAutocomplete;
-        private bool _autocompleteUserNavigated;
-        private int _autocompleteRowIndex = -1;
-        private int _autocompleteColumnIndex = -1;
-        private Panel? _pnlApuPreview;
-        private Label? _lblApuPreviewTitulo;
-        private Label? _lblApuPreviewProyecto;
-        private Label? _lblApuPreviewMeta;
-        private Label? _lblApuPreviewCosto;
-        private TextBox? _txtApuPreviewComponentes;
-        private readonly Dictionary<string, MatrixPreviewInfo> _cachePreviewApu = new();
-
-
-        private sealed class MatrixPreviewInfo
-        {
-            public string Titulo { get; set; } = string.Empty;
-            public string Proyecto { get; set; } = string.Empty;
-            public string Meta { get; set; } = string.Empty;
-            public string Costo { get; set; } = string.Empty;
-            public string Componentes { get; set; } = string.Empty;
-        }
-
-        private bool DebeInterceptarTeclasAutocomplete(Keys keyData)
-        {
-            if (_lstApuAutocomplete is not { Visible: true } || dgvPresupuesto.CurrentCell == null)
-                return false;
-
-            if (dgvPresupuesto.CurrentCell.OwningColumn?.Tag is not ColumnaPersonalizada colDef)
-                return false;
-
-            if (!string.Equals(colDef.NombreInterno, "Descripcion", StringComparison.OrdinalIgnoreCase))
-                return false;
-
-            var keyCode = keyData & Keys.KeyCode;
-            return keyCode == Keys.Up || keyCode == Keys.Down || keyCode == Keys.Enter || keyCode == Keys.Escape;
-        }
-
-        private bool ProcesarTeclaAutocomplete(Keys keyData)
-        {
-            if (!DebeInterceptarTeclasAutocomplete(keyData) || _lstApuAutocomplete == null)
-                return false;
-
-            var keyCode = keyData & Keys.KeyCode;
-
-            if (keyCode == Keys.Down || keyCode == Keys.Up)
-            {
-                if (_lstApuAutocomplete.Items.Count <= 0)
-                    return true;
-
-                int currentIndex = _lstApuAutocomplete.SelectedIndex;
-                int nextIndex;
-
-                if (keyCode == Keys.Down)
-                    nextIndex = currentIndex < 0 ? 0 : Math.Min(currentIndex + 1, _lstApuAutocomplete.Items.Count - 1);
-                else
-                    nextIndex = currentIndex < 0 ? Math.Max(_lstApuAutocomplete.Items.Count - 1, 0) : Math.Max(currentIndex - 1, 0);
-
-                _autocompleteUserNavigated = true;
-                _lstApuAutocomplete.SelectedIndex = nextIndex;
-                return true;
-            }
-
-            if (keyCode == Keys.Enter)
-            {
-                if (!_autocompleteUserNavigated || _lstApuAutocomplete.SelectedIndex < 0)
-                    return false;
-
-                ConfirmarSeleccionAutocompleteApu(true);
-                return true;
-            }
-
-            if (keyCode == Keys.Escape)
-            {
-                OcultarAutocompleteApu(true);
-                return true;
-            }
-
-            return false;
-        }
-
-        private bool ProcesarTeclaEspecialPresupuesto(Keys keyData)
-        {
-            var keyCode = keyData & Keys.KeyCode;
-
-            if (_lstApuAutocomplete is { Visible: true }
-                && dgvPresupuesto.CurrentCell != null
-                && dgvPresupuesto.IsCurrentCellInEditMode
-                && dgvPresupuesto.CurrentCell.OwningColumn?.Tag is ColumnaPersonalizada colDef
-                && string.Equals(colDef.NombreInterno, "Descripcion", StringComparison.OrdinalIgnoreCase)
-                && (keyCode == Keys.Up || keyCode == Keys.Down || keyCode == Keys.Enter || keyCode == Keys.Escape))
-            {
-                return ProcesarTeclaAutocomplete(keyData);
-            }
-
-            return false;
-        }
 
         // ── IGridFormato ──────────────────────────────────────────────────────
         public System.Windows.Forms.DataGridView GridPrincipal => dgvPresupuesto;
@@ -357,6 +256,303 @@ namespace SOPRO.WinForms.Forms
             ValidarPresupuestoAntesDeContinuar(bloquear: false, titulo: "Advertencia de presupuesto");
         }
 
+        private void InicializarBotonReajustarCosto()
+        {
+            _btnReajustarCosto = new ToolStripButton
+            {
+                BackColor = SystemColors.Control,
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                ForeColor = Color.Black,
+                Name = "btnReajustarCosto",
+                Size = new Size(111, 19),
+                Text = "🎯 Reajustar costo"
+            };
+            _btnReajustarCosto.Click += btnReajustarCosto_Click;
+
+            var indexImportar = panelToolbar.Items.IndexOf(btnImportarExcel);
+            if (indexImportar >= 0)
+                panelToolbar.Items.Insert(indexImportar + 1, _btnReajustarCosto);
+            else
+                panelToolbar.Items.Add(_btnReajustarCosto);
+        }
+
+        private void btnReajustarCosto_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                if (dgvPresupuesto.CurrentRow == null)
+                {
+                    MessageBox.Show("Seleccione un concepto del presupuesto.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                var rowIndex = dgvPresupuesto.CurrentRow.Index;
+                var concepto = dgvPresupuesto.CurrentRow.Tag as ConceptoPresupuesto;
+                var tipo = ObtenerCeldaTexto(rowIndex, "Tipo", "Concepto");
+                var currentInternalName = (dgvPresupuesto.CurrentCell?.OwningColumn?.Tag as ColumnaPersonalizada)?.NombreInterno ?? string.Empty;
+                bool ajustarPorImporte = string.Equals(currentInternalName, "Importe", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(currentInternalName, "ImporteTotal", StringComparison.OrdinalIgnoreCase);
+
+                if (concepto == null)
+                {
+                    MessageBox.Show("Seleccione un concepto o agrupador del presupuesto.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                if (concepto.EsAgrupador || !string.Equals(tipo, "Concepto", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!ajustarPorImporte)
+                    {
+                        MessageBox.Show("Para agrupadores, el reajuste solo está disponible seleccionando la celda Importe.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+
+                    AjustarAgrupadorSeleccionado(rowIndex, concepto);
+                    return;
+                }
+
+                if (!concepto.MatrizId.HasValue)
+                {
+                    MessageBox.Show("Por ahora el reajuste solo está disponible para conceptos con matriz asignada.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                var matriz = _context.Matrices
+                    .Include(m => m.Componentes).ThenInclude(c => c.Material)
+                    .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
+                    .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
+                    .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
+                    .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
+                    .FirstOrDefault(m => m.Id == concepto.MatrizId.Value);
+
+                if (matriz == null)
+                {
+                    MessageBox.Show("No se pudo cargar la matriz asignada al concepto.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                var motorAjuste = new MotorCalculoSopro(_proyecto);
+                decimal cantidadConceptoOriginal = concepto.Cantidad;
+                decimal factorPu = CalcularFactorPU();
+                decimal actualMostrado = ajustarPorImporte
+                    ? motorAjuste.Multiplicar(cantidadConceptoOriginal, CalcularPU(matriz.CostoDirecto))
+                    : CalcularPU(matriz.CostoDirecto);
+                string contexto = ajustarPorImporte
+                    ? $"Concepto: {concepto.Descripcion} \n"+
+"Se reajustará la matriz por rendimiento/cantidad para acercar el IMPORTE del concepto al monto objetivo. La cantidad del concepto en presupuesto no se modificará."
+                    : $"Concepto: {concepto.Descripcion} \n"+
+"Se reajustará la matriz por rendimiento/cantidad para acercar el P.U. del concepto al monto objetivo. La cantidad del concepto en presupuesto no se modificará.";
+
+                using var frm = new FormReajustarCosto("Reajustar costo", actualMostrado, contexto);
+                if (frm.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                if (factorPu <= 0m)
+                {
+                    MessageBox.Show("No se pudo calcular el factor del precio unitario del proyecto.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                decimal targetCd = ajustarPorImporte
+                    ? (cantidadConceptoOriginal > 0m ? frm.TargetAmount / cantidadConceptoOriginal / factorPu : 0m)
+                    : (frm.TargetAmount / factorPu);
+
+                var result = MatrixCostAdjustmentService.AdjustMatrixByTargetCost(matriz, _proyecto, frm.SelectedScopes, targetCd);
+                if (!result.Success)
+                {
+                    MessageBox.Show(result.Message, "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                _context.SaveChanges();
+                RefrescarPreciosDesdeDB();
+                RecalcularTodosLosTotales();
+                GuardarCambios();
+                dgvPresupuesto.Refresh();
+
+                decimal actualCoherente = ajustarPorImporte
+                    ? motorAjuste.Multiplicar(cantidadConceptoOriginal, CalcularPU(result.CurrentCost))
+                    : CalcularPU(result.CurrentCost);
+                decimal logradoMostrado = ajustarPorImporte
+                    ? motorAjuste.Multiplicar(cantidadConceptoOriginal, CalcularPU(result.AchievedCost))
+                    : CalcularPU(result.AchievedCost);
+
+                MessageBox.Show(
+                    $"Monto actual: {actualCoherente:C2} \n" +
+                    $"Objetivo: {frm.TargetAmount:C2} \n" +
+                    $"Resultado: {logradoMostrado:C2} \n" +
+                    $"Factor aplicado sobre rendimientos/cantidades de la matriz: {result.FactorApplied:N4}",
+                    "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error al reajustar costo:{ex.Message}", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void AjustarAgrupadorSeleccionado(int rowIndex, ConceptoPresupuesto agrupador)
+        {
+            decimal currentImporte = ObtenerCeldaDecimal(rowIndex, "Importe");
+            string contexto = $"Agrupador: {agrupador.Descripcion} \n"+
+"Se reajustarán recursivamente los conceptos descendientes por rendimiento/cantidad dentro de sus matrices. La cantidad de los conceptos en presupuesto no se modificará.";
+            using var frm = new FormReajustarCosto("Reajustar costo de agrupador", currentImporte, contexto);
+            if (frm.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            decimal factorPu = CalcularFactorPU();
+            if (factorPu <= 0m)
+            {
+                MessageBox.Show("No se pudo calcular el factor del precio unitario del proyecto.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            var descendientes = ObtenerConceptosDescendientesHoja(rowIndex, agrupador);
+            if (descendientes.Count == 0)
+            {
+                MessageBox.Show("El agrupador seleccionado no contiene conceptos hoja con matriz asignada.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var matrixIds = descendientes.Where(c => c.MatrizId.HasValue).Select(c => c.MatrizId!.Value).Distinct().ToList();
+            var matrices = _context.Matrices
+                .Include(m => m.Componentes).ThenInclude(c => c.Material)
+                .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
+                .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
+                .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
+                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
+                .Where(m => matrixIds.Contains(m.Id))
+                .ToDictionary(m => m.Id);
+
+            var candidatos = new List<(ConceptoPresupuesto Concepto, MatrixAdjustmentBasis Basis)>();
+            int omitidos = 0;
+            foreach (var conceptoHijo in descendientes)
+            {
+                if (!conceptoHijo.MatrizId.HasValue || !matrices.TryGetValue(conceptoHijo.MatrizId.Value, out var matriz))
+                {
+                    omitidos++;
+                    continue;
+                }
+
+                var basis = MatrixCostAdjustmentService.GetAdjustmentBasis(matriz, _proyecto, frm.SelectedScopes);
+                if (basis == null || !basis.HasAdjustableScope)
+                {
+                    omitidos++;
+                    continue;
+                }
+
+                candidatos.Add((conceptoHijo, basis));
+            }
+
+            if (candidatos.Count == 0)
+            {
+                MessageBox.Show("No se encontraron conceptos ajustables con los rubros seleccionados dentro del agrupador.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            decimal targetCdTotal = frm.TargetAmount / factorPu;
+            decimal fixedTotal = candidatos.Sum(x => x.Concepto.Cantidad * x.Basis.FixedCost);
+            decimal adjustableTotal = candidatos.Sum(x => x.Concepto.Cantidad * x.Basis.AdjustableCost);
+            decimal minTotal = candidatos.Sum(x => x.Concepto.Cantidad * x.Basis.MinCost);
+            decimal currentTotal = candidatos.Sum(x => x.Concepto.Cantidad * x.Basis.CurrentCost);
+
+            if (adjustableTotal <= 0m)
+            {
+                MessageBox.Show("Los rubros seleccionados no tienen importe ajustable dentro del agrupador.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (targetCdTotal < minTotal - 0.01m)
+            {
+                MessageBox.Show($"No es posible bajar el agrupador al monto solicitado con los rubros seleccionados. El mínimo alcanzable es {(minTotal * factorPu):C2}.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            decimal factor = (targetCdTotal - fixedTotal) / adjustableTotal;
+            if (factor < 0m)
+            {
+                MessageBox.Show("Con los rubros seleccionados no es posible alcanzar el monto solicitado.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            var matricesAjustables = candidatos
+                .Select(x => x.Concepto.MatrizId!.Value)
+                .Distinct()
+                .Select(id => matrices[id])
+                .ToList();
+
+            foreach (var matriz in matricesAjustables)
+            {
+                var result = MatrixCostAdjustmentService.AdjustMatrixByFactor(matriz, _proyecto, frm.SelectedScopes, factor);
+                if (!result.Success)
+                {
+                    MessageBox.Show(result.Message, "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+            }
+
+            _context.SaveChanges();
+            RefrescarPreciosDesdeDB();
+            RecalcularTodosLosTotales();
+            GuardarCambios();
+            dgvPresupuesto.Refresh();
+
+            decimal logrado = ObtenerCeldaDecimal(rowIndex, "Importe");
+            var conceptosIds = descendientes.Select(x => x.Id).ToHashSet();
+            int compartidasFuera = _context.ConceptosPresupuesto.Count(c => c.ProyectoId == _proyecto.Id && !c.EsAgrupador && c.MatrizId.HasValue && matrixIds.Contains(c.MatrizId.Value) && !conceptosIds.Contains(c.Id));
+            string notaCompartidas = compartidasFuera > 0
+                ? $"Nota: {compartidasFuera} concepto(s) fuera del agrupador comparten alguna matriz reajustada."
+                : string.Empty;
+
+            MessageBox.Show(
+                $"Monto actual: {currentImporte:C2}\n" +
+                $"Objetivo: {frm.TargetAmount:C2}\n" +
+                $"Resultado: {logrado:C2}\n" +
+                $"Conceptos hoja encontrados: {descendientes.Count}\n" +
+                $"Conceptos ajustados: {candidatos.Count}\n" +
+                $"Conceptos omitidos: {omitidos}\n" +
+                $"Factor global aplicado sobre rendimientos/cantidades: {factor:N4}" +
+                notaCompartidas,
+                "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private List<ConceptoPresupuesto> ObtenerConceptosDescendientesHoja(int rowIndex, ConceptoPresupuesto agrupador)
+        {
+            var result = new List<ConceptoPresupuesto>();
+            int nivelPadre = agrupador.Nivel;
+            for (int i = rowIndex + 1; i < dgvPresupuesto.Rows.Count; i++)
+            {
+                var row = dgvPresupuesto.Rows[i];
+                var concepto = row.Tag as ConceptoPresupuesto;
+                string tipo = ObtenerCeldaTexto(i, "Tipo");
+                string descripcion = ObtenerCeldaTexto(i, "Descripcion");
+                string clave = ObtenerCeldaTexto(i, "Clave");
+                bool hasContent = concepto != null || !string.IsNullOrWhiteSpace(tipo) || !string.IsNullOrWhiteSpace(descripcion) || !string.IsNullOrWhiteSpace(clave);
+                if (!hasContent)
+                    continue;
+
+                int nivel = concepto?.Nivel ?? ObtenerNivelDesdeTipoPresupuesto(tipo);
+                if (nivel <= nivelPadre)
+                    break;
+
+                if (concepto != null && !concepto.EsAgrupador && concepto.MatrizId.HasValue)
+                    result.Add(concepto);
+            }
+
+            return result;
+        }
+
+        private int ObtenerNivelDesdeTipoPresupuesto(string? tipo)
+        {
+            return tipo switch
+            {
+                "Capitulo" => 0,
+                "Subcapitulo" => 1,
+                "Nivel 1" => 2,
+                "Nivel 2" => 3,
+                "Nivel 3" => 4,
+                _ => 5
+            };
+        }
+
         public FormPresupuesto(SOPROContext context, Proyecto proyecto)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -375,8 +571,6 @@ namespace SOPRO.WinForms.Forms
             FormatoHelper.ConfiguracionCambiada += OnConfiguracionCambiada;
 
             InitializeComponent();
-            InicializarAutocompleteApu();
-            InicializarPreviewApu();
 
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
             UpdateStyles();
@@ -488,751 +682,10 @@ namespace SOPRO.WinForms.Forms
             MostrarAdvertenciaValidacionEnApertura();
         }
 
-        private void InicializarAutocompleteApu()
-        {
-            _lstApuAutocomplete = new ListBox
-            {
-                Name = "lstApuAutocomplete",
-                Visible = false,
-                IntegralHeight = true,
-                Font = new Font("Segoe UI", 9F),
-                BorderStyle = BorderStyle.FixedSingle,
-                TabStop = true
-            };
-
-            _lstApuAutocomplete.MouseDoubleClick += (s, e) => ConfirmarSeleccionAutocompleteApu(true);
-            _lstApuAutocomplete.MouseDown += LstApuAutocomplete_MouseDown;
-            _lstApuAutocomplete.MouseUp += LstApuAutocomplete_MouseUp;
-            _lstApuAutocomplete.MouseClick += LstApuAutocomplete_MouseClick;
-            _lstApuAutocomplete.KeyDown += LstApuAutocomplete_KeyDown;
-            _lstApuAutocomplete.Format += LstApuAutocomplete_Format;
-            _lstApuAutocomplete.SelectedIndexChanged += (s, e) => ActualizarPreviewApuSeleccionada();
-
-            Controls.Add(_lstApuAutocomplete);
-            _lstApuAutocomplete.BringToFront();
-        }
-
-        private void InicializarPreviewApu()
-        {
-            _pnlApuPreview = new Panel
-            {
-                Name = "pnlApuPreview",
-                Visible = false,
-                BorderStyle = BorderStyle.None,
-                BackColor = Color.FromArgb(255, 250, 225),
-                Padding = new Padding(10)
-            };
-
-            _lblApuPreviewTitulo = new Label
-            {
-                AutoSize = false,
-                Font = new Font("Segoe UI", 9.75F, FontStyle.Bold),
-                Dock = DockStyle.Top,
-                Height = 42,
-                TextAlign = ContentAlignment.TopLeft
-            };
-
-            _lblApuPreviewProyecto = new Label
-            {
-                AutoSize = false,
-                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(70, 70, 70),
-                Dock = DockStyle.Top,
-                Height = 22,
-                TextAlign = ContentAlignment.MiddleLeft
-            };
-
-            _lblApuPreviewMeta = new Label
-            {
-                AutoSize = false,
-                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
-                Dock = DockStyle.Top,
-                Height = 42,
-                TextAlign = ContentAlignment.TopLeft
-            };
-
-            _lblApuPreviewCosto = new Label
-            {
-                AutoSize = false,
-                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(31, 78, 121),
-                Dock = DockStyle.Top,
-                Height = 22,
-                TextAlign = ContentAlignment.MiddleLeft
-            };
-
-            _txtApuPreviewComponentes = new TextBox
-            {
-                Multiline = true,
-                ReadOnly = true,
-                ScrollBars = ScrollBars.Vertical,
-                Dock = DockStyle.Fill,
-                BorderStyle = BorderStyle.None,
-                BackColor = Color.FromArgb(255, 250, 225),
-                Font = new Font("Consolas", 8.5F, FontStyle.Regular),
-                TabStop = false
-            };
-
-            var lblComponentes = new Label
-            {
-                Text = "Componentes:",
-                AutoSize = false,
-                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
-                Dock = DockStyle.Top,
-                Height = 20,
-                TextAlign = ContentAlignment.MiddleLeft
-            };
-
-            _pnlApuPreview.Controls.Add(_txtApuPreviewComponentes);
-            _pnlApuPreview.Controls.Add(lblComponentes);
-            _pnlApuPreview.Controls.Add(_lblApuPreviewCosto);
-            _pnlApuPreview.Controls.Add(_lblApuPreviewMeta);
-            _pnlApuPreview.Controls.Add(_lblApuPreviewProyecto);
-            _pnlApuPreview.Controls.Add(_lblApuPreviewTitulo);
-
-            Controls.Add(_pnlApuPreview);
-            _pnlApuPreview.BringToFront();
-        }
-
-
-        private void ActualizarPreviewApuSeleccionada()
-        {
-            if (_lstApuAutocomplete?.SelectedItem is not CatalogSearchResultDto item || _pnlApuPreview == null)
-            {
-                if (_pnlApuPreview != null)
-                    _pnlApuPreview.Visible = false;
-                return;
-            }
-
-            try
-            {
-                var preview = ObtenerPreviewApu(item);
-                if (_lblApuPreviewTitulo != null) _lblApuPreviewTitulo.Text = preview.Titulo;
-                if (_lblApuPreviewProyecto != null) _lblApuPreviewProyecto.Text = $"Proyecto: {preview.Proyecto}";
-                if (_lblApuPreviewMeta != null) _lblApuPreviewMeta.Text = preview.Meta;
-                if (_lblApuPreviewCosto != null) _lblApuPreviewCosto.Text = preview.Costo;
-                if (_txtApuPreviewComponentes != null) _txtApuPreviewComponentes.Text = preview.Componentes;
-                _pnlApuPreview.Visible = true;
-                _pnlApuPreview.BringToFront();
-                PosicionarPreviewApu();
-            }
-            catch
-            {
-                _pnlApuPreview.Visible = false;
-            }
-        }
-
-        private MatrixPreviewInfo ObtenerPreviewApu(CatalogSearchResultDto item)
-        {
-            string key = $"{SelectorUiDefaults.NormalizePath(item.RutaProyecto)}|{item.ElementoId}";
-            if (_cachePreviewApu.TryGetValue(key, out var cached))
-                return cached;
-
-            MatrixPreviewInfo preview = CargarPreviewApu(item);
-            _cachePreviewApu[key] = preview;
-            return preview;
-        }
-
-        private MatrixPreviewInfo CargarPreviewApu(CatalogSearchResultDto item)
-        {
-            if (item.EsActual || string.Equals(SelectorUiDefaults.NormalizePath(item.RutaProyecto), SelectorUiDefaults.NormalizePath(_context.DatabasePath), StringComparison.OrdinalIgnoreCase))
-                return ConstruirPreviewApuDesdeContexto(_context, item, _proyecto.Nombre);
-
-            using var externalContext = new SOPROContext(item.RutaProyecto);
-            var nombreProyecto = externalContext.Proyectos.Select(p => p.Nombre).FirstOrDefault();
-            return ConstruirPreviewApuDesdeContexto(externalContext, item, nombreProyecto ?? item.NombreProyecto);
-        }
-
-        private static MatrixPreviewInfo ConstruirPreviewApuDesdeContexto(SOPROContext context, CatalogSearchResultDto item, string? nombreProyecto)
-        {
-            var matriz = context.Matrices
-                .AsNoTracking()
-                .Include(m => m.Componentes).ThenInclude(c => c.Material)
-                .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
-                .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
-                .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
-                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
-                .FirstOrDefault(m => m.Id == item.ElementoId && m.Tipo == TipoMatriz.APU);
-
-            if (matriz == null)
-            {
-                return new MatrixPreviewInfo
-                {
-                    Titulo = string.IsNullOrWhiteSpace(item.Descripcion) ? item.Clave : item.Descripcion,
-                    Proyecto = string.IsNullOrWhiteSpace(nombreProyecto) ? item.NombreProyecto : nombreProyecto,
-                    Meta = $"Clave: {item.Clave}\r\nUnidad: {item.Unidad}",
-                    Costo = $"Costo directo: {item.PrecioOCosto:C4}",
-                    Componentes = string.Empty
-                };
-            }
-
-            decimal totalMateriales = 0m, totalMo = 0m, totalHerr = 0m, totalMaq = 0m, totalAux = 0m;
-            var lineas = new List<string>();
-
-            foreach (var comp in matriz.Componentes.OrderBy(c => c.Orden).Take(8))
-            {
-                string tipo = comp.TipoComponente switch
-                {
-                    TipoComponenteMatriz.Material => "MAT",
-                    TipoComponenteMatriz.ManoDeObra => "MO ",
-                    TipoComponenteMatriz.Maquinaria => "MAQ",
-                    TipoComponenteMatriz.Herramienta => "HER",
-                    TipoComponenteMatriz.Auxiliar => "AUX",
-                    _ => "---"
-                };
-
-                string descripcion = comp.TipoComponente switch
-                {
-                    TipoComponenteMatriz.Material => comp.Material?.Descripcion ?? "Material",
-                    TipoComponenteMatriz.ManoDeObra => comp.ManoDeObra?.Descripcion ?? "Mano de obra",
-                    TipoComponenteMatriz.Maquinaria => comp.Maquinaria?.Descripcion ?? "Maquinaria",
-                    TipoComponenteMatriz.Herramienta => comp.Herramienta?.Descripcion ?? "Herramienta",
-                    TipoComponenteMatriz.Auxiliar => comp.Auxiliar?.Descripcion ?? "Auxiliar",
-                    _ => "Componente"
-                };
-
-                decimal importe = comp.Importe;
-                switch (comp.TipoComponente)
-                {
-                    case TipoComponenteMatriz.Material: totalMateriales += importe; break;
-                    case TipoComponenteMatriz.ManoDeObra: totalMo += importe; break;
-                    case TipoComponenteMatriz.Maquinaria: totalMaq += importe; break;
-                    case TipoComponenteMatriz.Herramienta: totalHerr += importe; break;
-                    case TipoComponenteMatriz.Auxiliar: totalAux += importe; break;
-                }
-
-                lineas.Add($"{tipo}  {descripcion}");
-                lineas.Add($"     Cant: {comp.Cantidad:N4}    Imp: {importe:C4}");
-            }
-
-            if (matriz.Componentes.Count > 8)
-                lineas.Add($"... {matriz.Componentes.Count - 8} componente(s) más");
-
-            string meta = $"Clave: {matriz.Clave}\r\nUnidad: {matriz.Unidad}   Tipo: {matriz.Tipo}";
-
-            return new MatrixPreviewInfo
-            {
-                Titulo = string.IsNullOrWhiteSpace(matriz.Descripcion) ? matriz.Clave : matriz.Descripcion,
-                Proyecto = string.IsNullOrWhiteSpace(nombreProyecto) ? item.NombreProyecto : nombreProyecto!,
-                Meta = meta,
-                Costo = $"Costo directo: {matriz.CostoDirecto:C4}",
-                Componentes = string.Join(Environment.NewLine, lineas)
-            };
-        }
-
-        private void PosicionarPreviewApu()
-        {
-            if (_lstApuAutocomplete is not { Visible: true } || _pnlApuPreview == null)
-                return;
-
-            const int separacion = 8;
-            const int anchoPreferido = 420;
-            const int margen = 6;
-
-            int ancho = Math.Min(anchoPreferido, Math.Max(280, ClientSize.Width - (_lstApuAutocomplete.Width + separacion + (margen * 2))));
-            int alto = Math.Max(230, _lstApuAutocomplete.Height + 70);
-            int top = _lstApuAutocomplete.Top;
-
-            int espacioDerecha = ClientSize.Width - (_lstApuAutocomplete.Right + separacion) - margen;
-            int espacioIzquierda = _lstApuAutocomplete.Left - separacion - margen;
-            int left;
-
-            if (espacioDerecha >= 280 || espacioDerecha >= espacioIzquierda)
-            {
-                ancho = Math.Min(ancho, Math.Max(240, espacioDerecha));
-                left = _lstApuAutocomplete.Right + separacion;
-            }
-            else
-            {
-                ancho = Math.Min(ancho, Math.Max(240, espacioIzquierda));
-                left = Math.Max(margen, _lstApuAutocomplete.Left - separacion - ancho);
-            }
-
-            if (left + ancho > ClientSize.Width - margen)
-                left = Math.Max(margen, ClientSize.Width - ancho - margen);
-            if (top + alto > ClientSize.Height - margen)
-                top = Math.Max(margen, ClientSize.Height - alto - margen);
-
-            _pnlApuPreview.Left = left;
-            _pnlApuPreview.Top = top;
-            _pnlApuPreview.Width = ancho;
-            _pnlApuPreview.Height = alto;
-        }
-
-        private void RefrescarFuenteAutocompleteApu()
-        {
-            _apuAutocompleteSource = new List<CatalogSearchResultDto>();
-        }
-
-        private void LstApuAutocomplete_Format(object? sender, ListControlConvertEventArgs e)
-        {
-            if (e.ListItem is CatalogSearchResultDto item)
-            {
-                var clave = string.IsNullOrWhiteSpace(item.Clave) ? string.Empty : item.Clave.Trim();
-                var descripcion = string.IsNullOrWhiteSpace(item.Descripcion) ? string.Empty : item.Descripcion.Trim();
-                var proyecto = item.EsActual ? "Actual" : item.NombreProyecto;
-                var etiquetas = new List<string>();
-                if (item.EsActual) etiquetas.Add("Actual");
-                else
-                {
-                    if (item.EsFavorito) etiquetas.Add("Favorito");
-                    else if (item.EsReciente) etiquetas.Add("Reciente");
-                }
-
-                string sufijo = etiquetas.Count == 0
-                    ? $"[{proyecto}]"
-                    : $"[{proyecto} · {string.Join(" · ", etiquetas)}]";
-
-                e.Value = string.IsNullOrWhiteSpace(clave)
-                    ? $"{descripcion}  {sufijo}"
-                    : $"{clave} — {descripcion}  {sufijo}";
-            }
-        }
-
-        private void LstApuAutocomplete_MouseDown(object? sender, MouseEventArgs e)
-        {
-            if (_lstApuAutocomplete == null) return;
-
-            _mouseDownEnAutocomplete = true;
-            _autocompleteUserNavigated = true;
-            try { _lstApuAutocomplete.Focus(); } catch { }
-            int index = _lstApuAutocomplete.IndexFromPoint(e.Location);
-            if (index >= 0)
-                _lstApuAutocomplete.SelectedIndex = index;
-        }
-
-        private void LstApuAutocomplete_MouseUp(object? sender, MouseEventArgs e)
-        {
-            if (_lstApuAutocomplete == null)
-            {
-                _mouseDownEnAutocomplete = false;
-                return;
-            }
-
-            int index = _lstApuAutocomplete.IndexFromPoint(e.Location);
-            if (e.Button == MouseButtons.Left && index >= 0)
-            {
-                _lstApuAutocomplete.SelectedIndex = index;
-                BeginInvoke(new Action(() =>
-                {
-                    _mouseDownEnAutocomplete = false;
-                    ConfirmarSeleccionAutocompleteApu(true);
-                }));
-                return;
-            }
-
-            _mouseDownEnAutocomplete = false;
-        }
-
-        private void LstApuAutocomplete_MouseClick(object? sender, MouseEventArgs e)
-        {
-            if (_lstApuAutocomplete == null) return;
-
-            int index = _lstApuAutocomplete.IndexFromPoint(e.Location);
-            if (e.Button == MouseButtons.Left && index >= 0)
-            {
-                _autocompleteUserNavigated = true;
-                _lstApuAutocomplete.SelectedIndex = index;
-                BeginInvoke(new Action(() => ConfirmarSeleccionAutocompleteApu(true)));
-            }
-        }
-
-        private void LstApuAutocomplete_KeyDown(object? sender, KeyEventArgs e)
-        {
-            if (_lstApuAutocomplete == null) return;
-
-            if (e.KeyCode == Keys.Enter)
-            {
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-                ConfirmarSeleccionAutocompleteApu(true);
-                return;
-            }
-
-            if (e.KeyCode == Keys.Escape)
-            {
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-                OcultarAutocompleteApu(true);
-            }
-        }
-
-        private void MostrarAutocompleteApuParaTexto(string texto)
-        {
-            if (_lstApuAutocomplete == null) return;
-            if (_autocompleteRowIndex < 0 || _autocompleteColumnIndex < 0)
-            {
-                OcultarAutocompleteApu(false);
-                return;
-            }
-
-            string filtro = NormalizarTextoAutocomplete(texto);
-            if (string.IsNullOrWhiteSpace(filtro))
-            {
-                OcultarAutocompleteApu(false);
-                return;
-            }
-
-            try
-            {
-                _apuAutocompleteSource = _catalogSearchService.SearchMatrices(
-                    _context,
-                    _proyecto.Id,
-                    filtro,
-                    includeCurrentProject: true,
-                    includeRecentProjects: true,
-                    includeFavoriteProjects: true,
-                    includeAuxiliaries: false,
-                    tipoFiltro: TipoMatriz.APU,
-                    maxResults: 12)
-                    .Where(x => x.TipoMatriz == TipoMatriz.APU)
-                    .ToList();
-            }
-            catch
-            {
-                _apuAutocompleteSource = new List<CatalogSearchResultDto>();
-            }
-
-            if (_apuAutocompleteSource.Count == 0)
-            {
-                OcultarAutocompleteApu(false);
-                return;
-            }
-
-            _autocompleteUserNavigated = false;
-            _lstApuAutocomplete.BeginUpdate();
-            _lstApuAutocomplete.DataSource = null;
-            _lstApuAutocomplete.DataSource = _apuAutocompleteSource;
-            _lstApuAutocomplete.DisplayMember = nameof(CatalogSearchResultDto.Descripcion);
-            _lstApuAutocomplete.ClearSelected();
-            _lstApuAutocomplete.SelectedIndex = -1;
-            _lstApuAutocomplete.EndUpdate();
-
-            PosicionarAutocompleteApu();
-            _lstApuAutocomplete.Visible = true;
-            _lstApuAutocomplete.BringToFront();
-            ActualizarPreviewApuSeleccionada();
-        }
-
-        private static string NormalizarTextoAutocomplete(string? texto)
-        {
-            if (string.IsNullOrWhiteSpace(texto))
-                return string.Empty;
-
-            var normalized = texto.Trim().ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
-            var chars = normalized.Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray();
-            return string.Join(' ', new string(chars).Normalize(System.Text.NormalizationForm.FormC)
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries));
-        }
-
-        private static int CalcularScoreAutocomplete(string filtro, string clave, string descripcion)
-        {
-            int score = 0;
-
-            if (!string.IsNullOrWhiteSpace(descripcion))
-            {
-                if (descripcion.Equals(filtro, StringComparison.OrdinalIgnoreCase)) score += 1200;
-                else if (descripcion.StartsWith(filtro, StringComparison.OrdinalIgnoreCase)) score += 900;
-                else if (descripcion.Contains(filtro, StringComparison.OrdinalIgnoreCase)) score += 650;
-            }
-
-            if (!string.IsNullOrWhiteSpace(clave))
-            {
-                if (clave.Equals(filtro, StringComparison.OrdinalIgnoreCase)) score += 1000;
-                else if (clave.StartsWith(filtro, StringComparison.OrdinalIgnoreCase)) score += 800;
-                else if (clave.Contains(filtro, StringComparison.OrdinalIgnoreCase)) score += 500;
-            }
-
-            foreach (var term in filtro.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-            {
-                if (descripcion.Contains(term, StringComparison.OrdinalIgnoreCase)) score += 40;
-                if (clave.Contains(term, StringComparison.OrdinalIgnoreCase)) score += 20;
-            }
-
-            return score;
-        }
-
-        private void PosicionarAutocompleteApu()
-        {
-            if (_lstApuAutocomplete == null || dgvPresupuesto.CurrentCell == null)
-                return;
-
-            AsegurarAnclaAutocompleteVisible();
-
-            var rect = dgvPresupuesto.GetCellDisplayRectangle(_autocompleteColumnIndex, _autocompleteRowIndex, true);
-            if (rect.Width <= 0 || rect.Height <= 0)
-            {
-                OcultarAutocompleteApu(false);
-                return;
-            }
-
-            const int margenPantalla = 6;
-            const int alturaMinima = 80;
-            const int alturaMaxima = 220;
-            const int anchoMinimo = 320;
-            const int maxElementosVisibles = 8;
-
-            var topLeft = PointToClient(dgvPresupuesto.PointToScreen(new Point(rect.Left, rect.Top)));
-            var bottomLeft = PointToClient(dgvPresupuesto.PointToScreen(new Point(rect.Left, rect.Bottom)));
-
-            int alturaDeseada = Math.Max(
-                alturaMinima,
-                Math.Min(
-                    alturaMaxima,
-                    (_lstApuAutocomplete.ItemHeight * Math.Max(1, Math.Min(_lstApuAutocomplete.Items.Count, maxElementosVisibles))) + 6));
-
-            int espacioAbajo = ClientSize.Height - bottomLeft.Y - margenPantalla;
-            int espacioArriba = topLeft.Y - margenPantalla;
-            int alturaFinal;
-            int topFinal;
-
-            if (espacioAbajo >= alturaDeseada || espacioAbajo >= espacioArriba)
-            {
-                alturaFinal = Math.Max(Math.Min(alturaDeseada, Math.Max(espacioAbajo, alturaMinima)), Math.Min(alturaMinima, Math.Max(espacioAbajo, 0)));
-                topFinal = bottomLeft.Y;
-            }
-            else
-            {
-                alturaFinal = Math.Max(Math.Min(alturaDeseada, Math.Max(espacioArriba, alturaMinima)), Math.Min(alturaMinima, Math.Max(espacioArriba, 0)));
-                topFinal = topLeft.Y - alturaFinal;
-            }
-
-            if (alturaFinal <= 0)
-                alturaFinal = Math.Min(alturaDeseada, Math.Max(alturaMinima, ClientSize.Height - (margenPantalla * 2)));
-
-            int widthFinal = Math.Max(rect.Width, anchoMinimo);
-            if (widthFinal > ClientSize.Width - (margenPantalla * 2))
-                widthFinal = Math.Max(rect.Width, ClientSize.Width - (margenPantalla * 2));
-
-            int leftFinal = topLeft.X;
-            if (leftFinal + widthFinal > ClientSize.Width - margenPantalla)
-                leftFinal = Math.Max(margenPantalla, ClientSize.Width - widthFinal - margenPantalla);
-            if (leftFinal < margenPantalla)
-                leftFinal = margenPantalla;
-
-            if (topFinal + alturaFinal > ClientSize.Height - margenPantalla)
-                topFinal = Math.Max(margenPantalla, ClientSize.Height - alturaFinal - margenPantalla);
-            if (topFinal < margenPantalla)
-                topFinal = margenPantalla;
-
-            _lstApuAutocomplete.Left = leftFinal;
-            _lstApuAutocomplete.Top = topFinal;
-            _lstApuAutocomplete.Width = widthFinal;
-            _lstApuAutocomplete.Height = alturaFinal;
-            PosicionarPreviewApu();
-        }
-
-        private void AsegurarAnclaAutocompleteVisible()
-        {
-            if (_autocompleteRowIndex < 0 || _autocompleteRowIndex >= dgvPresupuesto.Rows.Count)
-                return;
-
-            var rect = dgvPresupuesto.GetCellDisplayRectangle(_autocompleteColumnIndex, _autocompleteRowIndex, true);
-            if (rect.Height > 0 && rect.Bottom > 0 && rect.Top < dgvPresupuesto.ClientSize.Height)
-                return;
-
-            try
-            {
-                int rowObjetivo = Math.Max(0, _autocompleteRowIndex - 3);
-                dgvPresupuesto.FirstDisplayedScrollingRowIndex = rowObjetivo;
-            }
-            catch
-            {
-                // Ignorar si el grid todavía no puede desplazar la fila.
-            }
-        }
-
-        private void OcultarAutocompleteApu(bool focusEditor)
-        {
-            if (_lstApuAutocomplete != null)
-            {
-                _lstApuAutocomplete.Visible = false;
-                _lstApuAutocomplete.DataSource = null;
-            }
-            _autocompleteUserNavigated = false;
-
-            if (_pnlApuPreview != null)
-                _pnlApuPreview.Visible = false;
-
-            if (focusEditor && _txtDescripcionEnEdicion != null && !_txtDescripcionEnEdicion.IsDisposed && (_lstApuAutocomplete == null || !_lstApuAutocomplete.Visible))
-            {
-                _txtDescripcionEnEdicion.Focus();
-                _txtDescripcionEnEdicion.SelectionStart = _txtDescripcionEnEdicion.TextLength;
-                _txtDescripcionEnEdicion.SelectionLength = 0;
-            }
-        }
-
-        private bool ConfirmarSeleccionAutocompleteApu(bool moveToNextRow)
-        {
-            if (_lstApuAutocomplete?.SelectedItem is not CatalogSearchResultDto selected)
-                return false;
-
-            _confirmandoSeleccionAutocomplete = true;
-            try
-            {
-                int rowIndex = _autocompleteRowIndex;
-                decimal cantidadActual = 1m;
-            var cantidadCell = ObtenerCeldaPorNombreInterno(rowIndex, "Cantidad");
-            if (cantidadCell?.Value != null)
-                decimal.TryParse(cantidadCell.Value.ToString(), out cantidadActual);
-
-            if (cantidadActual <= 0)
-                cantidadActual = 1m;
-
-                try
-                {
-                    if (dgvPresupuesto.IsCurrentCellInEditMode)
-                        dgvPresupuesto.EndEdit();
-                }
-                catch { }
-
-                Matriz? matriz = null;
-
-            if (selected.EsActual || string.Equals(SelectorUiDefaults.NormalizePath(selected.RutaProyecto), SelectorUiDefaults.NormalizePath(_context.DatabasePath), StringComparison.OrdinalIgnoreCase))
-            {
-                matriz = _context.Matrices
-                    .FirstOrDefault(m => m.ProyectoId == _proyecto.Id && m.Id == selected.ElementoId && m.Tipo == TipoMatriz.APU);
-            }
-            else
-            {
-                try
-                {
-                    ExternalMatrixImportConflictPolicy policy = ExternalMatrixImportConflictPolicy.KeepBothWithTempKey;
-                    bool hayConflictoPorClave = _context.Matrices.Any(m => m.ProyectoId == _proyecto.Id && m.Clave == selected.Clave);
-
-                    if (hayConflictoPorClave)
-                    {
-                        var preview = _externalMatrixImportService.BuildPreview(
-                            _context, _proyecto.Id, selected.RutaProyecto, selected.ElementoId);
-                        using var previewDialog = new FormPreviewImportacionMatrices(preview);
-                        if (previewDialog.ShowDialog(this) != DialogResult.OK || previewDialog.SelectedPolicy == null)
-                        {
-                            OcultarAutocompleteApu(true);
-                            return false;
-                        }
-
-                        policy = previewDialog.SelectedPolicy.Value;
-                    }
-
-                    var result = _externalMatrixImportService.ImportMatrixTree(
-                        _context, _proyecto.Id, selected.RutaProyecto, selected.ElementoId, policy);
-
-                    matriz = _context.Matrices.Find(result.RootMatrixId);
-                    _projectIndexService.RegisterProjectOpened(selected.RutaProyecto, selected.NombreProyecto);
-                    try { _catalogSearchService.RebuildProjectCatalogIndex(selected.RutaProyecto); } catch { }
-                    _projectUsageService.RegisterMatrixSelection(selected.RutaProyecto, selected.ElementoId);
-                    if (matriz != null)
-                        _projectUsageService.RegisterMatrixSelection(_context.DatabasePath, matriz.Id);
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Error al importar la matriz externa:
-{ex.Message}",
-                        "Importación", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    OcultarAutocompleteApu(true);
-                    return false;
-                }
-            }
-
-            if (matriz == null)
-                return false;
-
-                OcultarAutocompleteApu(false);
-                AsignarMatrizAPresupuesto(
-                    rowIndex,
-                    matriz,
-                    cantidadActual,
-                    preserveCurrentTexts: false,
-                    forceMatrixDescription: true,
-                    preserveKeyIfPresent: true,
-                    preserveUnitIfPresent: true);
-                _projectUsageService.RegisterMatrixSelection(_context.DatabasePath, matriz.Id);
-
-                if (moveToNextRow)
-                    PrepararSiguienteFilaConcepto(rowIndex + 1);
-
-                return true;
-            }
-            finally
-            {
-                _confirmandoSeleccionAutocomplete = false;
-                _mouseDownEnAutocomplete = false;
-                _autocompleteUserNavigated = false;
-            }
-        }
-
-        private void PrepararSiguienteFilaConcepto(int rowIndex)
-        {
-            if (rowIndex < 0) return;
-
-            while (rowIndex >= dgvPresupuesto.Rows.Count)
-                dgvPresupuesto.Rows.Add();
-
-            var tipoCell = ObtenerCeldaPorNombreInterno(rowIndex, "Tipo");
-            if (tipoCell != null && string.IsNullOrWhiteSpace(tipoCell.Value?.ToString()))
-                tipoCell.Value = "Concepto";
-
-            var descripcionCell = ObtenerCeldaPorNombreInterno(rowIndex, "Descripcion");
-            if (descripcionCell == null) return;
-
-            dgvPresupuesto.CurrentCell = descripcionCell;
-            dgvPresupuesto.BeginEdit(true);
-
-            if (dgvPresupuesto.EditingControl is TextBox tb)
-            {
-                tb.SelectionStart = 0;
-                tb.SelectionLength = tb.TextLength;
-            }
-        }
-
-        private void AsignarMatrizAPresupuesto(
-            int rowIndex,
-            Matriz matriz,
-            decimal cantidad,
-            bool preserveCurrentTexts,
-            bool forceMatrixDescription = false,
-            bool preserveKeyIfPresent = false,
-            bool preserveUnitIfPresent = false)
-        {
-            if (rowIndex < 0 || rowIndex >= dgvPresupuesto.Rows.Count) return;
-
-            var row = dgvPresupuesto.Rows[rowIndex];
-            string? claveActual = (preserveCurrentTexts || preserveKeyIfPresent)
-                ? ObtenerCeldaPorNombreInterno(rowIndex, "Clave")?.Value?.ToString()
-                : null;
-            string? descripcionActual = (preserveCurrentTexts && !forceMatrixDescription)
-                ? ObtenerCeldaPorNombreInterno(rowIndex, "Descripcion")?.Value?.ToString()
-                : null;
-            string? unidadActual = (preserveCurrentTexts || preserveUnitIfPresent)
-                ? ObtenerCeldaPorNombreInterno(rowIndex, "Unidad")?.Value?.ToString()
-                : null;
-
-            var draft = BudgetConceptAssignmentService.BuildDraftFromSelectedMatrix(
-                _proyecto,
-                matriz,
-                cantidad,
-                claveActual,
-                descripcionActual,
-                unidadActual);
-
-            ApplyAssignmentDraftToGrid(rowIndex, draft);
-
-            var concepto = BudgetConceptAssignmentService.ApplyDraft(
-                _context,
-                _proyecto.Id,
-                CountConceptRowsBefore(rowIndex),
-                row.Tag as ConceptoPresupuesto,
-                draft);
-
-            row.Tag = concepto;
-            FinalizeBudgetConceptAssignment(rowIndex);
-            GuardarCambios();
-        }
-
         private void InicializarFormMatricesEmbebido()
         {
             _panelMatricesEmbebido = new Controls.PanelMatricesEmbebido(_context, _proyecto.Id);
-            panelMatrices.Controls.Add(_panelMatricesEmbebido);
+            panelMatricesHost.Controls.Add(_panelMatricesEmbebido);
 
             // Conectar el panel al grid para que reaccione a la selección
             _panelMatricesEmbebido.ConectarPresupuesto(dgvPresupuesto);
@@ -1249,6 +702,13 @@ namespace SOPRO.WinForms.Forms
                 ReasignarNumerosConceptos();
                 dgvPresupuesto.Refresh();
             };
+            _panelMatricesEmbebido.SolicitudCerrarWorkspace += (sender, e) =>
+            {
+                if (!splitContainer.Panel2Collapsed)
+                    btnWorkspaceCerrar_Click(btnWorkspaceCerrar, EventArgs.Empty);
+            };
+
+            ActualizarEstadoWorkspace(false);
         }
 
         /// <summary>
@@ -1257,8 +717,16 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         public void RefrescarPreciosDesdeDB()
         {
+            int filaActual = -1;
+            int colActual = -1;
             try
             {
+                if (dgvPresupuesto.CurrentCell != null)
+                {
+                    filaActual = dgvPresupuesto.CurrentCell.RowIndex;
+                    colActual = dgvPresupuesto.CurrentCell.ColumnIndex;
+                }
+
                 for (int i = 0; i < dgvPresupuesto.Rows.Count; i++)
                 {
                     var concepto = dgvPresupuesto.Rows[i].Tag as ConceptoPresupuesto;
@@ -1295,8 +763,22 @@ namespace SOPRO.WinForms.Forms
                 GuardarCambios();       // Persistir totales de agrupadores en BD
                 dgvPresupuesto.Refresh();
 
-                // Refrescar también el panel embebido con la fila actual
-                if (dgvPresupuesto.CurrentRow != null)
+                if (filaActual >= 0 && filaActual < dgvPresupuesto.Rows.Count)
+                {
+                    try
+                    {
+                        int colRestaurar = (colActual >= 0 && colActual < dgvPresupuesto.Columns.Count) ? colActual : 0;
+                        dgvPresupuesto.CurrentCell = dgvPresupuesto.Rows[filaActual].Cells[colRestaurar];
+                        dgvPresupuesto.ClearSelection();
+                        dgvPresupuesto.Rows[filaActual].Selected = true;
+                    }
+                    catch { }
+                }
+
+                // Refrescar también el panel embebido con la fila actual restaurada
+                if (filaActual >= 0 && filaActual < dgvPresupuesto.Rows.Count)
+                    _panelMatricesEmbebido?.NotificarFilaCambiada(filaActual);
+                else if (dgvPresupuesto.CurrentRow != null)
                     _panelMatricesEmbebido?.NotificarFilaCambiada(dgvPresupuesto.CurrentRow.Index);
 
                 // Actualizar el header con los % del proyecto
@@ -1481,9 +963,12 @@ namespace SOPRO.WinForms.Forms
 
             // ── Drag & Drop para reordenar filas ──────────────────────
             dgvPresupuesto.AllowDrop = true;
+            dgvPresupuesto.MouseDown += DgvPresupuesto_MouseDown;
+            dgvPresupuesto.MouseUp += DgvPresupuesto_MouseUp;
             dgvPresupuesto.MouseMove += DgvPresupuesto_MouseMove;
             dgvPresupuesto.DragOver += DgvPresupuesto_DragOver;
             dgvPresupuesto.DragDrop += DgvPresupuesto_DragDrop;
+            dgvPresupuesto.DragLeave += DgvPresupuesto_DragLeave;
             dgvPresupuesto.Paint += DgvPresupuesto_Paint;
 
             Resize += (s, e) =>
@@ -1495,6 +980,10 @@ namespace SOPRO.WinForms.Forms
 
         private int _dragFilaOrigen = -1;
         private int _dragLineaInsercion = -1;
+        private int _dragFilaMouseDown = -1;
+        private Point _dragMouseDownLocation = Point.Empty;
+        private Rectangle _dragStartRect = Rectangle.Empty;
+        private const int DragThresholdPixels = 6;
         private DataGridViewCell _celdaAnterior = null;
         private ContextMenuStrip? _menuPresupuesto;
         private string _valorAnteriorClaveEnEdicion = string.Empty;
@@ -1521,14 +1010,9 @@ namespace SOPRO.WinForms.Forms
             {
                 dgvPresupuesto.InvalidateCell(_celdaAnterior);
             }
+        }
 
-            if (e.RowIndex >= 0 && e.ColumnIndex >= 0)
-            {
-                if (dgvPresupuesto.Columns[e.ColumnIndex].Tag is not ColumnaPersonalizada colDefEnter
-                    || !string.Equals(colDefEnter.NombreInterno, "Descripcion", StringComparison.OrdinalIgnoreCase))
-                {
-                    OcultarAutocompleteApu(false);
-                }
+                ActualizarEstadoWorkspace(_selectorApuEmbebido != null);
             }
             else
             {
@@ -1536,20 +1020,84 @@ namespace SOPRO.WinForms.Forms
             }
         }
 
-        private void DgvPresupuesto_MouseMove(object sender, MouseEventArgs e)
+        private void DgvPresupuesto_MouseDown(object sender, MouseEventArgs e)
         {
-            if (e.Button != MouseButtons.Left) return;
+            if (e.Button != MouseButtons.Left)
+            {
+                _dragFilaMouseDown = -1;
+                _dragMouseDownLocation = Point.Empty;
+                _dragStartRect = Rectangle.Empty;
+                return;
+            }
 
             var hit = dgvPresupuesto.HitTest(e.X, e.Y);
-            if (hit.RowIndex < 0) return;
+            if (hit.RowIndex < 0)
+            {
+                _dragFilaMouseDown = -1;
+                _dragMouseDownLocation = Point.Empty;
+                _dragStartRect = Rectangle.Empty;
+                return;
+            }
 
-            // Solo iniciar drag si hay datos en la fila
-            var row = dgvPresupuesto.Rows[hit.RowIndex];
             var tipoCell = ObtenerCeldaPorNombreInterno(hit.RowIndex, "Tipo");
-            if (tipoCell?.Value == null) return;
+            if (tipoCell?.Value == null || string.IsNullOrWhiteSpace(tipoCell.Value.ToString()))
+            {
+                _dragFilaMouseDown = -1;
+                _dragMouseDownLocation = Point.Empty;
+                _dragStartRect = Rectangle.Empty;
+                return;
+            }
 
-            _dragFilaOrigen = hit.RowIndex;
-            dgvPresupuesto.DoDragDrop(hit.RowIndex, DragDropEffects.Move);
+            _dragFilaMouseDown = hit.RowIndex;
+            _dragMouseDownLocation = e.Location;
+            var dragSize = SystemInformation.DragSize;
+            _dragStartRect = new Rectangle(
+                e.X - dragSize.Width / 2,
+                e.Y - dragSize.Height / 2,
+                dragSize.Width,
+                dragSize.Height);
+        }
+
+        private void DgvPresupuesto_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                _dragFilaMouseDown = -1;
+                _dragMouseDownLocation = Point.Empty;
+                _dragStartRect = Rectangle.Empty;
+                if (_dragLineaInsercion != -1)
+                {
+                    _dragLineaInsercion = -1;
+                    dgvPresupuesto.Invalidate();
+                }
+            }
+        }
+
+        private void DgvPresupuesto_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left || _dragFilaMouseDown < 0) return;
+            if (_dragStartRect != Rectangle.Empty && _dragStartRect.Contains(e.Location)) return;
+
+            var tipoCell = ObtenerCeldaPorNombreInterno(_dragFilaMouseDown, "Tipo");
+            if (tipoCell?.Value == null || string.IsNullOrWhiteSpace(tipoCell.Value.ToString())) return;
+
+            _dragFilaOrigen = _dragFilaMouseDown;
+            _dragFilaMouseDown = -1;
+            _dragMouseDownLocation = Point.Empty;
+            _dragStartRect = Rectangle.Empty;
+            try
+            {
+                dgvPresupuesto.DoDragDrop(_dragFilaOrigen, DragDropEffects.Move);
+            }
+            finally
+            {
+                if (_dragLineaInsercion != -1)
+                {
+                    _dragLineaInsercion = -1;
+                    dgvPresupuesto.Invalidate();
+                }
+                _dragFilaOrigen = -1;
+            }
         }
 
         private void DgvPresupuesto_DragOver(object sender, DragEventArgs e)
@@ -1589,6 +1137,16 @@ namespace SOPRO.WinForms.Forms
             }
         }
 
+
+        private void DgvPresupuesto_DragLeave(object? sender, EventArgs e)
+        {
+            if (_dragLineaInsercion != -1)
+            {
+                _dragLineaInsercion = -1;
+                dgvPresupuesto.Invalidate();
+            }
+        }
+
         private void DgvPresupuesto_DragDrop(object sender, DragEventArgs e)
         {
             if (_dragFilaOrigen < 0) return;
@@ -1598,7 +1156,16 @@ namespace SOPRO.WinForms.Forms
             var hit = dgvPresupuesto.HitTest(pt.X, pt.Y);
             int filaDestino = hit.RowIndex;
 
-            if (filaDestino < 0 || filaDestino == _dragFilaOrigen) { _dragFilaOrigen = -1; _dragLineaInsercion = -1; return; }
+            if (filaDestino < 0 || filaDestino == _dragFilaOrigen)
+            {
+                _dragFilaOrigen = -1;
+                _dragLineaInsercion = -1;
+                _dragFilaMouseDown = -1;
+                _dragMouseDownLocation = Point.Empty;
+                _dragStartRect = Rectangle.Empty;
+                dgvPresupuesto.Invalidate();
+                return;
+            }
 
             // RESTRICCIÓN: No permitir crear huecos intermedios
             // Buscar última fila con contenido
@@ -1635,6 +1202,9 @@ namespace SOPRO.WinForms.Forms
                 {
                     _dragFilaOrigen = -1;
                     _dragLineaInsercion = -1;
+                    _dragFilaMouseDown = -1;
+                    _dragMouseDownLocation = Point.Empty;
+                    _dragStartRect = Rectangle.Empty;
                     dgvPresupuesto.Invalidate();
                     return;
                 }
@@ -1667,14 +1237,41 @@ namespace SOPRO.WinForms.Forms
             }
 
             // Insertar filas en nueva posición
+            int indiceInicioInsertado = insertEn;
             foreach (var row in rowsAMover)
             {
                 dgvPresupuesto.Rows.Insert(insertEn, row);
                 insertEn++;
             }
 
+            // Mantener el foco en la primera fila del bloque movido
+            if (indiceInicioInsertado >= 0 && indiceInicioInsertado < dgvPresupuesto.Rows.Count)
+            {
+                dgvPresupuesto.ClearSelection();
+                var columnaFoco = dgvPresupuesto.CurrentCell?.ColumnIndex ?? 0;
+                if (columnaFoco < 0 || columnaFoco >= dgvPresupuesto.Columns.Count)
+                    columnaFoco = 0;
+                if (dgvPresupuesto.Columns[columnaFoco].Visible == false)
+                {
+                    columnaFoco = dgvPresupuesto.Columns
+                        .Cast<DataGridViewColumn>()
+                        .Where(c => c.Visible)
+                        .Select(c => c.Index)
+                        .DefaultIfEmpty(0)
+                        .First();
+                }
+
+                var focusCell = dgvPresupuesto.Rows[indiceInicioInsertado].Cells[columnaFoco];
+                dgvPresupuesto.CurrentCell = focusCell;
+                dgvPresupuesto.Rows[indiceInicioInsertado].Selected = true;
+            }
+
             _dragFilaOrigen = -1;
             _dragLineaInsercion = -1; // Limpiar línea
+            _dragFilaMouseDown = -1;
+            _dragMouseDownLocation = Point.Empty;
+            _dragStartRect = Rectangle.Empty;
+            dgvPresupuesto.Invalidate();
 
             // LIMPIAR solo filas vacías que están ENTRE contenido (gaps)
             RemoveIntermediateEmptyRows();
@@ -1961,6 +1558,416 @@ namespace SOPRO.WinForms.Forms
             dgvPresupuesto.Refresh();
         }
 
+        private void ProgramarAsegurarFilaActualVisibleEnPresupuesto()
+        {
+            if (IsDisposed || !IsHandleCreated)
+                return;
+
+            try
+            {
+                BeginInvoke(new Action(AsegurarFilaActualVisibleEnPresupuesto));
+            }
+            catch
+            {
+                // Ignorar si el formulario ya se está cerrando.
+            }
+        }
+
+        private void AsegurarFilaActualVisibleEnPresupuesto()
+        {
+            if (dgvPresupuesto == null || dgvPresupuesto.IsDisposed || dgvPresupuesto.CurrentCell == null)
+                return;
+
+            int rowIndex = dgvPresupuesto.CurrentCell.RowIndex;
+            if (rowIndex < 0 || rowIndex >= dgvPresupuesto.Rows.Count)
+                return;
+
+            if (!dgvPresupuesto.Rows[rowIndex].Visible)
+                return;
+
+            try
+            {
+                var rect = dgvPresupuesto.GetRowDisplayRectangle(rowIndex, false);
+                int visibleTop = 0;
+                int visibleBottom = dgvPresupuesto.ClientSize.Height - 4;
+
+                bool fueraPorArriba = rect.Height <= 0 || rect.Top < visibleTop;
+                bool fueraPorAbajo = rect.Height <= 0 || rect.Bottom > visibleBottom;
+
+                if (!fueraPorArriba && !fueraPorAbajo)
+                    return;
+
+                int displayedRows = Math.Max(1, dgvPresupuesto.DisplayedRowCount(false));
+                int targetRow;
+
+                if (fueraPorArriba)
+                {
+                    targetRow = rowIndex;
+                }
+                else
+                {
+                    int margenFilas = Math.Max(1, Math.Min(3, displayedRows / 3));
+                    targetRow = Math.Max(0, rowIndex - Math.Max(0, displayedRows - margenFilas));
+                }
+
+                if (targetRow >= 0 && targetRow < dgvPresupuesto.Rows.Count)
+                    dgvPresupuesto.FirstDisplayedScrollingRowIndex = targetRow;
+            }
+            catch
+            {
+                // Ignorar si el grid todavía no puede desplazar la fila.
+            }
+        }
+
+        private void LoadWorkspacePanelState()
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(WorkspacePanelStatePath);
+                if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                if (File.Exists(WorkspacePanelStatePath))
+                {
+                    var raw = File.ReadAllText(WorkspacePanelStatePath).Trim();
+                    if (int.TryParse(raw, out var h) && h > 120)
+                        _workspacePanelHeight = h;
+                }
+            }
+            catch { }
+        }
+
+        private void SaveWorkspacePanelState()
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(WorkspacePanelStatePath);
+                if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                if (!splitContainer.Panel2Collapsed)
+                {
+                    int height = splitContainer.Height - splitContainer.SplitterDistance;
+                    if (height > splitContainer.Panel2MinSize)
+                    {
+                        _workspacePanelHeight = height;
+                        File.WriteAllText(WorkspacePanelStatePath, _workspacePanelHeight.ToString());
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private void EnsureWorkspaceExpanded()
+        {
+            if (splitContainer.Panel2Collapsed)
+            {
+                splitContainer.Panel2Collapsed = false;
+                var targetHeight = _workspacePanelHeight > 0 ? _workspacePanelHeight : Math.Max(splitContainer.Panel2MinSize, (int)(splitContainer.Height * 0.34));
+                splitContainer.SplitterDistance = Math.Max(splitContainer.Panel1MinSize, splitContainer.Height - targetHeight);
+            }
+            btnToggleMatrices.Text = "📐 Matrices ▲";
+            ProgramarAsegurarFilaActualVisibleEnPresupuesto();
+        }
+
+        private void ActualizarEstadoWorkspace(bool mostrandoSelector)
+        {
+            lblWorkspaceTitulo.Text = mostrandoSelector ? "Área de trabajo: Selector APU" : "Área de trabajo: Matriz";
+            btnWorkspaceMatriz.BackColor = mostrandoSelector ? Color.Transparent : Color.FromArgb(221, 235, 247);
+            btnWorkspaceSelector.BackColor = mostrandoSelector ? Color.FromArgb(221, 235, 247) : Color.Transparent;
+            btnWorkspaceMatriz.Font = new Font(btnWorkspaceMatriz.Font, mostrandoSelector ? FontStyle.Regular : FontStyle.Bold);
+            btnWorkspaceSelector.Font = new Font(btnWorkspaceSelector.Font, mostrandoSelector ? FontStyle.Bold : FontStyle.Regular);
+            btnWorkspaceSelector.Enabled = dgvPresupuesto.CurrentRow != null && ((ObtenerCeldaPorNombreInterno(dgvPresupuesto.CurrentRow.Index, "Tipo")?.Value?.ToString()) == "Concepto");
+            btnWorkspaceCerrar.Enabled = !splitContainer.Panel2Collapsed;
+        }
+
+        private void MostrarPanelMatrizEmbebido(bool recargarFilaActual)
+        {
+            EnsureWorkspaceExpanded();
+
+            if (_selectorApuEmbebido != null)
+            {
+                try
+                {
+                    panelMatricesHost.Controls.Remove(_selectorApuEmbebido);
+                    _selectorApuEmbebido.Dispose();
+                }
+                catch { }
+                _selectorApuEmbebido = null;
+            }
+
+            _selectorApuEmbebidoRowIndex = -1;
+            if (_panelMatricesEmbebido != null)
+            {
+                if (!panelMatricesHost.Controls.Contains(_panelMatricesEmbebido))
+                    panelMatricesHost.Controls.Add(_panelMatricesEmbebido);
+
+                _panelMatricesEmbebido.Dock = DockStyle.Fill;
+                _panelMatricesEmbebido.Visible = true;
+                _panelMatricesEmbebido.BringToFront();
+
+                if (recargarFilaActual && dgvPresupuesto.CurrentRow != null)
+                    _panelMatricesEmbebido.NotificarFilaCambiada(dgvPresupuesto.CurrentRow.Index);
+            }
+
+            ActualizarEstadoWorkspace(false);
+        }
+
+        private void MostrarSelectorApuEmbebido(int rowIndex, decimal cantidadActual, int? matrizIdActual, string? filtroInicial)
+        {
+            EnsureWorkspaceExpanded();
+
+            if (_panelMatricesEmbebido != null)
+                _panelMatricesEmbebido.Visible = false;
+
+            if (_selectorApuEmbebido != null)
+            {
+                try
+                {
+                    panelMatricesHost.Controls.Remove(_selectorApuEmbebido);
+                    _selectorApuEmbebido.Dispose();
+                }
+                catch { }
+                _selectorApuEmbebido = null;
+            }
+
+            _selectorApuEmbebidoRowIndex = rowIndex;
+            var targetRowIndex = rowIndex;
+            var selector = new SelectorApuEmbebidoControl();
+            selector.InitializeSelector(_context, _proyecto.Id, cantidadActual, matrizIdActual, filtroInicial);
+            selector.Accepted += (_, __) =>
+            {
+                try
+                {
+                    if (targetRowIndex >= 0 && selector.MatrizSeleccionada != null)
+                        AsignarMatrizAPresupuesto(targetRowIndex, selector.MatrizSeleccionada, selector.Cantidad, preserveCurrentTexts: true);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error al asignar APU: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                finally
+                {
+                    MostrarPanelMatrizEmbebido(true);
+                    if (targetRowIndex >= 0 && targetRowIndex < dgvPresupuesto.Rows.Count)
+                    {
+                        var cell = ObtenerCeldaPorNombreInterno(targetRowIndex, "Descripcion")
+                                   ?? ObtenerCeldaPorNombreInterno(targetRowIndex, "PrecioUnitario");
+                        if (cell != null)
+                            dgvPresupuesto.CurrentCell = cell;
+                        dgvPresupuesto.Focus();
+                    }
+                }
+            };
+            selector.Cancelled += (_, __) =>
+            {
+                MostrarPanelMatrizEmbebido(true);
+                if (rowIndex >= 0 && rowIndex < dgvPresupuesto.Rows.Count)
+                {
+                    var cell = ObtenerCeldaPorNombreInterno(rowIndex, "Descripcion")
+                               ?? ObtenerCeldaPorNombreInterno(rowIndex, "PrecioUnitario");
+                    if (cell != null)
+                        dgvPresupuesto.CurrentCell = cell;
+                    dgvPresupuesto.Focus();
+                }
+            };
+            selector.RequestNewMatrix += (_, __) =>
+            {
+                MostrarPanelMatrizEmbebido(false);
+                _panelMatricesEmbebido?.BeginCreateMatrix(selector.SelectedTipo,
+                    onSaved: matrizCreada =>
+                    {
+                        try
+                        {
+                            if (targetRowIndex >= 0)
+                                AsignarMatrizAPresupuesto(targetRowIndex, matrizCreada, cantidadActual, preserveCurrentTexts: true);
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show($"Error al asignar la matriz creada: {ex.Message}", "Presupuesto", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                        finally
+                        {
+                            MostrarPanelMatrizEmbebido(true);
+                            if (targetRowIndex >= 0 && targetRowIndex < dgvPresupuesto.Rows.Count)
+                            {
+                                var cell = ObtenerCeldaPorNombreInterno(targetRowIndex, "Descripcion")
+                                           ?? ObtenerCeldaPorNombreInterno(targetRowIndex, "PrecioUnitario");
+                                if (cell != null)
+                                    dgvPresupuesto.CurrentCell = cell;
+                                dgvPresupuesto.Focus();
+                            }
+                        }
+                    },
+                    onCancelled: () => MostrarSelectorApuEmbebido(targetRowIndex, cantidadActual, matrizIdActual, filtroInicial));
+            };
+            selector.RequestEditMatrix += (_, __) =>
+            {
+                var selectedMatrixId = selector.SelectedMatrixId;
+                if (!selectedMatrixId.HasValue)
+                {
+                    MessageBox.Show("Selecciona una matriz para editar.", "Selector APU", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                MostrarPanelMatrizEmbebido(false);
+                _panelMatricesEmbebido?.BeginEditMatrix(selectedMatrixId.Value,
+                    onSaved: null,
+                    onCancelled: () => MostrarSelectorApuEmbebido(targetRowIndex, cantidadActual, selectedMatrixId, filtroInicial));
+            };
+
+            _selectorApuEmbebido = selector;
+            selector.Dock = DockStyle.Fill;
+            panelMatricesHost.Controls.Add(selector);
+            selector.BringToFront();
+            selector.Focus();
+
+            ActualizarEstadoWorkspace(true);
+        }
+
+        private void btnWorkspaceMatriz_Click(object sender, EventArgs e)
+        {
+            MostrarPanelMatrizEmbebido(true);
+        }
+
+        private void btnWorkspaceCerrar_Click(object sender, EventArgs e)
+        {
+            SaveWorkspacePanelState();
+            splitContainer.Panel2Collapsed = true;
+            btnToggleMatrices.Text = "📐 Matrices ▼";
+            btnWorkspaceCerrar.Enabled = false;
+            dgvPresupuesto.Focus();
+        }
+
+        private void btnImportarExcel_Click(object sender, EventArgs e)
+        {
+            using var frm = new FormImportarPresupuestoExcel();
+            if (frm.ShowDialog(this) != DialogResult.OK || frm.FilasImportadas == null || frm.FilasImportadas.Count == 0)
+                return;
+
+            ImportarFilasPresupuestoDesdeExcel(frm.FilasImportadas);
+        }
+
+        private void ImportarFilasPresupuestoDesdeExcel(List<BudgetExcelImportRowDto> filas)
+        {
+            try
+            {
+                if (filas == null || filas.Count == 0)
+                    return;
+
+                int ordenBase = _context.ConceptosPresupuesto
+                    .Where(c => c.ProyectoId == _proyecto.Id)
+                    .Select(c => (int?)c.Orden)
+                    .Max() ?? -1;
+
+                var nuevosConceptos = new List<ConceptoPresupuesto>();
+                int offset = 1;
+                bool yaSeAsignoCapituloInferido = false;
+                foreach (var fila in filas)
+                {
+                    string tipo = ResolverTipoImportado(fila, ref yaSeAsignoCapituloInferido);
+                    if (string.Equals(tipo, "No importar", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    bool esAgrupador = !string.Equals(tipo, "Concepto", StringComparison.OrdinalIgnoreCase);
+
+                    var concepto = new ConceptoPresupuesto
+                    {
+                        ProyectoId = _proyecto.Id,
+                        Clave = fila.Clave?.Trim() ?? string.Empty,
+                        Descripcion = fila.Descripcion?.Trim() ?? string.Empty,
+                        Unidad = esAgrupador ? string.Empty : (fila.Unidad?.Trim() ?? string.Empty),
+                        Cantidad = esAgrupador ? 0m : (fila.Cantidad ?? 0m),
+                        EsAgrupador = esAgrupador,
+                        Nivel = BudgetPersistenceService.ResolveLevelFromType(tipo),
+                        Orden = ordenBase + offset++,
+                        MatrizId = null,
+                        CostoDirectoUnitario = 0m,
+                        CostoDirectoTotal = 0m,
+                        Indirectos = 0m,
+                        Financiamiento = 0m,
+                        Utilidad = 0m,
+                        CargosAdicionales = 0m,
+                        PrecioUnitario = 0m,
+                        ImporteTotal = 0m,
+                        ColumnasPersonalizadasJSON = string.Empty,
+                        Notas = string.Empty,
+                        FechaCreacion = DateTime.Now,
+                        FechaModificacion = DateTime.Now
+                    };
+
+                    nuevosConceptos.Add(concepto);
+                }
+
+                if (nuevosConceptos.Count == 0)
+                {
+                    MessageBox.Show("No se generaron conceptos válidos para importar.", "Importar presupuesto", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                _context.ConceptosPresupuesto.AddRange(nuevosConceptos);
+                _context.SaveChanges();
+
+                RecargarPresupuestoPreservandoEstado();
+                MessageBox.Show($"Se importaron {nuevosConceptos.Count} renglones desde Excel\n\nNo se importaron P.U. ni Importe.", "Importar presupuesto", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error al importar el presupuesto desde Excel:\n{ex.Message}", "Importar presupuesto", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private string ResolverTipoImportado(BudgetExcelImportRowDto fila, ref bool yaSeAsignoCapituloInferido)
+        {
+            string tipoTexto = (fila.TipoTexto ?? string.Empty).Trim();
+            if (!string.IsNullOrWhiteSpace(tipoTexto))
+            {
+                string normalized = tipoTexto.ToLowerInvariant();
+                if (normalized.Contains("no import") || normalized == "omit" || normalized == "omitir") return "No importar";
+                if (normalized.Contains("subcap")) return "Subcapitulo";
+                if (normalized.Contains("nivel 3") || normalized == "n3") return "Nivel 3";
+                if (normalized.Contains("nivel 2") || normalized == "n2") return "Nivel 2";
+                if (normalized.Contains("nivel 1") || normalized == "n1") return "Nivel 1";
+                if (normalized.Contains("cap")) return "Capitulo";
+                if (normalized.Contains("titulo") || normalized.Contains("título") || normalized.Contains("encabezado")) return "Capitulo";
+                if (normalized.Contains("concept")) return "Concepto";
+            }
+
+            bool hasUnidad = !string.IsNullOrWhiteSpace(fila.Unidad);
+            bool hasCantidad = fila.Cantidad.HasValue && fila.Cantidad.Value != 0m;
+            if (hasUnidad || hasCantidad)
+                return "Concepto";
+
+            if (!yaSeAsignoCapituloInferido)
+            {
+                yaSeAsignoCapituloInferido = true;
+                return "Capitulo";
+            }
+
+            return "Subcapitulo";
+        }
+
+        private void btnWorkspaceSelector_Click(object sender, EventArgs e)
+        {
+            if (dgvPresupuesto.CurrentRow == null)
+                return;
+
+            var rowIndex = dgvPresupuesto.CurrentRow.Index;
+            var tipo = ObtenerCeldaPorNombreInterno(rowIndex, "Tipo")?.Value?.ToString();
+            if (!string.Equals(tipo, "Concepto", StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show("Seleccione una fila tipo Concepto para cambiar su APU.", "Selector APU", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            decimal cantidadActual = 1m;
+            var cantidadCell = ObtenerCeldaPorNombreInterno(rowIndex, "Cantidad");
+            if (cantidadCell?.Value != null)
+                decimal.TryParse(cantidadCell.Value.ToString(), out cantidadActual);
+
+            int? matrizIdActual = (dgvPresupuesto.Rows[rowIndex].Tag as ConceptoPresupuesto)?.MatrizId;
+            var descripcionFiltro = ObtenerCeldaPorNombreInterno(rowIndex, "Descripcion")?.Value?.ToString()?.Trim();
+            var filtroInicial = matrizIdActual.HasValue ? null : (!string.IsNullOrWhiteSpace(descripcionFiltro) ? descripcionFiltro : null);
+
+            MostrarSelectorApuEmbebido(rowIndex, cantidadActual, matrizIdActual, filtroInicial);
+        }
+
         private void OpenApuSelectorForRow(int rowIndex)
         {
             if (rowIndex < 0 || rowIndex >= dgvPresupuesto.Rows.Count) return;
@@ -1975,7 +1982,6 @@ namespace SOPRO.WinForms.Forms
                 decimal.TryParse(cantidadCell.Value.ToString(), out cantidadActual);
 
             int? matrizIdActual = (row.Tag as ConceptoPresupuesto)?.MatrizId;
-            var claveFiltro = ObtenerCeldaPorNombreInterno(rowIndex, "Clave")?.Value?.ToString()?.Trim();
             var descripcionFiltro = ObtenerCeldaPorNombreInterno(rowIndex, "Descripcion")?.Value?.ToString()?.Trim();
             var filtroInicial = matrizIdActual.HasValue
                 ? null
@@ -1987,14 +1993,43 @@ namespace SOPRO.WinForms.Forms
             if (!selection.Accepted || selection.Matriz == null)
                 return;
 
+            var claveActual = ObtenerCeldaPorNombreInterno(rowIndex, "Clave")?.Value?.ToString();
+            var descripcionActual = ObtenerCeldaPorNombreInterno(rowIndex, "Descripcion")?.Value?.ToString();
+            var unidadActual = ObtenerCeldaPorNombreInterno(rowIndex, "Unidad")?.Value?.ToString();
+
+            var draft = BudgetConceptAssignmentService.BuildDraftFromSelectedMatrix(
+                _proyecto,
+                selection.Matriz,
+                selection.Cantidad,
+                claveActual,
+                descripcionActual,
+                unidadActual);
+
+            ApplyAssignmentDraftToGrid(rowIndex, draft);
+
             try
             {
-                AsignarMatrizAPresupuesto(rowIndex, selection.Matriz, selection.Cantidad, preserveCurrentTexts: true);
+                var concepto = BudgetConceptAssignmentService.ApplyDraft(
+                    _context,
+                    _proyecto.Id,
+                    CountConceptRowsBefore(rowIndex),
+                    row.Tag as ConceptoPresupuesto,
+                    draft);
+
+                row.Tag = concepto;
+                FinalizeBudgetConceptAssignment(rowIndex);
+                GuardarCambios();
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Error al asignar APU: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+
+            var filtroInicial = !string.IsNullOrWhiteSpace(descripcionFiltro)
+                ? descripcionFiltro
+                : null;
+
+            MostrarSelectorApuEmbebido(rowIndex, cantidadActual, null, filtroInicial);
         }
 
         private bool TryApplyBudgetConceptAssignmentByKey(int rowIndex, bool showErrors = true)
@@ -2220,74 +2255,17 @@ namespace SOPRO.WinForms.Forms
 
         private void DgvPresupuesto_EditingControlShowing(object sender, DataGridViewEditingControlShowingEventArgs e)
         {
-            if (e.Control is not TextBox tb)
-                return;
-
-            tb.KeyDown -= DgvPresupuesto_EditingControl_KeyDown;
-            tb.PreviewKeyDown -= DgvPresupuesto_EditingControl_PreviewKeyDown;
-            tb.TextChanged -= DgvPresupuesto_DescripcionTextChanged;
-            tb.LostFocus -= DgvPresupuesto_DescripcionLostFocus;
-
-            _txtDescripcionEnEdicion = null;
-
-            if (dgvPresupuesto.CurrentCell?.OwningColumn?.Tag is not ColumnaPersonalizada colDefEdit)
-                return;
-
-            if (colDefEdit.NombreInterno == "Clave")
+            if (e.Control is TextBox tb)
             {
-                OcultarAutocompleteApu(false);
-                tb.KeyDown += DgvPresupuesto_EditingControl_KeyDown;
-                tb.PreviewKeyDown += DgvPresupuesto_EditingControl_PreviewKeyDown;
-                return;
-            }
+                tb.KeyDown -= DgvPresupuesto_EditingControl_KeyDown;
 
-            OcultarAutocompleteApu(false);
-            _autocompleteRowIndex = -1;
-            _autocompleteColumnIndex = -1;
-
-            if (colDefEdit.NombreInterno == "Descripcion")
-            {
-                tb.KeyDown += DgvPresupuesto_EditingControl_KeyDown;
-                tb.PreviewKeyDown += DgvPresupuesto_EditingControl_PreviewKeyDown;
-                _txtDescripcionEnEdicion = tb;
-                _autocompleteRowIndex = dgvPresupuesto.CurrentCell.RowIndex;
-                _autocompleteColumnIndex = dgvPresupuesto.CurrentCell.ColumnIndex;
-                tb.TextChanged += DgvPresupuesto_DescripcionTextChanged;
-                tb.LostFocus += DgvPresupuesto_DescripcionLostFocus;
-                MostrarAutocompleteApuParaTexto(tb.Text);
-            }
-        }
-
-        private void DgvPresupuesto_DescripcionTextChanged(object? sender, EventArgs e)
-        {
-            if (_suppressDescripcionAutocomplete)
-                return;
-
-            if (sender is not TextBox tb)
-                return;
-
-            if (dgvPresupuesto.CurrentCell?.OwningColumn?.Tag is not ColumnaPersonalizada colActual
-                || !string.Equals(colActual.NombreInterno, "Descripcion", StringComparison.OrdinalIgnoreCase)
-                || _autocompleteRowIndex < 0
-                || ObtenerCeldaTexto(_autocompleteRowIndex, "Tipo") != "Concepto")
-            {
-                OcultarAutocompleteApu(false);
-                return;
-            }
-
-            MostrarAutocompleteApuParaTexto(tb.Text);
-        }
-
-        private void DgvPresupuesto_DescripcionLostFocus(object? sender, EventArgs e)
-        {
-            BeginInvoke(new Action(() =>
-            {
-                if (_lstApuAutocomplete != null)
+                if (dgvPresupuesto.CurrentCell?.OwningColumn?.Tag is ColumnaPersonalizada colDefEdit
+                    && colDefEdit.NombreInterno == "Clave")
                 {
-                    bool cursorSobreLista = _lstApuAutocomplete.Visible && _lstApuAutocomplete.Bounds.Contains(PointToClient(Cursor.Position));
-                    if (_lstApuAutocomplete.Focused || _lstApuAutocomplete.ContainsFocus || _mouseDownEnAutocomplete || _confirmandoSeleccionAutocomplete || cursorSobreLista)
-                        return;
+                    tb.KeyDown += DgvPresupuesto_EditingControl_KeyDown;
                 }
+            }
+        }
 
                 OcultarAutocompleteApu(false);
             }));
@@ -2342,10 +2320,97 @@ namespace SOPRO.WinForms.Forms
             }));
         }
 
+        private static bool EsColumnaUndoPresupuesto(string nombreInterno)
+        {
+            return string.Equals(nombreInterno, "Descripcion", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(nombreInterno, "Unidad", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(nombreInterno, "Cantidad", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool TryUndoBudgetEdit()
+        {
+            if (!_undoManager.CanUndo)
+                return false;
+
+            try
+            {
+                _isUndoRedo = true;
+                return _undoManager.Undo();
+            }
+            finally
+            {
+                _isUndoRedo = false;
+            }
+        }
+
+        private bool TryRedoBudgetEdit()
+        {
+            if (!_undoManager.CanRedo)
+                return false;
+
+            try
+            {
+                _isUndoRedo = true;
+                return _undoManager.Redo();
+            }
+            finally
+            {
+                _isUndoRedo = false;
+            }
+        }
+
+        private void AplicarUndoRedoPresupuestoCelda(int rowIndex, int columnIndex, string value)
+        {
+            if (rowIndex < 0 || rowIndex >= dgvPresupuesto.Rows.Count)
+                return;
+            if (columnIndex < 0 || columnIndex >= dgvPresupuesto.Columns.Count)
+                return;
+
+            var cell = dgvPresupuesto.Rows[rowIndex].Cells[columnIndex];
+            dgvPresupuesto.CurrentCell = cell;
+            cell.Value = value;
+
+            if (dgvPresupuesto.Columns[columnIndex].Tag is ColumnaPersonalizada colDef
+                && string.Equals(colDef.NombreInterno, "Cantidad", StringComparison.OrdinalIgnoreCase))
+            {
+                DgvPresupuesto_CellValueChanged(dgvPresupuesto, new DataGridViewCellEventArgs(columnIndex, rowIndex));
+            }
+            else
+            {
+                GuardarCambios();
+                ActualizarEstadisticas();
+                dgvPresupuesto.Refresh();
+            }
+        }
+
         private void DgvPresupuesto_CellEndEdit(object sender, DataGridViewCellEventArgs e)
         {
             if (e.RowIndex < 0 || e.ColumnIndex < 0)
                 return;
+
+            var valorNuevoUndo = dgvPresupuesto.Rows[e.RowIndex].Cells[e.ColumnIndex].Value?.ToString() ?? string.Empty;
+            if (!_isUndoRedo
+                && e.RowIndex == _undoBudgetRowIndex
+                && e.ColumnIndex == _undoBudgetColumnIndex
+                && EsColumnaUndoPresupuesto(_undoBudgetColumnName)
+                && !string.Equals(_undoBudgetOldValue, valorNuevoUndo, StringComparison.Ordinal))
+            {
+                int rowIndex = e.RowIndex;
+                int columnIndex = e.ColumnIndex;
+                string oldValue = _undoBudgetOldValue;
+                string newValue = valorNuevoUndo;
+                string descripcion = $"Editar {_undoBudgetColumnName} en presupuesto";
+
+                _undoManager.Push(new DelegateUndoableAction(
+                    descripcion,
+                    () => AplicarUndoRedoPresupuestoCelda(rowIndex, columnIndex, oldValue),
+                    () => AplicarUndoRedoPresupuestoCelda(rowIndex, columnIndex, newValue)));
+            }
+
+            _undoBudgetRowIndex = -1;
+            _undoBudgetColumnIndex = -1;
+            _undoBudgetColumnName = string.Empty;
+            _undoBudgetOldValue = string.Empty;
 
             // Restaurar color de fondo al terminar edición
             dgvPresupuesto.Rows[e.RowIndex].Cells[e.ColumnIndex].Style.BackColor = Color.White;
@@ -2364,8 +2429,6 @@ namespace SOPRO.WinForms.Forms
 
         private void DgvPresupuesto_CellBeginEdit(object sender, DataGridViewCellCancelEventArgs e)
         {
-            _autocompleteRowIndex = e.RowIndex;
-            _autocompleteColumnIndex = e.ColumnIndex;
             if (e.RowIndex >= 0 && e.ColumnIndex >= 0)
             {
                 var columnaEditada = dgvPresupuesto.Columns[e.ColumnIndex];
@@ -3142,10 +3205,13 @@ namespace SOPRO.WinForms.Forms
 
             if (e.Control && e.KeyCode == Keys.V)
             {
-                // Si ya estamos editando texto dentro de la celda, dejar que el TextBox
-                // de edición maneje el pegado normal para no sobrescribir el contenido
-                // existente ni ocultar el cambio hasta terminar la edición.
-                if (dgvPresupuesto.IsCurrentCellInEditMode && dgvPresupuesto.EditingControl is TextBox)
+                // Si el foco real está en el panel embebido o en un TextBox de edición,
+                // dejar que el control activo procese el pegado nativo.
+                if ((_panelMatricesEmbebido != null
+                     && _panelMatricesEmbebido.Visible
+                     && _panelMatricesEmbebido.ContainsFocus
+                     && _panelMatricesEmbebido.TieneFocoEnEntradaTexto())
+                    || (dgvPresupuesto.IsCurrentCellInEditMode && dgvPresupuesto.EditingControl is TextBox))
                 {
                     return;
                 }
@@ -3689,11 +3755,15 @@ namespace SOPRO.WinForms.Forms
                 // Silencioso - no bloquear el cierre
             }
 
+            SaveWorkspacePanelState();
             base.OnFormClosing(e);
         }
 
         private void btnToggleMatrices_Click(object sender, EventArgs e)
         {
+            if (!splitContainer.Panel2Collapsed)
+                SaveWorkspacePanelState();
+
             splitContainer.Panel2Collapsed = !splitContainer.Panel2Collapsed;
 
             if (splitContainer.Panel2Collapsed)
@@ -3703,8 +3773,9 @@ namespace SOPRO.WinForms.Forms
             else
             {
                 btnToggleMatrices.Text = "📐 Matrices ▲";
-                // Ajustar altura: 60% arriba, 40% abajo
-                splitContainer.SplitterDistance = (int)(splitContainer.Height * 0.6);
+                var targetHeight = _workspacePanelHeight > 0 ? _workspacePanelHeight : Math.Max(splitContainer.Panel2MinSize, (int)(splitContainer.Height * 0.34));
+                splitContainer.SplitterDistance = Math.Max(splitContainer.Panel1MinSize, splitContainer.Height - targetHeight);
+                ProgramarAsegurarFilaActualVisibleEnPresupuesto();
             }
         }
 

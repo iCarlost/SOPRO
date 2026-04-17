@@ -11,4 +11,9 @@
     <ProjectReference Include="..\SOPRO.Data\SOPRO.Data.csproj" />
   </ItemGroup>
 
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.102.2" />
+  </ItemGroup>
+
 </Project>

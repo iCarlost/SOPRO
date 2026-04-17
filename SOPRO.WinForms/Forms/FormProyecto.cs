@@ -63,7 +63,7 @@ namespace SOPRO.WinForms.Forms
 
         private void FormProyecto_Load(object sender, EventArgs e)
         {
-            lblProyecto.Text = $"📁 {_proyecto.Nombre} | {_proyecto.Ubicacion}";
+            this.Text = "SOPRO - Sistema de Presupuestos de Obra - " + $"📁 {_proyecto.Nombre} | {_proyecto.Ubicacion}";
             InicializarRibbon();
             DesactivarRibbon();
             btnDepurarRibbon.Enabled = true;

@@ -59,6 +59,133 @@ namespace SOPRO.WinForms.Forms
         // ── Propiedades de resultado ─────────────────────────────────────────
         public Matriz MatrizSeleccionada { get; private set; }
         public decimal Cantidad { get; private set; }
+        public bool EmbeddedMode { get; private set; }
+        public bool WorkspaceChromeHidden { get; private set; }
+        public event EventHandler? EmbeddedAccepted;
+        public event EventHandler? EmbeddedCancelled;
+        public event EventHandler? EmbeddedRequestNewMatrix;
+        public event EventHandler? EmbeddedRequestEditMatrix;
+
+        private IWin32Window GetDialogOwner() => FindForm() ?? this;
+
+        public void ConfigureForEmbeddedHost()
+        {
+            EmbeddedMode = true;
+            TopLevel = false;
+            FormBorderStyle = FormBorderStyle.None;
+            ShowInTaskbar = false;
+            ControlBox = false;
+            MinimizeBox = false;
+            MaximizeBox = false;
+            Dock = DockStyle.Fill;
+            Resize -= FormSeleccionarAPU_EmbeddedResize;
+            Resize += FormSeleccionarAPU_EmbeddedResize;
+            ApplyEmbeddedHostLayout();
+        }
+
+        private void FormSeleccionarAPU_EmbeddedResize(object? sender, EventArgs e) => ApplyEmbeddedHostLayout();
+
+        public void ConfigureForWorkspaceContentHost()
+        {
+            ConfigureForEmbeddedHost();
+            WorkspaceChromeHidden = true;
+            ApplyEmbeddedHostLayout();
+        }
+
+        public void TriggerAcceptSelection() => btnAceptar_Click(this, EventArgs.Empty);
+        public void TriggerCancelSelection() => btnCancelar_Click(this, EventArgs.Empty);
+        public void TriggerNuevaMatriz() => btnNuevaMatriz_Click(this, EventArgs.Empty);
+        public void TriggerEditarMatriz() => btnEditarMatriz_Click(this, EventArgs.Empty);
+        public TipoMatriz WorkspaceSelectedTipo => GetSelectedTipoFiltro() ?? TipoMatriz.APU;
+        public int? WorkspaceSelectedMatrixId => dgvMatrices.SelectedRows.Count == 0 ? null : Convert.ToInt32(dgvMatrices.SelectedRows[0].Cells["colId"].Value);
+
+        private void ApplyEmbeddedHostLayout()
+        {
+            if (!EmbeddedMode || !IsHandleCreated) return;
+
+            BackColor = Color.White;
+            panelTop.Visible = false;
+            statusStrip.Visible = false;
+            btnCancelar.Text = "Volver";
+
+            lblBuscar.Location = new Point(12, 14);
+            lblBuscar.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+
+            int rightWidth = _includeAuxiliaries ? 360 : 250;
+            txtBuscar.Location = new Point(95, 11);
+            txtBuscar.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            txtBuscar.Width = Math.Max(240, ClientSize.Width - rightWidth - 110);
+
+            if (_includeAuxiliaries)
+            {
+                _cboTipo.Visible = true;
+                _cboTipo.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+                _cboTipo.Location = new Point(Math.Max(360, ClientSize.Width - 340), 11);
+                _cboTipo.Width = 92;
+                _cboProyecto.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+                _cboProyecto.Location = new Point(Math.Max(460, ClientSize.Width - 238), 11);
+                _cboProyecto.Width = 226;
+            }
+            else
+            {
+                _cboProyecto.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+                _cboProyecto.Location = new Point(Math.Max(430, ClientSize.Width - 238), 11);
+                _cboProyecto.Width = 226;
+            }
+
+            dgvMatrices.Location = new Point(12, 46);
+            dgvMatrices.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            dgvMatrices.Size = new Size(Math.Max(400, ClientSize.Width - 24), Math.Max(180, ClientSize.Height - 178));
+            dgvMatrices.BorderStyle = BorderStyle.None;
+            dgvMatrices.BackgroundColor = Color.White;
+            dgvMatrices.EnableHeadersVisualStyles = false;
+            dgvMatrices.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(55, 55, 85);
+            dgvMatrices.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
+            dgvMatrices.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
+            dgvMatrices.DefaultCellStyle.Font = new Font("Segoe UI", 8.5F, FontStyle.Regular);
+            dgvMatrices.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(248, 248, 255);
+            dgvMatrices.GridColor = Color.FromArgb(224, 224, 224);
+
+            panelInfo.Location = new Point(12, ClientSize.Height - 124);
+            panelInfo.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+            panelInfo.Size = new Size(Math.Max(400, ClientSize.Width - 24), 72);
+            panelInfo.BackColor = Color.FromArgb(250, 250, 250);
+            panelInfo.BorderStyle = BorderStyle.None;
+
+            btnNuevaMatriz.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+            btnNuevaMatriz.Location = new Point(12, ClientSize.Height - 46);
+            btnNuevaMatriz.Size = new Size(150, 34);
+            btnEditarMatriz.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+            btnEditarMatriz.Location = new Point(170, ClientSize.Height - 46);
+            btnEditarMatriz.Size = new Size(150, 34);
+            btnCancelar.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
+            btnCancelar.Location = new Point(ClientSize.Width - 230, ClientSize.Height - 46);
+            btnCancelar.Size = new Size(100, 34);
+            btnAceptar.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
+            btnAceptar.Location = new Point(ClientSize.Width - 120, ClientSize.Height - 46);
+            btnAceptar.Size = new Size(108, 34);
+
+            if (WorkspaceChromeHidden)
+            {
+                btnNuevaMatriz.Visible = false;
+                btnEditarMatriz.Visible = false;
+                btnCancelar.Visible = false;
+                btnAceptar.Visible = false;
+                dgvMatrices.Size = new Size(Math.Max(400, ClientSize.Width - 24), Math.Max(180, ClientSize.Height - 136));
+                panelInfo.Location = new Point(12, ClientSize.Height - 86);
+                panelInfo.Size = new Size(Math.Max(400, ClientSize.Width - 24), 62);
+            }
+            else
+            {
+                btnNuevaMatriz.Visible = true;
+                btnEditarMatriz.Visible = true;
+                btnCancelar.Visible = true;
+                btnAceptar.Visible = true;
+            }
+
+            lblTitulo.Text = "Seleccionar Matriz";
+        }
+
 
         // ════════════════════════════════════════════════════════════════════
         // Constructor
@@ -93,6 +220,10 @@ namespace SOPRO.WinForms.Forms
             InitializeFavoritosContextMenu();
             RestoreSelectorContext();
             PopulateProyectoCombo();
+            KeyPreview = true;
+            Shown += FormSeleccionarAPU_Shown;
+            txtBuscar.KeyDown += txtBuscar_KeyDown;
+            dgvMatrices.KeyPress += dgvMatrices_KeyPress;
 
             if (cantidadInicial < nudCantidad.Minimum) cantidadInicial = nudCantidad.Minimum;
             if (cantidadInicial > nudCantidad.Maximum) cantidadInicial = nudCantidad.Maximum;
@@ -282,7 +413,7 @@ namespace SOPRO.WinForms.Forms
                     CheckFileExists = true,
                     Multiselect = false
                 };
-                if (dlg.ShowDialog(this) == DialogResult.OK)
+                if (dlg.ShowDialog(GetDialogOwner()) == DialogResult.OK)
                 {
                     _searchScopeTag = SelectorUiDefaults.NormalizePath(dlg.FileName);
                     ApplyFilterToGrid();
@@ -826,6 +957,120 @@ namespace SOPRO.WinForms.Forms
                 dgvMatrices.FirstDisplayedScrollingRowIndex = targetRow.Index;
         }
 
+
+        private void FormSeleccionarAPU_Shown(object? sender, EventArgs e)
+        {
+            BeginInvoke(new Action(FocusSearchBox));
+        }
+
+        private void FocusSearchBox()
+        {
+            if (!txtBuscar.CanFocus)
+                return;
+
+            txtBuscar.Focus();
+            txtBuscar.SelectionStart = txtBuscar.TextLength;
+            txtBuscar.SelectionLength = 0;
+        }
+
+        private void txtBuscar_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Down || e.KeyCode == Keys.Up)
+            {
+                if (dgvMatrices.Rows.Count == 0)
+                    return;
+
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                MoveGridSelection(e.KeyCode == Keys.Down ? 1 : -1);
+                dgvMatrices.Focus();
+                return;
+            }
+
+            if (e.KeyCode == Keys.Enter)
+            {
+                if (dgvMatrices.SelectedRows.Count == 0)
+                    return;
+
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                btnAceptar_Click(sender ?? this, EventArgs.Empty);
+                return;
+            }
+
+            if (e.KeyCode == Keys.Escape)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                btnCancelar_Click(sender ?? this, EventArgs.Empty);
+            }
+        }
+
+        private void dgvMatrices_KeyPress(object? sender, KeyPressEventArgs e)
+        {
+            if (char.IsControl(e.KeyChar) && e.KeyChar != '\b')
+                return;
+
+            e.Handled = true;
+            FocusSearchBox();
+
+            if (e.KeyChar == '\b')
+            {
+                if (txtBuscar.SelectionLength > 0)
+                {
+                    var start = txtBuscar.SelectionStart;
+                    txtBuscar.Text = txtBuscar.Text.Remove(start, txtBuscar.SelectionLength);
+                    txtBuscar.SelectionStart = start;
+                }
+                else if (txtBuscar.SelectionStart > 0)
+                {
+                    var start = txtBuscar.SelectionStart;
+                    txtBuscar.Text = txtBuscar.Text.Remove(start - 1, 1);
+                    txtBuscar.SelectionStart = start - 1;
+                }
+
+                return;
+            }
+
+            var selectionStart = txtBuscar.SelectionStart;
+            var selectionLength = txtBuscar.SelectionLength;
+            if (selectionLength > 0)
+            {
+                txtBuscar.Text = txtBuscar.Text.Remove(selectionStart, selectionLength)
+                    .Insert(selectionStart, e.KeyChar.ToString());
+                txtBuscar.SelectionStart = selectionStart + 1;
+            }
+            else
+            {
+                txtBuscar.Text = txtBuscar.Text.Insert(selectionStart, e.KeyChar.ToString());
+                txtBuscar.SelectionStart = selectionStart + 1;
+            }
+        }
+
+        private void MoveGridSelection(int delta)
+        {
+            if (dgvMatrices.Rows.Count == 0)
+                return;
+
+            var currentRow = dgvMatrices.CurrentRow;
+            var currentIndex = currentRow?.Index ?? -1;
+            var nextIndex = currentIndex < 0
+                ? 0
+                : Math.Max(0, Math.Min(dgvMatrices.Rows.Count - 1, currentIndex + delta));
+
+            var targetRow = dgvMatrices.Rows[nextIndex];
+            dgvMatrices.ClearSelection();
+            targetRow.Selected = true;
+
+            var targetCell = targetRow.Cells.Cast<DataGridViewCell>()
+                .FirstOrDefault(c => c.Visible && c.OwningColumn.Visible)
+                ?? targetRow.Cells[0];
+            dgvMatrices.CurrentCell = targetCell;
+
+            if (targetRow.Index >= 0)
+                dgvMatrices.FirstDisplayedScrollingRowIndex = targetRow.Index;
+        }
+
         private void dgvMatrices_SelectionChanged(object sender, EventArgs e)
         {
             if (dgvMatrices.SelectedRows.Count == 0) { btnEditarMatriz.Enabled = false; return; }
@@ -877,6 +1122,14 @@ namespace SOPRO.WinForms.Forms
                 e.Handled = true;
                 e.SuppressKeyPress = true;
                 btnAceptar_Click(sender, EventArgs.Empty);
+                return;
+            }
+
+            if (e.KeyCode == Keys.Escape)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                btnCancelar_Click(sender, EventArgs.Empty);
             }
         }
 
@@ -908,8 +1161,15 @@ namespace SOPRO.WinForms.Forms
                 MatrizSeleccionada = _context.Matrices.Find(localMatrix.Id);
                 Cantidad           = nudCantidad.Value;
                 _projectUsageService.RegisterMatrixSelection(_context.DatabasePath, localMatrix.Id);
-                DialogResult       = DialogResult.OK;
-                Close();
+                if (EmbeddedMode)
+                {
+                    EmbeddedAccepted?.Invoke(this, EventArgs.Empty);
+                }
+                else
+                {
+                    DialogResult = DialogResult.OK;
+                    Close();
+                }
                 return;
             }
 
@@ -931,7 +1191,7 @@ namespace SOPRO.WinForms.Forms
             var preview = _externalMatrixImportService.BuildPreview(
                 _context, _proyectoId, externalMatrix.ProjectPath, externalMatrix.MatrixId);
             using var previewDialog = new FormPreviewImportacionMatrices(preview);
-            if (previewDialog.ShowDialog(this) != DialogResult.OK || previewDialog.SelectedPolicy == null)
+            if (previewDialog.ShowDialog(GetDialogOwner()) != DialogResult.OK || previewDialog.SelectedPolicy == null)
                 return;
 
             try
@@ -954,8 +1214,15 @@ namespace SOPRO.WinForms.Forms
                     $"Herramientas nuevas: {result.ImportedHerramientas}",
                     "Importación completada", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-                DialogResult = DialogResult.OK;
-                Close();
+                if (EmbeddedMode)
+                {
+                    EmbeddedAccepted?.Invoke(this, EventArgs.Empty);
+                }
+                else
+                {
+                    DialogResult = DialogResult.OK;
+                    Close();
+                }
             }
             catch (Exception ex)
             {
@@ -966,14 +1233,26 @@ namespace SOPRO.WinForms.Forms
 
         private void btnCancelar_Click(object sender, EventArgs e)
         {
+            if (EmbeddedMode)
+            {
+                EmbeddedCancelled?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
             DialogResult = DialogResult.Cancel;
             Close();
         }
 
         private void btnNuevaMatriz_Click(object sender, EventArgs e)
         {
+            if (EmbeddedMode && WorkspaceChromeHidden)
+            {
+                EmbeddedRequestNewMatrix?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
             using var formAPU = new FormEditarMatriz(_context, _proyectoId);
-            if (formAPU.ShowDialog(this) != DialogResult.OK) return;
+            if (formAPU.ShowDialog(GetDialogOwner()) != DialogResult.OK) return;
 
             CargarMatricesProyectoActual();
 
@@ -994,13 +1273,20 @@ namespace SOPRO.WinForms.Forms
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+
+            if (EmbeddedMode && WorkspaceChromeHidden)
+            {
+                EmbeddedRequestEditMatrix?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
             var row      = dgvMatrices.SelectedRows[0];
             var matrizId = Convert.ToInt32(row.Cells["colId"].Value);
             var matriz   = _context.Matrices.Find(matrizId);
             if (matriz == null) return;
 
             using var form = new FormEditarMatriz(_context, _proyectoId, matriz);
-            if (form.ShowDialog(this) != DialogResult.OK) return;
+            if (form.ShowDialog(GetDialogOwner()) != DialogResult.OK) return;
 
             CargarMatricesProyectoActual();
             FocusMatrixRowById(matrizId, $"Matriz '{matriz.Clave}' actualizada.");

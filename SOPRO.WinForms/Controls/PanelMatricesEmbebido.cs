@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using SOPRO.Application.DTOs.Matrices;
+using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.WinForms.Helpers;
@@ -6,10 +8,11 @@ using System;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using SOPRO.WinForms.Undo;
 
 namespace SOPRO.WinForms.Controls
 {
-    public class PanelMatricesEmbebido : UserControl
+    public partial class PanelMatricesEmbebido : UserControl
     {
         private readonly SOPROContext _context;
         private readonly int _proyectoId;
@@ -19,8 +22,10 @@ namespace SOPRO.WinForms.Controls
         private int? _ultimoConceptoId = null;
         private int? _ultimaMatrizId = null;
         private Matriz _matrizActual = null;
+        private readonly System.Collections.Generic.List<ComponenteMatriz> _componentesTemp = new System.Collections.Generic.List<ComponenteMatriz>();
 
         public event EventHandler<int> MatrizActualizada;
+        public event EventHandler SolicitudCerrarWorkspace;
 
         private Panel        _panelHeader;
         private Label        _lblTituloMatriz;
@@ -36,6 +41,38 @@ namespace SOPRO.WinForms.Controls
         private DataGridView _dgvComponentes;
         private Panel        _panelTotales;
         private Label        _lblMat, _lblMO, _lblMaq, _lblBas, _lblDir;
+        private Panel        _panelDatos;
+        private TextBox      _txtClaveMatriz;
+        private TextBox      _txtDescripcionMatriz;
+        private TextBox      _txtUnidadMatriz;
+        private RadioButton  _rbTipoApu;
+        private RadioButton  _rbTipoBasico;
+        private RadioButton  _rbTipoCuadrilla;
+        private Button       _btnGuardarMatriz;
+        private Button       _btnCancelarMatriz;
+        private bool         _modoEdicionCabecera;
+        private bool         _modoCreacionMatriz;
+        private int?         _matrizEditandoId;
+        private Action<Matriz>? _onMatrixHeaderSaved;
+        private Action?         _onMatrixHeaderCancelled;
+        private readonly Color  _headerColorNormal = Color.FromArgb(40, 40, 65);
+        private readonly Color  _headerColorSubedicion = Color.FromArgb(86, 43, 129);
+        private ContextMenuStrip _menuContextualComponentes;
+        private ToolStripMenuItem _mnuEditarMatrizComponente;
+        private int _filaContextualComponentes = -1;
+        private bool _modoSubedicionComponente;
+        private int? _matrizPadreIdSubedicion;
+        private int? _filaPadreSubedicion;
+        private readonly UndoManager _undoManager = new();
+        private bool _isUndoRedo;
+        private int _undoPanelRowIndex = -1;
+        private int _undoPanelColumnIndex = -1;
+        private string _undoPanelColumnName = string.Empty;
+        private string _undoPanelOldValue = string.Empty;
+        private string _cabeceraBaseClave = string.Empty;
+        private string _cabeceraBaseDescripcion = string.Empty;
+        private string _cabeceraBaseUnidad = string.Empty;
+        private TipoMatriz _cabeceraBaseTipo = TipoMatriz.APU;
 
         public PanelMatricesEmbebido(SOPROContext context, int proyectoId)
         {
@@ -45,9 +82,130 @@ namespace SOPRO.WinForms.Controls
             // Suscribirse a cambios de configuración de decimales
             FormatoHelper.ConfiguracionCambiada += OnConfiguracionCambiada;
             
-            InicializarComponentes();
+            InitializeComponent();
+            ConfigurarMenuContextualComponentes();
             MostrarSinSeleccion();
         }
+
+        public bool TieneFocoEnEntradaTexto()
+        {
+            return (_txtClaveMatriz?.Focused ?? false)
+                || (_txtDescripcionMatriz?.Focused ?? false)
+                || (_txtUnidadMatriz?.Focused ?? false)
+                || ((_dgvComponentes?.IsCurrentCellInEditMode ?? false) && _dgvComponentes.EditingControl is TextBox);
+        }
+
+
+private bool UsaComponentesTemporales() => _modoCreacionMatriz;
+
+private ComponenteMatriz ObtenerComponentePorFilaTrabajo(int rowIndex)
+{
+    if (UsaComponentesTemporales())
+    {
+        MatrixComponentCollectionService.TryGetAt(_componentesTemp, rowIndex, out var tempComp);
+        return tempComp;
+    }
+
+    return ObtenerComponentePorFila(rowIndex);
+}
+
+private MatrixEditDto BuildCurrentMatrixEditDto()
+{
+    return MatrixEditorService.BuildEditDto(
+        _proyectoId,
+        _txtClaveMatriz.Text,
+        _txtDescripcionMatriz.Text,
+        _txtUnidadMatriz.Text,
+        _rbTipoCuadrilla.Checked,
+        _rbTipoApu.Checked,
+        _lblDir != null ? 0m : 0m,
+        _componentesTemp);
+}
+
+private void PintarComponentesEnGrid(System.Collections.Generic.IEnumerable<ComponenteMatriz> componentes)
+{
+    int? currentRow = null;
+    int? currentCol = null;
+    int firstDisplayed = -1;
+    try
+    {
+        if (_dgvComponentes.CurrentCell != null)
+        {
+            currentRow = _dgvComponentes.CurrentCell.RowIndex;
+            currentCol = _dgvComponentes.CurrentCell.ColumnIndex;
+        }
+        if (_dgvComponentes.Rows.Count > 0)
+            firstDisplayed = _dgvComponentes.FirstDisplayedScrollingRowIndex;
+    }
+    catch { }
+
+    var lista = componentes?.ToList() ?? new System.Collections.Generic.List<ComponenteMatriz>();
+    var totales = MatrixComponentCalculationService.Recalculate(lista, FormatoHelper.DecimalesImporte);
+    var rows = MatrixComponentPresentationService.BuildRows(lista, totales.BaseManoObra);
+
+    _dgvComponentes.Rows.Clear();
+    for (int i = 0; i < lista.Count && i < rows.Count; i++)
+    {
+        var comp = lista[i];
+        var row = rows[i];
+        _dgvComponentes.Rows.Add(
+            row.Tipo,
+            row.Clave,
+            row.Descripcion,
+            row.Unidad,
+            row.Cantidad.ToStringCantidad(),
+            row.PrecioUnitario.ToStringImporte(),
+            row.Importe.ToStringImporte(),
+            comp.Id,
+            "🗑");
+    }
+
+    _lblMat.Text = $"Mat: {totales.TotalMaterial.ToStringImporte()}";
+    _lblMO.Text = $"M.O.: {totales.TotalManoObraResumen.ToStringImporte()}";
+    _lblMaq.Text = $"Maq.: {totales.TotalMaquinaria.ToStringImporte()}";
+    _lblBas.Text = $"Bas.: {totales.TotalBasicos.ToStringImporte()}";
+    _lblDir.Text = $"Costo Directo: {totales.CostoDirectoTotal.ToStringImporte()}";
+
+    try
+    {
+        if (_dgvComponentes.Rows.Count > 0)
+        {
+            if (firstDisplayed >= 0 && firstDisplayed < _dgvComponentes.Rows.Count)
+                _dgvComponentes.FirstDisplayedScrollingRowIndex = firstDisplayed;
+
+            if (currentRow.HasValue && currentCol.HasValue &&
+                currentRow.Value >= 0 && currentRow.Value < _dgvComponentes.Rows.Count &&
+                currentCol.Value >= 0 && currentCol.Value < _dgvComponentes.Columns.Count)
+            {
+                _dgvComponentes.CurrentCell = _dgvComponentes.Rows[currentRow.Value].Cells[currentCol.Value];
+            }
+        }
+    }
+    catch { }
+}
+
+private void RefrescarVistaTemporal()
+{
+    var totals = MatrixComponentCalculationService.Recalculate(_componentesTemp, FormatoHelper.DecimalesImporte);
+    PintarComponentesEnGrid(_componentesTemp);
+    _lblDir.Text = $"Costo Directo: {totals.CostoDirectoTotal.ToStringImporte()}";
+}
+
+private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
+{
+    using var dlg = new Forms.FormSeleccionarInsumo(_context, _proyectoId, tipoComponente);
+    if (dlg.ShowDialog() != DialogResult.OK) return;
+
+    var selectionResult = MatrixComponentSelectionFlowService.AddSelectedComponents(_componentesTemp, dlg.ComponentesSeleccionados);
+    if (!selectionResult.HasComponents) return;
+
+    foreach (var componente in _componentesTemp)
+    {
+        componente.Notas ??= string.Empty;
+    }
+
+    RefrescarVistaTemporal();
+}
 
         public void ConectarPresupuesto(DataGridView dgv)
         {
@@ -60,6 +218,193 @@ namespace SOPRO.WinForms.Controls
                     MostrarSinSeleccion();
             };
         }
+
+        private void CapturarEstadoBaseCabeceraDesdeUI()
+        {
+            _cabeceraBaseClave = (_txtClaveMatriz.Text ?? string.Empty).Trim();
+            _cabeceraBaseDescripcion = (_txtDescripcionMatriz.Text ?? string.Empty).Trim();
+            _cabeceraBaseUnidad = (_txtUnidadMatriz.Text ?? string.Empty).Trim();
+            _cabeceraBaseTipo = GetTipoCabeceraSeleccionado();
+        }
+
+        private void CapturarEstadoBaseCabeceraDesdeMatriz(Matriz matriz)
+        {
+            if (matriz == null)
+                return;
+
+            _cabeceraBaseClave = (matriz.Clave ?? string.Empty).Trim();
+            _cabeceraBaseDescripcion = (matriz.Descripcion ?? string.Empty).Trim();
+            _cabeceraBaseUnidad = (matriz.Unidad ?? string.Empty).Trim();
+            _cabeceraBaseTipo = matriz.Tipo;
+        }
+
+        private bool TieneCambiosPendientesCabecera()
+        {
+            if (!_modoEdicionCabecera || _panelDatos == null || !_panelDatos.Visible)
+                return false;
+
+            if (_modoCreacionMatriz)
+            {
+                return !string.IsNullOrWhiteSpace(_txtClaveMatriz.Text)
+                    || !string.IsNullOrWhiteSpace(_txtDescripcionMatriz.Text)
+                    || !string.IsNullOrWhiteSpace(_txtUnidadMatriz.Text)
+                    || _componentesTemp.Count > 0;
+            }
+
+            if (!_matrizEditandoId.HasValue)
+                return false;
+
+            return !string.Equals((_txtClaveMatriz.Text ?? string.Empty).Trim(), _cabeceraBaseClave, StringComparison.Ordinal)
+                || !string.Equals((_txtDescripcionMatriz.Text ?? string.Empty).Trim(), _cabeceraBaseDescripcion, StringComparison.Ordinal)
+                || !string.Equals((_txtUnidadMatriz.Text ?? string.Empty).Trim(), _cabeceraBaseUnidad, StringComparison.Ordinal)
+                || GetTipoCabeceraSeleccionado() != _cabeceraBaseTipo;
+        }
+
+        private bool GuardarCabeceraEdicionActual()
+        {
+            if (_modoCreacionMatriz || !_matrizEditandoId.HasValue)
+                return false;
+
+            string clave = (_txtClaveMatriz.Text ?? string.Empty).Trim();
+            string descripcion = (_txtDescripcionMatriz.Text ?? string.Empty).Trim();
+            string unidad = (_txtUnidadMatriz.Text ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(clave) || string.IsNullOrWhiteSpace(descripcion) || string.IsNullOrWhiteSpace(unidad))
+            {
+                MessageBox.Show("Clave, Descripción y Unidad son obligatorios.", "Matriz", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return false;
+            }
+
+            var matrizEdit = _context.Matrices
+                .Include(m => m.Componentes).ThenInclude(c => c.Material)
+                .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
+                .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
+                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
+                .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
+                .FirstOrDefault(m => m.Id == _matrizEditandoId.Value);
+            if (matrizEdit == null)
+                return false;
+
+            bool claveDuplicada = _context.Matrices.Any(m => m.ProyectoId == _proyectoId
+                && m.Id != matrizEdit.Id
+                && m.Clave == clave);
+            if (claveDuplicada)
+            {
+                MessageBox.Show(MatrixSaveFlowService.GetDuplicateKeyMessage(), "Clave Duplicada", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                _txtClaveMatriz.Focus();
+                return false;
+            }
+
+            matrizEdit.Clave = clave;
+            matrizEdit.Descripcion = descripcion;
+            matrizEdit.Unidad = unidad;
+            matrizEdit.Tipo = GetTipoCabeceraSeleccionado();
+            matrizEdit.FechaModificacion = DateTime.Now;
+            _context.SaveChanges();
+
+            _matrizActual = matrizEdit;
+            CapturarEstadoBaseCabeceraDesdeUI();
+            return true;
+        }
+
+        private void LimpiarEstadoEdicionParaCambioExterno()
+        {
+            _modoSubedicionComponente = false;
+            _matrizPadreIdSubedicion = null;
+            _filaPadreSubedicion = null;
+            _modoCreacionMatriz = false;
+            _modoEdicionCabecera = false;
+            _matrizEditandoId = null;
+            _onMatrixHeaderSaved = null;
+            _onMatrixHeaderCancelled = null;
+            _cabeceraBaseClave = string.Empty;
+            _cabeceraBaseDescripcion = string.Empty;
+            _cabeceraBaseUnidad = string.Empty;
+            _cabeceraBaseTipo = TipoMatriz.APU;
+            MostrarDatosCabecera(false);
+            _panelHeader.BackColor = _headerColorNormal;
+            _filaContextualComponentes = -1;
+        }
+
+        private void RestaurarFilaActualEnPresupuesto()
+        {
+            if (_dgvPresupuesto == null || _filaActual < 0 || _filaActual >= _dgvPresupuesto.Rows.Count)
+                return;
+
+            try
+            {
+                var row = _dgvPresupuesto.Rows[_filaActual];
+                if (row.Cells.Count > 0)
+                {
+                    _dgvPresupuesto.CurrentCell = row.Cells[Math.Max(0, _dgvPresupuesto.CurrentCell?.ColumnIndex ?? 0) < row.Cells.Count ? Math.Max(0, _dgvPresupuesto.CurrentCell?.ColumnIndex ?? 0) : 0];
+                    _dgvPresupuesto.ClearSelection();
+                    row.Selected = true;
+                    _dgvPresupuesto.Focus();
+                }
+            }
+            catch { }
+        }
+
+        private bool ConfirmarCambioDeContextoExterno(int filaDestino)
+        {
+            bool cambiaFila = filaDestino != _filaActual;
+            bool hayPendientes = TieneCambiosPendientesCabecera();
+            bool estaEnSubedicion = _modoSubedicionComponente;
+
+            if (!cambiaFila)
+                return true;
+
+            if (!estaEnSubedicion && !hayPendientes)
+                return true;
+
+            if (_modoCreacionMatriz)
+            {
+                var rCrear = MessageBox.Show(
+                    "Hay una matriz nueva sin guardar en el panel. " + "\n" +
+                    "Sí: descartar y cambiar de concepto. " + "\n" +
+                    "No: permanecer en la matriz actual.",
+                    "Cambiar de concepto",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (rCrear == DialogResult.Yes)
+                {
+                    LimpiarEstadoEdicionParaCambioExterno();
+                    return true;
+                }
+
+                RestaurarFilaActualEnPresupuesto();
+                return false;
+            }
+
+            var mensaje = estaEnSubedicion
+                ? "Estás editando una matriz componente dentro del panel."
+                : "Hay cambios pendientes en la matriz mostrada en el panel.";
+
+            var r = MessageBox.Show(
+                mensaje + "\n" +
+                "\n" +
+                "Sí: guardar cabecera y cambiar de concepto. " + "\n" +
+                "No: descartar cambios de cabecera y cambiar de concepto. " + "\n" +
+                "Cancelar: permanecer en el concepto actual.",
+                "Cambiar de concepto",
+                MessageBoxButtons.YesNoCancel,
+                MessageBoxIcon.Warning);
+
+            if (r == DialogResult.Cancel)
+            {
+                RestaurarFilaActualEnPresupuesto();
+                return false;
+            }
+
+            if (r == DialogResult.Yes && hayPendientes && !GuardarCabeceraEdicionActual())
+            {
+                RestaurarFilaActualEnPresupuesto();
+                return false;
+            }
+
+            LimpiarEstadoEdicionParaCambioExterno();
+            return true;
+        }
         
         /// <summary>
         /// Fuerza la recarga del panel para la fila indicada.
@@ -67,13 +412,78 @@ namespace SOPRO.WinForms.Controls
         /// </summary>
         public void NotificarFilaCambiada(int fila)
         {
-            CargarMatrizDeFila(fila, true);
+            try
+            {
+                // Si el panel está creando/editando una matriz o subeditando un componente,
+                // ignorar recargas externas del presupuesto para no pisar el estado visual
+                // ni ocultar la cabecera de captura detrás de formularios modales.
+                if (_modoCreacionMatriz || _modoEdicionCabecera || _modoSubedicionComponente)
+                    return;
+
+                if (_dgvPresupuesto == null || fila < 0 || fila >= _dgvPresupuesto.Rows.Count)
+                    return;
+
+                CargarMatrizDeFila(fila, true);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"PanelMatricesEmbebido.NotificarFilaCambiada: {ex.Message}");
+            }
+        }
+
+        private void CargarMatrizDeFila(int fila)
+        {
+            _menuContextualComponentes = new ContextMenuStrip();
+            _mnuEditarMatrizComponente = new ToolStripMenuItem("Editar matriz componente");
+            _mnuEditarMatrizComponente.Click += (_, __) => EditarMatrizComponenteDesdeContexto();
+            _menuContextualComponentes.Items.Add(_mnuEditarMatrizComponente);
+            _menuContextualComponentes.Opening += MenuContextualComponentes_Opening;
+            _menuContextualComponentes.Closed += (_, __) => _filaContextualComponentes = -1;
+        }
+
+        private void MenuContextualComponentes_Opening(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            var comp = ObtenerComponenteSeleccionadoParaContexto();
+            bool puedeEditar = !_modoCreacionMatriz && !_modoSubedicionComponente && EsComponenteMatrizEditable(comp);
+            _mnuEditarMatrizComponente.Enabled = puedeEditar;
+            e.Cancel = !puedeEditar;
+        }
+
+            if (concepto == null || concepto.EsAgrupador || concepto.MatrizId == null)
+            { MostrarSinSeleccion(); return; }
+
+            // Cargar la matriz FRESCA desde BD cada vez
+            _matrizActual = _context.Matrices
+                .Include(m => m.Componentes).ThenInclude(c => c.Material)
+                .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
+                .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
+                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
+                .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
+                .AsNoTracking()  // Sin tracking para siempre leer BD fresca
+                .FirstOrDefault(m => m.Id == concepto.MatrizId);
+
+            if (_matrizActual == null) { MostrarSinSeleccion(); return; }
+
+            return query.FirstOrDefault(m => m.Id == matrizId);
+        }
+
+        private void RecalcularMatrizYConceptos(int matrizId)
+        {
+            _lblTituloMatriz.Text = $"APU:  {matriz.Clave}  —  {matriz.Descripcion}";
+            _lblInfoMatriz.Text   = $"Unidad: {matriz.Unidad}   |   Concepto en presupuesto: {concepto.Clave} - {concepto.Descripcion}";
+            _panelBotonesAgregar.Enabled = true;
+
+            if (_filaActual >= 0)
+                MatrizActualizada?.Invoke(this, _filaActual);
         }
 
         private void CargarMatrizDeFila(int fila, bool forceReload)
         {
             if (_dgvPresupuesto == null || fila < 0 || fila >= _dgvPresupuesto.Rows.Count)
             { MostrarSinSeleccion(); return; }
+
+            if (!ConfirmarCambioDeContextoExterno(fila))
+                return;
 
             _filaActual = fila;
             var concepto = _dgvPresupuesto.Rows[fila].Tag as ConceptoPresupuesto;
@@ -108,14 +518,7 @@ namespace SOPRO.WinForms.Controls
             }
 
             // Cargar la matriz FRESCA desde BD solo cuando realmente cambia el concepto/matriz
-            _matrizActual = _context.Matrices
-                .Include(m => m.Componentes).ThenInclude(c => c.Material)
-                .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
-                .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
-                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
-                .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
-                .AsNoTracking()
-                .FirstOrDefault(m => m.Id == concepto.MatrizId);
+            _matrizActual = CargarMatrizConComponentes(concepto.MatrizId.Value, true);
 
             if (_matrizActual == null)
             {
@@ -133,99 +536,42 @@ namespace SOPRO.WinForms.Controls
 
         private void MostrarMatriz(Matriz matriz, ConceptoPresupuesto concepto)
         {
-            _lblTituloMatriz.Text = $"APU:  {matriz.Clave}  —  {matriz.Descripcion}";
-            ActualizarInfoConcepto(concepto, matriz);
-            _panelBotonesAgregar.Enabled = true;
+            _matrizActual = matriz;
+            _matrizEditandoId = matriz?.Id;
+            _modoCreacionMatriz = false;
+            _modoEdicionCabecera = true;
 
-            _dgvComponentes.Rows.Clear();
-            decimal totalMat = 0, totalMO = 0, totalMaq = 0, totalBas = 0;
-
-            foreach (var comp in matriz.Componentes.OrderBy(c => c.TipoComponente).ThenBy(c => c.Orden))
+            string tipoTexto = matriz.Tipo == TipoMatriz.Cuadrilla ? "Cuadrilla" : (matriz.Tipo == TipoMatriz.Basico ? "Básico" : "APU");
+            if (_modoSubedicionComponente && _matrizPadreIdSubedicion.HasValue)
             {
-                string tipo = "", clave = "", desc = "", unidad = "";
-                decimal pu = 0;
-
-                switch (comp.TipoComponente)
-                {
-                    case TipoComponenteMatriz.Material:
-                        tipo = "📦 Material"; clave = comp.Material?.Clave ?? ""; desc = comp.Material?.Descripcion ?? "";
-                        unidad = comp.Material?.Unidad ?? ""; pu = comp.Material?.PrecioUnitario ?? 0;
-                        totalMat += comp.Importe; break;
-                    case TipoComponenteMatriz.ManoDeObra:
-                        tipo = "👷 M.O."; 
-                        clave = comp.ManoDeObra?.Clave ?? ""; 
-                        desc = comp.ManoDeObra?.Descripcion ?? "";
-                        unidad = comp.ManoDeObra?.Unidad ?? "";
-                        
-                        if (comp.ManoDeObra?.EsPorcentajeMO == true)
-                        {
-                            // Para %MO: P.U. = Total de Mano de Obra
-                            pu = totalMO;
-                        }
-                        else
-                        {
-                            pu = comp.ManoDeObra?.SalarioReal ?? 0;
-                        }
-                        
-                        totalMO += comp.Importe; 
-                        break;
-                    case TipoComponenteMatriz.Maquinaria:
-                        tipo = "🚜 Maq."; clave = comp.Maquinaria?.Clave ?? ""; desc = comp.Maquinaria?.Descripcion ?? "";
-                        unidad = "hora"; pu = comp.Maquinaria?.CostoHorario ?? 0;
-                        totalMaq += comp.Importe; break;
-                    case TipoComponenteMatriz.Auxiliar:
-                        // Distinguir entre Cuadrilla y Básico
-                        if (comp.Auxiliar?.Tipo == TipoMatriz.Cuadrilla)
-                        {
-                            tipo = "👷 Cuadrilla"; 
-                            clave = comp.Auxiliar?.Clave ?? ""; 
-                            desc = comp.Auxiliar?.Descripcion ?? "";
-                            unidad = comp.Auxiliar?.Unidad ?? ""; 
-                            pu = comp.Auxiliar?.CostoDirecto ?? 0;
-                            totalMO += comp.Importe;  // Sumar como Mano de Obra
-                        }
-                        else
-                        {
-                            tipo = "🧩 Básico"; 
-                            clave = comp.Auxiliar?.Clave ?? ""; 
-                            desc = comp.Auxiliar?.Descripcion ?? "";
-                            unidad = comp.Auxiliar?.Unidad ?? ""; 
-                            pu = comp.Auxiliar?.CostoDirecto ?? 0;
-                            totalBas += comp.Importe;  // Sumar como Básico
-                        }
-                        break;
-                    case TipoComponenteMatriz.Herramienta:
-                        tipo = "🛠️ Herramienta";
-                        if (comp.Herramienta != null)
-                        {
-                            clave = comp.Herramienta.Clave;
-                            desc = comp.Herramienta.Descripcion;
-                            unidad = comp.Herramienta.Unidad;
-                            
-                            if (comp.Herramienta.EsPorcentajeMO)
-                            {
-                                // Para %MO: P.U. = Total de Mano de Obra
-                                pu = totalMO;
-                            }
-                            else
-                            {
-                                pu = comp.Herramienta.PrecioUnitario;
-                            }
-                        }
-                        // Las herramientas se suman al total pero no tienen categoría propia
-                        totalBas += comp.Importe;
-                        break;
-                }
-
-                _dgvComponentes.Rows.Add(tipo, clave, desc, unidad,
-                    comp.Cantidad.ToStringCantidad(), pu.ToStringImporte(),
-                    comp.Importe.ToStringImporte(), comp.Id, "🗑");
+                _panelHeader.BackColor = _headerColorSubedicion;
+                var padre = _context.Matrices.AsNoTracking().FirstOrDefault(m => m.Id == _matrizPadreIdSubedicion.Value);
+                string padreClave = string.IsNullOrWhiteSpace(padre?.Clave) ? "(sin clave)" : padre!.Clave;
+                _lblTituloMatriz.Text = $"Matriz: {padreClave} → {tipoTexto}: {matriz.Clave}";
+                _lblInfoMatriz.Text = string.IsNullOrWhiteSpace(matriz.Descripcion)
+                    ? "Subedición de matriz componente dentro del panel."
+                    : matriz.Descripcion;
             }
+            else
+            {
+                _panelHeader.BackColor = _headerColorNormal;
+                _lblTituloMatriz.Text = $"Matriz: {matriz.Clave}";
+                if (concepto != null) ActualizarInfoConcepto(concepto, matriz);
+                else _lblInfoMatriz.Text = string.IsNullOrWhiteSpace(matriz.Descripcion)
+                    ? $"{tipoTexto} lista para edición."
+                    : $"{tipoTexto}: {matriz.Descripcion}";
+            }
+            _txtClaveMatriz.Text = matriz.Clave ?? string.Empty;
+            _txtDescripcionMatriz.Text = matriz.Descripcion ?? string.Empty;
+            _txtUnidadMatriz.Text = matriz.Unidad ?? string.Empty;
+            _rbTipoApu.Checked = matriz.Tipo == TipoMatriz.APU;
+            _rbTipoBasico.Checked = matriz.Tipo == TipoMatriz.Basico;
+            _rbTipoCuadrilla.Checked = matriz.Tipo == TipoMatriz.Cuadrilla;
+            CapturarEstadoBaseCabeceraDesdeMatriz(matriz);
+            _panelBotonesAgregar.Enabled = true;
+            MostrarDatosCabecera(true);
 
-            decimal dir = totalMat + totalMO + totalMaq + totalBas;
-            _lblMat.Text = $"Mat: {totalMat.ToStringImporte()}"; _lblMO.Text = $"M.O.: {totalMO.ToStringImporte()}";
-            _lblMaq.Text = $"Maq.: {totalMaq.ToStringImporte()}"; _lblBas.Text = $"Bas.: {totalBas.ToStringImporte()}";
-            _lblDir.Text = $"Costo Directo: {dir.ToStringImporte()}";
+            PintarComponentesEnGrid(matriz.Componentes);
         }
 
         private void ActualizarInfoConcepto(ConceptoPresupuesto concepto, Matriz matriz = null)
@@ -237,15 +583,13 @@ namespace SOPRO.WinForms.Controls
             _lblInfoMatriz.Text = $"Unidad: {unidad}   |   Concepto en presupuesto: {claveConcepto} - {descripcionConcepto}";
         }
 
-        private void MostrarSinSeleccion(string titulo = "Selecciona un concepto en el presupuesto para ver y editar su APU", string info = "")
+        private void MostrarSinSeleccion()
         {
             _matrizActual = null;
-            _ultimaFilaCargada = -1;
-            _ultimoConceptoId = null;
-            _ultimaMatrizId = null;
-            _lblTituloMatriz.Text = titulo;
-            _lblInfoMatriz.Text   = info;
+            _lblTituloMatriz.Text = "Selecciona un concepto en el presupuesto para ver y editar su APU";
+            _lblInfoMatriz.Text   = "";
             _panelBotonesAgregar.Enabled = false;
+            MostrarDatosCabecera(false);
             _dgvComponentes.Rows.Clear();
             _lblMat.Text = "Mat: —"; _lblMO.Text = "M.O.: —";
             _lblMaq.Text = "Maq.: —"; _lblBas.Text = "Bas.: —";
@@ -338,7 +682,7 @@ namespace SOPRO.WinForms.Controls
                 }
 
                 // Refrescar el panel con datos frescos
-                CargarMatrizDeFila(_filaActual, true);
+                CargarMatrizDeFila(_filaActual);
             }
             catch (Exception ex)
             {
@@ -346,10 +690,34 @@ namespace SOPRO.WinForms.Controls
             }
         }
 
+
+        private bool EnsureMatrixSavedForComponents()
+        {
+            if (_matrizActual != null) return true;
+
+            string clave = (_txtClaveMatriz.Text ?? string.Empty).Trim();
+            string descripcion = (_txtDescripcionMatriz.Text ?? string.Empty).Trim();
+            string unidad = (_txtUnidadMatriz.Text ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(clave) || string.IsNullOrWhiteSpace(descripcion) || string.IsNullOrWhiteSpace(unidad))
+            {
+                MessageBox.Show("Para agregar componentes primero captura Clave, Descripción y Unidad.", "Matriz", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                _txtClaveMatriz.Focus();
+                return false;
+            }
+
+            return true;
+        }
+
         // ── Agregar insumos ────────────────────────────────────────────
         private void BtnAgregarMaterial_Click(object sender, EventArgs e)
         {
-            if (_matrizActual == null) return;
+            if (_modoCreacionMatriz)
+            {
+                if (!EnsureMatrixSavedForComponents()) return;
+                AgregarComponentesTemporales(TipoComponenteMatriz.Material);
+                return;
+            }
+            if (!EnsureMatrixSavedForComponents()) return;
             using var dlg = new Forms.FormSeleccionarInsumo(_context, _proyectoId, TipoComponenteMatriz.Material);
             if (dlg.ShowDialog() != DialogResult.OK) return;
             
@@ -366,7 +734,13 @@ namespace SOPRO.WinForms.Controls
 
         private void BtnAgregarMO_Click(object sender, EventArgs e)
         {
-            if (_matrizActual == null) return;
+            if (_modoCreacionMatriz)
+            {
+                if (!EnsureMatrixSavedForComponents()) return;
+                AgregarComponentesTemporales(TipoComponenteMatriz.ManoDeObra);
+                return;
+            }
+            if (!EnsureMatrixSavedForComponents()) return;
             using var dlg = new Forms.FormSeleccionarInsumo(_context, _proyectoId, TipoComponenteMatriz.ManoDeObra);
             if (dlg.ShowDialog() != DialogResult.OK) return;
             
@@ -383,7 +757,13 @@ namespace SOPRO.WinForms.Controls
 
         private void BtnAgregarMaquinaria_Click(object sender, EventArgs e)
         {
-            if (_matrizActual == null) return;
+            if (_modoCreacionMatriz)
+            {
+                if (!EnsureMatrixSavedForComponents()) return;
+                AgregarComponentesTemporales(TipoComponenteMatriz.Maquinaria);
+                return;
+            }
+            if (!EnsureMatrixSavedForComponents()) return;
             using var dlg = new Forms.FormSeleccionarInsumo(_context, _proyectoId, TipoComponenteMatriz.Maquinaria);
             if (dlg.ShowDialog() != DialogResult.OK) return;
             
@@ -400,7 +780,13 @@ namespace SOPRO.WinForms.Controls
 
         private void BtnAgregarBasico_Click(object sender, EventArgs e)
         {
-            if (_matrizActual == null) return;
+            if (_modoCreacionMatriz)
+            {
+                if (!EnsureMatrixSavedForComponents()) return;
+                AgregarComponentesTemporales(TipoComponenteMatriz.Auxiliar);
+                return;
+            }
+            if (!EnsureMatrixSavedForComponents()) return;
             using var dlg = new Forms.FormSeleccionarInsumo(_context, _proyectoId, TipoComponenteMatriz.Auxiliar);
             if (dlg.ShowDialog() != DialogResult.OK) return;
             
@@ -417,7 +803,13 @@ namespace SOPRO.WinForms.Controls
         
         private void BtnAgregarHerramienta_Click(object sender, EventArgs e)
         {
-            if (_matrizActual == null) return;
+            if (_modoCreacionMatriz)
+            {
+                if (!EnsureMatrixSavedForComponents()) return;
+                AgregarComponentesTemporales(TipoComponenteMatriz.Herramienta);
+                return;
+            }
+            if (!EnsureMatrixSavedForComponents()) return;
             using var dlg = new Forms.FormSeleccionarInsumo(_context, _proyectoId, TipoComponenteMatriz.Herramienta);
             if (dlg.ShowDialog() != DialogResult.OK) return;
             
@@ -437,10 +829,19 @@ namespace SOPRO.WinForms.Controls
         {
             if (e.RowIndex < 0 || _dgvComponentes.Columns["ColEliminar"] == null) return;
             if (e.ColumnIndex != _dgvComponentes.Columns["ColEliminar"].Index) return;
-            if (_matrizActual == null) return;
-
-            int compId = Convert.ToInt32(_dgvComponentes.Rows[e.RowIndex].Cells["ColId"].Value);
             if (MessageBox.Show("¿Eliminar este componente?", "Confirmar", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+
+            if (_modoCreacionMatriz)
+            {
+                if (MatrixComponentCollectionService.RemoveAt(_componentesTemp, e.RowIndex))
+                {
+                    RefrescarVistaTemporal();
+                }
+                return;
+            }
+
+            if (_matrizActual == null) return;
+            int compId = Convert.ToInt32(_dgvComponentes.Rows[e.RowIndex].Cells["ColId"].Value);
 
             var comp = _context.ComponentesMatriz.Find(compId);
             if (comp == null) return;
@@ -530,7 +931,304 @@ namespace SOPRO.WinForms.Controls
         private void BtnAnterior_Click(object sender, EventArgs e)  { int f = FilaConceptoAnterior();  if (f >= 0) NavegerAFila(f); }
         private void BtnSiguiente_Click(object sender, EventArgs e) { int f = FilaConceptoSiguiente(); if (f >= 0) NavegerAFila(f); }
 
-        // ── Construcción de controles ──────────────────────────────────
+        public void BeginCreateMatrix(TipoMatriz tipo, Action<Matriz>? onSaved = null, Action? onCancelled = null)
+        {
+            _modoCreacionMatriz = true;
+            _modoEdicionCabecera = true;
+            _matrizEditandoId = null;
+            _onMatrixHeaderSaved = onSaved;
+            _onMatrixHeaderCancelled = onCancelled;
+            _matrizActual = null;
+            _componentesTemp.Clear();
+            _dgvComponentes.Rows.Clear();
+            _panelBotonesAgregar.Enabled = true;
+            _txtClaveMatriz.Text = string.Empty;
+            _txtDescripcionMatriz.Text = string.Empty;
+            _txtUnidadMatriz.Text = string.Empty;
+            _rbTipoApu.Checked = tipo == TipoMatriz.APU;
+            _rbTipoBasico.Checked = tipo == TipoMatriz.Basico;
+            _rbTipoCuadrilla.Checked = tipo == TipoMatriz.Cuadrilla;
+            _lblTituloMatriz.Text = tipo == TipoMatriz.Cuadrilla ? "Nueva cuadrilla" : (tipo == TipoMatriz.Basico ? "Nueva matriz básica" : "Nueva APU");
+            _lblInfoMatriz.Text = "Captura los datos generales y agrega componentes. Guarda la matriz al finalizar.";
+            _lblMat.Text = "Mat: 0.00"; _lblMO.Text = "M.O.: 0.00"; _lblMaq.Text = "Maq.: 0.00"; _lblBas.Text = "Bas.: 0.00"; _lblDir.Text = "Costo Directo: 0.00";
+            CapturarEstadoBaseCabeceraDesdeUI();
+            MostrarDatosCabecera(true);
+            _txtClaveMatriz.Focus();
+        }
+
+        public void BeginEditMatrix(int matrizId, Action<Matriz>? onSaved = null, Action? onCancelled = null)
+        {
+            var matriz = CargarMatrizConComponentes(matrizId, false);
+            if (matriz == null) return;
+
+            _modoCreacionMatriz = false;
+            _modoEdicionCabecera = true;
+            _matrizEditandoId = matrizId;
+            _onMatrixHeaderSaved = onSaved;
+            _onMatrixHeaderCancelled = onCancelled;
+            _componentesTemp.Clear();
+            _matrizActual = matriz;
+            _txtClaveMatriz.Text = matriz.Clave ?? string.Empty;
+            _txtDescripcionMatriz.Text = matriz.Descripcion ?? string.Empty;
+            _txtUnidadMatriz.Text = matriz.Unidad ?? string.Empty;
+            _rbTipoApu.Checked = matriz.Tipo == TipoMatriz.APU;
+            _rbTipoBasico.Checked = matriz.Tipo == TipoMatriz.Basico;
+            _rbTipoCuadrilla.Checked = matriz.Tipo == TipoMatriz.Cuadrilla;
+            MostrarDatosCabecera(true);
+            MostrarMatriz(matriz, null);
+            _panelBotonesAgregar.Enabled = true;
+            _txtClaveMatriz.Focus();
+        }
+
+        private void MostrarDatosCabecera(bool visible)
+        {
+            _panelDatos.Visible = visible;
+            _btnGuardarMatriz.Visible = visible;
+            _btnCancelarMatriz.Visible = visible;
+        }
+
+        private TipoMatriz GetTipoCabeceraSeleccionado()
+        {
+            if (_rbTipoBasico.Checked) return TipoMatriz.Basico;
+            if (_rbTipoCuadrilla.Checked) return TipoMatriz.Cuadrilla;
+            return TipoMatriz.APU;
+        }
+
+
+private async void BtnGuardarMatriz_Click(object sender, EventArgs e)
+{
+    string clave = (_txtClaveMatriz.Text ?? string.Empty).Trim();
+    string descripcion = (_txtDescripcionMatriz.Text ?? string.Empty).Trim();
+    string unidad = (_txtUnidadMatriz.Text ?? string.Empty).Trim();
+    if (string.IsNullOrWhiteSpace(clave) || string.IsNullOrWhiteSpace(descripcion) || string.IsNullOrWhiteSpace(unidad))
+    {
+        MessageBox.Show("Clave, Descripción y Unidad son obligatorios.", "Matriz", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        return;
+    }
+
+    try
+    {
+        if (_modoCreacionMatriz || !_matrizEditandoId.HasValue)
+        {
+            var validation = MatrixSaveFlowService.ValidateBeforeSave(clave, descripcion, _componentesTemp);
+            if (!validation.IsValid)
+            {
+                MessageBox.Show(validation.Message, "Validación", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            var claveDuplicada = await MatrixApplicationService.ExistsByKeyAsync(_context, _proyectoId, clave, null);
+            if (claveDuplicada)
+            {
+                MessageBox.Show(MatrixSaveFlowService.GetDuplicateKeyMessage(), "Clave Duplicada", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                _txtClaveMatriz.Focus();
+                return;
+            }
+
+            var totals = MatrixComponentCalculationService.Recalculate(_componentesTemp, FormatoHelper.DecimalesImporte);
+            var dto = MatrixEditorService.BuildEditDto(
+                _proyectoId,
+                clave,
+                descripcion,
+                unidad,
+                _rbTipoCuadrilla.Checked,
+                _rbTipoApu.Checked,
+                totals.CostoDirectoTotal,
+                _componentesTemp);
+
+            var result = await MatrixApplicationService.SaveAsync(_context, dto, null);
+            var matriz = _context.Matrices
+                .Include(m => m.Componentes).ThenInclude(c => c.Material)
+                .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
+                .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
+                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
+                .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
+                .FirstOrDefault(m => m.Id == result.MatrixId);
+            if (matriz == null) return;
+
+            _matrizActual = matriz;
+            _matrizEditandoId = matriz.Id;
+            _modoCreacionMatriz = false;
+            _componentesTemp.Clear();
+            _panelBotonesAgregar.Enabled = true;
+            MostrarDatosCabecera(true);
+            MostrarMatriz(matriz, null);
+            _onMatrixHeaderSaved?.Invoke(matriz);
+            return;
+        }
+
+        Matriz matrizEdit = _context.Matrices.Include(m => m.Componentes).ThenInclude(c => c.Material)
+            .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
+            .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
+            .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
+            .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
+            .FirstOrDefault(m => m.Id == _matrizEditandoId.Value);
+        if (matrizEdit == null) return;
+        matrizEdit.Clave = clave;
+        matrizEdit.Descripcion = descripcion;
+        matrizEdit.Unidad = unidad;
+        matrizEdit.Tipo = GetTipoCabeceraSeleccionado();
+        matrizEdit.FechaModificacion = DateTime.Now;
+        _context.SaveChanges();
+
+        _matrizActual = matrizEdit;
+        _panelBotonesAgregar.Enabled = true;
+        MostrarDatosCabecera(true);
+        MostrarMatriz(matrizEdit, null);
+        _onMatrixHeaderSaved?.Invoke(matrizEdit);
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show($"Error al guardar la matriz: {ex.Message}", "Matriz", MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
+}
+
+private void BtnCancelarMatriz_Click(object sender, EventArgs e)
+        {
+            if (_modoSubedicionComponente)
+            {
+                _onMatrixHeaderCancelled?.Invoke();
+                return;
+            }
+
+            this.SuspendLayout();
+            _panelDatos.SuspendLayout();
+            try
+            {
+                _modoCreacionMatriz = false;
+                _modoEdicionCabecera = false;
+                _onMatrixHeaderCancelled?.Invoke();
+
+                if (_matrizActual != null)
+                {
+                    MostrarMatriz(_matrizActual, null);
+                }
+                else
+                {
+                    MostrarDatosCabecera(false);
+                    MostrarSinSeleccion();
+                }
+            }
+            finally
+            {
+                _panelDatos.ResumeLayout(true);
+                this.ResumeLayout(true);
+                Invalidate(true);
+            }
+        }
+
+
+        public bool TryUndo()
+        {
+            if (!_undoManager.CanUndo)
+                return false;
+
+            try
+            {
+                _isUndoRedo = true;
+                return _undoManager.Undo();
+            }
+            finally
+            {
+                _isUndoRedo = false;
+            }
+        }
+
+        public bool TryRedo()
+        {
+            if (!_undoManager.CanRedo)
+                return false;
+
+            try
+            {
+                _isUndoRedo = true;
+                return _undoManager.Redo();
+            }
+            finally
+            {
+                _isUndoRedo = false;
+            }
+        }
+
+        private static bool EsColumnaUndoPanel(string columnName)
+        {
+            return columnName == "colDescripcion"
+                || columnName == "colUnidad"
+                || columnName == "colCantidad"
+                || columnName == "colPU";
+        }
+
+        private void AplicarUndoRedoPanelCelda(int rowIndex, int columnIndex, string value)
+        {
+            if (rowIndex < 0 || rowIndex >= _dgvComponentes.Rows.Count)
+                return;
+            if (columnIndex < 0 || columnIndex >= _dgvComponentes.Columns.Count)
+                return;
+
+            var comp = ObtenerComponentePorFilaTrabajo(rowIndex);
+            if (comp == null)
+                return;
+
+            var columnName = _dgvComponentes.Columns[columnIndex].Name switch
+            {
+                "ColDesc" => "colDescripcion",
+                "ColUnidad" => "colUnidad",
+                "ColCantidad" => "colCantidad",
+                "ColPU" => "colPU",
+                _ => string.Empty
+            };
+
+            if (string.IsNullOrEmpty(columnName))
+                return;
+
+            var editResult = MatrixComponentGridFlowService.ApplyCellEdit(
+                comp,
+                columnName,
+                value,
+                FormatoHelper.DecimalesImporte);
+
+            if (editResult == null || !editResult.Success)
+                return;
+
+            _dgvComponentes.CurrentCell = _dgvComponentes.Rows[rowIndex].Cells[columnIndex];
+
+            if (_modoCreacionMatriz)
+            {
+                RefrescarVistaTemporal();
+            }
+            else
+            {
+                _context.SaveChanges();
+                GuardarYPropagar();
+            }
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == (Keys.Control | Keys.Z) && TryUndo())
+                return true;
+
+            if (keyData == (Keys.Control | Keys.Y) && TryRedo())
+                return true;
+
+            var keyCode = keyData & Keys.KeyCode;
+            if (keyCode == Keys.Escape)
+            {
+                if (_panelDatos != null && _panelDatos.Visible)
+                {
+                    BtnCancelarMatriz_Click(this, EventArgs.Empty);
+                    return true;
+                }
+
+                SolicitudCerrarWorkspace?.Invoke(this, EventArgs.Empty);
+                return true;
+            }
+
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+
+// ── Construcción de controles ──────────────────────────────────
         private void InicializarComponentes()
         {
             this.Dock = DockStyle.Fill; this.BackColor = Color.White;
@@ -546,6 +1244,24 @@ namespace SOPRO.WinForms.Controls
             _btnSiguiente.Click += BtnSiguiente_Click;
 
             _panelHeader.Controls.AddRange(new Control[] { _lblTituloMatriz, _lblInfoMatriz, _btnAnterior, _btnSiguiente });
+
+            _panelDatos = new Panel { Dock = DockStyle.Top, Height = 72, BackColor = Color.FromArgb(250,250,252), Visible = false };
+            var lblClave = new Label { Text = "Clave", Location = new Point(10, 10), AutoSize = true, Font = new Font("Segoe UI", 8.5F, FontStyle.Bold) };
+            _txtClaveMatriz = new TextBox { Location = new Point(60, 7), Size = new Size(120, 24), CharacterCasing = CharacterCasing.Upper };
+            var lblUnidad = new Label { Text = "Unidad", Location = new Point(190, 10), AutoSize = true, Font = new Font("Segoe UI", 8.5F, FontStyle.Bold) };
+            _txtUnidadMatriz = new TextBox { Location = new Point(245, 7), Size = new Size(90, 24) };
+            var lblDesc = new Label { Text = "Descripción", Location = new Point(345, 10), AutoSize = true, Font = new Font("Segoe UI", 8.5F, FontStyle.Bold) };
+            _txtDescripcionMatriz = new TextBox { Location = new Point(425, 7), Size = new Size(360, 24) };
+            _rbTipoApu = new RadioButton { Text = "APU", Location = new Point(60, 40), AutoSize = true, Checked = true };
+            _rbTipoBasico = new RadioButton { Text = "Básico", Location = new Point(130, 40), AutoSize = true };
+            _rbTipoCuadrilla = new RadioButton { Text = "Cuadrilla", Location = new Point(220, 40), AutoSize = true };
+            _btnGuardarMatriz = new Button { Text = "Guardar", Location = new Point(690, 38), Size = new Size(95, 26), BackColor = Color.FromArgb(31, 122, 67), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Visible = false };
+            _btnGuardarMatriz.FlatAppearance.BorderSize = 0;
+            _btnCancelarMatriz = new Button { Text = "Cancelar", Location = new Point(790, 38), Size = new Size(95, 26), BackColor = Color.FromArgb(120,120,120), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Visible = false };
+            _btnCancelarMatriz.FlatAppearance.BorderSize = 0;
+            _btnGuardarMatriz.Click += BtnGuardarMatriz_Click;
+            _btnCancelarMatriz.Click += BtnCancelarMatriz_Click;
+            _panelDatos.Controls.AddRange(new Control[] { lblClave, _txtClaveMatriz, lblUnidad, _txtUnidadMatriz, lblDesc, _txtDescripcionMatriz, _rbTipoApu, _rbTipoBasico, _rbTipoCuadrilla, _btnGuardarMatriz, _btnCancelarMatriz });
 
             _panelBotonesAgregar = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = Color.FromArgb(245,245,250), Enabled = false };
             var lblAg = new Label { Text = "Agregar:", Location = new Point(8,10), AutoSize = true, Font = new Font("Segoe UI", 8.5F), ForeColor = Color.FromArgb(80,80,80) };
@@ -594,6 +1310,11 @@ namespace SOPRO.WinForms.Controls
             _dgvComponentes.CellDoubleClick += DgvComponentes_PanelCellDoubleClick;
             _dgvComponentes.CellBeginEdit   += DgvComponentes_PanelCellBeginEdit;
             _dgvComponentes.CellEndEdit     += DgvComponentes_PanelCellEndEdit;
+            _dgvComponentes.CellMouseDown    += DgvComponentes_CellMouseDown;
+            _dgvComponentes.MouseDown        += DgvComponentes_MouseDown;
+            _dgvComponentes.CellMouseUp      += DgvComponentes_CellMouseUp;
+            _dgvComponentes.MouseUp          += DgvComponentes_MouseUp;
+            
 
             _panelTotales = new Panel { Dock = DockStyle.Bottom, Height = 26, BackColor = Color.FromArgb(235,235,248) };
             _lblMat = new Label { AutoSize = true, Location = new Point(8,   5), Font = new Font("Segoe UI", 8F), ForeColor = Color.FromArgb(50,50,50) };
@@ -605,13 +1326,27 @@ namespace SOPRO.WinForms.Controls
 
             this.Controls.Add(_dgvComponentes);
             this.Controls.Add(_panelBotonesAgregar);
+            this.Controls.Add(_panelDatos);
             this.Controls.Add(_panelTotales);
             this.Controls.Add(_panelHeader);
         }
 
         private Button CrearBtn(string texto, Point loc, Color color)
         {
-            var btn = new Button { Text = texto, Location = loc, Size = new Size(105, 26), FlatStyle = FlatStyle.Flat, BackColor = color, ForeColor = Color.White, Font = new Font("Segoe UI", 8.5F, FontStyle.Bold) };
+            var btn = new Button
+            {
+                Text = texto,
+                Location = loc,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Padding = new Padding(10, 4, 10, 4),
+                Margin = new Padding(0, 0, 8, 0),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = color,
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                UseVisualStyleBackColor = false
+            };
             btn.FlatAppearance.BorderSize = 0;
             return btn;
         }
@@ -632,161 +1367,245 @@ namespace SOPRO.WinForms.Controls
 
         private void DgvComponentes_PanelCellBeginEdit(object sender, DataGridViewCellCancelEventArgs e)
         {
-            if (e.RowIndex < 0) return;
-            var comp = ObtenerComponentePorFila(e.RowIndex);
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            _undoPanelRowIndex = e.RowIndex;
+            _undoPanelColumnIndex = e.ColumnIndex;
+            _undoPanelColumnName = _dgvComponentes.Columns[e.ColumnIndex].Name switch
+            {
+                "ColDesc" => "colDescripcion",
+                "ColUnidad" => "colUnidad",
+                "ColCantidad" => "colCantidad",
+                "ColPU" => "colPU",
+                _ => string.Empty
+            };
+            _undoPanelOldValue = _dgvComponentes.Rows[e.RowIndex].Cells[e.ColumnIndex].Value?.ToString() ?? string.Empty;
+            var comp = ObtenerComponentePorFilaTrabajo(e.RowIndex);
             if (comp == null) return;
 
-            bool esMOoMaq = comp.TipoComponente == TipoComponenteMatriz.ManoDeObra ||
-                            comp.TipoComponente == TipoComponenteMatriz.Maquinaria;
-            bool esCuadrilla = comp.TipoComponente == TipoComponenteMatriz.Auxiliar && 
-                              comp.Auxiliar?.Tipo == TipoMatriz.Cuadrilla;
-            bool esMaterial = comp.TipoComponente == TipoComponenteMatriz.Material;
-            int colCant = _dgvComponentes.Columns["ColCantidad"].Index;
+            var columnName = _dgvComponentes.Columns[e.ColumnIndex].Name switch
+            {
+                "ColDesc" => "colDescripcion",
+                "ColUnidad" => "colUnidad",
+                "ColCantidad" => "colCantidad",
+                "ColPU" => "colPU",
+                _ => string.Empty
+            };
 
-            // Cantidad de M.O./Maquinaria/Cuadrilla → solo por FormRendimiento (doble click)
-            if (e.ColumnIndex == colCant && (esMOoMaq || esCuadrilla)) { e.Cancel = true; }
-            // P.U. de M.O./Maquinaria/Auxiliar → no editable (viene del catálogo)
-            int colPU   = _dgvComponentes.Columns["ColPU"].Index;
-            if (e.ColumnIndex == colPU && !esMaterial) { e.Cancel = true; }
+            if (!string.IsNullOrEmpty(columnName) && !MatrixComponentGridFlowService.CanBeginEdit(comp, columnName))
+            {
+                e.Cancel = true;
+            }
         }
 
         private void DgvComponentes_PanelCellDoubleClick(object sender, DataGridViewCellEventArgs e)
         {
-            if (e.RowIndex < 0) return;
-            if (e.ColumnIndex != _dgvComponentes.Columns["ColCantidad"].Index) return;
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
 
-            var comp = ObtenerComponentePorFila(e.RowIndex);
+            var comp = ObtenerComponentePorFilaTrabajo(e.RowIndex);
             if (comp == null) return;
-            
-            bool esCuadrilla = comp.TipoComponente == TipoComponenteMatriz.Auxiliar && 
-                              comp.Auxiliar?.Tipo == TipoMatriz.Cuadrilla;
-            
-            if (comp.TipoComponente != TipoComponenteMatriz.ManoDeObra &&
-                comp.TipoComponente != TipoComponenteMatriz.Maquinaria &&
-                !esCuadrilla) return;
+
+            var columnName = _dgvComponentes.Columns[e.ColumnIndex].Name switch
+            {
+                "ColCantidad" => "colCantidad",
+                _ => string.Empty
+            };
+
+            if (!MatrixComponentGridFlowService.ShouldOpenRendimientoDialog(comp, columnName))
+                return;
 
             _dgvComponentes.CancelEdit();
-
-            string nombre = "";
-            if (comp.TipoComponente == TipoComponenteMatriz.ManoDeObra)
-                nombre = comp.ManoDeObra?.Descripcion ?? "M.O.";
-            else if (comp.TipoComponente == TipoComponenteMatriz.Maquinaria)
-                nombre = comp.Maquinaria?.Descripcion ?? "Maquinaria";
-            else if (esCuadrilla)
-                nombre = comp.Auxiliar?.Descripcion ?? "Cuadrilla";
+            var nombre = MatrixComponentInteractionService.GetRendimientoDialogName(comp);
 
             using var frmRend = new Forms.FormRendimiento(nombre, comp.Cantidad);
             if (frmRend.ShowDialog() == DialogResult.OK)
             {
-                decimal pu = 0;
-                if (comp.TipoComponente == TipoComponenteMatriz.ManoDeObra)
-                    pu = comp.ManoDeObra?.SalarioReal ?? 0;
-                else if (comp.TipoComponente == TipoComponenteMatriz.Maquinaria)
-                    pu = comp.Maquinaria?.CostoHorario ?? 0;
-                else if (esCuadrilla)
-                    pu = comp.Auxiliar?.CostoDirecto ?? 0;
-
-                comp.Cantidad = frmRend.Cantidad;
-                // Usar motor para redondeo correcto en lugar de multiplicación cruda
-                var _mPME1 = _context.Proyectos.Find(_proyectoId);
-                int _decPME1 = _mPME1?.DecimalesImporte ?? 2;
-                comp.Importe = new SOPRO.Application.Services.MotorCalculoSopro(_decPME1, _decPME1, 4)
-                    .Multiplicar(comp.Cantidad, pu);
-                _context.SaveChanges();
-                // Diferir para evitar error reentrante
-                BeginInvoke(new Action(GuardarYPropagar));
+                var editResult = MatrixComponentEditingService.UpdateQuantityFromDialog(comp, frmRend.Cantidad);
+                if (editResult.Success)
+                {
+                    if (_modoCreacionMatriz)
+                    {
+                        BeginInvoke(new Action(RefrescarVistaTemporal));
+                    }
+                    else
+                    {
+                        _context.SaveChanges();
+                        BeginInvoke(new Action(GuardarYPropagar));
+                    }
+                }
             }
         }
 
         private void DgvComponentes_PanelCellEndEdit(object sender, DataGridViewCellEventArgs e)
         {
-            if (e.RowIndex < 0) return;
-            var comp = ObtenerComponentePorFila(e.RowIndex);
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            var comp = ObtenerComponentePorFilaTrabajo(e.RowIndex);
             if (comp == null) return;
 
             var cell = _dgvComponentes.Rows[e.RowIndex].Cells[e.ColumnIndex];
-            // Leer el valor ANTES de que el grid lo revierta
-            string val = cell.Value?.ToString() ?? "";
-
-            int colDesc = _dgvComponentes.Columns["ColDesc"].Index;
-            int colUnid = _dgvComponentes.Columns["ColUnidad"].Index;
-            int colCant = _dgvComponentes.Columns["ColCantidad"].Index;
-            int colPU   = _dgvComponentes.Columns["ColPU"].Index;
-
-            bool cambio = false;
-
-            if (e.ColumnIndex == colDesc)
+            var value = cell.Value?.ToString() ?? string.Empty;
+            var columnName = _dgvComponentes.Columns[e.ColumnIndex].Name switch
             {
-                if (comp.Material   != null) { comp.Material.Descripcion   = val; cambio = true; }
-                if (comp.ManoDeObra != null) { comp.ManoDeObra.Descripcion = val; cambio = true; }
-                if (comp.Maquinaria != null) { comp.Maquinaria.Descripcion = val; cambio = true; }
+                "ColDesc" => "colDescripcion",
+                "ColUnidad" => "colUnidad",
+                "ColCantidad" => "colCantidad",
+                "ColPU" => "colPU",
+                _ => string.Empty
+            };
+
+            if (string.IsNullOrEmpty(columnName)) return;
+
+            var editResult = MatrixComponentGridFlowService.ApplyCellEdit(
+                comp,
+                columnName,
+                value,
+                FormatoHelper.DecimalesImporte);
+
+            if (editResult == null)
+            {
+                return;
             }
-            else if (e.ColumnIndex == colUnid)
+
+            if (!editResult.Success)
             {
-                if (comp.Material   != null) { comp.Material.Unidad   = val; cambio = true; }
-                if (comp.ManoDeObra != null) { comp.ManoDeObra.Unidad = val; cambio = true; }
-            }
-            else if (e.ColumnIndex == colCant)
-            {
-                string clean = val.Replace("$","").Replace(",","").Trim();
-                if (decimal.TryParse(clean, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out decimal cant) && cant > 0)
+                BeginInvoke(new Action(() =>
                 {
-                    comp.Cantidad = cant;
-                    
-                    // Calcular importe con motor (redondeo correcto por paso)
-                    var _mPME2 = _context.Proyectos.Find(_proyectoId);
-                    var _motorPME = new SOPRO.Application.Services.MotorCalculoSopro(
-                        _mPME2?.DecimalesImporte ?? 2, _mPME2?.DecimalesImporte ?? 2, 4);
-                    switch (comp.TipoComponente)
-                    {
-                        case TipoComponenteMatriz.Material:
-                            comp.Importe = _motorPME.Multiplicar(cant, comp.Material?.PrecioUnitario ?? 0);
-                            break;
-                        case TipoComponenteMatriz.Maquinaria:
-                            comp.Importe = _motorPME.Multiplicar(cant, comp.Maquinaria?.CostoHorario ?? 0);
-                            break;
-                        case TipoComponenteMatriz.Auxiliar:
-                            comp.Importe = _motorPME.Multiplicar(cant, comp.Auxiliar?.CostoDirecto ?? 0);
-                            break;
-                        case TipoComponenteMatriz.ManoDeObra:
-                            if (comp.ManoDeObra?.EsPorcentajeMO != true)
-                                comp.Importe = _motorPME.Multiplicar(cant, comp.ManoDeObra?.SalarioReal ?? 0);
-                            // %MO: GuardarYPropagar recalculará con el servicio central
-                            break;
-                        case TipoComponenteMatriz.Herramienta:
-                            // GuardarYPropagar recalculará con el servicio central
-                            break;
-                    }
-                    
-                    cambio = true;
-                }
-            }
-            else if (e.ColumnIndex == colPU)
-            {
-                // Solo Material puede editar el P.U. directamente
-                if (comp.TipoComponente != TipoComponenteMatriz.Material) return;
-                string clean = val.Replace("$","").Replace(",","").Trim();
-                if (decimal.TryParse(clean, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out decimal pu) && pu >= 0)
-                {
-                    if (comp.Material != null) comp.Material.PrecioUnitario = pu;
-                    var _mPME3 = _context.Proyectos.Find(_proyectoId);
-                    comp.Importe = new SOPRO.Application.Services.MotorCalculoSopro(
-                        _mPME3?.DecimalesImporte ?? 2, _mPME3?.DecimalesImporte ?? 2, 4)
-                        .Multiplicar(comp.Cantidad, pu);
-                    cambio = true;
-                }
+                    if (_modoCreacionMatriz)
+                        RefrescarVistaTemporal();
+                    else
+                        GuardarYPropagar();
+                }));
+                return;
             }
 
-            if (cambio)
+            var valorNuevoUndo = _dgvComponentes.Rows[e.RowIndex].Cells[e.ColumnIndex].Value?.ToString() ?? string.Empty;
+            if (!_isUndoRedo
+                && e.RowIndex == _undoPanelRowIndex
+                && e.ColumnIndex == _undoPanelColumnIndex
+                && EsColumnaUndoPanel(_undoPanelColumnName)
+                && !string.Equals(_undoPanelOldValue, valorNuevoUndo, StringComparison.Ordinal))
+            {
+                int rowIndex = e.RowIndex;
+                int columnIndex = e.ColumnIndex;
+                string oldValue = _undoPanelOldValue;
+                string newValue = valorNuevoUndo;
+                string descripcion = $"Editar componente ({_undoPanelColumnName})";
+                _undoManager.Push(new DelegateUndoableAction(
+                    descripcion,
+                    () => AplicarUndoRedoPanelCelda(rowIndex, columnIndex, oldValue),
+                    () => AplicarUndoRedoPanelCelda(rowIndex, columnIndex, newValue)));
+            }
+
+            _undoPanelRowIndex = -1;
+            _undoPanelColumnIndex = -1;
+            _undoPanelColumnName = string.Empty;
+            _undoPanelOldValue = string.Empty;
+
+            if (_modoCreacionMatriz)
+            {
+                BeginInvoke(new Action(RefrescarVistaTemporal));
+            }
+            else
             {
                 _context.SaveChanges();
-                // Diferir GuardarYPropagar para evitar error reentrante de SetCurrentCellAddressCore
                 BeginInvoke(new Action(GuardarYPropagar));
             }
         }
         
+
+        private void DgvComponentes_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Right || _dgvComponentes == null)
+                return;
+
+            var hit = _dgvComponentes.HitTest(e.X, e.Y);
+            if (hit.RowIndex < 0)
+                return;
+
+            _filaContextualComponentes = hit.RowIndex;
+
+            try
+            {
+                var clickedRow = _dgvComponentes.Rows[hit.RowIndex];
+                if (!clickedRow.Selected)
+                {
+                    _dgvComponentes.ClearSelection();
+                    clickedRow.Selected = true;
+                }
+
+                if (hit.ColumnIndex >= 0)
+                    _dgvComponentes.CurrentCell = clickedRow.Cells[hit.ColumnIndex];
+                else if (clickedRow.Cells.Count > 0)
+                    _dgvComponentes.CurrentCell = clickedRow.Cells[0];
+            }
+            catch { }
+        }
+
+        private void DgvComponentes_CellMouseDown(object sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Right || e.RowIndex < 0)
+                return;
+
+            _filaContextualComponentes = e.RowIndex;
+
+            try
+            {
+                var clickedRow = _dgvComponentes.Rows[e.RowIndex];
+                if (!clickedRow.Selected)
+                {
+                    _dgvComponentes.ClearSelection();
+                    clickedRow.Selected = true;
+                }
+
+                if (e.ColumnIndex >= 0)
+                    _dgvComponentes.CurrentCell = clickedRow.Cells[e.ColumnIndex];
+                else if (clickedRow.Cells.Count > 0)
+                    _dgvComponentes.CurrentCell = clickedRow.Cells[0];
+            }
+            catch { }
+        }
+
+
+        private void DgvComponentes_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Right || _dgvComponentes == null)
+                return;
+
+            var hit = _dgvComponentes.HitTest(e.X, e.Y);
+            if (hit.RowIndex < 0)
+                return;
+
+            MostrarMenuContextualComponentesEnFila(hit.RowIndex, hit.ColumnIndex, new Point(e.X, e.Y));
+        }
+
+        private void DgvComponentes_CellMouseUp(object sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Right || e.RowIndex < 0)
+                return;
+
+            MostrarMenuContextualComponentesEnFila(e.RowIndex, e.ColumnIndex, _dgvComponentes.PointToClient(Cursor.Position));
+        }
+
+        private void MostrarMenuContextualComponentesEnFila(int rowIndex, int columnIndex, Point menuLocation)
+        {
+            if (_dgvComponentes == null || _menuContextualComponentes == null || rowIndex < 0 || rowIndex >= _dgvComponentes.Rows.Count)
+                return;
+
+            _filaContextualComponentes = rowIndex;
+
+            try
+            {
+                var clickedRow = _dgvComponentes.Rows[rowIndex];
+                _dgvComponentes.ClearSelection();
+                clickedRow.Selected = true;
+
+                int targetCol = columnIndex >= 0 && columnIndex < clickedRow.Cells.Count ? columnIndex : 0;
+                _dgvComponentes.CurrentCell = clickedRow.Cells[targetCol];
+                _dgvComponentes.Focus();
+                _menuContextualComponentes.Show(_dgvComponentes, menuLocation);
+            }
+            catch { }
+        }
+
         /// <summary>
         /// Calcula el factor de indirectos (igual que en FormPresupuesto)
         /// </summary>

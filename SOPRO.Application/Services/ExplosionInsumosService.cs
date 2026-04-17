@@ -111,10 +111,14 @@ namespace SOPRO.Application.Services
             }
 
             var result = new ExplosionCalculationResult();
+            decimal puBaseManoObraSinPorcentuales = manoObra.Values
+                .Where(i => !i.EsPorcentual)
+                .Sum(i => i.ImporteAcumulado);
+
             TransferirAResultado(result.Materiales,   materiales);
-            TransferirAResultado(result.ManoObra,     manoObra);
+            TransferirAResultado(result.ManoObra,     manoObra, puBaseManoObraSinPorcentuales);
             TransferirAResultado(result.Maquinaria,   maquinaria);
-            TransferirAResultado(result.Herramientas, herramientas);
+            TransferirAResultado(result.Herramientas, herramientas, puBaseManoObraSinPorcentuales);
 
             // Total explosión = suma de todos los importes acumulados
             result.CostoDirectoTotal =
@@ -351,7 +355,8 @@ namespace SOPRO.Application.Services
 
         private static void TransferirAResultado(
             Dictionary<int, ExplosionInsumoAccumulated> destino,
-            Dictionary<int, InsumoAcum> origen)
+            Dictionary<int, InsumoAcum> origen,
+            decimal? puBasePorcentual = null)
         {
             foreach (var kvp in origen)
             {
@@ -365,11 +370,10 @@ namespace SOPRO.Application.Services
 
                 if (src.EsPorcentual)
                 {
-                    // PU inferido = ImporteAcumulado / CantidadFísica (promedio ponderado)
+                    // Para insumos %MO, el P.U. mostrado debe representar la base total
+                    // de mano de obra sin considerar los propios insumos %MO.
                     cantidadReporte = src.CantidadFisicaAcumulada;
-                    puReporte = src.CantidadFisicaAcumulada > 0m
-                        ? src.ImporteAcumulado / src.CantidadFisicaAcumulada
-                        : 0m;
+                    puReporte = puBasePorcentual ?? 0m;
                 }
                 else
                 {
