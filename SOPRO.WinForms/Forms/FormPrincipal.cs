@@ -3,7 +3,11 @@ using SOPRO.Application.Models;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.WinForms.Services;
 using System;
+using System.Diagnostics;
+using System.Reflection;
+using System.Threading.Tasks;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
@@ -30,6 +34,58 @@ namespace SOPRO.WinForms.Forms
 
             InitializeComponent();
             LoadRecentProjects();
+            Shown += async (_, __) => await CheckForUpdatesOnStartupAsync();
+        }
+
+        private async Task CheckForUpdatesOnStartupAsync()
+        {
+            try
+            {
+                var currentVersion = GetCurrentApplicationVersion();
+                var updateService = new GitHubUpdateService();
+                var result = await updateService.CheckForUpdateAsync(currentVersion);
+
+                if (!result.CheckSucceeded || !result.HasUpdate)
+                    return;
+
+                var userResult = MessageBox.Show(
+                    $"Hay una nueva versión disponible de SOPRO.\n\n" +
+                    $"Versión instalada: v{currentVersion}\n" +
+                    $"Versión disponible: {result.LatestTag}\n\n" +
+                    "¿Deseas abrir la descarga del instalador ahora?",
+                    "Actualización disponible",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Information);
+
+                if (userResult != DialogResult.Yes)
+                    return;
+
+                var url = !string.IsNullOrWhiteSpace(result.InstallerUrl)
+                    ? result.InstallerUrl
+                    : result.ReleaseUrl;
+
+                if (string.IsNullOrWhiteSpace(url))
+                    return;
+
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = url,
+                    UseShellExecute = true
+                });
+            }
+            catch
+            {
+                // La verificación de actualizaciones no debe impedir que SOPRO abra.
+                // Puede fallar por falta de internet, GitHub no disponible o repositorio privado sin autenticación.
+            }
+        }
+
+        private static Version GetCurrentApplicationVersion()
+        {
+            var version = Assembly.GetExecutingAssembly().GetName().Version;
+            return version == null
+                ? new Version(1, 2, 0)
+                : new Version(version.Major, version.Minor, Math.Max(version.Build, 0));
         }
 
         private void LoadRecentProjects()
