@@ -200,6 +200,16 @@ namespace SOPRO.WinForms.Services
                 .Replace("{fecha_impresion}",   DateTime.Now.ToString("dd/MM/yyyy HH:mm"));
         }
 
+
+        public List<PlantillaReporteElemento> ObtenerElementosPlantillaPdf(int plantillaReporteId)
+        {
+            return _ctx.PlantillasReporteElementos
+                .Where(e => e.PlantillaReporteId == plantillaReporteId)
+                .OrderBy(e => e.ZOrder)
+                .ThenBy(e => e.Id)
+                .ToList();
+        }
+
         public void GuardarPlantilla(PlantillaReporte plantilla)
         {
             plantilla.FechaModificacion = DateTime.Now;

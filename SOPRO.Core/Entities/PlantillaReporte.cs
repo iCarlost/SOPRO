@@ -84,6 +84,11 @@ namespace SOPRO.Core.Entities
         // ── CONTROL ──────────────────────────────────────────────────────────
         public DateTime FechaModificacion { get; set; } = DateTime.Now;
 
+        // Alturas de franja en dmm para el diseñador PDF (M012)
+        // Independientes de EncabezadoAltura/PiePaginaAltura (que son px/pts para Excel)
+        public int AlturaEncabezadoDmm { get; set; } = 400;  // 40 mm
+        public int AlturaPieDmm        { get; set; } = 200;  // 20 mm
+
         // Navegación
         public virtual Proyecto Proyecto  { get; set; }
     }

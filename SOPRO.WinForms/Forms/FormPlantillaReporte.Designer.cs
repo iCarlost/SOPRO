@@ -19,6 +19,7 @@ namespace SOPRO.WinForms.Forms
             this.tabConfig          = new System.Windows.Forms.TabControl();
             this.tabEncPie          = new System.Windows.Forms.TabPage();
             this.tabDatos           = new System.Windows.Forms.TabPage();
+            this.tabDisenadorPdf    = new System.Windows.Forms.TabPage();
 
             // Panel encabezado/pie
             this.grpEncabezado      = new System.Windows.Forms.GroupBox();
@@ -110,11 +111,13 @@ namespace SOPRO.WinForms.Forms
             this.tabConfig.Location = new System.Drawing.Point(0, 0);
             this.tabConfig.Name     = "tabConfig";
             this.tabConfig.Size     = new System.Drawing.Size(900, 520);
+            this.tabConfig.TabPages.Add(this.tabDisenadorPdf);
             this.tabConfig.TabPages.Add(this.tabEncPie);
             this.tabConfig.TabPages.Add(this.tabDatos);
+            this.tabConfig.SelectedIndexChanged += new System.EventHandler(this.TabConfig_SelectedIndexChanged);
 
             // ── tabEncPie ────────────────────────────────────────────────────
-            this.tabEncPie.Text     = "Encabezado y Pie de Página";
+            this.tabEncPie.Text     = "Excel — Encabezado clásico";
             this.tabEncPie.Padding  = new System.Windows.Forms.Padding(6);
             this.tabEncPie.Controls.Add(this.grpEditorZona);
             this.tabEncPie.Controls.Add(this.grpFormato);
@@ -424,7 +427,7 @@ namespace SOPRO.WinForms.Forms
             this.grpFormato.Controls.Add(this.cboAlineacion);
 
             // ── tabDatos ─────────────────────────────────────────────────────
-            this.tabDatos.Text    = "Datos del Proyecto";
+            this.tabDatos.Text      = "Campos disponibles";
             this.tabDatos.Padding = new System.Windows.Forms.Padding(6);
             this.tabDatos.Controls.Add(this.grpDatosProyecto);
 
@@ -505,13 +508,18 @@ namespace SOPRO.WinForms.Forms
             this.StartPosition       = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text                = "Configuracion de Plantilla de Reporte";
 
+            // ── tabDisenadorPdf ───────────────────────────────────────────────
+            this.tabDisenadorPdf.Text    = "PDF — Encabezado libre";
+            this.tabDisenadorPdf.Padding = new System.Windows.Forms.Padding(0);
+            // El UcDisenador se instancia lazy en TabConfig_SelectedIndexChanged
+
             this.ResumeLayout(false);
         }
         #endregion
 
         private System.Windows.Forms.SplitContainer    splitMain;
         private System.Windows.Forms.TabControl        tabConfig;
-        private System.Windows.Forms.TabPage           tabEncPie, tabDatos;
+        private System.Windows.Forms.TabPage           tabEncPie, tabDatos, tabDisenadorPdf;
 
         private System.Windows.Forms.GroupBox          grpEncabezado, grpPie, grpEditorZona, grpFormato, grpDatosProyecto;
         private System.Windows.Forms.Panel             panelPreviewEnc, panelPreviewPie, panelTexto, panelImagen, panelBottom;

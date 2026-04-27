@@ -20,6 +20,9 @@ namespace SOPRO.WinForms.Forms
         // Zonas: 6 zonas (Enc Izq/Cen/Der, Pie Izq/Cen/Der)
         private string _zonaActual = "EncIzq";
 
+        // Diseñador PDF — instanciación lazy al primer acceso al tab
+        private UcDisenador _ucDisenador;
+
         public FormPlantillaReporte(SOPROContext ctx, Proyecto proyecto)
         {
             _ctx     = ctx;
@@ -27,6 +30,15 @@ namespace SOPRO.WinForms.Forms
             _svc     = new ReporteService(ctx);
             InitializeComponent();
             CargarPlantilla();
+
+            // El diseñador PDF es el primer tab, pero se inicializa hasta que
+            // el formulario ya está mostrado para que UcDisenador calcule su
+            // escala real y restaure correctamente las alturas persistidas.
+            Shown += (_, _) => BeginInvoke(new Action(() =>
+            {
+                tabConfig.SelectedTab = tabDisenadorPdf;
+                InicializarDisenadorPdf();
+            }));
         }
 
         private void CargarPlantilla()
@@ -336,8 +348,36 @@ namespace SOPRO.WinForms.Forms
         {
             AplicarCambiosZona();
             _svc.GuardarPlantilla(_plantilla);
+            _ucDisenador?.Guardar();
             MessageBox.Show("Plantilla guardada correctamente.", "SOPRO",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        // ── TAB DISEÑADOR PDF ─────────────────────────────────────────────────
+        private void TabConfig_SelectedIndexChanged(object s, EventArgs e)
+        {
+            if (tabConfig.SelectedTab == tabDisenadorPdf)
+                InicializarDisenadorPdf();
+        }
+
+        private void InicializarDisenadorPdf()
+        {
+            // El UserControl ya trae Dock=Fill en su diseñador, pero se reafirma
+            // aquí para evitar cambios de layout si se mueve de tab.
+            if (_ucDisenador == null)
+            {
+                _ucDisenador = new UcDisenador(_ctx, _proyecto)
+                {
+                    Dock = DockStyle.Fill
+                };
+                tabDisenadorPdf.Controls.Add(_ucDisenador);
+            }
+
+            // No inicializar antes de que el tab tenga tamaño real.
+            if (!IsHandleCreated || tabDisenadorPdf.ClientSize.Width <= 0)
+                return;
+
+            _ucDisenador.Inicializar();
         }
 
         private void btnCerrar_Click(object s, EventArgs e) => Close();

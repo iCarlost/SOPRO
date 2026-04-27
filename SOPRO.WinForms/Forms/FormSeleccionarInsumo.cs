@@ -76,10 +76,7 @@ namespace SOPRO.WinForms.Forms
             txtBuscar.KeyDown += txtBuscar_KeyDown;
             dgvInsumos.SelectionChanged += dgvInsumos_SelectionChanged;
             dgvInsumos.KeyDown += dgvInsumos_KeyDown;
-<<<<<<< HEAD
-=======
             dgvInsumos.KeyPress += dgvInsumos_KeyPress;
->>>>>>> vesrion deploy con nuevas funcionalidades.
             dgvInsumos.CellDoubleClick += dgvInsumos_CellDoubleClick;
             CargarInsumosActuales();
         }
@@ -541,14 +538,6 @@ namespace SOPRO.WinForms.Forms
                 FocusSearchBox();
                 txtBuscar.Clear();
             }
-        }
-
-        private void dgvInsumos_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)
-        {
-            if (e.RowIndex < 0) return;
-            if (e.ColumnIndex >= 0)
-                dgvInsumos.CurrentCell = dgvInsumos.Rows[e.RowIndex].Cells[e.ColumnIndex];
-            btnAceptar.PerformClick();
         }
 
         private void dgvInsumos_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)

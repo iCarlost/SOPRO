@@ -48,13 +48,14 @@ namespace SOPRO.WinForms.Services
             section.PageSetup.PageFormat = PageFormat.Letter;
             section.PageSetup.Orientation = MOrientation.Portrait;
 
-            var headerHeightCm = Math.Max(1.8, plantilla.EncabezadoAltura / 28.0);
-            var footerHeightCm = Math.Max(1.2, plantilla.PiePaginaAltura / 28.0);
+            var elementosPdf = _svc.ObtenerElementosPlantillaPdf(plantilla.Id);
+            var headerHeightCm = PlantillaLibrePdfRenderer.ObtenerAlturaEncabezadoCm(plantilla, elementosPdf);
+            var footerHeightCm = PlantillaLibrePdfRenderer.ObtenerAlturaPieCm(plantilla, elementosPdf);
             section.PageSetup.LeftMargin = Unit.FromCentimeter(1.2);
             section.PageSetup.RightMargin = Unit.FromCentimeter(1.2);
             section.PageSetup.HeaderDistance = Unit.FromCentimeter(0.25);
             section.PageSetup.FooterDistance = Unit.FromCentimeter(0.35);
-            section.PageSetup.TopMargin = Unit.FromCentimeter(headerHeightCm + 2.25);
+            section.PageSetup.TopMargin = Unit.FromCentimeter(headerHeightCm + PlantillaLibrePdfRenderer.ObtenerSeparacionContenidoSuperiorCm(plantilla, elementosPdf, 2.25));
             section.PageSetup.BottomMargin = Unit.FromCentimeter(footerHeightCm + 0.75);
 
             ConstruirHeader(section, proyecto, plantilla, headerHeightCm);
@@ -98,12 +99,18 @@ namespace SOPRO.WinForms.Services
 
         private void ConstruirHeader(Section section, Proyecto proyecto, PlantillaReporte plantilla, double headerHeightCm)
         {
+            var elementosPdf = _svc.ObtenerElementosPlantillaPdf(plantilla.Id);
+            if (PlantillaLibrePdfRenderer.TryRenderHeader(section.Headers.Primary, section, proyecto, plantilla, elementosPdf, _svc))
+                return;
             ConstruirTablaPlantilla(section.Headers.Primary.AddTable(), proyecto, plantilla, headerHeightCm, false);
             ConstruirTablaPlantilla(section.Headers.FirstPage.AddTable(), proyecto, plantilla, headerHeightCm, false);
         }
 
         private void ConstruirFooter(Section section, Proyecto proyecto, PlantillaReporte plantilla, double footerHeightCm)
         {
+            var elementosPdf = _svc.ObtenerElementosPlantillaPdf(plantilla.Id);
+            if (PlantillaLibrePdfRenderer.TryRenderFooter(section.Footers.Primary, section, proyecto, plantilla, elementosPdf, _svc))
+                return;
             ConstruirTablaPlantilla(section.Footers.Primary.AddTable(), proyecto, plantilla, footerHeightCm, true);
             ConstruirTablaPlantilla(section.Footers.FirstPage.AddTable(), proyecto, plantilla, footerHeightCm, true);
         }

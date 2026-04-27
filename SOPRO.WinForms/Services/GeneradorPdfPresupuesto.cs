@@ -55,15 +55,16 @@ namespace SOPRO.WinForms.Services
             section.PageSetup.PageFormat = PageFormat.Letter;
             section.PageSetup.Orientation = orientation;
 
-            var headerHeightCm = Math.Max(1.8, plantilla.EncabezadoAltura / 28.0);
-            var footerHeightCm = Math.Max(1.2, plantilla.PiePaginaAltura / 28.0);
+            var elementosPdf = _svc.ObtenerElementosPlantillaPdf(plantilla.Id);
+            var headerHeightCm = PlantillaLibrePdfRenderer.ObtenerAlturaEncabezadoCm(plantilla, elementosPdf);
+            var footerHeightCm = PlantillaLibrePdfRenderer.ObtenerAlturaPieCm(plantilla, elementosPdf);
 
             section.PageSetup.LeftMargin = Unit.FromCentimeter(1.0);
             section.PageSetup.RightMargin = Unit.FromCentimeter(1.0);
             section.PageSetup.HeaderDistance = Unit.FromCentimeter(0.35);
             section.PageSetup.FooterDistance = Unit.FromCentimeter(0.35);
-            section.PageSetup.TopMargin = Unit.FromCentimeter(headerHeightCm + 0.8);
-            section.PageSetup.BottomMargin = Unit.FromCentimeter(footerHeightCm + 0.8);
+            section.PageSetup.TopMargin = Unit.FromCentimeter(headerHeightCm + PlantillaLibrePdfRenderer.ObtenerSeparacionContenidoSuperiorCm(plantilla, elementosPdf, 0.8));
+            section.PageSetup.BottomMargin = Unit.FromCentimeter(footerHeightCm + PlantillaLibrePdfRenderer.ObtenerSeparacionContenidoInferiorCm(plantilla, elementosPdf, 0.8));
 
             ConstruirHeader(section, proyecto, plantilla, headerHeightCm);
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
@@ -97,6 +98,10 @@ namespace SOPRO.WinForms.Services
 
         private void ConstruirHeader(Section section, Proyecto proyecto, PlantillaReporte plantilla, double headerHeightCm)
         {
+            var elementosPdf = _svc.ObtenerElementosPlantillaPdf(plantilla.Id);
+            if (PlantillaLibrePdfRenderer.TryRenderHeader(section.Headers.Primary, section, proyecto, plantilla, elementosPdf, _svc))
+                return;
+
             var table = section.Headers.Primary.AddTable();
             table.Borders.Visible = false;
             ReportPageLayoutHelper.AddHeaderFooterColumns(table, section);
@@ -117,6 +122,10 @@ namespace SOPRO.WinForms.Services
 
         private void ConstruirFooter(Section section, Proyecto proyecto, PlantillaReporte plantilla, double footerHeightCm)
         {
+            var elementosPdf = _svc.ObtenerElementosPlantillaPdf(plantilla.Id);
+            if (PlantillaLibrePdfRenderer.TryRenderFooter(section.Footers.Primary, section, proyecto, plantilla, elementosPdf, _svc))
+                return;
+
             var table = section.Footers.Primary.AddTable();
             table.Borders.Visible = false;
             ReportPageLayoutHelper.AddHeaderFooterColumns(table, section);

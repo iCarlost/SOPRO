@@ -17,8 +17,8 @@ namespace SOPRO.WinForms.Forms
         private readonly Button _btnReemplazar;
         private readonly Button _btnMantener;
         private readonly Button _btnCancelar;
-        private readonly SplitContainer _mainSplit;
-        private readonly SplitContainer _rightSplit;
+        private readonly TableLayoutPanel _bodyLayout;
+        private readonly TableLayoutPanel _rightLayout;
 
         public ExternalMatrixImportConflictPolicy? SelectedPolicy { get; private set; }
 
@@ -27,8 +27,9 @@ namespace SOPRO.WinForms.Forms
             _preview = preview ?? throw new ArgumentNullException(nameof(preview));
             Text = "Preview de importación";
             StartPosition = FormStartPosition.CenterParent;
-            Size = new Size(980, 650);
-            MinimumSize = new Size(820, 540);
+            AutoScaleMode = AutoScaleMode.Font;
+            MinimumSize = new Size(900, 560);
+            ClientSize = new Size(980, 650);
             BackColor = Color.White;
 
             var root = new TableLayoutPanel
@@ -38,7 +39,7 @@ namespace SOPRO.WinForms.Forms
                 RowCount = 3,
                 Padding = new Padding(12)
             };
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 118F));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             Controls.Add(root);
@@ -46,38 +47,47 @@ namespace SOPRO.WinForms.Forms
             _lblResumen = new Label
             {
                 Dock = DockStyle.Fill,
-                AutoSize = true,
+                AutoSize = false,
                 Font = new Font("Segoe UI", 9F),
                 Padding = new Padding(4),
+                TextAlign = ContentAlignment.TopLeft,
+                AutoEllipsis = false,
                 Text = BuildSummary()
             };
             root.Controls.Add(_lblResumen, 0, 0);
 
-            _mainSplit = new SplitContainer
+            _bodyLayout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
-                Orientation = Orientation.Vertical,
-                FixedPanel = FixedPanel.None,
-                IsSplitterFixed = false
+                ColumnCount = 2,
+                RowCount = 1,
+                Margin = new Padding(0),
+                Padding = new Padding(0)
             };
-            root.Controls.Add(_mainSplit, 0, 1);
+            _bodyLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56F));
+            _bodyLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44F));
+            _bodyLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            root.Controls.Add(_bodyLayout, 0, 1);
 
-            var gbTree = new GroupBox { Text = "Árbol de dependencias", Dock = DockStyle.Fill };
+            var gbTree = new GroupBox { Text = "Árbol de dependencias", Dock = DockStyle.Fill, Margin = new Padding(0, 0, 6, 0) };
             _tree = new TreeView { Dock = DockStyle.Fill, HideSelection = false, FullRowSelect = true };
             gbTree.Controls.Add(_tree);
-            _mainSplit.Panel1.Controls.Add(gbTree);
+            _bodyLayout.Controls.Add(gbTree, 0, 0);
 
-            _rightSplit = new SplitContainer
+            _rightLayout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
-                Orientation = Orientation.Horizontal,
-                FixedPanel = FixedPanel.None,
-                IsSplitterFixed = false
+                ColumnCount = 1,
+                RowCount = 2,
+                Margin = new Padding(0),
+                Padding = new Padding(0)
             };
-            _mainSplit.Panel2.Controls.Add(_rightSplit);
+            _rightLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 68F));
+            _rightLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 32F));
+            _bodyLayout.Controls.Add(_rightLayout, 1, 0);
 
-            var tabs = new TabControl { Dock = DockStyle.Fill };
-            _rightSplit.Panel1.Controls.Add(tabs);
+            var tabs = new TabControl { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 6) };
+            _rightLayout.Controls.Add(tabs, 0, 0);
 
             _lstConflictos = new ListBox { Dock = DockStyle.Fill, HorizontalScrollbar = true };
             var pageConf = new TabPage("Conflictos");
@@ -90,9 +100,9 @@ namespace SOPRO.WinForms.Forms
             tabs.TabPages.Add(pageAcc);
 
             _lstImpacto = new ListBox { Dock = DockStyle.Fill, HorizontalScrollbar = true };
-            var gbImpacto = new GroupBox { Text = "Impacto de reemplazo", Dock = DockStyle.Fill };
+            var gbImpacto = new GroupBox { Text = "Impacto de reemplazo", Dock = DockStyle.Fill, Margin = new Padding(0) };
             gbImpacto.Controls.Add(_lstImpacto);
-            _rightSplit.Panel2.Controls.Add(gbImpacto);
+            _rightLayout.Controls.Add(gbImpacto, 0, 1);
 
             var buttonPanel = new FlowLayoutPanel
             {
@@ -118,63 +128,14 @@ namespace SOPRO.WinForms.Forms
             AcceptButton = _btnMantener;
             CancelButton = _btnCancelar;
 
-            Load += (_, __) =>
+            Load += (_, __) => Populate();
+            Shown += (_, __) => BeginInvoke(new Action(() =>
             {
-                Populate();
-                ApplySplitLayout();
-            };
-            Shown += (_, __) => ApplySplitLayout();
-            Resize += (_, __) =>
-            {
-                if (Visible && WindowState != FormWindowState.Minimized)
-                    ApplySplitLayout();
-            };
-        }
-
-        private void ApplySplitLayout()
-        {
-            SafeSetVerticalSplit(_mainSplit, 0.56d, 360, 240);
-            SafeSetHorizontalSplit(_rightSplit, 0.68d, 220, 120);
-        }
-
-        private static void SafeSetVerticalSplit(SplitContainer split, double ratio, int panel1Min, int panel2Min)
-        {
-            var total = split.ClientSize.Width;
-            if (total <= 0) return;
-
-            var splitter = Math.Max(4, split.SplitterWidth);
-            var available = total - splitter;
-            if (available <= 0) return;
-
-            var safe1 = Math.Min(panel1Min, Math.Max(0, available - 1));
-            var safe2 = Math.Min(panel2Min, Math.Max(0, available - safe1));
-            split.Panel1MinSize = safe1;
-            split.Panel2MinSize = safe2;
-
-            var min = safe1;
-            var max = Math.Max(min, total - safe2 - splitter);
-            var desired = (int)Math.Round(total * ratio);
-            split.SplitterDistance = Math.Max(min, Math.Min(desired, max));
-        }
-
-        private static void SafeSetHorizontalSplit(SplitContainer split, double ratio, int panel1Min, int panel2Min)
-        {
-            var total = split.ClientSize.Height;
-            if (total <= 0) return;
-
-            var splitter = Math.Max(4, split.SplitterWidth);
-            var available = total - splitter;
-            if (available <= 0) return;
-
-            var safe1 = Math.Min(panel1Min, Math.Max(0, available - 1));
-            var safe2 = Math.Min(panel2Min, Math.Max(0, available - safe1));
-            split.Panel1MinSize = safe1;
-            split.Panel2MinSize = safe2;
-
-            var min = safe1;
-            var max = Math.Max(min, total - safe2 - splitter);
-            var desired = (int)Math.Round(total * ratio);
-            split.SplitterDistance = Math.Max(min, Math.Min(desired, max));
+                PerformLayout();
+                _bodyLayout.PerformLayout();
+                _rightLayout.PerformLayout();
+                Invalidate(true);
+            }));
         }
 
         private string BuildSummary()

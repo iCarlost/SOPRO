@@ -68,6 +68,7 @@ namespace SOPRO.Data.Context
         // REPORTES
         // ═══════════════════════════════════════════════════════════
         public DbSet<PlantillaReporte> PlantillasReporte { get; set; }
+        public DbSet<PlantillaReporteElemento> PlantillasReporteElementos { get; set; }
         public DbSet<ConfigColumnaReporte> ConfigColumnasReporte { get; set; }
         public DbSet<ConfiguracionTituloReporte> ConfiguracionesTituloReporte { get; set; }
         
@@ -692,6 +693,25 @@ namespace SOPRO.Data.Context
                     .HasForeignKey(e => e.ProyectoId)
                     .OnDelete(DeleteBehavior.Cascade);
                 entity.HasIndex(e => e.ProyectoId).IsUnique(); // Una plantilla por proyecto
+            });
+
+            modelBuilder.Entity<PlantillaReporteElemento>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasOne(e => e.PlantillaReporte)
+                    .WithMany()
+                    .HasForeignKey(e => e.PlantillaReporteId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.Property(e => e.Zona).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.Tipo).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.Fuente).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.ColorTextoHex).IsRequired().HasMaxLength(10);
+                entity.Property(e => e.Alineacion).IsRequired().HasMaxLength(30);
+                // BLOB y strings opcionales explícitamente nullable
+                entity.Property(e => e.ImagenBytes).IsRequired(false);
+                entity.Property(e => e.ImagenNombreOrigen).IsRequired(false);
+                entity.Property(e => e.ImagenRutaOrigen).IsRequired(false);
+                entity.Property(e => e.ImagenMimeType).IsRequired(false);
             });
             
             modelBuilder.Entity<ConfigColumnaReporte>(entity =>

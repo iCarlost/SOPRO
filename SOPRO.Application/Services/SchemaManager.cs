@@ -47,7 +47,7 @@ namespace SOPRO.Application.Services
         /// Versión actual del schema. Incrementar cuando se agreguen nuevas migraciones.
         /// Formato: AAAA.MM.revision
         /// </summary>
-        public const string VersionActual = "2026.04.1";
+        public const string VersionActual = "2026.04.2";
 
         /// <summary>
         /// Aplica todas las migraciones sobre el contexto dado.
@@ -81,6 +81,7 @@ namespace SOPRO.Application.Services
                         M009_ConceptosPresupuesto(conn, tx);
                         M010_ConfigColumnasReporte(conn, tx);
                         M011_SanitizarNullsLegacy(conn, tx);
+                        M012_DisenadorEncabezadoPdf(conn, tx);
                         RegistrarVersion(conn, tx);
                         tx.Commit();
                     }
@@ -819,6 +820,61 @@ namespace SOPRO.Application.Services
                 pragmaOn.CommandText = "PRAGMA foreign_keys = ON;";
                 pragmaOn.ExecuteNonQuery();
             }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // M012 — Diseñador WYSIWYG de Encabezado/Pie de Página (PDF)
+        //
+        // Crea la tabla PlantillasReporteElementos para el diseñador libre.
+        // Cada fila es un elemento posicionado (texto, etiqueta dinámica, imagen)
+        // con coordenadas en décimas de mm (dmm).
+        //
+        // Convive con PlantillaReporte existente:
+        //   - PlantillaReporte sigue siendo la fuente para reportes Excel.
+        //   - PlantillasReporteElementos es la fuente para reportes PDF diseñados.
+        //
+        // AlturaEncabezadoDmm y AlturaPieDmm se agregan a PlantillasReporte
+        // para que el diseñador persista las alturas de franja independientemente.
+        // ═══════════════════════════════════════════════════════════════════════
+        private static void M012_DisenadorEncabezadoPdf(DbConnection conn, DbTransaction tx)
+        {
+            // Tabla principal de elementos del diseñador
+            Exec(conn, @"
+                CREATE TABLE IF NOT EXISTS PlantillasReporteElementos (
+                    Id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                    PlantillaReporteId  INTEGER NOT NULL
+                                        REFERENCES PlantillasReporte(Id) ON DELETE CASCADE,
+                    Zona                TEXT NOT NULL DEFAULT 'Encabezado',
+                    Tipo                TEXT NOT NULL DEFAULT 'TextoLibre',
+                    X                   INTEGER NOT NULL DEFAULT 0,
+                    Y                   INTEGER NOT NULL DEFAULT 0,
+                    Ancho               INTEGER NOT NULL DEFAULT 500,
+                    Alto                INTEGER NOT NULL DEFAULT 100,
+                    Contenido           TEXT NOT NULL DEFAULT '',
+                    Fuente              TEXT NOT NULL DEFAULT 'Segoe UI',
+                    TamanoFuente        REAL NOT NULL DEFAULT 10.0,
+                    Negrita             INTEGER NOT NULL DEFAULT 0,
+                    Cursiva             INTEGER NOT NULL DEFAULT 0,
+                    ColorTextoHex       TEXT NOT NULL DEFAULT '#000000',
+                    Alineacion          TEXT NOT NULL DEFAULT 'MiddleLeft',
+                    ZOrder              INTEGER NOT NULL DEFAULT 0,
+                    ImagenBytes         BLOB,
+                    ImagenNombreOrigen  TEXT,
+                    ImagenRutaOrigen    TEXT,
+                    ImagenMimeType      TEXT
+                );", tx);
+
+            // Índice para consultas frecuentes por plantilla y zona
+            Exec(conn, @"
+                CREATE INDEX IF NOT EXISTS IX_PlantillasReporteElementos_PlantillaZona
+                ON PlantillasReporteElementos (PlantillaReporteId, Zona);", tx);
+
+            // Columnas de altura de franja en dmm agregadas a PlantillasReporte
+            // (independientes de EncabezadoAltura/PiePaginaAltura que son px para Excel)
+            AgregarColumna(conn, "PlantillasReporte", "AlturaEncabezadoDmm",
+                "INTEGER NOT NULL DEFAULT 400", tx);   // 400 dmm = 40 mm
+            AgregarColumna(conn, "PlantillasReporte", "AlturaPieDmm",
+                "INTEGER NOT NULL DEFAULT 200", tx);   // 200 dmm = 20 mm
         }
     }
 }

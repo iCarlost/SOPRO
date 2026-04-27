@@ -107,7 +107,12 @@ namespace SOPRO.WinForms.Services
                 ApplyPageSpec(page, pageSpec);
 
                 using var gfx = XGraphics.FromPdfPage(page);
-                var layout = new PageLayout(page, plantilla, pageSpec);
+                var elementosPdf = _svc.ObtenerElementosPlantillaPdf(plantilla.Id);
+                var layout = new PageLayout(page, plantilla, pageSpec,
+                    PlantillaLibrePdfRenderer.ObtenerAlturaEncabezadoPt(plantilla, elementosPdf),
+                    PlantillaLibrePdfRenderer.ObtenerAlturaPiePt(plantilla, elementosPdf),
+                    PlantillaLibrePdfRenderer.TieneEncabezadoLibre(plantilla, elementosPdf),
+                    PlantillaLibrePdfRenderer.TienePieLibre(plantilla, elementosPdf));
                 var resources = new DrawResources(gfx, columnas, ganttVisualSettings);
 
                 DrawTemplateHeader(gfx, layout, proyecto, plantilla);
@@ -139,7 +144,11 @@ namespace SOPRO.WinForms.Services
                         page = document.AddPage();
                         ApplyPageSpec(page, pageSpec);
                         using var gfx2 = XGraphics.FromPdfPage(page);
-                        layout = new PageLayout(page, plantilla, pageSpec);
+                        layout = new PageLayout(page, plantilla, pageSpec,
+                            PlantillaLibrePdfRenderer.ObtenerAlturaEncabezadoPt(plantilla, elementosPdf),
+                            PlantillaLibrePdfRenderer.ObtenerAlturaPiePt(plantilla, elementosPdf),
+                            PlantillaLibrePdfRenderer.TieneEncabezadoLibre(plantilla, elementosPdf),
+                            PlantillaLibrePdfRenderer.TienePieLibre(plantilla, elementosPdf));
                         DrawTemplateHeader(gfx2, layout, proyecto, plantilla);
                         DrawTemplateFooter(gfx2, layout, proyecto, plantilla, paginaNumero);
                         y = DrawReportHeading(gfx2, layout, layout.BodyTop, proyecto, ganttModel, tituloReporte, resources, tituloCfg);
@@ -251,7 +260,8 @@ namespace SOPRO.WinForms.Services
             public double MarginBottom { get; }
             public double HeaderHeight { get; }
             public double FooterHeight { get; }
-            public double BodyTop => MarginTop + HeaderHeight + 8;
+            public double HeaderBodyGap { get; }
+            public double BodyTop => MarginTop + HeaderHeight + HeaderBodyGap;
             public double BodyBottom { get; }
             public double BodyLeft => MarginLeft;
             public double BodyRight { get; }
@@ -261,7 +271,7 @@ namespace SOPRO.WinForms.Services
             public double LeftTableWidth { get; }
             public double GanttWidth { get; }
 
-            public PageLayout(PdfPage page, PlantillaReporte plantilla, PageSpec spec)
+            public PageLayout(PdfPage page, PlantillaReporte plantilla, PageSpec spec, double headerHeightPt, double footerHeightPt, bool tieneHeaderLibre = false, bool tieneFooterLibre = false)
             {
                 PageWidth = page.Width.Point;
                 PageHeight = page.Height.Point;
@@ -269,10 +279,11 @@ namespace SOPRO.WinForms.Services
                 MarginRight = 26;
                 MarginTop = 18;
                 MarginBottom = 16;
-                HeaderHeight = Math.Max(52, plantilla.EncabezadoAltura * 0.80);
-                FooterHeight = Math.Max(28, plantilla.PiePaginaAltura * 0.80);
+                HeaderHeight = headerHeightPt;
+                FooterHeight = footerHeightPt;
+                HeaderBodyGap = tieneHeaderLibre ? 3 : 8;
                 BodyRight = PageWidth - MarginRight;
-                BodyBottom = PageHeight - MarginBottom - FooterHeight - 4;
+                BodyBottom = PageHeight - MarginBottom - FooterHeight - (tieneFooterLibre ? 1 : 4);
                 LeftTableWidth = spec.LeftTableWidth;
                 GanttWidth = spec.GanttWidth;
             }
@@ -421,12 +432,18 @@ namespace SOPRO.WinForms.Services
 
         private void DrawTemplateHeader(XGraphics gfx, PageLayout layout, Proyecto proyecto, PlantillaReporte plantilla)
         {
-            DrawTemplateBand(gfx, new XRect(layout.MarginLeft, layout.MarginTop, layout.PageWidth - layout.MarginLeft - layout.MarginRight, layout.HeaderHeight), proyecto, plantilla, false, 0, 0);
+            var elementosPdf = _svc.ObtenerElementosPlantillaPdf(plantilla.Id);
+            var rect = new XRect(layout.MarginLeft, layout.MarginTop, layout.PageWidth - layout.MarginLeft - layout.MarginRight, layout.HeaderHeight);
+            if (!PlantillaLibrePdfRenderer.TryDrawHeader(gfx, rect, proyecto, plantilla, elementosPdf, _svc, 0, 0))
+                DrawTemplateBand(gfx, rect, proyecto, plantilla, false, 0, 0);
         }
 
         private void DrawTemplateFooter(XGraphics gfx, PageLayout layout, Proyecto proyecto, PlantillaReporte plantilla, int pagina)
         {
-            DrawTemplateBand(gfx, new XRect(layout.MarginLeft, layout.PageHeight - layout.MarginBottom - layout.FooterHeight, layout.PageWidth - layout.MarginLeft - layout.MarginRight, layout.FooterHeight), proyecto, plantilla, true, pagina, 0);
+            var elementosPdf = _svc.ObtenerElementosPlantillaPdf(plantilla.Id);
+            var rect = new XRect(layout.MarginLeft, layout.PageHeight - layout.MarginBottom - layout.FooterHeight, layout.PageWidth - layout.MarginLeft - layout.MarginRight, layout.FooterHeight);
+            if (!PlantillaLibrePdfRenderer.TryDrawFooter(gfx, rect, proyecto, plantilla, elementosPdf, _svc, pagina, 0))
+                DrawTemplateBand(gfx, rect, proyecto, plantilla, true, pagina, 0);
         }
 
         private void DrawTemplateBand(XGraphics gfx, XRect rect, Proyecto proyecto, PlantillaReporte plantilla, bool esPie, int pagina, int totalPaginas)

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -33,6 +34,7 @@ namespace SOPRO.WinForms.Forms
         private Color _colorMuestraFondoRibbon = Color.White;
         private Color _colorMuestraTextoRibbon = Color.Black;
         private bool _ajusteHostTabsPendiente = false;
+        private bool _actualizandoOverflowRibbon = false;
 
         public FormProyecto(SOPROContext context, Proyecto proyecto)
         {
@@ -99,6 +101,7 @@ namespace SOPRO.WinForms.Forms
 
             RestaurarEstadoBarraYLateral();
             AjustarHostTabs();
+            ActualizarOverflowRibbon();
         }
 
 
@@ -542,7 +545,11 @@ namespace SOPRO.WinForms.Forms
 
             ConfigurarIconosRibbon();
             AplicarTemaCompletoRibbon();
-            panelRibbon.Resize += (_, __) => AjustarLayoutAccionesRibbon();
+            panelRibbon.Resize += (_, __) =>
+            {
+                AjustarLayoutAccionesRibbon();
+                ActualizarOverflowRibbon();
+            };
             btnAlinIzq.Click += (s, ev) => SetAlineacion(AlineacionColumna.Izquierda);
             btnAlinCen.Click += (s, ev) => SetAlineacion(AlineacionColumna.Centro);
             btnAlinDer.Click += (s, ev) => SetAlineacion(AlineacionColumna.Derecha);
@@ -609,6 +616,8 @@ namespace SOPRO.WinForms.Forms
                     lblColumna.ForeColor = System.Drawing.Color.Gray;
                     _cargandoRibbon = false;
                 }
+
+                ActualizarOverflowRibbon();
             }
             else
             {
@@ -640,6 +649,7 @@ namespace SOPRO.WinForms.Forms
                     : "Clic en encabezado de columna para formatear";
                 lblColumna.ForeColor = Color.Gray;
                 _cargandoRibbon = false;
+                ActualizarOverflowRibbon();
             }
             else
             {
@@ -651,6 +661,7 @@ namespace SOPRO.WinForms.Forms
         private void FormActivoConsolidacionCambiada(object sender, EventArgs e)
         {
             btnConsolidarInsumos.Enabled = _formActivoConsolidable?.ConsolidacionDisponible == true;
+            ActualizarOverflowRibbon();
         }
 
         private void btnConsolidarInsumos_Click(object sender, EventArgs e)
@@ -660,6 +671,7 @@ namespace SOPRO.WinForms.Forms
 
             _formActivoConsolidable.EjecutarConsolidacion();
             btnConsolidarInsumos.Enabled = _formActivoConsolidable.ConsolidacionDisponible;
+            ActualizarOverflowRibbon();
         }
 
         private void ConfigurarIconosRibbon()
@@ -765,6 +777,150 @@ namespace SOPRO.WinForms.Forms
             button.Location = new Point(x, y);
         }
 
+        private void AplicarTemaBotonOverflowRibbon()
+        {
+            if (btnRibbonMas == null)
+                return;
+
+            btnRibbonMas.UseVisualStyleBackColor = false;
+            btnRibbonMas.FlatStyle = FlatStyle.Flat;
+            btnRibbonMas.FlatAppearance.BorderSize = 0;
+            btnRibbonMas.FlatAppearance.BorderColor = RibbonBaseColor;
+            btnRibbonMas.BackColor = RibbonBaseColor;
+            btnRibbonMas.ForeColor = Color.Silver;
+            btnRibbonMas.FlatAppearance.MouseOverBackColor = ControlPaint.Light(RibbonBaseColor);
+            btnRibbonMas.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(RibbonBaseColor);
+        }
+
+        private void ActualizarOverflowRibbon()
+        {
+            if (panelRibbon == null || btnRibbonMas == null || cmsRibbonOverflow == null || _actualizandoOverflowRibbon)
+                return;
+
+            _actualizandoOverflowRibbon = true;
+            panelRibbon.SuspendLayout();
+            try
+            {
+                btnRibbonMas.Location = new Point(Math.Max(4, panelRibbon.ClientSize.Width - btnRibbonMas.Width - 6), Math.Max(6, (panelRibbon.ClientSize.Height - btnRibbonMas.Height) / 2));
+
+                foreach (var grupo in ObtenerGruposOverflowRibbon())
+                {
+                    foreach (var control in grupo)
+                        control.Visible = true;
+                }
+
+                int rightLimit = btnRibbonMas.Left - 8;
+                bool hayOcultos = false;
+
+                foreach (var grupo in ObtenerGruposOverflowRibbon())
+                {
+                    int groupRight = grupo.Max(c => c.Right);
+                    if (groupRight > rightLimit)
+                    {
+                        foreach (var control in grupo)
+                            control.Visible = false;
+
+                        hayOcultos = true;
+                    }
+                }
+
+                btnRibbonMas.Visible = hayOcultos;
+                ReconstruirMenuOverflowRibbon();
+            }
+            finally
+            {
+                panelRibbon.ResumeLayout();
+                _actualizandoOverflowRibbon = false;
+            }
+        }
+
+        private IEnumerable<Control[]> ObtenerGruposOverflowRibbon()
+        {
+            yield return new Control[] { lblSepReporte, label2, btnExcelRibbon, btnPdfRibbon };
+            yield return new Control[] { btnAplicarATodas, btnConsolidarInsumos };
+            yield return new Control[] { label1, btnRecalcularRibbon, btnDepurarRibbon };
+            yield return new Control[] { lblSepGlobal, btnWrapRibbon, btnBuscarRibbon };
+            yield return new Control[] { lblSepAlin, btnAlinJus, btnAlinMed, btnAlinAba, btnAlinIzq, btnAlinCen, btnAlinDer };
+            yield return new Control[] { lblSepEstilo, btnColorFondo, btnColorTexto };
+            yield return new Control[] { btnNegrita, btnCursiva };
+        }
+
+        private void ReconstruirMenuOverflowRibbon()
+        {
+            cmsRibbonOverflow.Items.Clear();
+
+            AgregarItemOverflowRibbon(btnNegrita, "Negrita");
+            AgregarItemOverflowRibbon(btnCursiva, "Cursiva");
+            AgregarItemOverflowRibbon(btnColorFondo, "Color de fondo");
+            AgregarItemOverflowRibbon(btnColorTexto, "Color de texto");
+            AgregarItemOverflowRibbon(btnAlinJus, "Alinear arriba");
+            AgregarItemOverflowRibbon(btnAlinMed, "Alinear medio");
+            AgregarItemOverflowRibbon(btnAlinAba, "Alinear abajo");
+            AgregarItemOverflowRibbon(btnAlinIzq, "Alinear izquierda");
+            AgregarItemOverflowRibbon(btnAlinCen, "Alinear centro");
+            AgregarItemOverflowRibbon(btnAlinDer, "Alinear derecha");
+            AgregarItemOverflowRibbon(btnWrapRibbon, "Ajustar");
+            AgregarItemOverflowRibbon(btnBuscarRibbon, "Buscar");
+            AgregarItemOverflowRibbon(btnRecalcularRibbon, "Recalcular");
+            AgregarItemOverflowRibbon(btnDepurarRibbon, "Depurar");
+            AgregarItemOverflowRibbon(btnAplicarATodas, "Aplicar");
+            AgregarItemOverflowRibbon(btnConsolidarInsumos, "Consolidar");
+            AgregarItemOverflowRibbon(btnExcelRibbon, "Excel");
+            AgregarItemOverflowRibbon(btnPdfRibbon, "PDF");
+
+            btnRibbonMas.Enabled = cmsRibbonOverflow.Items.Count > 0;
+        }
+
+        private void AgregarItemOverflowRibbon(Button button, string texto)
+        {
+            if (button == null || button.Visible)
+                return;
+
+            var item = new ToolStripMenuItem(texto)
+            {
+                Enabled = button.Enabled,
+                Tag = button
+            };
+            item.Click += OverflowRibbonItem_Click;
+            cmsRibbonOverflow.Items.Add(item);
+        }
+
+        private void OverflowRibbonItem_Click(object? sender, EventArgs e)
+        {
+            if (sender is not ToolStripMenuItem item || item.Tag is not Button button || !button.Enabled)
+                return;
+
+            EjecutarClickBotonRibbonOculto(button);
+        }
+
+        private void EjecutarClickBotonRibbonOculto(Button button)
+        {
+            if (button == null)
+                return;
+
+            bool visibleOriginal = button.Visible;
+            try
+            {
+                if (!visibleOriginal)
+                    button.Visible = true;
+
+                button.PerformClick();
+            }
+            finally
+            {
+                if (!visibleOriginal)
+                    button.Visible = false;
+            }
+        }
+
+        private void btnRibbonMas_Click(object sender, EventArgs e)
+        {
+            if (cmsRibbonOverflow == null || cmsRibbonOverflow.Items.Count == 0)
+                return;
+
+            cmsRibbonOverflow.Show(btnRibbonMas, new Point(0, btnRibbonMas.Height));
+        }
+
         private RibbonButtonState GetRibbonButtonState(Button btn)
         {
             if (btn?.Tag is RibbonButtonState state)
@@ -842,7 +998,7 @@ namespace SOPRO.WinForms.Forms
             AplicarTemaBotonRibbon(btnPdfRibbon, false);
             AplicarTemaBotonRibbon(btnRecalcularRibbon, false);
             AplicarTemaBotonRibbon(btnDepurarRibbon, false);
-
+            AplicarTemaBotonOverflowRibbon();
 
             AplicarTemaBotonColor(btnColorFondo, _colorMuestraFondoRibbon, '■'.ToString());
             AplicarTemaBotonColor(btnColorTexto, _colorMuestraTextoRibbon, 'A'.ToString());
@@ -873,6 +1029,7 @@ namespace SOPRO.WinForms.Forms
             panelRibbon.Enabled  = true;
 
             _cargandoRibbon = false;
+            ActualizarOverflowRibbon();
         }
 
         private void DesactivarRibbon()
@@ -890,6 +1047,7 @@ namespace SOPRO.WinForms.Forms
             lblColumna.Text      = "-- sin seleccion --";
             lblColumna.ForeColor = Color.Gray;
             _cargandoRibbon = false;
+            ActualizarOverflowRibbon();
         }
 
         private void HabilitarControlesFormato(bool enabled)
@@ -908,6 +1066,7 @@ namespace SOPRO.WinForms.Forms
             btnColorTexto.Enabled = enabled;
             btnAplicarATodas.Enabled = enabled;
             AplicarTemaCompletoRibbon();
+            ActualizarOverflowRibbon();
         }
 
         private void AplicarRibbon()

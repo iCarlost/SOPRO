@@ -36,12 +36,46 @@ namespace SOPRO.WinForms.Services
             return Math.Max(8.0, pageWidth - left - right);
         }
 
+        public static double GetContentWidthCm(Section section)
+        {
+            var left = section.PageSetup.LeftMargin.Centimeter;
+            var right = section.PageSetup.RightMargin.Centimeter;
+            var pageWidth = ResolvePageWidthCm(section);
+            return Math.Max(8.0, pageWidth - left - right);
+        }
+
         public static void AddHeaderFooterColumns(Table table, Section section, int count = 3)
         {
-            var contentWidth = GetLetterContentWidthCm(section);
+            var contentWidth = GetContentWidthCm(section);
             var each = contentWidth / Math.Max(1, count);
             for (int i = 0; i < count; i++)
                 table.AddColumn(Unit.FromCentimeter(each));
+        }
+
+
+        private static double ResolvePageWidthCm(Section section)
+        {
+            double width = section.PageSetup.PageWidth.Centimeter;
+            double height = section.PageSetup.PageHeight.Centimeter;
+
+            if (width <= 0.01 || height <= 0.01)
+            {
+                (width, height) = section.PageSetup.PageFormat switch
+                {
+                    PageFormat.Letter => (21.59, 27.94),
+                    PageFormat.Legal => (21.59, 35.56),
+                    PageFormat.A4 => (21.0, 29.7),
+                    PageFormat.A3 => (29.7, 42.0),
+                    _ => (21.59, 27.94)
+                };
+            }
+
+            if (section.PageSetup.Orientation == MOrientation.Landscape && width < height)
+                (width, height) = (height, width);
+            else if (section.PageSetup.Orientation == MOrientation.Portrait && width > height)
+                (width, height) = (height, width);
+
+            return width;
         }
 
         private static double EstimateMinimumWidthCm(string key, int widthPx)

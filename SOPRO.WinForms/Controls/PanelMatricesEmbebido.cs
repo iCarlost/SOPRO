@@ -431,7 +431,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             }
         }
 
-        private void CargarMatrizDeFila(int fila)
+        private void ConfigurarMenuContextualComponentes()
         {
             _menuContextualComponentes = new ContextMenuStrip();
             _mnuEditarMatrizComponente = new ToolStripMenuItem("Editar matriz componente");
@@ -449,29 +449,152 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             e.Cancel = !puedeEditar;
         }
 
-            if (concepto == null || concepto.EsAgrupador || concepto.MatrizId == null)
-            { MostrarSinSeleccion(); return; }
+        private ComponenteMatriz ObtenerComponenteSeleccionadoParaContexto()
+        {
+            if (_dgvComponentes == null)
+                return null;
 
-            // Cargar la matriz FRESCA desde BD cada vez
-            _matrizActual = _context.Matrices
+            int fila = _filaContextualComponentes;
+            if (fila < 0)
+                fila = _dgvComponentes.CurrentRow?.Index ?? -1;
+
+            if (fila < 0)
+                return null;
+
+            return ObtenerComponentePorFilaTrabajo(fila);
+        }
+
+        private bool EsComponenteMatrizEditable(ComponenteMatriz comp)
+        {
+            return comp?.TipoComponente == TipoComponenteMatriz.Auxiliar &&
+                   comp.Auxiliar != null &&
+                   (comp.Auxiliar.Tipo == TipoMatriz.Basico || comp.Auxiliar.Tipo == TipoMatriz.Cuadrilla);
+        }
+
+        private void EditarMatrizComponenteDesdeContexto()
+        {
+            var comp = ObtenerComponenteSeleccionadoParaContexto();
+            if (!EsComponenteMatrizEditable(comp) || comp?.AuxiliarId == null || _matrizActual == null)
+                return;
+
+            if (_modoSubedicionComponente)
+                return;
+
+            _matrizPadreIdSubedicion = _matrizActual.Id;
+            _filaPadreSubedicion = _dgvComponentes.CurrentRow?.Index;
+            _modoSubedicionComponente = true;
+
+            BeginEditMatrix(
+                comp.AuxiliarId.Value,
+                onSaved: _ => FinalizarSubedicionComponente(true),
+                onCancelled: () => FinalizarSubedicionComponente(false));
+        }
+
+        private void FinalizarSubedicionComponente(bool refrescarPadre)
+        {
+            if (!_modoSubedicionComponente || !_matrizPadreIdSubedicion.HasValue)
+                return;
+
+            int matrizPadreId = _matrizPadreIdSubedicion.Value;
+            int? filaPadre = _filaPadreSubedicion;
+
+            _modoSubedicionComponente = false;
+            _matrizPadreIdSubedicion = null;
+            _filaPadreSubedicion = null;
+            _onMatrixHeaderSaved = null;
+            _onMatrixHeaderCancelled = null;
+            _modoEdicionCabecera = false;
+
+            if (refrescarPadre)
+                RecalcularMatrizYConceptos(matrizPadreId);
+
+            var matrizPadre = CargarMatrizConComponentes(matrizPadreId, false);
+            if (matrizPadre == null)
+            {
+                MostrarSinSeleccion("No se pudo regresar a la matriz padre", "La matriz padre ya no está disponible.");
+                return;
+            }
+
+            _matrizActual = matrizPadre;
+            _matrizEditandoId = matrizPadreId;
+            MostrarDatosCabecera(true);
+            MostrarMatriz(matrizPadre, null);
+            _panelBotonesAgregar.Enabled = true;
+
+            try
+            {
+                if (filaPadre.HasValue && filaPadre.Value >= 0 && filaPadre.Value < _dgvComponentes.Rows.Count)
+                    _dgvComponentes.CurrentCell = _dgvComponentes.Rows[filaPadre.Value].Cells[0];
+            }
+            catch { }
+        }
+
+        private Matriz CargarMatrizConComponentes(int matrizId, bool asNoTracking)
+        {
+            IQueryable<Matriz> query = _context.Matrices
                 .Include(m => m.Componentes).ThenInclude(c => c.Material)
                 .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
                 .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
                 .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
-                .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
-                .AsNoTracking()  // Sin tracking para siempre leer BD fresca
-                .FirstOrDefault(m => m.Id == concepto.MatrizId);
+                .Include(m => m.Componentes).ThenInclude(c => c.Herramienta);
 
-            if (_matrizActual == null) { MostrarSinSeleccion(); return; }
+            if (asNoTracking)
+                query = query.AsNoTracking();
 
             return query.FirstOrDefault(m => m.Id == matrizId);
         }
 
         private void RecalcularMatrizYConceptos(int matrizId)
         {
-            _lblTituloMatriz.Text = $"APU:  {matriz.Clave}  —  {matriz.Descripcion}";
-            _lblInfoMatriz.Text   = $"Unidad: {matriz.Unidad}   |   Concepto en presupuesto: {concepto.Clave} - {concepto.Descripcion}";
-            _panelBotonesAgregar.Enabled = true;
+            var matrizTracked = CargarMatrizConComponentes(matrizId, false);
+            if (matrizTracked == null)
+                return;
+
+            var proyecto = _context.Proyectos.Find(_proyectoId);
+            if (proyecto == null)
+                return;
+
+            var motor = new MotorCalculoSopro(proyecto);
+            var totals = MatrixComponentCalculationService.Recalculate(
+                matrizTracked.Componentes.ToList(), proyecto.DecimalesImporte);
+            matrizTracked.CostoDirecto = motor.RedondearImporte(totals.CostoDirectoTotal);
+            matrizTracked.FechaModificacion = DateTime.Now;
+
+            var pctInput = new SOPRO.Application.Models.Presupuesto.BudgetPercentageInput
+            {
+                IndirectosCentral = proyecto.PorcentajeIndirectosCentral,
+                IndirectosCampo = proyecto.PorcentajeIndirectosCampo,
+                Financiamiento = proyecto.PorcentajeFinanciamiento,
+                Utilidad = proyecto.PorcentajeUtilidad,
+                CargosAdicionales = proyecto.PorcentajeCargosAdicionales,
+                ModoCalculoPorcentajes = proyecto.ModoCalculoPorcentajes ?? "Acumulables"
+            };
+            decimal nuevoPrecioUnitario = motor.CalcularPrecioUnitario(matrizTracked.CostoDirecto, pctInput).PrecioUnitario;
+
+            foreach (var row in _dgvPresupuesto?.Rows.Cast<DataGridViewRow>() ?? Enumerable.Empty<DataGridViewRow>())
+            {
+                if (row.Tag is not ConceptoPresupuesto c || c.MatrizId != matrizId)
+                    continue;
+
+                c.CostoDirectoUnitario = matrizTracked.CostoDirecto;
+                c.CostoDirectoTotal = motor.Multiplicar(c.Cantidad, matrizTracked.CostoDirecto);
+                c.PrecioUnitario = nuevoPrecioUnitario;
+                c.ImporteTotal = motor.Multiplicar(c.Cantidad, nuevoPrecioUnitario);
+
+                foreach (DataGridViewColumn col in _dgvPresupuesto.Columns)
+                {
+                    if (col.Tag is not ColumnaPersonalizada colDef)
+                        continue;
+
+                    if (colDef.NombreInterno == "PrecioUnitario")
+                        row.Cells[col.Index].Value = nuevoPrecioUnitario.ToStringImporte();
+                    else if (colDef.NombreInterno == "Importe")
+                        row.Cells[col.Index].Value = c.ImporteTotal.ToStringImporte();
+                }
+            }
+
+            _context.SaveChanges();
+            _dgvPresupuesto?.Refresh();
 
             if (_filaActual >= 0)
                 MatrizActualizada?.Invoke(this, _filaActual);
@@ -583,11 +706,15 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _lblInfoMatriz.Text = $"Unidad: {unidad}   |   Concepto en presupuesto: {claveConcepto} - {descripcionConcepto}";
         }
 
-        private void MostrarSinSeleccion()
+        private void MostrarSinSeleccion(string titulo = "Selecciona un concepto en el presupuesto para ver y editar su APU", string info = "")
         {
             _matrizActual = null;
-            _lblTituloMatriz.Text = "Selecciona un concepto en el presupuesto para ver y editar su APU";
-            _lblInfoMatriz.Text   = "";
+            _ultimaFilaCargada = -1;
+            _ultimoConceptoId = null;
+            _ultimaMatrizId = null;
+            _panelHeader.BackColor = _headerColorNormal;
+            _lblTituloMatriz.Text = titulo;
+            _lblInfoMatriz.Text   = info;
             _panelBotonesAgregar.Enabled = false;
             MostrarDatosCabecera(false);
             _dgvComponentes.Rows.Clear();
@@ -681,8 +808,31 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                     MatrizActualizada?.Invoke(this, _filaActual);
                 }
 
-                // Refrescar el panel con datos frescos
-                CargarMatrizDeFila(_filaActual);
+                // Refrescar el panel con datos frescos. Si estamos en edición explícita
+                // desde el workspace (por ejemplo, abierta desde el selector APU), debemos
+                // permanecer sobre la matriz editada aunque la fila actual del presupuesto
+                // apunte a otra matriz distinta.
+                if (_modoEdicionCabecera && _matrizEditandoId.HasValue)
+                {
+                    var matrizRefrescada = _context.Matrices
+                        .Include(m => m.Componentes).ThenInclude(c => c.Material)
+                        .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
+                        .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
+                        .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
+                        .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
+                        .AsNoTracking()
+                        .FirstOrDefault(m => m.Id == _matrizEditandoId.Value);
+
+                    if (matrizRefrescada != null)
+                    {
+                        _matrizActual = matrizRefrescada;
+                        MostrarMatriz(matrizRefrescada, null);
+                    }
+                }
+                else
+                {
+                    CargarMatrizDeFila(_filaActual, true);
+                }
             }
             catch (Exception ex)
             {

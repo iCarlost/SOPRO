@@ -40,6 +40,8 @@ namespace SOPRO.WinForms.Forms
         private SoproButton btnAplicarATodas;
         private SoproButton btnConsolidarInsumos;
         private System.Windows.Forms.ToolTip toolTipRibbon;
+        private System.Windows.Forms.ContextMenuStrip cmsRibbonOverflow;
+        private System.Windows.Forms.Button btnRibbonMas;
         private System.Windows.Forms.Label lblTitulo;
         private System.Windows.Forms.Label lblProyecto;
         private System.Windows.Forms.TabControl tabControl;
@@ -120,6 +122,8 @@ namespace SOPRO.WinForms.Forms
             lblColumna = new Label();
             lblTitulo = new Label();
             toolTipRibbon = new ToolTip(components);
+            cmsRibbonOverflow = new ContextMenuStrip(components);
+            btnRibbonMas = new Button();
             tabControl = new TabControl();
             panelLeft.SuspendLayout();
             panelSidebarHeader.SuspendLayout();
@@ -257,6 +261,7 @@ namespace SOPRO.WinForms.Forms
             panelRibbon.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             panelRibbon.BackColor = Color.Transparent;
             panelRibbon.BorderStyle = BorderStyle.FixedSingle;
+            panelRibbon.Controls.Add(btnRibbonMas);
             panelRibbon.Controls.Add(label2);
             panelRibbon.Controls.Add(label1);
             panelRibbon.Controls.Add(btnPdfRibbon);
@@ -290,6 +295,24 @@ namespace SOPRO.WinForms.Forms
             panelRibbon.Name = "panelRibbon";
             panelRibbon.Size = new Size(1543, 99);
             panelRibbon.TabIndex = 3;
+            // 
+            // btnRibbonMas
+            // 
+            btnRibbonMas.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnRibbonMas.FlatAppearance.BorderSize = 0;
+            btnRibbonMas.FlatStyle = FlatStyle.Flat;
+            btnRibbonMas.Font = new Font("Segoe UI Semibold", 11F);
+            btnRibbonMas.ForeColor = Color.Silver;
+            btnRibbonMas.Location = new Point(1499, 32);
+            btnRibbonMas.Margin = new Padding(3, 4, 3, 4);
+            btnRibbonMas.Name = "btnRibbonMas";
+            btnRibbonMas.Size = new Size(32, 32);
+            btnRibbonMas.TabIndex = 29;
+            btnRibbonMas.Text = "⋯";
+            toolTipRibbon.SetToolTip(btnRibbonMas, "Más acciones");
+            btnRibbonMas.UseVisualStyleBackColor = false;
+            btnRibbonMas.Visible = false;
+            btnRibbonMas.Click += btnRibbonMas_Click;
             // 
             // label2
             // 
@@ -769,6 +792,11 @@ namespace SOPRO.WinForms.Forms
             toolTipRibbon.InitialDelay = 400;
             toolTipRibbon.ReshowDelay = 200;
             // 
+            // cmsRibbonOverflow
+            // 
+            cmsRibbonOverflow.Name = "cmsRibbonOverflow";
+            cmsRibbonOverflow.Size = new Size(181, 4);
+            // 
             // tabControl
             // 
             tabControl.Dock = DockStyle.Fill;
@@ -787,6 +815,7 @@ namespace SOPRO.WinForms.Forms
             AutoScaleMode = AutoScaleMode.Font;
             BackColor = Color.White;
             ClientSize = new Size(1829, 1061);
+            MinimumSize = new Size(820, 700);
             Controls.Add(tabControl);
             Controls.Add(panelLeft);
             Controls.Add(panelTop);
