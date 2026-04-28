@@ -37,6 +37,7 @@ namespace SOPRO.WinForms.Forms
             var version = GetCurrentApplicationVersion();
 
             lblStatus.Text = $"Versión actual: {version}";
+
             Shown += async (_, __) => await CheckForUpdatesOnStartupAsync();
         }
 
