@@ -44,9 +44,8 @@ namespace SOPRO.WinForms.Forms
             panelTop.Controls.Add(lblTitle);
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 0);
-            panelTop.Margin = new Padding(3, 4, 3, 4);
             panelTop.Name = "panelTop";
-            panelTop.Size = new Size(999, 107);
+            panelTop.Size = new Size(874, 80);
             panelTop.TabIndex = 0;
             // 
             // btnAbrirProyecto
@@ -57,10 +56,9 @@ namespace SOPRO.WinForms.Forms
             btnAbrirProyecto.FlatStyle = FlatStyle.Flat;
             btnAbrirProyecto.Font = new Font("Segoe UI", 9F);
             btnAbrirProyecto.ForeColor = Color.FromArgb(51, 51, 76);
-            btnAbrirProyecto.Location = new Point(793, 53);
-            btnAbrirProyecto.Margin = new Padding(3, 4, 3, 4);
+            btnAbrirProyecto.Location = new Point(694, 40);
             btnAbrirProyecto.Name = "btnAbrirProyecto";
-            btnAbrirProyecto.Size = new Size(171, 40);
+            btnAbrirProyecto.Size = new Size(150, 30);
             btnAbrirProyecto.TabIndex = 3;
             btnAbrirProyecto.Text = "📂 Abrir Proyecto";
             btnAbrirProyecto.UseVisualStyleBackColor = false;
@@ -74,10 +72,9 @@ namespace SOPRO.WinForms.Forms
             btnNuevoProyecto.FlatStyle = FlatStyle.Flat;
             btnNuevoProyecto.Font = new Font("Segoe UI", 9F);
             btnNuevoProyecto.ForeColor = Color.FromArgb(51, 51, 76);
-            btnNuevoProyecto.Location = new Point(793, 13);
-            btnNuevoProyecto.Margin = new Padding(3, 4, 3, 4);
+            btnNuevoProyecto.Location = new Point(694, 10);
             btnNuevoProyecto.Name = "btnNuevoProyecto";
-            btnNuevoProyecto.Size = new Size(171, 40);
+            btnNuevoProyecto.Size = new Size(150, 30);
             btnNuevoProyecto.TabIndex = 2;
             btnNuevoProyecto.Text = "➕ Nuevo Proyecto";
             btnNuevoProyecto.UseVisualStyleBackColor = false;
@@ -88,9 +85,9 @@ namespace SOPRO.WinForms.Forms
             lblSubtitle.AutoSize = true;
             lblSubtitle.Font = new Font("Segoe UI", 10F);
             lblSubtitle.ForeColor = Color.FromArgb(150, 180, 220);
-            lblSubtitle.Location = new Point(23, 69);
+            lblSubtitle.Location = new Point(20, 52);
             lblSubtitle.Name = "lblSubtitle";
-            lblSubtitle.Size = new Size(288, 23);
+            lblSubtitle.Size = new Size(233, 19);
             lblSubtitle.TabIndex = 1;
             lblSubtitle.Text = "Software para Presupuestos de Obra";
             // 
@@ -99,9 +96,9 @@ namespace SOPRO.WinForms.Forms
             lblTitle.AutoSize = true;
             lblTitle.Font = new Font("Segoe UI", 24F, FontStyle.Bold);
             lblTitle.ForeColor = Color.White;
-            lblTitle.Location = new Point(23, 19);
+            lblTitle.Location = new Point(20, 14);
             lblTitle.Name = "lblTitle";
-            lblTitle.Size = new Size(156, 54);
+            lblTitle.Size = new Size(127, 45);
             lblTitle.TabIndex = 0;
             lblTitle.Text = "SOPRO";
             // 
@@ -110,22 +107,20 @@ namespace SOPRO.WinForms.Forms
             panelCenter.BackColor = Color.FromArgb(240, 240, 240);
             panelCenter.Controls.Add(grpRecientes);
             panelCenter.Dock = DockStyle.Fill;
-            panelCenter.Location = new Point(0, 107);
-            panelCenter.Margin = new Padding(3, 4, 3, 4);
+            panelCenter.Location = new Point(0, 80);
             panelCenter.Name = "panelCenter";
-            panelCenter.Padding = new Padding(46, 53, 46, 53);
-            panelCenter.Size = new Size(999, 590);
+            panelCenter.Padding = new Padding(40);
+            panelCenter.Size = new Size(874, 440);
             panelCenter.TabIndex = 1;
             // 
             // grpRecientes
             // 
+            grpRecientes.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             grpRecientes.Controls.Add(dgvRecientes);
             grpRecientes.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-            grpRecientes.Location = new Point(46, 27);
-            grpRecientes.Margin = new Padding(3, 4, 3, 4);
+            grpRecientes.Location = new Point(40, 20);
             grpRecientes.Name = "grpRecientes";
-            grpRecientes.Padding = new Padding(3, 4, 3, 4);
-            grpRecientes.Size = new Size(914, 533);
+            grpRecientes.Size = new Size(800, 400);
             grpRecientes.TabIndex = 0;
             grpRecientes.TabStop = false;
             grpRecientes.Text = "PROYECTOS RECIENTES";
@@ -139,15 +134,14 @@ namespace SOPRO.WinForms.Forms
             dgvRecientes.BorderStyle = BorderStyle.None;
             dgvRecientes.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvRecientes.Dock = DockStyle.Fill;
-            dgvRecientes.Location = new Point(3, 27);
-            dgvRecientes.Margin = new Padding(3, 4, 3, 4);
+            dgvRecientes.Location = new Point(3, 21);
             dgvRecientes.MultiSelect = false;
             dgvRecientes.Name = "dgvRecientes";
             dgvRecientes.ReadOnly = true;
             dgvRecientes.RowHeadersVisible = false;
             dgvRecientes.RowHeadersWidth = 51;
             dgvRecientes.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvRecientes.Size = new Size(908, 502);
+            dgvRecientes.Size = new Size(794, 376);
             dgvRecientes.TabIndex = 0;
             dgvRecientes.CellClick += dgvRecientes_CellClick;
             dgvRecientes.CellDoubleClick += dgvRecientes_CellDoubleClick;
@@ -156,29 +150,28 @@ namespace SOPRO.WinForms.Forms
             // 
             statusStrip.ImageScalingSize = new Size(20, 20);
             statusStrip.Items.AddRange(new ToolStripItem[] { lblStatus });
-            statusStrip.Location = new Point(0, 697);
+            statusStrip.Location = new Point(0, 520);
             statusStrip.Name = "statusStrip";
-            statusStrip.Padding = new Padding(1, 0, 16, 0);
-            statusStrip.Size = new Size(999, 26);
+            statusStrip.Size = new Size(874, 22);
             statusStrip.TabIndex = 2;
             // 
             // lblStatus
             // 
             lblStatus.Name = "lblStatus";
-            lblStatus.Size = new Size(40, 20);
+            lblStatus.Size = new Size(32, 17);
             lblStatus.Text = "Listo";
             // 
             // FormPrincipal
             // 
-            AutoScaleDimensions = new SizeF(8F, 20F);
+            AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(999, 723);
+            ClientSize = new Size(874, 542);
             Controls.Add(panelCenter);
             Controls.Add(statusStrip);
             Controls.Add(panelTop);
             Font = new Font("Segoe UI", 9F);
             Icon = (Icon)resources.GetObject("$this.Icon");
-            Margin = new Padding(3, 4, 3, 4);
+            MaximizeBox = false;
             Name = "FormPrincipal";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "SOPRO - Software para Presupuestos de Obra";

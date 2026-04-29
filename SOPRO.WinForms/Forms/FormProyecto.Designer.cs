@@ -92,6 +92,7 @@ namespace SOPRO.WinForms.Forms
             panelTop = new Panel();
             lblProyecto = new Label();
             panelRibbon = new Panel();
+            btnRibbonMas = new Button();
             label2 = new Label();
             label1 = new Label();
             btnPdfRibbon = new SoproButton();
@@ -101,8 +102,8 @@ namespace SOPRO.WinForms.Forms
             btnBuscarRibbon = new SoproButton();
             btnWrapRibbon = new SoproButton();
             lblSepReporte = new Label();
-            btnAplicarATodas = new SoproButton();
             btnConsolidarInsumos = new SoproButton();
+            btnAplicarATodas = new SoproButton();
             lblSepGlobal = new Label();
             btnColorTexto = new Button();
             btnColorFondo = new Button();
@@ -123,7 +124,6 @@ namespace SOPRO.WinForms.Forms
             lblTitulo = new Label();
             toolTipRibbon = new ToolTip(components);
             cmsRibbonOverflow = new ContextMenuStrip(components);
-            btnRibbonMas = new Button();
             tabControl = new TabControl();
             panelLeft.SuspendLayout();
             panelSidebarHeader.SuspendLayout();
@@ -139,10 +139,9 @@ namespace SOPRO.WinForms.Forms
             panelLeft.Controls.Add(treeMenu);
             panelLeft.Controls.Add(panelSidebarHeader);
             panelLeft.Dock = DockStyle.Left;
-            panelLeft.Location = new Point(0, 107);
-            panelLeft.Margin = new Padding(3, 4, 3, 4);
+            panelLeft.Location = new Point(0, 80);
             panelLeft.Name = "panelLeft";
-            panelLeft.Size = new Size(285, 954);
+            panelLeft.Size = new Size(250, 716);
             panelLeft.TabIndex = 0;
             // 
             // treeMenu
@@ -155,8 +154,7 @@ namespace SOPRO.WinForms.Forms
             treeMenu.HideSelection = false;
             treeMenu.Indent = 20;
             treeMenu.ItemHeight = 35;
-            treeMenu.Location = new Point(0, 45);
-            treeMenu.Margin = new Padding(3, 4, 3, 4);
+            treeMenu.Location = new Point(0, 34);
             treeMenu.Name = "treeMenu";
             treeNode1.Name = "nodePlantillaReporte";
             treeNode1.Text = "Plantilla de Reporte";
@@ -201,7 +199,7 @@ namespace SOPRO.WinForms.Forms
             treeNode21.Name = "nodeCatalogos";
             treeNode21.Text = "📚 Catálogos";
             treeMenu.Nodes.AddRange(new TreeNode[] { treeNode2, treeNode5, treeNode12, treeNode15, treeNode21 });
-            treeMenu.Size = new Size(283, 907);
+            treeMenu.Size = new Size(248, 680);
             treeMenu.TabIndex = 0;
             treeMenu.NodeMouseClick += treeMenu_NodeMouseClick;
             // 
@@ -211,9 +209,8 @@ namespace SOPRO.WinForms.Forms
             panelSidebarHeader.Controls.Add(btnToggleSidebar);
             panelSidebarHeader.Dock = DockStyle.Top;
             panelSidebarHeader.Location = new Point(0, 0);
-            panelSidebarHeader.Margin = new Padding(3, 4, 3, 4);
             panelSidebarHeader.Name = "panelSidebarHeader";
-            panelSidebarHeader.Size = new Size(283, 45);
+            panelSidebarHeader.Size = new Size(248, 34);
             panelSidebarHeader.TabIndex = 1;
             // 
             // btnToggleSidebar
@@ -225,7 +222,7 @@ namespace SOPRO.WinForms.Forms
             btnToggleSidebar.Location = new Point(0, 0);
             btnToggleSidebar.Margin = new Padding(0);
             btnToggleSidebar.Name = "btnToggleSidebar";
-            btnToggleSidebar.Size = new Size(283, 45);
+            btnToggleSidebar.Size = new Size(248, 34);
             btnToggleSidebar.TabIndex = 0;
             btnToggleSidebar.TabStop = false;
             btnToggleSidebar.Text = "☰";
@@ -240,9 +237,8 @@ namespace SOPRO.WinForms.Forms
             panelTop.Controls.Add(lblTitulo);
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 0);
-            panelTop.Margin = new Padding(3, 4, 3, 4);
             panelTop.Name = "panelTop";
-            panelTop.Size = new Size(1829, 107);
+            panelTop.Size = new Size(1600, 80);
             panelTop.TabIndex = 1;
             // 
             // lblProyecto
@@ -250,9 +246,9 @@ namespace SOPRO.WinForms.Forms
             lblProyecto.AutoSize = true;
             lblProyecto.Font = new Font("Segoe UI", 11F);
             lblProyecto.ForeColor = Color.White;
-            lblProyecto.Location = new Point(23, 60);
+            lblProyecto.Location = new Point(20, 45);
             lblProyecto.Name = "lblProyecto";
-            lblProyecto.Size = new Size(86, 25);
+            lblProyecto.Size = new Size(67, 20);
             lblProyecto.TabIndex = 1;
             lblProyecto.Text = "Proyecto";
             // 
@@ -260,7 +256,6 @@ namespace SOPRO.WinForms.Forms
             // 
             panelRibbon.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             panelRibbon.BackColor = Color.Transparent;
-            panelRibbon.BorderStyle = BorderStyle.FixedSingle;
             panelRibbon.Controls.Add(btnRibbonMas);
             panelRibbon.Controls.Add(label2);
             panelRibbon.Controls.Add(label1);
@@ -290,10 +285,9 @@ namespace SOPRO.WinForms.Forms
             panelRibbon.Controls.Add(cboFuente);
             panelRibbon.Controls.Add(lblSepFuente);
             panelRibbon.Controls.Add(lblColumna);
-            panelRibbon.Location = new Point(282, 4);
-            panelRibbon.Margin = new Padding(3, 4, 3, 4);
+            panelRibbon.Location = new Point(281, 3);
             panelRibbon.Name = "panelRibbon";
-            panelRibbon.Size = new Size(1543, 99);
+            panelRibbon.Size = new Size(1316, 75);
             panelRibbon.TabIndex = 3;
             // 
             // btnRibbonMas
@@ -303,10 +297,9 @@ namespace SOPRO.WinForms.Forms
             btnRibbonMas.FlatStyle = FlatStyle.Flat;
             btnRibbonMas.Font = new Font("Segoe UI Semibold", 11F);
             btnRibbonMas.ForeColor = Color.Silver;
-            btnRibbonMas.Location = new Point(1499, 32);
-            btnRibbonMas.Margin = new Padding(3, 4, 3, 4);
+            btnRibbonMas.Location = new Point(1280, 24);
             btnRibbonMas.Name = "btnRibbonMas";
-            btnRibbonMas.Size = new Size(32, 32);
+            btnRibbonMas.Size = new Size(28, 24);
             btnRibbonMas.TabIndex = 29;
             btnRibbonMas.Text = "⋯";
             toolTipRibbon.SetToolTip(btnRibbonMas, "Más acciones");
@@ -317,17 +310,17 @@ namespace SOPRO.WinForms.Forms
             // label2
             // 
             label2.BackColor = Color.FromArgb(200, 200, 200);
-            label2.Location = new Point(981, 11);
+            label2.Location = new Point(858, 8);
             label2.Name = "label2";
-            label2.Size = new Size(1, 79);
+            label2.Size = new Size(1, 59);
             label2.TabIndex = 28;
             // 
             // label1
             // 
             label1.BackColor = Color.FromArgb(200, 200, 200);
-            label1.Location = new Point(702, 11);
+            label1.Location = new Point(614, 8);
             label1.Name = "label1";
-            label1.Size = new Size(1, 79);
+            label1.Size = new Size(1, 59);
             label1.TabIndex = 27;
             // 
             // btnPdfRibbon
@@ -337,12 +330,11 @@ namespace SOPRO.WinForms.Forms
             btnPdfRibbon.Font = new Font("Segoe UI", 8.5F);
             btnPdfRibbon.ForeColor = Color.Silver;
             btnPdfRibbon.Image = (Image)resources.GetObject("btnPdfRibbon.Image");
-            btnPdfRibbon.Location = new Point(987, 52);
-            btnPdfRibbon.Margin = new Padding(3, 4, 3, 4);
+            btnPdfRibbon.Location = new Point(864, 39);
             btnPdfRibbon.Name = "btnPdfRibbon";
-            btnPdfRibbon.Padding = new Padding(7, 0, 7, 0);
-            btnPdfRibbon.Size = new Size(32, 32);
-            btnPdfRibbon.SoproContentPadding = new Padding(7, 0, 7, 0);
+            btnPdfRibbon.Padding = new Padding(6, 0, 6, 0);
+            btnPdfRibbon.Size = new Size(28, 24);
+            btnPdfRibbon.SoproContentPadding = new Padding(6, 0, 6, 0);
             btnPdfRibbon.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnPdfRibbon.SoproIcon = Helpers.SoproIconType.Pdf;
             btnPdfRibbon.SoproShowText = false;
@@ -358,12 +350,11 @@ namespace SOPRO.WinForms.Forms
             btnExcelRibbon.Font = new Font("Segoe UI", 8.5F);
             btnExcelRibbon.ForeColor = Color.Silver;
             btnExcelRibbon.Image = (Image)resources.GetObject("btnExcelRibbon.Image");
-            btnExcelRibbon.Location = new Point(987, 12);
-            btnExcelRibbon.Margin = new Padding(3, 4, 3, 4);
+            btnExcelRibbon.Location = new Point(864, 9);
             btnExcelRibbon.Name = "btnExcelRibbon";
-            btnExcelRibbon.Padding = new Padding(7, 0, 7, 0);
-            btnExcelRibbon.Size = new Size(32, 32);
-            btnExcelRibbon.SoproContentPadding = new Padding(7, 0, 7, 0);
+            btnExcelRibbon.Padding = new Padding(6, 0, 6, 0);
+            btnExcelRibbon.Size = new Size(28, 24);
+            btnExcelRibbon.SoproContentPadding = new Padding(6, 0, 6, 0);
             btnExcelRibbon.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnExcelRibbon.SoproIcon = Helpers.SoproIconType.Excel;
             btnExcelRibbon.SoproShowText = false;
@@ -380,12 +371,11 @@ namespace SOPRO.WinForms.Forms
             btnDepurarRibbon.ForeColor = Color.Silver;
             btnDepurarRibbon.Image = (Image)resources.GetObject("btnDepurarRibbon.Image");
             btnDepurarRibbon.ImageAlign = ContentAlignment.MiddleLeft;
-            btnDepurarRibbon.Location = new Point(709, 52);
-            btnDepurarRibbon.Margin = new Padding(3, 4, 3, 4);
+            btnDepurarRibbon.Location = new Point(620, 39);
             btnDepurarRibbon.Name = "btnDepurarRibbon";
-            btnDepurarRibbon.Padding = new Padding(9, 0, 11, 0);
-            btnDepurarRibbon.Size = new Size(122, 32);
-            btnDepurarRibbon.SoproContentPadding = new Padding(9, 0, 11, 0);
+            btnDepurarRibbon.Padding = new Padding(8, 0, 10, 0);
+            btnDepurarRibbon.Size = new Size(107, 24);
+            btnDepurarRibbon.SoproContentPadding = new Padding(8, 0, 10, 0);
             btnDepurarRibbon.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnDepurarRibbon.SoproIcon = Helpers.SoproIconType.Depurar;
             btnDepurarRibbon.SoproMinimumAutoWidth = 82;
@@ -404,12 +394,11 @@ namespace SOPRO.WinForms.Forms
             btnRecalcularRibbon.ForeColor = Color.Silver;
             btnRecalcularRibbon.Image = (Image)resources.GetObject("btnRecalcularRibbon.Image");
             btnRecalcularRibbon.ImageAlign = ContentAlignment.MiddleLeft;
-            btnRecalcularRibbon.Location = new Point(709, 15);
-            btnRecalcularRibbon.Margin = new Padding(3, 4, 3, 4);
+            btnRecalcularRibbon.Location = new Point(620, 11);
             btnRecalcularRibbon.Name = "btnRecalcularRibbon";
-            btnRecalcularRibbon.Padding = new Padding(9, 0, 11, 0);
-            btnRecalcularRibbon.Size = new Size(122, 32);
-            btnRecalcularRibbon.SoproContentPadding = new Padding(9, 0, 11, 0);
+            btnRecalcularRibbon.Padding = new Padding(8, 0, 10, 0);
+            btnRecalcularRibbon.Size = new Size(107, 24);
+            btnRecalcularRibbon.SoproContentPadding = new Padding(8, 0, 10, 0);
             btnRecalcularRibbon.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnRecalcularRibbon.SoproIcon = Helpers.SoproIconType.Recalcular;
             btnRecalcularRibbon.SoproMinimumAutoWidth = 92;
@@ -428,12 +417,11 @@ namespace SOPRO.WinForms.Forms
             btnBuscarRibbon.ForeColor = Color.Silver;
             btnBuscarRibbon.Image = (Image)resources.GetObject("btnBuscarRibbon.Image");
             btnBuscarRibbon.ImageAlign = ContentAlignment.MiddleLeft;
-            btnBuscarRibbon.Location = new Point(573, 52);
-            btnBuscarRibbon.Margin = new Padding(3, 4, 3, 4);
+            btnBuscarRibbon.Location = new Point(501, 39);
             btnBuscarRibbon.Name = "btnBuscarRibbon";
-            btnBuscarRibbon.Padding = new Padding(9, 0, 11, 0);
-            btnBuscarRibbon.Size = new Size(119, 32);
-            btnBuscarRibbon.SoproContentPadding = new Padding(9, 0, 11, 0);
+            btnBuscarRibbon.Padding = new Padding(8, 0, 10, 0);
+            btnBuscarRibbon.Size = new Size(104, 24);
+            btnBuscarRibbon.SoproContentPadding = new Padding(8, 0, 10, 0);
             btnBuscarRibbon.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnBuscarRibbon.SoproIcon = Helpers.SoproIconType.Buscar;
             btnBuscarRibbon.SoproMinimumAutoWidth = 74;
@@ -452,12 +440,11 @@ namespace SOPRO.WinForms.Forms
             btnWrapRibbon.ForeColor = Color.Silver;
             btnWrapRibbon.Image = (Image)resources.GetObject("btnWrapRibbon.Image");
             btnWrapRibbon.ImageAlign = ContentAlignment.MiddleLeft;
-            btnWrapRibbon.Location = new Point(573, 15);
-            btnWrapRibbon.Margin = new Padding(3, 4, 3, 4);
+            btnWrapRibbon.Location = new Point(501, 11);
             btnWrapRibbon.Name = "btnWrapRibbon";
-            btnWrapRibbon.Padding = new Padding(9, 0, 11, 0);
-            btnWrapRibbon.Size = new Size(119, 32);
-            btnWrapRibbon.SoproContentPadding = new Padding(9, 0, 11, 0);
+            btnWrapRibbon.Padding = new Padding(8, 0, 10, 0);
+            btnWrapRibbon.Size = new Size(104, 24);
+            btnWrapRibbon.SoproContentPadding = new Padding(8, 0, 10, 0);
             btnWrapRibbon.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnWrapRibbon.SoproIcon = Helpers.SoproIconType.AjustarTexto;
             btnWrapRibbon.SoproMinimumAutoWidth = 86;
@@ -471,11 +458,10 @@ namespace SOPRO.WinForms.Forms
             // lblSepReporte
             // 
             lblSepReporte.BackColor = Color.FromArgb(200, 200, 200);
-            lblSepReporte.Location = new Point(843, 11);
+            lblSepReporte.Location = new Point(738, 8);
             lblSepReporte.Name = "lblSepReporte";
-            lblSepReporte.Size = new Size(1, 79);
+            lblSepReporte.Size = new Size(1, 59);
             lblSepReporte.TabIndex = 20;
-            // 
             // 
             // btnConsolidarInsumos
             // 
@@ -483,14 +469,13 @@ namespace SOPRO.WinForms.Forms
             btnConsolidarInsumos.FlatStyle = FlatStyle.Flat;
             btnConsolidarInsumos.Font = new Font("Segoe UI", 8.5F);
             btnConsolidarInsumos.ForeColor = Color.Silver;
-            btnConsolidarInsumos.Image = (Image)resources.GetObject("btnAplicarATodas.Image");
+            btnConsolidarInsumos.Image = (Image)resources.GetObject("btnConsolidarInsumos.Image");
             btnConsolidarInsumos.ImageAlign = ContentAlignment.MiddleLeft;
-            btnConsolidarInsumos.Location = new Point(850, 52);
-            btnConsolidarInsumos.Margin = new Padding(3, 4, 3, 4);
+            btnConsolidarInsumos.Location = new Point(744, 39);
             btnConsolidarInsumos.Name = "btnConsolidarInsumos";
-            btnConsolidarInsumos.Padding = new Padding(9, 0, 11, 0);
-            btnConsolidarInsumos.Size = new Size(122, 32);
-            btnConsolidarInsumos.SoproContentPadding = new Padding(9, 0, 11, 0);
+            btnConsolidarInsumos.Padding = new Padding(8, 0, 10, 0);
+            btnConsolidarInsumos.Size = new Size(107, 24);
+            btnConsolidarInsumos.SoproContentPadding = new Padding(8, 0, 10, 0);
             btnConsolidarInsumos.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnConsolidarInsumos.SoproIcon = Helpers.SoproIconType.Consolidar;
             btnConsolidarInsumos.SoproMinimumAutoWidth = 86;
@@ -500,6 +485,7 @@ namespace SOPRO.WinForms.Forms
             toolTipRibbon.SetToolTip(btnConsolidarInsumos, "Consolidar insumos seleccionados en el catálogo activo");
             btnConsolidarInsumos.UseVisualStyleBackColor = false;
             btnConsolidarInsumos.Click += btnConsolidarInsumos_Click;
+            // 
             // btnAplicarATodas
             // 
             btnAplicarATodas.FlatAppearance.BorderSize = 0;
@@ -508,12 +494,11 @@ namespace SOPRO.WinForms.Forms
             btnAplicarATodas.ForeColor = Color.Silver;
             btnAplicarATodas.Image = (Image)resources.GetObject("btnAplicarATodas.Image");
             btnAplicarATodas.ImageAlign = ContentAlignment.MiddleLeft;
-            btnAplicarATodas.Location = new Point(850, 15);
-            btnAplicarATodas.Margin = new Padding(3, 4, 3, 4);
+            btnAplicarATodas.Location = new Point(744, 11);
             btnAplicarATodas.Name = "btnAplicarATodas";
-            btnAplicarATodas.Padding = new Padding(9, 0, 11, 0);
-            btnAplicarATodas.Size = new Size(122, 32);
-            btnAplicarATodas.SoproContentPadding = new Padding(9, 0, 11, 0);
+            btnAplicarATodas.Padding = new Padding(8, 0, 10, 0);
+            btnAplicarATodas.Size = new Size(107, 24);
+            btnAplicarATodas.SoproContentPadding = new Padding(8, 0, 10, 0);
             btnAplicarATodas.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnAplicarATodas.SoproIcon = Helpers.SoproIconType.AplicarATodas;
             btnAplicarATodas.SoproMinimumAutoWidth = 86;
@@ -527,9 +512,9 @@ namespace SOPRO.WinForms.Forms
             // lblSepGlobal
             // 
             lblSepGlobal.BackColor = Color.FromArgb(200, 200, 200);
-            lblSepGlobal.Location = new Point(566, 11);
+            lblSepGlobal.Location = new Point(495, 8);
             lblSepGlobal.Name = "lblSepGlobal";
-            lblSepGlobal.Size = new Size(1, 79);
+            lblSepGlobal.Size = new Size(1, 59);
             lblSepGlobal.TabIndex = 22;
             // 
             // btnColorTexto
@@ -539,10 +524,9 @@ namespace SOPRO.WinForms.Forms
             btnColorTexto.FlatStyle = FlatStyle.Flat;
             btnColorTexto.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             btnColorTexto.ForeColor = Color.White;
-            btnColorTexto.Location = new Point(336, 51);
-            btnColorTexto.Margin = new Padding(3, 4, 3, 4);
+            btnColorTexto.Location = new Point(294, 38);
             btnColorTexto.Name = "btnColorTexto";
-            btnColorTexto.Size = new Size(32, 37);
+            btnColorTexto.Size = new Size(28, 28);
             btnColorTexto.TabIndex = 11;
             btnColorTexto.Text = "A";
             toolTipRibbon.SetToolTip(btnColorTexto, "Color de texto");
@@ -554,10 +538,9 @@ namespace SOPRO.WinForms.Forms
             btnColorFondo.FlatAppearance.BorderSize = 0;
             btnColorFondo.FlatStyle = FlatStyle.Flat;
             btnColorFondo.ForeColor = Color.Black;
-            btnColorFondo.Location = new Point(299, 51);
-            btnColorFondo.Margin = new Padding(3, 4, 3, 4);
+            btnColorFondo.Location = new Point(262, 38);
             btnColorFondo.Name = "btnColorFondo";
-            btnColorFondo.Size = new Size(32, 37);
+            btnColorFondo.Size = new Size(28, 28);
             btnColorFondo.TabIndex = 10;
             btnColorFondo.Text = "⬜";
             toolTipRibbon.SetToolTip(btnColorFondo, "Color de fondo de celda");
@@ -566,9 +549,9 @@ namespace SOPRO.WinForms.Forms
             // lblSepAlin
             // 
             lblSepAlin.BackColor = Color.FromArgb(200, 200, 200);
-            lblSepAlin.Location = new Point(291, 49);
+            lblSepAlin.Location = new Point(255, 37);
             lblSepAlin.Name = "lblSepAlin";
-            lblSepAlin.Size = new Size(1, 40);
+            lblSepAlin.Size = new Size(1, 30);
             lblSepAlin.TabIndex = 23;
             // 
             // btnAlinAba
@@ -578,10 +561,9 @@ namespace SOPRO.WinForms.Forms
             btnAlinAba.Font = new Font("Segoe UI", 9F);
             btnAlinAba.ForeColor = Color.Silver;
             btnAlinAba.Image = (Image)resources.GetObject("btnAlinAba.Image");
-            btnAlinAba.Location = new Point(522, 12);
-            btnAlinAba.Margin = new Padding(3, 4, 3, 4);
+            btnAlinAba.Location = new Point(457, 9);
             btnAlinAba.Name = "btnAlinAba";
-            btnAlinAba.Size = new Size(32, 37);
+            btnAlinAba.Size = new Size(28, 28);
             btnAlinAba.SoproContentPadding = new Padding(0);
             btnAlinAba.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnAlinAba.SoproIcon = Helpers.SoproIconType.AlinearAbajo;
@@ -598,10 +580,9 @@ namespace SOPRO.WinForms.Forms
             btnAlinMed.Font = new Font("Segoe UI", 9F);
             btnAlinMed.ForeColor = Color.Silver;
             btnAlinMed.Image = (Image)resources.GetObject("btnAlinMed.Image");
-            btnAlinMed.Location = new Point(486, 12);
-            btnAlinMed.Margin = new Padding(3, 4, 3, 4);
+            btnAlinMed.Location = new Point(425, 9);
             btnAlinMed.Name = "btnAlinMed";
-            btnAlinMed.Size = new Size(32, 37);
+            btnAlinMed.Size = new Size(28, 28);
             btnAlinMed.SoproContentPadding = new Padding(0);
             btnAlinMed.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnAlinMed.SoproIcon = Helpers.SoproIconType.AlinearMedio;
@@ -618,10 +599,9 @@ namespace SOPRO.WinForms.Forms
             btnAlinJus.Font = new Font("Segoe UI", 9F);
             btnAlinJus.ForeColor = Color.Silver;
             btnAlinJus.Image = (Image)resources.GetObject("btnAlinJus.Image");
-            btnAlinJus.Location = new Point(449, 12);
-            btnAlinJus.Margin = new Padding(3, 4, 3, 4);
+            btnAlinJus.Location = new Point(393, 9);
             btnAlinJus.Name = "btnAlinJus";
-            btnAlinJus.Size = new Size(32, 37);
+            btnAlinJus.Size = new Size(28, 28);
             btnAlinJus.SoproContentPadding = new Padding(0);
             btnAlinJus.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnAlinJus.SoproIcon = Helpers.SoproIconType.AlinearArriba;
@@ -638,10 +618,9 @@ namespace SOPRO.WinForms.Forms
             btnAlinDer.Font = new Font("Segoe UI", 9F);
             btnAlinDer.ForeColor = Color.Silver;
             btnAlinDer.Image = (Image)resources.GetObject("btnAlinDer.Image");
-            btnAlinDer.Location = new Point(522, 51);
-            btnAlinDer.Margin = new Padding(3, 4, 3, 4);
+            btnAlinDer.Location = new Point(457, 38);
             btnAlinDer.Name = "btnAlinDer";
-            btnAlinDer.Size = new Size(32, 37);
+            btnAlinDer.Size = new Size(28, 28);
             btnAlinDer.SoproContentPadding = new Padding(0);
             btnAlinDer.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnAlinDer.SoproIcon = Helpers.SoproIconType.AlinearDerecha;
@@ -658,10 +637,9 @@ namespace SOPRO.WinForms.Forms
             btnAlinCen.Font = new Font("Segoe UI", 9F);
             btnAlinCen.ForeColor = Color.Silver;
             btnAlinCen.Image = (Image)resources.GetObject("btnAlinCen.Image");
-            btnAlinCen.Location = new Point(486, 51);
-            btnAlinCen.Margin = new Padding(3, 4, 3, 4);
+            btnAlinCen.Location = new Point(425, 38);
             btnAlinCen.Name = "btnAlinCen";
-            btnAlinCen.Size = new Size(32, 37);
+            btnAlinCen.Size = new Size(28, 28);
             btnAlinCen.SoproContentPadding = new Padding(0);
             btnAlinCen.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnAlinCen.SoproIcon = Helpers.SoproIconType.AlinearCentro;
@@ -678,10 +656,9 @@ namespace SOPRO.WinForms.Forms
             btnAlinIzq.Font = new Font("Segoe UI", 9F);
             btnAlinIzq.ForeColor = Color.Silver;
             btnAlinIzq.Image = (Image)resources.GetObject("btnAlinIzq.Image");
-            btnAlinIzq.Location = new Point(449, 51);
-            btnAlinIzq.Margin = new Padding(3, 4, 3, 4);
+            btnAlinIzq.Location = new Point(393, 38);
             btnAlinIzq.Name = "btnAlinIzq";
-            btnAlinIzq.Size = new Size(32, 37);
+            btnAlinIzq.Size = new Size(28, 28);
             btnAlinIzq.SoproContentPadding = new Padding(0);
             btnAlinIzq.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnAlinIzq.SoproIcon = Helpers.SoproIconType.AlinearIzquierda;
@@ -694,9 +671,9 @@ namespace SOPRO.WinForms.Forms
             // lblSepEstilo
             // 
             lblSepEstilo.BackColor = Color.FromArgb(200, 200, 200);
-            lblSepEstilo.Location = new Point(441, 11);
+            lblSepEstilo.Location = new Point(386, 8);
             lblSepEstilo.Name = "lblSepEstilo";
-            lblSepEstilo.Size = new Size(1, 79);
+            lblSepEstilo.Size = new Size(1, 59);
             lblSepEstilo.TabIndex = 24;
             // 
             // btnCursiva
@@ -706,10 +683,9 @@ namespace SOPRO.WinForms.Forms
             btnCursiva.FlatStyle = FlatStyle.Flat;
             btnCursiva.Font = new Font("Segoe UI", 9F, FontStyle.Italic);
             btnCursiva.ForeColor = Color.Silver;
-            btnCursiva.Location = new Point(226, 51);
-            btnCursiva.Margin = new Padding(3, 4, 3, 4);
+            btnCursiva.Location = new Point(198, 38);
             btnCursiva.Name = "btnCursiva";
-            btnCursiva.Size = new Size(32, 37);
+            btnCursiva.Size = new Size(28, 28);
             btnCursiva.TabIndex = 3;
             btnCursiva.Text = "I";
             toolTipRibbon.SetToolTip(btnCursiva, "Cursiva");
@@ -722,10 +698,9 @@ namespace SOPRO.WinForms.Forms
             btnNegrita.FlatStyle = FlatStyle.Flat;
             btnNegrita.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             btnNegrita.ForeColor = Color.Silver;
-            btnNegrita.Location = new Point(190, 51);
-            btnNegrita.Margin = new Padding(3, 4, 3, 4);
+            btnNegrita.Location = new Point(166, 38);
             btnNegrita.Name = "btnNegrita";
-            btnNegrita.Size = new Size(32, 37);
+            btnNegrita.Size = new Size(28, 28);
             btnNegrita.TabIndex = 2;
             btnNegrita.Text = "N";
             toolTipRibbon.SetToolTip(btnNegrita, "Negrita");
@@ -734,12 +709,11 @@ namespace SOPRO.WinForms.Forms
             // nudTamano
             // 
             nudTamano.Font = new Font("Segoe UI", 9F);
-            nudTamano.Location = new Point(375, 15);
-            nudTamano.Margin = new Padding(3, 4, 3, 4);
+            nudTamano.Location = new Point(328, 11);
             nudTamano.Maximum = new decimal(new int[] { 24, 0, 0, 0 });
             nudTamano.Minimum = new decimal(new int[] { 6, 0, 0, 0 });
             nudTamano.Name = "nudTamano";
-            nudTamano.Size = new Size(55, 27);
+            nudTamano.Size = new Size(48, 23);
             nudTamano.TabIndex = 1;
             toolTipRibbon.SetToolTip(nudTamano, "Tamano de fuente");
             nudTamano.Value = new decimal(new int[] { 9, 0, 0, 0 });
@@ -748,28 +722,27 @@ namespace SOPRO.WinForms.Forms
             // 
             cboFuente.DropDownStyle = ComboBoxStyle.DropDownList;
             cboFuente.Font = new Font("Segoe UI", 9F);
-            cboFuente.Location = new Point(185, 15);
-            cboFuente.Margin = new Padding(3, 4, 3, 4);
+            cboFuente.Location = new Point(162, 11);
             cboFuente.Name = "cboFuente";
-            cboFuente.Size = new Size(182, 28);
+            cboFuente.Size = new Size(160, 23);
             cboFuente.TabIndex = 0;
             toolTipRibbon.SetToolTip(cboFuente, "Tipo de fuente");
             // 
             // lblSepFuente
             // 
             lblSepFuente.BackColor = Color.FromArgb(200, 200, 200);
-            lblSepFuente.Location = new Point(178, 11);
+            lblSepFuente.Location = new Point(156, 8);
             lblSepFuente.Name = "lblSepFuente";
-            lblSepFuente.Size = new Size(1, 79);
+            lblSepFuente.Size = new Size(1, 59);
             lblSepFuente.TabIndex = 25;
             // 
             // lblColumna
             // 
             lblColumna.Font = new Font("Segoe UI", 8.5F, FontStyle.Italic);
             lblColumna.ForeColor = Color.Gray;
-            lblColumna.Location = new Point(9, 19);
+            lblColumna.Location = new Point(8, 14);
             lblColumna.Name = "lblColumna";
-            lblColumna.Size = new Size(160, 24);
+            lblColumna.Size = new Size(140, 18);
             lblColumna.TabIndex = 26;
             lblColumna.Text = "-- sin seleccion --";
             lblColumna.TextAlign = ContentAlignment.MiddleLeft;
@@ -780,9 +753,9 @@ namespace SOPRO.WinForms.Forms
             lblTitulo.AutoSize = true;
             lblTitulo.Font = new Font("Segoe UI", 18F, FontStyle.Bold);
             lblTitulo.ForeColor = Color.White;
-            lblTitulo.Location = new Point(23, 13);
+            lblTitulo.Location = new Point(20, 10);
             lblTitulo.Name = "lblTitulo";
-            lblTitulo.Size = new Size(119, 41);
+            lblTitulo.Size = new Size(94, 32);
             lblTitulo.TabIndex = 0;
             lblTitulo.Text = "SOPRO";
             // 
@@ -795,33 +768,31 @@ namespace SOPRO.WinForms.Forms
             // cmsRibbonOverflow
             // 
             cmsRibbonOverflow.Name = "cmsRibbonOverflow";
-            cmsRibbonOverflow.Size = new Size(181, 4);
+            cmsRibbonOverflow.Size = new Size(61, 4);
             // 
             // tabControl
             // 
             tabControl.Dock = DockStyle.Fill;
             tabControl.Font = new Font("Segoe UI", 9F);
-            tabControl.Location = new Point(285, 107);
-            tabControl.Margin = new Padding(3, 4, 3, 4);
+            tabControl.Location = new Point(250, 80);
             tabControl.Name = "tabControl";
             tabControl.SelectedIndex = 0;
-            tabControl.Size = new Size(1544, 954);
+            tabControl.Size = new Size(1350, 716);
             tabControl.TabIndex = 2;
             tabControl.MouseClick += tabControl_MouseClick;
             // 
             // FormProyecto
             // 
-            AutoScaleDimensions = new SizeF(8F, 20F);
+            AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             BackColor = Color.White;
-            ClientSize = new Size(1829, 1061);
-            MinimumSize = new Size(820, 700);
+            ClientSize = new Size(1600, 796);
             Controls.Add(tabControl);
             Controls.Add(panelLeft);
             Controls.Add(panelTop);
             Font = new Font("Segoe UI", 9F);
             Icon = (Icon)resources.GetObject("$this.Icon");
-            Margin = new Padding(3, 4, 3, 4);
+            MinimumSize = new Size(720, 535);
             Name = "FormProyecto";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "SOPRO - Sistema de Presupuestos de Obra";
