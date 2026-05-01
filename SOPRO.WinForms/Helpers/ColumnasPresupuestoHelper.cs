@@ -1,5 +1,7 @@
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace SOPRO.WinForms.Helpers
@@ -12,22 +14,6 @@ namespace SOPRO.WinForms.Helpers
         /// </summary>
         public static void CrearColumnasPredeterminadas(SOPROContext context, int proyectoId)
         {
-            // Verificar si ya existen las columnas base obligatorias
-            // (verificamos por NombreInterno especifico, no solo "hay algo",
-            //  para detectar proyectos con columnas corruptas de versiones anteriores)
-            bool tieneBase = context.ColumnasPersonalizadas.Any(c =>
-                c.ProyectoId == proyectoId && c.NombreInterno == "Tipo");
-            if (tieneBase) return;
-
-            // Limpiar columnas huerfanas de versiones anteriores (sin columna Tipo)
-            var huerfanas = context.ColumnasPersonalizadas
-                .Where(c => c.ProyectoId == proyectoId).ToList();
-            if (huerfanas.Any())
-            {
-                context.ColumnasPersonalizadas.RemoveRange(huerfanas);
-                context.SaveChanges();
-            }
-            
             var columnas = new[]
             {
                 // ============================================
@@ -431,8 +417,96 @@ namespace SOPRO.WinForms.Helpers
                 }
             };
             
+            var existentes = context.ColumnasPersonalizadas
+                .Where(c => c.ProyectoId == proyectoId)
+                .ToList();
+
+            if (existentes.Count > 0)
+            {
+                var oficiales = new HashSet<string>(
+                    columnas.Select(c => c.NombreInterno),
+                    StringComparer.OrdinalIgnoreCase);
+
+                if (EsSetInicialLegacyPresupuesto(existentes))
+                {
+                    context.ColumnasPersonalizadas.RemoveRange(existentes);
+                    context.SaveChanges();
+                    existentes.Clear();
+                }
+                else
+                {
+                    var extrasLegacy = existentes
+                        .Where(c => !oficiales.Contains(c.NombreInterno ?? string.Empty))
+                        .Where(c => EsColumnaLegacyNoOficial(c.NombreInterno))
+                        .ToList();
+
+                    bool soloTieneExtrasLegacyNoOficiales = extrasLegacy.Count > 0
+                        && existentes.All(c => oficiales.Contains(c.NombreInterno ?? string.Empty)
+                            || EsColumnaLegacyNoOficial(c.NombreInterno));
+
+                    if (soloTieneExtrasLegacyNoOficiales)
+                    {
+                        context.ColumnasPersonalizadas.RemoveRange(extrasLegacy);
+                        context.SaveChanges();
+                        existentes = context.ColumnasPersonalizadas
+                            .Where(c => c.ProyectoId == proyectoId)
+                            .ToList();
+                    }
+
+                    var existentesPorNombre = new HashSet<string>(
+                        existentes.Select(c => c.NombreInterno ?? string.Empty),
+                        StringComparer.OrdinalIgnoreCase);
+
+                    var faltantes = columnas
+                        .Where(c => !existentesPorNombre.Contains(c.NombreInterno ?? string.Empty))
+                        .ToList();
+
+                    if (faltantes.Count == 0)
+                        return;
+
+                    context.ColumnasPersonalizadas.AddRange(faltantes);
+                    context.SaveChanges();
+                    return;
+                }
+            }
+
             context.ColumnasPersonalizadas.AddRange(columnas);
             context.SaveChanges();
+        }
+
+        private static bool EsSetInicialLegacyPresupuesto(List<ColumnaPersonalizada> existentes)
+        {
+            if (existentes.Count != 17)
+                return false;
+
+            var legacy = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "Tipo",
+                "Clave",
+                "Descripcion",
+                "Unidad",
+                "Cantidad",
+                "PrecioUnitario",
+                "Importe",
+                "PorcentajeIndirectos",
+                "Indirectos",
+                "PorcentajeFinanciamiento",
+                "Financiamiento",
+                "PorcentajeUtilidad",
+                "Utilidad",
+                "PorcentajeCargosAdicionales",
+                "CargosAdicionales",
+                "PrecioUnitarioFinal",
+                "ImporteFinal"
+            };
+
+            return existentes.All(c => legacy.Contains(c.NombreInterno ?? string.Empty));
+        }
+
+        private static bool EsColumnaLegacyNoOficial(string? nombreInterno)
+        {
+            return string.Equals(nombreInterno, "PorcentajeCargosAdicionales", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(nombreInterno, "ImporteFinal", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

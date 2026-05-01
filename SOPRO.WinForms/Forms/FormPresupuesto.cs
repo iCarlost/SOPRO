@@ -781,12 +781,14 @@ namespace SOPRO.WinForms.Forms
                 }
             });
 
-            // NO crear columnas automáticamente - el usuario decide cuáles quiere
-            // Si no hay columnas, CargarColumnasPersonalizadas mostrará columnas base temporales
-
             ActualizarTitulo();
             ConfigurarEventos();
             InicializarFormMatricesEmbebido();
+
+            // Asegura que Presupuesto abra con el mismo set de columnas
+            // que genera el boton "Predeterminadas" del FormColumnasPersonalizadas.
+            ColumnasPresupuestoHelper.CrearColumnasPredeterminadas(_context, _proyecto.Id);
+
             CargarPresupuesto();
             RefrescarFuenteAutocompleteApu();
             dgvPresupuesto.InterceptarTeclaEspecial = ProcesarTeclaEspecialPresupuesto;

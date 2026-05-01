@@ -434,9 +434,9 @@ namespace SOPRO.WinForms.Forms
             btnPredeterminadas.FlatStyle = FlatStyle.Flat;
             btnPredeterminadas.Location = new Point(206, 12);
             btnPredeterminadas.Name = "btnPredeterminadas";
-            btnPredeterminadas.Size = new Size(130, 28);
+            btnPredeterminadas.Size = new Size(196, 28);
             btnPredeterminadas.TabIndex = 2;
-            btnPredeterminadas.Text = "Predeterminadas";
+            btnPredeterminadas.Text = "Restaurar predeterminadas";
             btnPredeterminadas.Click += btnPredeterminadas_Click;
             // 
             // btnCerrar
