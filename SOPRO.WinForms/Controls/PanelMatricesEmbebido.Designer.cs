@@ -33,9 +33,9 @@ namespace SOPRO.WinForms.Controls
             _rbTipoApu = new RadioButton { Text = "APU", Location = new Point(875, 11), AutoSize = true, Checked = true, Anchor = AnchorStyles.Top | AnchorStyles.Left };
             _rbTipoBasico = new RadioButton { Text = "Básico", Location = new Point(935, 11), AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Left };
             _rbTipoCuadrilla = new RadioButton { Text = "Cuadrilla", Location = new Point(1025, 11), AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Left };
-            _btnGuardarMatriz = new Button { Text = "Guardar", Location = new Point(1145, 7), Size = new Size(95, 26), BackColor = Color.FromArgb(31, 122, 67), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Visible = false, Anchor = AnchorStyles.Top | AnchorStyles.Left };
+            _btnGuardarMatriz = new Button { Text = "Guardar", Location = new Point(1145, 7), Size = new Size(95, 26), BackColor = Color.FromArgb(31, 122, 67), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Visible = false, Anchor = AnchorStyles.Top | AnchorStyles.Right };
             _btnGuardarMatriz.FlatAppearance.BorderSize = 0;
-            _btnCancelarMatriz = new Button { Text = "Cancelar", Location = new Point(1245, 7), Size = new Size(95, 26), BackColor = Color.FromArgb(120,120,120), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Visible = false, Anchor = AnchorStyles.Top | AnchorStyles.Left };
+            _btnCancelarMatriz = new Button { Text = "Cancelar", Location = new Point(1245, 7), Size = new Size(95, 26), BackColor = Color.FromArgb(120,120,120), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Visible = false, Anchor = AnchorStyles.Top | AnchorStyles.Right };
             _btnCancelarMatriz.FlatAppearance.BorderSize = 0;
             _btnGuardarMatriz.Click += BtnGuardarMatriz_Click;
             _btnCancelarMatriz.Click += BtnCancelarMatriz_Click;

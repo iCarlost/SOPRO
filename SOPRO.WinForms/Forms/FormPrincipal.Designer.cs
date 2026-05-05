@@ -17,6 +17,7 @@ namespace SOPRO.WinForms.Forms
 
         private void InitializeComponent()
         {
+            DataGridViewCellStyle dataGridViewCellStyle1 = new DataGridViewCellStyle();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(FormPrincipal));
             panelTop = new Panel();
             btnAbrirProyecto = new Button();
@@ -115,12 +116,12 @@ namespace SOPRO.WinForms.Forms
             // 
             // grpRecientes
             // 
-            grpRecientes.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             grpRecientes.Controls.Add(dgvRecientes);
+            grpRecientes.Dock = DockStyle.Fill;
             grpRecientes.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-            grpRecientes.Location = new Point(40, 20);
+            grpRecientes.Location = new Point(40, 40);
             grpRecientes.Name = "grpRecientes";
-            grpRecientes.Size = new Size(800, 400);
+            grpRecientes.Size = new Size(794, 360);
             grpRecientes.TabIndex = 0;
             grpRecientes.TabStop = false;
             grpRecientes.Text = "PROYECTOS RECIENTES";
@@ -133,6 +134,14 @@ namespace SOPRO.WinForms.Forms
             dgvRecientes.BackgroundColor = Color.White;
             dgvRecientes.BorderStyle = BorderStyle.None;
             dgvRecientes.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            dataGridViewCellStyle1.Alignment = DataGridViewContentAlignment.MiddleLeft;
+            dataGridViewCellStyle1.BackColor = SystemColors.Window;
+            dataGridViewCellStyle1.Font = new Font("Segoe UI Semilight", 9.75F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            dataGridViewCellStyle1.ForeColor = SystemColors.ControlText;
+            dataGridViewCellStyle1.SelectionBackColor = SystemColors.Highlight;
+            dataGridViewCellStyle1.SelectionForeColor = SystemColors.HighlightText;
+            dataGridViewCellStyle1.WrapMode = DataGridViewTriState.False;
+            dgvRecientes.DefaultCellStyle = dataGridViewCellStyle1;
             dgvRecientes.Dock = DockStyle.Fill;
             dgvRecientes.Location = new Point(3, 21);
             dgvRecientes.MultiSelect = false;
@@ -141,7 +150,7 @@ namespace SOPRO.WinForms.Forms
             dgvRecientes.RowHeadersVisible = false;
             dgvRecientes.RowHeadersWidth = 51;
             dgvRecientes.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvRecientes.Size = new Size(794, 376);
+            dgvRecientes.Size = new Size(788, 336);
             dgvRecientes.TabIndex = 0;
             dgvRecientes.CellClick += dgvRecientes_CellClick;
             dgvRecientes.CellDoubleClick += dgvRecientes_CellDoubleClick;
@@ -172,6 +181,8 @@ namespace SOPRO.WinForms.Forms
             Font = new Font("Segoe UI", 9F);
             Icon = (Icon)resources.GetObject("$this.Icon");
             MaximizeBox = false;
+            MaximumSize = new Size(890, 581);
+            MinimumSize = new Size(750, 420);
             Name = "FormPrincipal";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "SOPRO - Software para Presupuestos de Obra";
