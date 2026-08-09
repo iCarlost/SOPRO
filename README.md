@@ -1,5 +1,8 @@
 # 🏗️ SOPRO — Sistema de Presupuestación de Obra Pública
 
+![CI](https://github.com/iCarlost/SOPRO/actions/workflows/ci.yml/badge.svg)
+![Licencia](https://img.shields.io/badge/Licencia-MIT-blue.svg)
+
 ## 📌 Descripción
 
 SOPRO es una aplicación de escritorio desarrollada en C# (.NET) orientada a la presupuestación de obra pública mediante análisis de precios unitarios (APU).
@@ -37,7 +40,7 @@ SOPRO.WinForms    → Interfaz de usuario
 
 ## ⚙️ Tecnologías
 
-* C# / .NET
+* C# / .NET 8
 * WinForms
 * SQLite
 * EF Core
@@ -68,29 +71,39 @@ El sistema utiliza un motor de cálculo centralizado que:
 
 ---
 
+## 🛠️ Compilar desde el código
+
+Requisitos: [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (Windows).
+
+```powershell
+dotnet restore SOPRO.sln
+dotnet build SOPRO.sln -c Release
+```
+
 ## 🧪 Pruebas
 
-El proyecto incluye pruebas unitarias en:
+El proyecto incluye pruebas unitarias en `SOPRO.Tests`:
 
+```powershell
+dotnet test SOPRO.sln
 ```
-SOPRO.Tests
+
+Las pruebas cubren cálculo de importes, motor de cálculo, redondeo, `%MO` e invariantes del sistema.
+
+---
+
+## 📦 Publicar una release
+
+1. Actualizar versión en `SOPRO.WinForms.csproj` e `installer/SOPRO-InnoSetup.iss`.
+2. Ejecutar el script de empaquetado (requiere [Inno Setup 6](https://jrsoftware.org/isdl.php)):
+
+```powershell
+.\build-release.ps1 -Version 1.6.0
 ```
 
-Las pruebas cubren:
+3. Crear el release en GitHub y adjuntar `SOPRO-Setup-<versión>.exe`.
 
-* Cálculo de importes
-* Motor de cálculo
-* Redondeo
-* %MO
-* Invariantes del sistema
-
-### Ejecución
-
-En Visual Studio:
-
-```
-Test → Run All Tests
-```
+La app consulta las actualizaciones desde el repositorio de releases (`iCarlost/SOPRO-Releases`), por lo que cada versión debe publicarse allí con su etiqueta `vX.Y.Z`.
 
 ---
 
@@ -125,15 +138,6 @@ v1.4.3
 
 ---
 
-## 🔐 Componentes sensibles
-
-NO incluidos en este repositorio:
-
-* Licenciador
-* Clave privada de firma
-
----
-
 ## 🚀 Flujo de desarrollo
 
 1. Realizar cambios
@@ -142,6 +146,18 @@ NO incluidos en este repositorio:
 4. Actualizar versión
 5. Generar instalador
 6. Publicar en releases
+
+---
+
+## 🤝 Contribuciones
+
+Consulta [CONTRIBUTING.md](CONTRIBUTING.md) antes de enviar un Pull Request.
+
+---
+
+## ⚖️ Licencia
+
+SOPRO se distribuye bajo la licencia **MIT**. Ver [LICENSE](LICENSE).
 
 ---
 

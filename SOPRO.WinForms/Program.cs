@@ -17,7 +17,6 @@ namespace SOPRO.WinForms
             var workspaceService = new ProjectWorkspaceService();
             workspaceService.EnsureWorkspaceExists();
 
-
             System.Windows.Forms.Application.Run(new FormPrincipal(
                 workspaceService,
                 new ProjectLifecycleService(workspaceService)));
