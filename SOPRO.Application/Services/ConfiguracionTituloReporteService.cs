@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 
@@ -11,7 +10,6 @@ namespace SOPRO.Application.Services
         public ConfiguracionTituloReporteService(SOPROContext context)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
-            EnsureStorage();
         }
 
         public ConfiguracionTituloReporte ObtenerOCrear(int proyectoId, string modulo, string tituloDefault)
@@ -53,25 +51,6 @@ namespace SOPRO.Application.Services
             cfg.ColorTexto = string.IsNullOrWhiteSpace(colorTexto) ? "#FFFFFF" : colorTexto;
             _context.SaveChanges();
             return cfg;
-        }
-
-        private void EnsureStorage()
-        {
-            _context.Database.ExecuteSqlRaw(@"
-                CREATE TABLE IF NOT EXISTS ConfiguracionesTituloReporte (
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ProyectoId INTEGER NOT NULL,
-                    Modulo TEXT NOT NULL,
-                    TextoTitulo TEXT NOT NULL DEFAULT '',
-                    NombreFuente TEXT NOT NULL DEFAULT 'Segoe UI',
-                    TamanoFuente REAL NOT NULL DEFAULT 13,
-                    Negrita INTEGER NOT NULL DEFAULT 1,
-                    Cursiva INTEGER NOT NULL DEFAULT 0,
-                    ColorTexto TEXT NOT NULL DEFAULT '#FFFFFF',
-                    FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE,
-                    UNIQUE (ProyectoId, Modulo)
-                );
-            ");
         }
     }
 }

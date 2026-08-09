@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SOPRO.Application.Services.Programacion;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 
@@ -35,6 +36,9 @@ namespace SOPRO.Application.Services
                 .Where(c => c.ProyectoId == proyectoId)
                 .OrderBy(c => c.Orden)
                 .ToList();
+
+            // Base saneada: un programa legacy puede tener FechaInicioPrograma = default
+            var fechaBasePrograma = CalendarioCache.SanitizarFecha(programa.FechaInicioPrograma);
 
             var actividadesExistentes = context.ActividadesProgramadas
                 .Where(a => a.ProgramaObraId == programa.Id)
@@ -114,7 +118,7 @@ namespace SOPRO.Application.Services
                 }
                 else if (actividad.Id == 0 || (!actividad.FechaInicioProgramada.HasValue && !actividad.FechaFinProgramada.HasValue && actividad.DuracionDiasHabiles <= 0))
                 {
-                    actividad.FechaInicioProgramada = programa.FechaInicioPrograma.Date;
+                    actividad.FechaInicioProgramada = fechaBasePrograma;
                     actividad.DuracionDiasHabiles = EstimateDuration(concepto);
                     actividad.FechaFinProgramada = _calculationService.CalculateFinishDate(context, programa.Id, actividad.FechaInicioProgramada, actividad.DuracionDiasHabiles);
                 }
@@ -163,7 +167,9 @@ namespace SOPRO.Application.Services
                 return ProgramSyncResult.Fail("El proyecto no existe.");
 
             var programa = context.ProgramasObra.FirstOrDefault(p => p.ProyectoId == proyectoId && p.Activo);
-            var fechaInicio = programa?.FechaInicioPrograma.Date ?? (proyecto.FechaInicio == default ? DateTime.Today : proyecto.FechaInicio.Date);
+            var fechaInicio = programa != null
+                ? CalendarioCache.SanitizarFecha(programa.FechaInicioPrograma)
+                : (proyecto.FechaInicio == default ? DateTime.Today : proyecto.FechaInicio.Date);
             var tipoPeriodo = programa?.TipoPeriodo ?? TipoPeriodoPrograma.Semana;
 
             var deleteResult = DeleteProgram(context, proyectoId, includeCalendars: false);

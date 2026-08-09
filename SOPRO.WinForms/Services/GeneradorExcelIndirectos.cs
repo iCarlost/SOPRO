@@ -280,7 +280,6 @@ namespace SOPRO.WinForms.Services
             ws.Range(fila, 1, fila, N).Style.Border.TopBorder      = XLBorderStyleValues.Medium;
             ws.Range(fila, 1, fila, N).Style.Border.TopBorderColor = XLColor.FromHtml("#1565C0");
 
-            int colImporte = 0, colPorcCol = 0;
             // Encontrar columnas por posición (ImporteTotal es siempre la última visible importante)
             // Usamos N directamente
             var rEtiq = ws.Range(fila, 1, fila, N - 1); rEtiq.Merge();

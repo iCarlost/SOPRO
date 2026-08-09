@@ -31,7 +31,7 @@ Si tocas (1) y (2) sin tocar (3), los DBs viejos fallarán al abrirse con errore
 
 3. **Incrementar** `VersionActual`:
    ```csharp
-   public const string VersionActual = "2026.04.2";  // de .1 a .2
+   public const string VersionActual = "2026.04.3";  // de .2 a .3
    ```
 
 4. **Regla para columnas string NOT NULL nuevas**: si agregas una columna `string`
@@ -59,6 +59,8 @@ EnsureCurrentSchema(context)
 │   ├── M009_ConceptosPresupuesto     ← CargosAdicionales, Nivel, Fechas
 │   ├── M010_ConfigColumnasReporte
 │   ├── M011_SanitizarNullsLegacy    ← NULLs en columnas string NOT NULL
+│   ├── M012_DisenadorEncabezadoPdf  ← PlantillasReporteElementos
+│   ├── M013_TablasIndirectosVistas  ← Grupos/Conceptos/ConfiguracionesIndirectos, VistasPresupuesto
 │   └── RegistrarVersion             ← sella __MigracionesCustom con versión
 │
 └── RepararActividadesProgramadas(conn, context)
@@ -88,7 +90,6 @@ Todo `new SOPROContext(path)` en el sistema llama `SchemaManager.EnsureCurrentSc
 - `DatabaseInitializer.InitializeMasterCatalog` — catálogo maestro nuevo
 - `DatabaseInitializer.CreateNewProject` — nuevo proyecto desde initializer
 - `DatabaseInitializer.UpgradeSchema` — upgrade manual desde initializer
-- `DatabaseMigrationHelper.EnsureTablesExist` — helper legacy (wrapper)
 - `CatalogSearchService.BuildProjectCatalogIndex` — indexado de proyectos externos
 - `ExternalMatrixImportService` — importación de matrices (3 métodos)
 - `ExternalInsumoImportService` — importación de insumos (2 métodos)
@@ -100,4 +101,4 @@ Todo `new SOPROContext(path)` en el sistema llama `SchemaManager.EnsureCurrentSc
 ## Deuda técnica pendiente
 
 - [ ] Mover `SchemaManager` de `SOPRO.Application` a `SOPRO.Data` (es infraestructura pura)
-- [ ] Tests automáticos: abrir DB nueva, DB vieja sin programación, DB vieja con programación conflictiva
+- [ ] Tests automáticos: abrir DB nueva, DB vieja sin programación, DB vieja con programación conflictiva (en progreso — ver `SOPRO.Tests/Services/Schema/SchemaManagerMigrationTests.cs`)

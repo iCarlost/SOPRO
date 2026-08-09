@@ -38,8 +38,6 @@ namespace SOPRO.WinForms.Services
                 => p.TryGetValue(key, out var v) && decimal.TryParse(v,
                     System.Globalization.NumberStyles.Any,
                     System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : def;
-            int GetInt(string key, int def = 0)
-                => p.TryGetValue(key, out var v) && int.TryParse(v, out var i) ? i : def;
 
             // Reconstruir cálculo completo para tener todas las variables intermedias
             var c = RecalcularCompleto(p);

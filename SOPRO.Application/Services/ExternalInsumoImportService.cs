@@ -141,6 +141,13 @@ namespace SOPRO.Application.Services
             SchemaManager.EnsureCurrentSchema(externalContext);
             var sourceProjectName = externalContext.Proyectos.AsNoTracking().OrderBy(p => p.Id).Select(p => p.Nombre).FirstOrDefault() ?? Path.GetFileNameWithoutExtension(projectPath);
 
+            // Motor con la precisión del proyecto destino (precisión de pantalla).
+            var proyectoDestino = currentContext.Proyectos.AsNoTracking()
+                .FirstOrDefault(p => p.Id == currentProjectId);
+            var motor = proyectoDestino != null
+                ? new MotorCalculoSopro(proyectoDestino)
+                : new MotorCalculoSopro(2, 2, 4);
+
             foreach (var item in list)
             {
                 switch (item.TipoComponente)
@@ -165,7 +172,7 @@ namespace SOPRO.Application.Services
                             currentContext.SaveChanges();
                             result.ImportedMateriales++;
                         }
-                        result.ImportedComponents.Add(new ComponenteMatriz { MaterialId = target.Id, Material = target, TipoComponente = TipoComponenteMatriz.Material, Cantidad = cantidad, Importe = target.PrecioUnitario * cantidad });
+                        result.ImportedComponents.Add(new ComponenteMatriz { MaterialId = target.Id, Material = target, TipoComponente = TipoComponenteMatriz.Material, Cantidad = cantidad, Importe = motor.Multiplicar(cantidad, target.PrecioUnitario) });
                         break;
                     }
                     case TipoComponenteMatriz.ManoDeObra:
@@ -211,7 +218,7 @@ namespace SOPRO.Application.Services
                             currentContext.SaveChanges();
                             result.ImportedMaquinaria++;
                         }
-                        result.ImportedComponents.Add(new ComponenteMatriz { MaquinariaId = target.Id, Maquinaria = target, TipoComponente = TipoComponenteMatriz.Maquinaria, Cantidad = cantidad, Rendimiento = cantidad > 0 ? Math.Round(1m / cantidad, 5, MidpointRounding.AwayFromZero) : 0m, Importe = target.CostoHorario * cantidad });
+                        result.ImportedComponents.Add(new ComponenteMatriz { MaquinariaId = target.Id, Maquinaria = target, TipoComponente = TipoComponenteMatriz.Maquinaria, Cantidad = cantidad, Rendimiento = cantidad > 0 ? Math.Round(1m / cantidad, 5, MidpointRounding.AwayFromZero) : 0m, Importe = motor.Multiplicar(cantidad, target.CostoHorario) });
                         break;
                     }
                     case TipoComponenteMatriz.Herramienta:
@@ -248,7 +255,7 @@ namespace SOPRO.Application.Services
                             result.ImportedManoDeObra += matrixResult.ImportedManoDeObra;
                             result.ImportedMaquinaria += matrixResult.ImportedMaquinaria;
                             result.ImportedHerramientas += matrixResult.ImportedHerramientas;
-                            result.ImportedComponents.Add(new ComponenteMatriz { AuxiliarId = target.Id, Auxiliar = target, TipoComponente = TipoComponenteMatriz.Auxiliar, Cantidad = cantidad, Importe = target.CostoDirecto * cantidad });
+                            result.ImportedComponents.Add(new ComponenteMatriz { AuxiliarId = target.Id, Auxiliar = target, TipoComponente = TipoComponenteMatriz.Auxiliar, Cantidad = cantidad, Importe = motor.Multiplicar(cantidad, target.CostoDirecto) });
                         }
                         break;
                     }

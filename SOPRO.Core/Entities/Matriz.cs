@@ -52,18 +52,20 @@ namespace SOPRO.Core.Entities
             Notas = string.Empty; // Inicializar para evitar NOT NULL constraint
         }
         
-        /// <summary>
+/// <summary>
         /// Calcula el costo directo usando precisión de pantalla correcta.
         /// Prefiere CalcularCostoDirecto(int decimalesImporte) cuando el proyecto está disponible.
         /// </summary>
         [Obsolete(
-            "Usar CalcularCostoDirecto(int decimalesImporte) pasando proyecto.DecimalesImporte, " +
-            "o delegar a MatrixComponentCalculationService.Recalculate(). " +
-            "Este overload usa 2 decimales como fallback, lo que puede introducir discrepancias " +
-            "si el proyecto tiene otra configuración.",
-            error: false)]
+            "PROHIBIDO (auditoría): usar MatrixComponentCalculationService.Recalculate() " +
+            "o delegar a PricePropagationService.RecalcularConMotor(). " +
+            "Algoritmo duplicado por dependencia circular Core↔Application; la acumulación " +
+            "de baseMO no redondea por paso (divergencia latente con la fuente canónica).",
+            error: true)]
         public void CalcularCostoDirecto()
-            => CalcularCostoDirecto(2);
+            => throw new NotSupportedException(
+                "Matriz.CalcularCostoDirecto() está deshabilitado por auditoría. " +
+                "Usar MatrixComponentCalculationService.Recalculate() o PricePropagationService.");
 
         /// <summary>
         /// Calcula el costo directo aplicando la precisión de pantalla del proyecto.
@@ -71,6 +73,11 @@ namespace SOPRO.Core.Entities
         /// SOPRO.Core no puede referenciar SOPRO.Application, por eso el algoritmo
         /// está duplicado aquí. La fuente canónica es MatrixComponentCalculationService.
         /// </summary>
+        [Obsolete(
+            "PROHIBIDO (auditoría): usar MatrixComponentCalculationService.Recalculate() " +
+            "o delegar a PricePropagationService.RecalcularTotalMotor(). " +
+            "La acumulación de baseMO no redondea por paso (divergencia latente).",
+            error: true)]
         public void CalcularCostoDirecto(int decimalesImporte)
         {
             if (Componentes == null || Componentes.Count == 0)

@@ -8,17 +8,12 @@ namespace SOPRO.Application.Services
     /// <summary>
     /// Fuente única de verdad del schema SQLite de SOPRO.
     ///
-    /// Consolida todo lo que antes estaba disperso en:
-    ///   - 20250217_AddModoCalculoPorcentajes.cs
-    ///   - MigracionHerramienta.cs
-    ///   - MigracionParametrosFSR.cs
-    ///   - MigracionProgramacionObra.cs
-    ///   - MigracionProgramacionNUMERIC.cs
+    /// Consolida todo lo que antes estaba disperso en migraciones manuales
+    /// legacy (MigracionHerramienta/ParametrosFSR/ProgramacionObra/NUMERIC,
+    /// DatabaseMigrationHelper, etc. — eliminados en Fase 4) y en:
     ///   - ProjectLifecycleService.TryUpgradeSchema()
     ///   - ProjectLifecycleService.EnsureRibbonColumnPersistence()
     ///   - ProjectLifecycleService.TryCreateFinanciamientoTables()
-    ///   - DatabaseMigrationHelper.EnsureTablesExist()
-    ///   - DatabaseInitializer.UpgradeSchema()
     ///
     /// Estrategia: idempotencia pura.
     ///   - Las migraciones normales (CREATE IF NOT EXISTS + ALTER ADD COLUMN)
@@ -47,7 +42,7 @@ namespace SOPRO.Application.Services
         /// Versión actual del schema. Incrementar cuando se agreguen nuevas migraciones.
         /// Formato: AAAA.MM.revision
         /// </summary>
-        public const string VersionActual = "2026.04.2";
+        public const string VersionActual = "2026.04.3";
 
         /// <summary>
         /// Aplica todas las migraciones sobre el contexto dado.
@@ -82,6 +77,7 @@ namespace SOPRO.Application.Services
                         M010_ConfigColumnasReporte(conn, tx);
                         M011_SanitizarNullsLegacy(conn, tx);
                         M012_DisenadorEncabezadoPdf(conn, tx);
+                        M013_TablasIndirectosVistas(conn, tx);
                         RegistrarVersion(conn, tx);
                         tx.Commit();
                     }
@@ -195,7 +191,12 @@ namespace SOPRO.Application.Services
                 var val = cmd.ExecuteScalar() as string;
                 return val?.Replace("SchemaVersion_", "");
             }
-            catch { return null; }
+            catch (Microsoft.Data.Sqlite.SqliteException ex)
+                when (ex.Message != null && ex.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
+            {
+                // Aún no hay __MigracionesCustom (DB sin migrar): "sin versión" es válido.
+                return null;
+            }
             finally { if (!wasOpen) conn.Close(); }
         }
 
@@ -875,6 +876,75 @@ namespace SOPRO.Application.Services
                 "INTEGER NOT NULL DEFAULT 400", tx);   // 400 dmm = 40 mm
             AgregarColumna(conn, "PlantillasReporte", "AlturaPieDmm",
                 "INTEGER NOT NULL DEFAULT 200", tx);   // 200 dmm = 20 mm
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // M013 — Tablas de Indirectos y VistasPresupuesto
+        //
+        // Estas 4 tablas existen en el modelo EF (SOPROContext) pero NO tenían
+        // migración: solo se creaban vía EnsureCreated, que no aplica nada sobre
+        // DBs existentes. Un proyecto creado con un modelo anterior abría con
+        // "no such table" al usar FormIndirectos/FormPorcentajes.
+        //
+        // Columnas espejadas de las entidades:
+        //   - GrupoIndirecto / ConceptoIndirecto / ConfiguracionIndirectos
+        //   - VistaPresupuesto (espeja la DDL de 20250207_InitialCreate,
+        //     que era la referencia canónica para estas tablas)
+        // ═══════════════════════════════════════════════════════════════════════
+        private static void M013_TablasIndirectosVistas(DbConnection conn, DbTransaction tx)
+        {
+            Exec(conn, @"
+                CREATE TABLE IF NOT EXISTS GruposIndirectos (
+                    Id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ProyectoId INTEGER NOT NULL,
+                    Nombre     TEXT    NOT NULL,
+                    Tipo       INTEGER NOT NULL,
+                    Orden      INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE
+                );", tx);
+            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_GruposIndirectos_ProyectoId_Orden ON GruposIndirectos(ProyectoId, Orden);", tx);
+
+            Exec(conn, @"
+                CREATE TABLE IF NOT EXISTS ConceptosIndirectos (
+                    Id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                    GrupoIndirectoId INTEGER NOT NULL,
+                    Concepto         TEXT    NOT NULL,
+                    Tipo             INTEGER NOT NULL,
+                    ImporteMensual   REAL    NOT NULL DEFAULT 0,
+                    DuracionMeses    INTEGER NOT NULL DEFAULT 1,
+                    Orden            INTEGER NOT NULL DEFAULT 0,
+                    Activo           INTEGER NOT NULL DEFAULT 1,
+                    FOREIGN KEY (GrupoIndirectoId) REFERENCES GruposIndirectos(Id) ON DELETE CASCADE
+                );", tx);
+            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_ConceptosIndirectos_GrupoIndirectoId_Orden ON ConceptosIndirectos(GrupoIndirectoId, Orden);", tx);
+
+            Exec(conn, @"
+                CREATE TABLE IF NOT EXISTS ConfiguracionesIndirectos (
+                    Id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ProyectoId              INTEGER NOT NULL,
+                    VolumenAnualObra        REAL    NOT NULL DEFAULT 0,
+                    CostoDirectoObra        REAL    NOT NULL DEFAULT 0,
+                    TotalOficinaCentralAnual REAL   NOT NULL DEFAULT 0,
+                    TotalCampo               REAL   NOT NULL DEFAULT 0,
+                    PorcentajeOficinaCentral REAL   NOT NULL DEFAULT 0,
+                    PorcentajeCampo          REAL   NOT NULL DEFAULT 0,
+                    FechaActualizacion      TEXT    NOT NULL,
+                    FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE
+                );", tx);
+
+            Exec(conn, @"
+                CREATE TABLE IF NOT EXISTS VistasPresupuesto (
+                    Id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ProyectoId              INTEGER NOT NULL,
+                    Nombre                  TEXT    NOT NULL,
+                    Descripcion             TEXT    NULL,
+                    EsVistaPorDefecto       INTEGER NOT NULL DEFAULT 0,
+                    ConfiguracionColumnasJSON TEXT NULL,
+                    FechaCreacion           TEXT    NOT NULL,
+                    FechaModificacion       TEXT    NOT NULL,
+                    FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE
+                );", tx);
+            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_VistasPresupuesto_ProyectoId ON VistasPresupuesto(ProyectoId);", tx);
         }
     }
 }

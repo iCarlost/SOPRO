@@ -66,7 +66,7 @@ namespace SOPRO.WinForms.Services
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
             ConstruirCuerpo(section, proyecto, gruposOC ?? new List<GrupoIndirecto>(), gruposCampo ?? new List<GrupoIndirecto>(), config, cols, tituloCfg);
 
-            var renderer = new PdfDocumentRenderer(true) { Document = doc };
+            var renderer = new PdfDocumentRenderer() { Document = doc };
             renderer.RenderDocument();
             renderer.PdfDocument.Save(rutaDestino);
             return rutaDestino;

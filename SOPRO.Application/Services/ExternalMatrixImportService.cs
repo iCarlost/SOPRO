@@ -313,6 +313,13 @@ namespace SOPRO.Application.Services
                 currentContext.SaveChanges();
             }
 
+            // [O2-AUDITORIA] Recalcular con el motor del proyecto destino.
+            // Los Importe de componentes y el CostoDirecto copiados del origen
+            // pueden no respetar la precisión de pantalla del destino; se recalculan
+            // todos a partir de las cantidades y los precios importados.
+            RecalcularConMotorDelProyecto(currentContext, currentProject, graph, matrixMap);
+            currentContext.SaveChanges();
+
             tx.Commit();
             return new ExternalMatrixImportResult
             {
@@ -323,6 +330,51 @@ namespace SOPRO.Application.Services
                 ImportedMaquinaria = importedMaquinaria,
                 ImportedHerramientas = importedHerramientas
             };
+        }
+
+        private static void RecalcularConMotorDelProyecto(
+            SOPROContext currentContext, Proyecto currentProject, MatrixGraph graph,
+            Dictionary<int, int> matrixMap)
+        {
+            // Reutiliza la ruta canónica (PricePropagationService.RecalcularConMotor)
+            // que ya implementa la precisión de pantalla por proyecto propietario.
+            var matricesImportadas = currentContext.Matrices
+                .Include(m => m.Componentes).ThenInclude(c => c.Material)
+                .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
+                .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
+                .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
+                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
+                .Where(m => matrixMap.Values.Contains(m.Id))
+                .ToList();
+
+            var matrizRaizId = graph != null && graph.RootMatrix != null
+                ? matrixMap.TryGetValue(graph.RootMatrix.Id, out var raiz) ? raiz : 0
+                : 0;
+
+            // Recalcular de abajo hacia arriba (auxiliares/básicos primero)
+            // para que un auxiliar ya tenga CostoDirecto final cuando su
+            // matriz padre lo consuma.
+            var visitados = new HashSet<int>();
+            if (matrizRaizId != 0)
+                RecalcularÁrbol(currentContext, currentProject, matricesImportadas, matrizRaizId, visitados);
+            else
+                PricePropagationService.RecalcularConMotor(currentContext, matricesImportadas);
+        }
+
+        private static void RecalcularÁrbol(
+            SOPROContext ctx, Proyecto proyecto, List<Matriz> matrices, int matrizId, HashSet<int> visitados)
+        {
+            if (!visitados.Add(matrizId)) return;
+
+            var matriz = matrices.FirstOrDefault(m => m.Id == matrizId);
+            if (matriz == null) return;
+
+            // Primero los auxiliares (básicos/cuadrillas hijas)
+            foreach (var comp in matriz.Componentes.Where(c => c.AuxiliarId.HasValue))
+                RecalcularÁrbol(ctx, proyecto, matrices, comp.AuxiliarId!.Value, visitados);
+
+            var totals = MatrixComponentCalculationService.Recalculate(matriz.Componentes.ToList(), proyecto.DecimalesImporte);
+            matriz.CostoDirecto = new MotorCalculoSopro(proyecto).RedondearImporte(totals.CostoDirectoTotal);
         }
 
         private static MatrixGraph LoadGraph(SOPROContext externalContext, int externalMatrixId)

@@ -25,25 +25,28 @@ namespace SOPRO.Application.Services
             var actividades = programa.Actividades.ToList();
             var actividadesNoResumen = actividades.Where(a => !a.EsResumen).OrderBy(a => a.Orden).ToList();
             var fechasBaseSinDependencias = new Dictionary<int, DateTime?>();
+            var fechaBasePrograma = CalendarioCache.SanitizarFecha(programa.FechaInicioPrograma);
 
             // Construir caché del calendario una sola vez para todo el recálculo
             // Evita los loops día a día en CalculateFinishDate, CalculateBusinessDaysInclusive, etc.
             var rangoInicio = actividadesNoResumen
                 .Where(a => a.FechaInicioProgramada.HasValue)
-                .Select(a => a.FechaInicioProgramada!.Value.Date)
-                .DefaultIfEmpty(programa.FechaInicioPrograma)
+                .Select(a => CalendarioCache.SanitizarFecha(a.FechaInicioProgramada!.Value.Date))
+                .DefaultIfEmpty(fechaBasePrograma)
                 .Min();
             var rangoFin = actividadesNoResumen
                 .Where(a => a.FechaFinProgramada.HasValue)
-                .Select(a => a.FechaFinProgramada!.Value.Date)
-                .DefaultIfEmpty(programa.FechaInicioPrograma.AddYears(2))
+                .Select(a => CalendarioCache.SanitizarFecha(a.FechaFinProgramada!.Value.Date))
+                .DefaultIfEmpty(fechaBasePrograma.AddYears(2))
                 .Max();
             var cache = new CalendarioCache(calendario, rangoInicio, rangoFin);
 
             foreach (var actividad in actividadesNoResumen)
             {
                 RecalculateActivityInternal(programa.Proyecto, actividad, cache);
-                fechasBaseSinDependencias[actividad.Id] = actividad.FechaInicioProgramada?.Date ?? programa.FechaInicioPrograma.Date;
+                fechasBaseSinDependencias[actividad.Id] = actividad.FechaInicioProgramada.HasValue
+                    ? CalendarioCache.SanitizarFecha(actividad.FechaInicioProgramada.Value.Date)
+                    : fechaBasePrograma;
                 actividad.FechaInicioTemprana = null;
                 actividad.FechaFinTemprana = null;
                 actividad.FechaInicioTardia = null;
@@ -88,13 +91,15 @@ namespace SOPRO.Application.Services
             programa.FechaInicioPrograma = programa.Actividades
                 .Where(a => !a.EsResumen && a.FechaInicioProgramada.HasValue)
                 .OrderBy(a => a.FechaInicioProgramada)
-                .Select(a => a.FechaInicioProgramada!.Value.Date)
-                .FirstOrDefault();
+                .Select(a => CalendarioCache.SanitizarFecha(a.FechaInicioProgramada!.Value.Date))
+                .DefaultIfEmpty(fechaBasePrograma)
+                .First();
             programa.FechaFinPrograma = programa.Actividades
                 .Where(a => !a.EsResumen && a.FechaFinProgramada.HasValue)
                 .OrderByDescending(a => a.FechaFinProgramada)
-                .Select(a => a.FechaFinProgramada)
-                .FirstOrDefault();
+                .Select(a => CalendarioCache.SanitizarFecha(a.FechaFinProgramada!.Value.Date))
+                .DefaultIfEmpty(fechaBasePrograma)
+                .First();
             programa.FechaModificacion = DateTime.Now;
 
             context.SaveChanges();
@@ -113,8 +118,10 @@ namespace SOPRO.Application.Services
                 return;
 
             var calAct = actividad.ProgramaObra?.CalendarioLaboral;
-            var fechaIniAct = actividad.FechaInicioProgramada?.Date ?? DateTime.Today;
-            var fechaFinAct = actividad.FechaFinProgramada?.Date ?? fechaIniAct.AddYears(1);
+            var fechaIniAct = CalendarioCache.SanitizarFecha(actividad.FechaInicioProgramada?.Date ?? DateTime.Today);
+            var fechaFinAct = CalendarioCache.SanitizarFecha(actividad.FechaFinProgramada?.Date ?? fechaIniAct.AddYears(1));
+            if (fechaFinAct < fechaIniAct)
+                fechaFinAct = fechaIniAct;
             var cacheAct = new CalendarioCache(calAct, fechaIniAct, fechaFinAct);
             RecalculateActivityInternal(actividad.ProgramaObra?.Proyecto, actividad, cacheAct);
             context.SaveChanges();

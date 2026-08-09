@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.DTOs.Programacion;
+using SOPRO.Application.Services.Programacion;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 
@@ -167,12 +168,14 @@ namespace SOPRO.Application.Services
                 .Where(a => !a.EsResumen && a.FechaInicioProgramada.HasValue && a.FechaFinProgramada.HasValue)
                 .ToList();
 
+            var fechaBasePrograma = CalendarioCache.SanitizarFecha(programa.FechaInicioPrograma);
+
             var inicio = hojas.Count > 0
-                ? hojas.Min(a => a.FechaInicioProgramada!.Value.Date)
-                : programa.FechaInicioPrograma.Date;
+                ? CalendarioCache.SanitizarFecha(hojas.Min(a => a.FechaInicioProgramada!.Value.Date))
+                : fechaBasePrograma;
 
             var fin = hojas.Count > 0
-                ? hojas.Max(a => a.FechaFinProgramada!.Value.Date)
+                ? CalendarioCache.SanitizarFecha(hojas.Max(a => a.FechaFinProgramada!.Value.Date))
                 : inicio;
 
             programa.FechaInicioPrograma = inicio;

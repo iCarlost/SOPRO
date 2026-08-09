@@ -50,7 +50,6 @@ namespace SOPRO.WinForms.Services
             DefinirEstilos(doc);
             var elementosPdf = _svc.ObtenerElementosPlantillaPdf(plantilla.Id);
 
-            bool primero = true;
             int numero = 1;
             foreach (var concepto in conceptosConAPU)
             {
@@ -70,7 +69,6 @@ namespace SOPRO.WinForms.Services
                 section.PageSetup.FooterDistance = Unit.FromCentimeter(0.35);
                 section.PageSetup.TopMargin = Unit.FromCentimeter(headerHeightCm + 0.65);
                 section.PageSetup.BottomMargin = Unit.FromCentimeter(footerHeightCm + 0.8);
-                primero = false;
 
                 ConstruirHeader(section, proyecto, plantilla, headerHeightCm);
                 ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
@@ -78,7 +76,7 @@ namespace SOPRO.WinForms.Services
                 numero++;
             }
 
-            var renderer = new PdfDocumentRenderer(true) { Document = doc };
+            var renderer = new PdfDocumentRenderer() { Document = doc };
             renderer.RenderDocument();
             renderer.PdfDocument.Save(rutaDestino);
             return rutaDestino;

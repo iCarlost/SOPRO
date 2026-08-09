@@ -267,7 +267,6 @@ namespace SOPRO.WinForms.Forms
 
                 int etiquetaCol = 1;
                 int valorCol = 3;
-                int notaCol = 5;
 
                 EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "COSTO DIRECTO", costoDirecto);
                 EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "COSTO INDIRECTO", costoIndirecto);

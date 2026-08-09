@@ -9,48 +9,118 @@ namespace SOPRO.Tests.Services.Programacion;
 public class ProgramacionCalculationServiceTests
 {
     [TestMethod]
-    public void CalculateFinishDate_DebeRespetarCalendarioLaboralSinSabadoNiDomingo()
+    public void RecalculateProgram_ConFechaInicioProgramaInválida_NolanzaYSaneaALaFechaActual()
     {
         using var context = TestDbFactory.CreateContext();
 
-        var proyecto = CrearProyecto("Proyecto calendario");
+        var proyecto = CrearProyecto("Proyecto fecha corrupta");
         context.Proyectos.Add(proyecto);
-        context.SaveChanges();
-
-        var calendario = new CalendarioLaboral
-        {
-            ProyectoId = proyecto.Id,
-            Nombre = "Lunes a viernes",
-            Lunes = true,
-            Martes = true,
-            Miercoles = true,
-            Jueves = true,
-            Viernes = true,
-            Sabado = false,
-            Domingo = false,
-            Activo = true
-        };
-        context.CalendariosLaborales.Add(calendario);
         context.SaveChanges();
 
         var programa = new ProgramaObra
         {
             ProyectoId = proyecto.Id,
-            CalendarioLaboralId = calendario.Id,
-            FechaInicioPrograma = new DateTime(2026, 1, 2), // viernes
-            Nombre = "Programa calendario",
+            Nombre = "Programa corrupto",
+            FechaInicioPrograma = DateTime.MinValue,
             Activo = true
         };
         context.ProgramasObra.Add(programa);
         context.SaveChanges();
 
+        var actividad = new ActividadProgramada
+        {
+            ProgramaObraId = programa.Id,
+            EsResumen = false,
+            EsManual = false,
+            Descripcion = "Actividad sin fechas",
+            DuracionDiasHabiles = 5,
+            MetodoDistribucion = MetodoDistribucionActividad.Uniforme
+        };
+        context.ActividadesProgramadas.Add(actividad);
+        context.SaveChanges();
+
         var service = new ProgramacionCalculationService();
 
-        var fin = service.CalculateFinishDate(context, programa.Id, new DateTime(2026, 1, 2), 3);
-        var dias = service.CalculateBusinessDaysInclusive(context, programa.Id, new DateTime(2026, 1, 2), fin);
+        service.RecalculateProgram(context, programa.Id);
 
-        Assert.AreEqual(new DateTime(2026, 1, 6), fin);
-        Assert.AreEqual(3, dias);
+        Assert.AreEqual(DateTime.Today.Date, programa.FechaInicioPrograma.Date);
+        Assert.AreEqual(DateTime.Today.Date, actividad.FechaInicioProgramada!.Value.Date);
+        Assert.IsTrue(actividad.FechaFinProgramada.HasValue);
+    }
+
+    [TestMethod]
+    public void RecalculateActivity_ConFechaInicioEnMinValue_NoLanza()
+    {
+        using var context = TestDbFactory.CreateContext();
+
+        var proyecto = CrearProyecto("Proyecto actividad corrupta");
+        context.Proyectos.Add(proyecto);
+        context.SaveChanges();
+
+        var programa = new ProgramaObra
+        {
+            ProyectoId = proyecto.Id,
+            Nombre = "Programa",
+            FechaInicioPrograma = new DateTime(2026, 1, 1),
+            Activo = true
+        };
+        context.ProgramasObra.Add(programa);
+        context.SaveChanges();
+
+        var actividad = new ActividadProgramada
+        {
+            ProgramaObraId = programa.Id,
+            EsResumen = false,
+            Descripcion = "Actividad corrupta",
+            FechaInicioProgramada = DateTime.MinValue,
+            DuracionDiasHabiles = 5,
+            MetodoDistribucion = MetodoDistribucionActividad.Uniforme
+        };
+        context.ActividadesProgramadas.Add(actividad);
+        context.SaveChanges();
+
+        new ProgramacionCalculationService().RecalculateActivity(context, actividad.Id);
+    }
+
+    [TestMethod]
+    public void SyncFromBudget_ConProgramaExistenteSinFechaInicio_NoLanzaYUsaFechaActual()
+    {
+        using var context = TestDbFactory.CreateContext();
+
+        var proyecto = CrearProyecto("Proyecto sync corrupto");
+        context.Proyectos.Add(proyecto);
+        context.SaveChanges();
+
+        var programa = new ProgramaObra
+        {
+            ProyectoId = proyecto.Id,
+            Nombre = "Programa corrupto",
+            FechaInicioPrograma = DateTime.MinValue,
+            TipoPeriodo = TipoPeriodoPrograma.Semana,
+            DuracionPeriodoDias = 7,
+            Activo = true
+        };
+        context.ProgramasObra.Add(programa);
+        context.SaveChanges();
+
+        var concepto = new ConceptoPresupuesto
+        {
+            ProyectoId = proyecto.Id,
+            Clave = "C-01",
+            Descripcion = "Concepto activo",
+            Cantidad = 100,
+            PrecioUnitario = 1m,
+            ImporteTotal = 100m,
+            Orden = 1
+        };
+        context.ConceptosPresupuesto.Add(concepto);
+        context.SaveChanges();
+
+        var result = new ProgramacionSynchronizationService().SyncFromBudget(context, proyecto.Id);
+
+        Assert.IsTrue(result.Success);
+        var actividad = context.ActividadesProgramadas.Single(a => a.ProgramaObraId == programa.Id && !a.EsResumen);
+        Assert.AreEqual(DateTime.Today.Date, actividad.FechaInicioProgramada!.Value.Date);
     }
 
     private static Proyecto CrearProyecto(string nombre) => new()

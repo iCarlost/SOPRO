@@ -69,7 +69,7 @@ namespace SOPRO.WinForms.Services
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
             ConstruirCuerpo(section, proyecto, cols, filtro, materiales, manoObra, maquinaria, herramientas, costoDirectoTotal, tituloCfg);
 
-            var renderer = new PdfDocumentRenderer(true) { Document = doc };
+            var renderer = new PdfDocumentRenderer() { Document = doc };
             renderer.RenderDocument();
             renderer.PdfDocument.Save(rutaDestino);
             return rutaDestino;

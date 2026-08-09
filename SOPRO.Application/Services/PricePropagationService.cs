@@ -85,7 +85,13 @@ namespace SOPRO.Application.Services
             ctx.SaveChanges();
         }
 
-        private static void RecalcularConMotor(SOPROContext ctx, List<Matriz> matrices)
+        /// <summary>
+        /// Recalcula el CostoDirecto de las matrices dadas usando el motor
+        /// con la precisión del proyecto propietario de cada una.
+        /// Expuesto de forma pública para su reutilización en importación externa
+        /// (ExternalMatrixImportService) sin duplicar lógica de recálculo.
+        /// </summary>
+        public static void RecalcularConMotor(SOPROContext ctx, List<Matriz> matrices)
         {
             var proyectoIds = matrices
                 .Where(m => m.ProyectoId.HasValue)

@@ -70,7 +70,7 @@ namespace SOPRO.WinForms.Services
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
             ConstruirTablaPresupuesto(section, proyecto, conceptos, cols, factorPU, tituloCfg);
 
-            var renderer = new PdfDocumentRenderer(true)
+            var renderer = new PdfDocumentRenderer()
             {
                 Document = doc
             };

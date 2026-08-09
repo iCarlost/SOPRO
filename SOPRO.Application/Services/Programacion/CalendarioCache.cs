@@ -31,11 +31,32 @@ namespace SOPRO.Application.Services.Programacion
 
         public static CalendarioCache Fallback => _fallback;
 
+        /// <summary>Días de expansión del rango para cubrir desfases (AddWorkingDays/SubtractWorkingDays).</summary>
+        internal const int MargenDias = 180;
+
+        /// <summary>
+        /// Normaliza una fecha al día actual si su expansión con MargenDias no es representable
+        /// (p. ej. DateTime.MinValue/MaxValue materializado desde datos históricos corruptos).
+        /// </summary>
+        internal static DateTime SanitizarFecha(DateTime date)
+        {
+            var d = date.Date;
+            if (d < DateTime.MinValue.Date.AddDays(MargenDias) || d > DateTime.MaxValue.Date.AddDays(-MargenDias))
+                return DateTime.Today.Date;
+            return d;
+        }
+
         public CalendarioCache(CalendarioLaboral? calendario, DateTime rangoInicio, DateTime rangoFin)
         {
-            // Ampliar el rango para cubrir AddWorkingDays con desfases grandes
-            _inicio = rangoInicio.Date.AddDays(-180);
-            _fin    = rangoFin.Date.AddDays(180);
+            // Ampliar el rango para cubrir AddWorkingDays con desfases grandes.
+            // Fechas default/corruptas (MinValue/MaxValue) se normalizan para no desbordar.
+            var inicioBase = SanitizarFecha(rangoInicio);
+            var finBase    = SanitizarFecha(rangoFin);
+            if (finBase < inicioBase)
+                finBase = inicioBase.AddDays(MargenDias);
+
+            _inicio = inicioBase.AddDays(-MargenDias);
+            _fin    = finBase.AddDays(MargenDias);
 
             int n = (int)(_fin - _inicio).TotalDays + 1;
             _habil = new bool[n];
