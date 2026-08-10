@@ -3,7 +3,7 @@ param(
     [string]$Version,
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
-    [switch]$SelfContained
+    [switch]$Portable
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,14 +27,14 @@ if (Test-Path -LiteralPath $PublishDir) {
     Remove-Item -LiteralPath $PublishDir -Recurse -Force
 }
 
-if ($SelfContained) {
+if ($Portable) {
     dotnet publish (Join-Path $RepoRoot "SOPRO.WinForms\SOPRO.WinForms.csproj") `
-        -c $Configuration -r $Runtime --self-contained true -p:PublishSingleFile=true `
+        -c $Configuration -r $Runtime --self-contained false `
         -p:Version="$Version" -o $PublishDir
 }
 else {
     dotnet publish (Join-Path $RepoRoot "SOPRO.WinForms\SOPRO.WinForms.csproj") `
-        -c $Configuration -r $Runtime --self-contained false `
+        -c $Configuration -r $Runtime --self-contained true -p:PublishSingleFile=true `
         -p:Version="$Version" -o $PublishDir
 }
 
