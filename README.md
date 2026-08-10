@@ -7,6 +7,8 @@
 
 SOPRO es una aplicación de escritorio desarrollada en C# (.NET) orientada a la presupuestación de obra pública mediante análisis de precios unitarios (APU).
 
+> **Estado de distribución:** el repositorio de código fuente es privado. Los instaladores publicados en `SOPRO-Releases` son un canal separado y no implican que el código fuente o futuros paquetes internos sean públicos.
+
 El sistema integra en un solo entorno:
 
 * Presupuesto de obra
@@ -19,7 +21,7 @@ El sistema integra en un solo entorno:
 
 ## 🧠 Arquitectura
 
-El sistema sigue una arquitectura por capas:
+La implementación actual sigue una arquitectura por capas:
 
 ```
 SOPRO.Core        → Entidades
@@ -30,11 +32,19 @@ SOPRO.WinForms    → Interfaz de usuario
 
 ### ⚠️ Reglas de arquitectura
 
-* No crear nuevas capas
-* No duplicar lógica
-* Reutilizar servicios existentes
-* No mover lógica a UI
-* El motor de cálculo debe ser único
+* No duplicar lógica ni mover lógica de negocio a la UI
+* Los proyectos o dependencias estructurales nuevos requieren una decisión arquitectónica documentada
+* El motor de cálculo debe ser único y consumirse a través de la ruta canónica
+* La UI no debe acceder directamente a persistencia en los módulos desacoplados
+* Los cambios de estructura no deben alterar resultados contables sin una decisión explícita
+
+### Arquitectura objetivo y planes internos
+
+La evolución planificada hacia un motor reutilizable y una UI WPF está documentada internamente en:
+
+* [ADR-001: Arquitectura objetivo](ADR-001-ARQUITECTURA-OBJETIVO.md)
+* [Plan 01: Desacoplamiento del núcleo y la aplicación](PLAN-01-DESACOPLAMIENTO-NUCLEO-APLICACION.md)
+* [Plan 02: Migración modular de WinForms a WPF](PLAN-02-MIGRACION-WINFORMS-WPF.md)
 
 ---
 
@@ -103,7 +113,7 @@ Las pruebas cubren cálculo de importes, motor de cálculo, redondeo, `%MO` e in
 
 3. Crear el release en GitHub y adjuntar `SOPRO-Setup-<versión>.exe`.
 
-La app consulta las actualizaciones desde el repositorio de releases (`iCarlost/SOPRO-Releases`), por lo que cada versión debe publicarse allí con su etiqueta `vX.Y.Z`.
+La app consulta las actualizaciones desde el repositorio de instaladores (`iCarlost/SOPRO-Releases`), por lo que cada versión distribuida debe publicarse allí con su etiqueta `vX.Y.Z`. Este canal de binarios es independiente de la visibilidad privada del repositorio fuente.
 
 ---
 
