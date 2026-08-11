@@ -40,5 +40,5 @@ Antes de integrar N0 como PR independiente debe completarse:
 - [x] No existen fallos sin clasificar.
 - [x] Goldens oficial y real revisados (ver `N0-MANIFIESTO-ESCENARIOS-DORADOS.md`).
 - [x] Cada fila de esta tabla tiene propietario y decisión temporal (propietarios concretos: ***REMOVED***; QA contable para goldens).
-- [ ] El PR de N0 se integra de forma **independiente** (sin mezclar con cambios de N1+ ni con el paquete del motor).
+- [x] El PR de N0 se integra de forma **independiente** (sin mezclar con cambios de N1+ ni con el paquete del motor). (Merge PR #2 `508188a` en main)
 - [x] Diez ejecuciones consecutivas del conjunto crítico producen los mismos resultados. (10/10 pasadas el 2026-08-11, 34/34 superados cada una)
