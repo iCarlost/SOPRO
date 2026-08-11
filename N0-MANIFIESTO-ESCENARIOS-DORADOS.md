@@ -118,6 +118,10 @@ Composición (34 tests en 6 clases; filtro `FullyQualifiedName~` por clase):
 | `FsrCalculationServiceTests` | 4 | Goldens FSR |
 | `MaquinariaCostoHorarioLegacyTests` | 6 | Golden costo horario |
 
-Comando reproducible: `dotnet test SOPRO.sln --no-restore --no-build --filter "<clases anteriores unidas con |>"`.
+Comando reproducible (filtro completo usado en las diez pasadas):
+
+```text
+dotnet test SOPRO.sln --no-restore --no-build --filter "FullyQualifiedName~SuiteValidacionOficialSoproTests|FullyQualifiedName~***REMOVED******REMOVED***RegressionTests|FullyQualifiedName~FsrCalculationServiceTests|FullyQualifiedName~MaquinariaCostoHorarioLegacyTests|FullyQualifiedName~RecalculoGlobalServiceTests|FullyQualifiedName~PersistenciaRecalculoYPropagacionTests"
+```
 
 Resultado: 10 ejecuciones consecutivas el 2026-08-11 (34/34 superados, 0 errores, 0 omitidos en cada una; ~3 s por pasada). Resultados idénticos en las 10 pasadas → determinismo confirmado.
