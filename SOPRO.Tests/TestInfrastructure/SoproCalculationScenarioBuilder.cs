@@ -175,8 +175,8 @@ internal static class SoproCalculationScenarioBuilder
             Notas = string.Empty
         });
 
-        MatrixComponentCalculationService.Recalculate(matriz.Componentes.ToList(), proyecto.DecimalesImporte);
-        matriz.CostoDirecto = 100m;
+        var totals = MatrixComponentCalculationService.Recalculate(matriz.Componentes.ToList(), proyecto.DecimalesImporte);
+        matriz.CostoDirecto = totals.CostoDirectoTotal;
         context.SaveChanges();
 
         var motor = new MotorCalculoSopro(proyecto);
