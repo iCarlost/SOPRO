@@ -41,11 +41,11 @@ durante compatibilidad: no la navegacion cargada (`Matriz != null`) ni un Id may
 ```csharp
 using Sopro.Calculation;
 
-var motor = new SoproCalculationEngine(new CalculationPrecision(decimalesCantidad: 2,
-                                                                decimalesImporte: 2,
-                                                                decimalesPorcentaje: 4));
+var motor = new SoproCalculationEngine(new CalculationPrecision(QuantityDecimals: 2,
+                                                                AmountDecimals: 2,
+                                                                PercentageDecimals: 4));
 
-decimal importe = motor.Multiplicar(652m, 13.3875m);            // 8730.28
+decimal importe = motor.Multiply(652m, 13.3875m);            // 8730.28
 
 var desglose = motor.CalculateUnitPrice(1000m, new PricePercentageInput
 {
@@ -65,8 +65,8 @@ IReadOnlyList<decimal> partes = motor.DistributeAmount(1000m, new[] { 33m, 33m, 
 - Decimales negativos se normalizan a cero (fila 7).
 - `Multiply` redondea el P.U. pero no la cantidad (fila 2).
 - Indirectos central + campo se suman antes del redondeo monetario (fila 3).
-- `PriceBreakdown.IndirectosCentral` prorratea con precision fija de 6 decimales
-  y `AwayFromZero`; `IndirectosCampo = Indirectos - IndirectosCentral` (fila 4).
+- `PriceBreakdown.CentralIndirectCosts` prorratea con precision fija de 6 decimales
+  y `AwayFromZero`; `FieldIndirectCosts = IndirectCosts - CentralIndirectCosts` (fila 4).
 - Distribuciones: residuo en el ultimo periodo, que puede quedar negativo (filas 1, 5);
   pesos negativos aceptados (fila 10); nulo/vacio devuelve vacio y suma de pesos cero
   devuelve ceros (fila 11).

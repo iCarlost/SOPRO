@@ -23,6 +23,8 @@ public class MotorDifferentialTests
     {
         (2, 2, 4),      // configuracion por defecto y del proyecto real
         (4, 2, 4),      // proyecto real (DecimalesCantidad=4)
+        (2, 4, 4),      // precision monetaria 4 (AmountDecimals=4)
+        (4, 4, 4),
         (3, 3, 3),
         (2, 2, 2),
         (1, 1, 1),
@@ -285,6 +287,7 @@ public class MotorDifferentialTests
             new ConceptoPresupuesto { Cantidad = 2m, CostoDirectoUnitario = 100.25m, EsAgrupador = false, MatrizId = 2 },
             new ConceptoPresupuesto { Cantidad = 999m, CostoDirectoUnitario = 1m, EsAgrupador = true, MatrizId = 3 },   // se omite
             new ConceptoPresupuesto { Cantidad = 999m, CostoDirectoUnitario = 1m, EsAgrupador = false, MatrizId = null }, // se omite
+            new ConceptoPresupuesto { Cantidad = 3m, CostoDirectoUnitario = 2.5m, EsAgrupador = false, MatrizId = 0 },     // Id 0: HasValue true, participa
             new ConceptoPresupuesto { Cantidad = -1m, CostoDirectoUnitario = 5m, EsAgrupador = false, MatrizId = 4 },
         };
 
@@ -294,6 +297,7 @@ public class MotorDifferentialTests
             new DirectCostLine(2m, 100.25m, IsGrouping: false, HasMatrix: true),
             new DirectCostLine(999m, 1m, IsGrouping: true, HasMatrix: true),
             new DirectCostLine(999m, 1m, IsGrouping: false, HasMatrix: false),
+            new DirectCostLine(3m, 2.5m, IsGrouping: false, HasMatrix: true),
             new DirectCostLine(-1m, 5m, IsGrouping: false, HasMatrix: true),
         };
 

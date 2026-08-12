@@ -165,14 +165,16 @@ public class LegacyOracleGoldenTests
     [TestMethod]
     public void Golden_SumDirectCost_ConLineasMixtas()
     {
-        // 10 × 60.01 = 600.10 + 2 × 100.25 = 200.50 → 800.60; agrupador y sin matriz omitidos
-        decimal esperado = 800.60m;
+        // 10 × 60.01 = 600.10 + 2 × 100.25 = 200.50 + 3 × 2.50 = 7.50 → 808.10;
+        // agrupador y sin matriz omitidos; MatrizId = 0 participa (HasValue)
+        decimal esperado = 808.10m;
 
         var concepto = new SOPRO.Core.Entities.ConceptoPresupuesto { Cantidad = 10m, CostoDirectoUnitario = 60.005m, MatrizId = 1 };
         Assert.AreEqual(esperado, Legacy(2, 2, 4).SumarCostoDirecto(new[]
         {
             concepto,
             new SOPRO.Core.Entities.ConceptoPresupuesto { Cantidad = 2m, CostoDirectoUnitario = 100.25m, MatrizId = 2 },
+            new SOPRO.Core.Entities.ConceptoPresupuesto { Cantidad = 3m, CostoDirectoUnitario = 2.5m, MatrizId = 0 },
             new SOPRO.Core.Entities.ConceptoPresupuesto { Cantidad = 999m, CostoDirectoUnitario = 1m, EsAgrupador = true },
             new SOPRO.Core.Entities.ConceptoPresupuesto { Cantidad = 999m, CostoDirectoUnitario = 1m },
         }));
@@ -181,6 +183,7 @@ public class LegacyOracleGoldenTests
         {
             new DirectCostLine(10m, 60.005m, IsGrouping: false, HasMatrix: true),
             new DirectCostLine(2m, 100.25m, IsGrouping: false, HasMatrix: true),
+            new DirectCostLine(3m, 2.5m, IsGrouping: false, HasMatrix: true),
             new DirectCostLine(999m, 1m, IsGrouping: true, HasMatrix: true),
             new DirectCostLine(999m, 1m, IsGrouping: false, HasMatrix: false),
         }));
