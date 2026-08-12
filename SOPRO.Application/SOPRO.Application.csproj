@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\SOPRO.Core\SOPRO.Core.csproj" />
     <ProjectReference Include="..\SOPRO.Data\SOPRO.Data.csproj" />
+    <ProjectReference Include="..\SOPRO.Calculation\SOPRO.Calculation.csproj" />
   </ItemGroup>
 
 

@@ -17,6 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="SOPRO.Application" />
     <InternalsVisibleTo Include="SOPRO.Tests" />
   </ItemGroup>
 
