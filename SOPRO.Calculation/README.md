@@ -1,0 +1,85 @@
+# Sopro.Calculation
+
+Nucleo de calculo de SOPRO desacoplado del dominio y la UI. Reproduce con exactitud
+la aritmetica del motor legacy (`MotorCalculoSopro`, `SOPRO.Application`) con
+"precision de pantalla": lo que el usuario ve en pantalla es exactamente lo que se
+procesa.
+
+- **Cero dependencias runtime** (solo BCL).
+- **Cero tipos SOPRO en la API publica** (nada de `SOPRO.Core`, `SOPRO.Application`,
+  EF ni SQLite).
+- Superficie publica minima (hallazgo 2): `CalculationPrecision`,
+  `SoproCalculationEngine`, `DirectCostLine`, `PricePercentageInput`,
+  `PriceBreakdown` y el enum `PercentageCalculationMode`. Los ayudantes
+  (`UnitPriceCalculator`, `AmountDistributor`) son internos.
+
+## API publica
+
+Toda la API esta en ingles (hallazgo del dictamen N1): los metodos de
+`SoproCalculationEngine` son `RoundQuantity/RoundAmount/RoundPercentage`,
+`Multiply`, `SumQuantities/SumAmounts/SumDirectCost`,
+`DistributeQuantity/DistributeAmount`, `CalculateUnitPrice` y
+`CalculateAmountOverBase`; `Decimales...` de `CalculationPrecision` son
+`QuantityDecimals/AmountDecimals/PercentageDecimals`.
+
+## Contratos de mapeo (Fase N1, PLAN-01 §10)
+
+| Dominio legacy | Paquete |
+|---|---|
+| `Proyecto` (DecimalesCantidad/Importe/Porcentaje) | `CalculationPrecision` (`QuantityDecimals`/`AmountDecimals`/`PercentageDecimals`) |
+| `BudgetPercentageInput` | `PricePercentageInput` |
+| `Proyecto.ModoCalculoPorcentajes` (`"SobreCD"`) | `PercentageCalculationMode` (mapeo: fachada N2; `"SobreCD"` casing-insensitive → `OverDirectCost`, resto → `Accumulative`) |
+| `ConceptoPresupuesto` | `DirectCostLine` (`Quantity`/`UnitDirectCost`/`IsGrouping`/`HasMatrix`) |
+| `DesglosePrecios` | `PriceBreakdown` |
+| `MotorCalculoSopro` | `SoproCalculationEngine` |
+
+`DirectCostLine.HasMatrix` debe mapear exactamente `ConceptoPresupuesto.MatrizId.HasValue`
+durante compatibilidad: no la navegacion cargada (`Matriz != null`) ni un Id mayor que cero.
+
+## Uso
+
+```csharp
+using Sopro.Calculation;
+
+var motor = new SoproCalculationEngine(new CalculationPrecision(quantityDecimals: 2,
+                                                                amountDecimals: 2,
+                                                                percentageDecimals: 4));
+
+decimal importe = motor.Multiply(652m, 13.3875m);            // 8730.28
+
+var desglose = motor.CalculateUnitPrice(1000m, new PricePercentageInput
+{
+    CentralIndirectsPercentage = 5m,
+    FieldIndirectsPercentage = 5m,
+    FinancingPercentage = 6m,
+    ProfitPercentage = 8m,
+    AdditionalChargesPercentage = 3m,
+    Mode = PercentageCalculationMode.Accumulative,
+});
+
+IReadOnlyList<decimal> partes = motor.DistributeAmount(1000m, new[] { 33m, 33m, 34m });
+```
+
+## Semantica preservada (decisiones N0, `N0-TABLA-DECISIONES-DIVERGENCIAS.md`)
+
+- Decimales negativos se normalizan a cero (fila 7).
+- `Multiply` redondea el P.U. pero no la cantidad (fila 2).
+- Indirectos central + campo se suman antes del redondeo monetario (fila 3).
+- `PriceBreakdown.CentralIndirectCosts` prorratea con precision fija de 6 decimales
+  y `AwayFromZero`; `FieldIndirectCosts = IndirectCosts - CentralIndirectCosts` (fila 4).
+- Distribuciones: residuo en el ultimo periodo, que puede quedar negativo (filas 1, 5);
+  pesos negativos aceptados (fila 10); nulo/vacio devuelve vacio y suma de pesos cero
+  devuelve ceros (fila 11).
+- Modo: solo `"SobreCD"` (casing-insensitive) es SobreCD; `null`/desconocidos son
+  Acumulables (fila 6).
+- Sumas: coleccion nula devuelve cero; cada elemento se redondea antes de acumular
+  (filas 12, 14).
+- El formato de cultura NO vive aqui: queda en la fachada legacy (fila 9).
+- El reloj no participa en ninguna aritmetica (fila 0 / manifiesto §4).
+
+## Verificacion (Gate N1)
+
+- `dotnet test SOPRO.sln` — suite completa (incluye diferenciales legacy vs nuevo).
+- Cobertura del nucleo: 95% lineas / 90% ramas (medida con coverlet XPlat).
+- Consumidor fuera de la solucion: `dotnet pack` a un feed local + app de consola
+  externa que restaura desde ese feed.

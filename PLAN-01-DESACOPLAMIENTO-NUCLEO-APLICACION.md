@@ -1,6 +1,6 @@
 # Plan 01: Desacoplamiento del Núcleo y la Aplicación
 
-**Estado:** acordado, pendiente de implementación  
+**Estado:** N0 cerrado (PR #2, merge `508188a`); N1 implementado — `SOPRO.Calculation` creado con Gate N1 verificado (hallazgos del dictamen aplicados: API pública en inglés, contratos inmutables, ayudantes internos, paquete 0.1.0; suite 188/188, cobertura del núcleo 100% líneas / 100% ramas, consumidor externo desde feed local); pendiente integración del PR N1
 **Decisión arquitectónica:** [ADR-001](ADR-001-ARQUITECTURA-OBJETIVO.md)  
 **Plan dependiente:** [Plan 02: Migración WinForms a WPF](PLAN-02-MIGRACION-WINFORMS-WPF.md)  
 **Distribución actual:** repositorio y paquete privados; sin publicación en NuGet.org
