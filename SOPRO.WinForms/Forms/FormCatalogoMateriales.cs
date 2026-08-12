@@ -2,7 +2,6 @@
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.WinForms.Helpers;
-using SOPRO.Data.Repositories;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -11,8 +10,10 @@ using System.Linq;
 using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
 using SOPRO.Application.Models.Catalogs;
+using SOPRO.Application.UseCases.Materials;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -21,10 +22,15 @@ namespace SOPRO.WinForms.Forms
         public static event EventHandler InsumosModificados;
 
         private readonly SOPROContext _context;
-        private readonly Repository<Material> _repository;
-        private readonly CatalogLoadService _catalogLoadService = new();
+        private readonly ProjectSessionInfo _sessionInfo;
         private readonly int? _proyectoId;
-        private Material _materialSeleccionado;
+
+        // Casos de uso de la frontera N3: la UI no calcula ni persiste materiales directamente.
+        private readonly ListMaterials _listMaterials = new();
+        private readonly DeleteMaterial _deleteMaterial = new();
+        private readonly PreviewMaterialDeletion _previewMaterialDeletion = new();
+
+        private MaterialListItem _materialSeleccionado;
         private List<ColumnaMaterial> _columnasConfig = new List<ColumnaMaterial>();
         private bool _cargandoColumnas = false;
         private readonly InsumoConsolidationService _consolidationService = new();

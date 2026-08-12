@@ -11,7 +11,9 @@ using System.Linq;
 using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Materials;
 using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
@@ -152,7 +154,7 @@ namespace SOPRO.WinForms.Forms
         private void DgvMateriales_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
         {
             if (e.RowIndex < 0) return;
-            if (dgvMateriales.Rows[e.RowIndex].DataBoundItem is not Material mat) return;
+            if (dgvMateriales.Rows[e.RowIndex].DataBoundItem is not MaterialListItem mat) return;
             var colName = dgvMateriales.Columns[e.ColumnIndex].Name;
             if (colName == "col_Origen" || colName == "colOrigen")
             {

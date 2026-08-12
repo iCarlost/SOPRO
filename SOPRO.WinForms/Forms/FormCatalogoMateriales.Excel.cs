@@ -11,7 +11,9 @@ using System.Linq;
 using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Materials;
 using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
@@ -26,7 +28,7 @@ namespace SOPRO.WinForms.Forms
         {
             try
             {
-                var materiales = dgvMateriales.DataSource as List<Material>;
+                var materiales = dgvMateriales.DataSource as List<MaterialListItem>;
                 if (materiales == null || !materiales.Any())
                 {
                     MessageBox.Show("No hay materiales para exportar.", "Sin datos",

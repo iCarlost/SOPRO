@@ -11,7 +11,9 @@ using System.Linq;
 using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Materials;
 using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
@@ -106,7 +108,7 @@ namespace SOPRO.WinForms.Forms
             btnImportarExcel.Visible = false;
             dgvMateriales.AplicarEstiloSOPRO();
             _context = context ?? throw new ArgumentNullException(nameof(context));
-            _repository = new Repository<Material>(_context);
+            _sessionInfo = ProjectSessionInfo.FromLegacy(_context, proyectoId);
             _proyectoId = proyectoId;
 
             if (_proyectoId.HasValue)

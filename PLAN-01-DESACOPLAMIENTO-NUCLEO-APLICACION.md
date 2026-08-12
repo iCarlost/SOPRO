@@ -306,6 +306,17 @@ WinForms debe adoptar primero estos casos de uso. Solo después se construye la 
 - Validaciones y errores se pueden probar sin crear formularios.
 - Guardado y propagación son una operación lógica única.
 
+### Resultado de la implementación (PR N3 — slice materiales)
+
+- Contratos en `SOPRO.Application/Contracts`: `ProjectRef`, `ProjectSessionInfo`, `Result<T>` (con `Error` tipado y anotación `MemberNotNullWhen` para flujo de nulabilidad), `AppError`, `AppErrorCode`, `OperationProgress`.
+- Casos de uso en `SOPRO.Application/UseCases/Materials`: `ListMaterials`, `SaveMaterial`, `DeleteMaterial`, `PreviewMaterialDeletion`. Request inmutables; nunca devuelven entidades rastreadas (`AsNoTracking` y proyección a DTOs).
+- `ProjectSessionInfo` no expone `SOPROContext` en su superficie pública: lo resuelve interno (puente temporal `FromLegacy` hasta N4).
+- `FormCatalogoMateriales` y `FormEditarMaterial` consumen los casos de uso; el formulario no calcula ni persiste (el Grid solo lee DTOs ya recalculados por el motor en el guardado).
+- Buscar/eliminar no mutan: previews y consultas con `AsNoTracking`.
+- Validaciones (campos requeridos, clave única en alcance del proyecto) y errores tipados viven en `SaveMaterial`: probados sin formularios en `MaterialsUseCasesTests` (15 pruebas, SQLite real del mismo esquema).
+- Guardado y propagación son la misma operación lógica: un único `SaveChanges` + propagación inmediata dentro del caso de uso (`SaveMaterial.TriggeredRecalculation`, `DeleteMaterial` recalcula matrices afectadas al eliminar componentes en cascada).
+- Paridad legacy conservada: el clon de insumos importados se resuelve por la marca `Notas` ([IMPORTADO DE: …]) en memoria (`ListMaterials.OnlyProjectItems/OnlyMasterItems`), como en `CatalogLoadService`.
+
 ## 13. Fase N4: Persistencia y ciclo de vida
 
 ### Acciones

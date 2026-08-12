@@ -4,23 +4,26 @@ using SOPRO.WinForms.Helpers;
 using System;
 using System.Linq;
 using System.Windows.Forms;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
-using SOPRO.Application.DTOs.Catalog;
+using SOPRO.Application.UseCases.Materials;
 
 namespace SOPRO.WinForms.Forms
 {
     public partial class FormEditarMaterial : Form
     {
         private readonly SOPROContext _context;
+        private readonly ProjectSessionInfo _sessionInfo;
         private readonly int? _proyectoId;
-        private readonly Material _material;
+        private readonly MaterialListItem _material;
         private readonly bool _esNuevo;
         
-        public FormEditarMaterial(SOPROContext context, int? proyectoId, Material material = null)
+        public FormEditarMaterial(SOPROContext context, int? proyectoId, MaterialListItem material = null)
         {
             InitializeComponent();
             
             _context = context ?? throw new ArgumentNullException(nameof(context));
+            _sessionInfo = ProjectSessionInfo.FromLegacy(_context, proyectoId);
             _proyectoId = proyectoId;
             _material = material;
             _esNuevo = material == null;
@@ -129,89 +132,35 @@ namespace SOPRO.WinForms.Forms
         
         private async void btnGuardar_Click(object sender, EventArgs e)
         {
-            // Validaciones
-            if (string.IsNullOrWhiteSpace(txtClave.Text))
-            {
-                MessageBox.Show(
-                    "La clave del material es requerida.",
-                    "Campo Requerido",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning
-                );
-                txtClave.Focus();
-                return;
-            }
-            
-            if (string.IsNullOrWhiteSpace(txtDescripcion.Text))
-            {
-                MessageBox.Show(
-                    "La descripción del material es requerida.",
-                    "Campo Requerido",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning
-                );
-                txtDescripcion.Focus();
-                return;
-            }
-            
-            if (string.IsNullOrWhiteSpace(txtUnidad.Text))
-            {
-                MessageBox.Show(
-                    "La unidad del material es requerida.",
-                    "Campo Requerido",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning
-                );
-                txtUnidad.Focus();
-                return;
-            }
-            
-            // Verificar que la clave no esté duplicada en NINGÚN tipo de insumo
-            if (_proyectoId.HasValue)
-            {
-                var errorClave = KeyValidationService.ValidateUniqueKey(
-                    _context,
-                    txtClave.Text.Trim(),
-                    _proyectoId.Value,
-                    _esNuevo ? null : _material.Id,
-                    CatalogItemType.Material
-                );
-                
-                if (errorClave != null)
-                {
-                    MessageBox.Show(
-                        errorClave,
-                        "Clave Duplicada",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning
-                    );
-                    txtClave.Focus();
-                    return;
-                }
-            }
-            
             try
             {
-                var dto = new MaterialEditDto
+                // Validaciones y persistencia viven en el caso de uso SaveMaterial
+                // (probables sin formularios, PLAN-01 §12).
+                var result = await new SaveMaterial().Execute(_sessionInfo, new SaveMaterialRequest(
+                    MaterialId: _esNuevo ? null : _material.Id,
+                    Clave: txtClave.Text,
+                    Descripcion: txtDescripcion.Text,
+                    Unidad: txtUnidad.Text,
+                    PrecioUnitario: nudPrecio.Value,
+                    Notas: txtNotas.Text,
+                    SaveToMaster: rbMaestro.Checked,
+                    ProjectId: _proyectoId));
+
+                if (!result.IsSuccess)
                 {
-                    Clave = txtClave.Text,
-                    Descripcion = txtDescripcion.Text,
-                    Unidad = txtUnidad.Text,
-                    PrecioUnitario = nudPrecio.Value,
-                    Notas = txtNotas.Text,
-                    GuardarEnMaestro = rbMaestro.Checked,
-                    ProyectoId = _proyectoId
-                };
+                    MessageBox.Show(result.Error.Message,
+                        result.Error.Code == AppErrorCode.Conflict ? "Clave Duplicada" : "Error al guardar el material",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
 
-                var result = await CatalogItemService.SaveMaterialAsync(_context, dto, _esNuevo ? null : _material);
-
-                if (result.TriggeredRecalculation)
+                if (result.Value.TriggeredRecalculation)
                     OpenFormsRefreshHelper.RefrescarPresupuestosAbiertos();
 
                 OpenFormsRefreshHelper.RefrescarCatalogosMaterialesAbiertos();
 
                 MessageBox.Show(
-                    result.IsNew ? "Material creado exitosamente." : "Material actualizado exitosamente.",
+                    result.Value.IsNew ? "Material creado exitosamente." : "Material actualizado exitosamente.",
                     "Guardado",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information

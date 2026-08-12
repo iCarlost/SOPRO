@@ -11,7 +11,9 @@ using System.Linq;
 using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Materials;
 using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
@@ -36,7 +38,7 @@ namespace SOPRO.WinForms.Forms
             if (e.ColumnIndex >= 0)
                 dgvMateriales.CurrentCell = clickedRow.Cells[e.ColumnIndex];
 
-            _materialSeleccionado = clickedRow.DataBoundItem as Material;
+            _materialSeleccionado = clickedRow.DataBoundItem as MaterialListItem;
             if (_materialSeleccionado == null) return;
 
             bool puedeEditar = !(_proyectoId.HasValue && _materialSeleccionado.Origen == OrigenInsumo.Maestro);
