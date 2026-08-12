@@ -27,6 +27,16 @@ internal static class AmountDistributor
         return Distribute(total, weights, precision.AmountDecimals);
     }
 
+    internal static IReadOnlyList<decimal> DistributeAmount(
+        decimal total,
+        IReadOnlyList<decimal> weights,
+        decimal totalWeights,
+        CalculationPrecision precision)
+    {
+        ArgumentNullException.ThrowIfNull(precision);
+        return Distribute(total, weights, totalWeights, precision.AmountDecimals);
+    }
+
     /// <summary>
     /// Same as <see cref="DistributeAmount"/> using <c>precision.QuantityDecimals</c>.
     /// </summary>
@@ -39,11 +49,30 @@ internal static class AmountDistributor
         return Distribute(total, weights, precision.QuantityDecimals);
     }
 
+    internal static IReadOnlyList<decimal> DistributeQuantity(
+        decimal total,
+        IReadOnlyList<decimal> weights,
+        decimal totalWeights,
+        CalculationPrecision precision)
+    {
+        ArgumentNullException.ThrowIfNull(precision);
+        return Distribute(total, weights, totalWeights, precision.QuantityDecimals);
+    }
+
     private static IReadOnlyList<decimal> Distribute(decimal total, IReadOnlyList<decimal>? weights, int decimals)
     {
         if (weights == null || weights.Count == 0) return new ReadOnlyCollection<decimal>(Array.Empty<decimal>());
 
         decimal totalWeights = weights.Sum();
+        return Distribute(total, weights, totalWeights, decimals);
+    }
+
+    private static IReadOnlyList<decimal> Distribute(
+        decimal total,
+        IReadOnlyList<decimal> weights,
+        decimal totalWeights,
+        int decimals)
+    {
         if (totalWeights == 0m)
             return new ReadOnlyCollection<decimal>(weights.Select(_ => 0m).ToArray());
 

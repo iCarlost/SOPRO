@@ -1,6 +1,6 @@
 # Plan 01: Desacoplamiento del Núcleo y la Aplicación
 
-**Estado:** N0 cerrado (PR #2, merge `508188a`); N1 cerrado (PR #3, merge `b9a4576` + `eaa2f67`); N2 implementado en `feat/calculation-n2-facade` — `MotorCalculoSopro` delega toda la aritmética en `SOPRO.Calculation` conservando API, normalizaciones, excepciones y formato (suite 195/195, Gate N2 pendiente de integración del PR)
+**Estado:** N0 cerrado (PR #2, merge `508188a`); N1 cerrado (PR #3, merge `b9a4576` + `eaa2f67`); N2 implementado en `feat/calculation-n2-facade` — `MotorCalculoSopro` delega los resultados numéricos en `SOPRO.Calculation` conservando API, normalizaciones, excepciones, forma de colecciones y formato (suite 197/197, Gate N2 pendiente de integración del PR)
 **Decisión arquitectónica:** [ADR-001](ADR-001-ARQUITECTURA-OBJETIVO.md)  
 **Plan dependiente:** [Plan 02: Migración WinForms a WPF](PLAN-02-MIGRACION-WINFORMS-WPF.md)  
 **Distribución actual:** repositorio y paquete privados; sin publicación en NuGet.org
@@ -258,7 +258,7 @@ DesglosePrecios         -> PriceBreakdown
 ### Resultado de la implementación (PR N2)
 
 - `MotorCalculoSopro` conserva namespace, assembly, sellado, ambos constructores y los 15 métodos públicos (verificado por reflexión en `MotorFacadeN2Tests`).
-- Toda la aritmética delega en `SoproCalculationEngine`; en la fachada solo viven: formato con cultura actual (N0 fila 9), guard/null normalizaciones legacy (N0 filas 7, 12, 14), el mapeo `"SobreCD"` → `OverDirectCost` (N0 fila 6) y el mapeo `ConceptoPresupuesto` → `DirectCostLine` (`HasMatrix == MatrizId.HasValue`).
+- Los resultados aritméticos delegan en `SoproCalculationEngine`; en la fachada solo viven: formato con cultura actual (N0 fila 9), guards/null y forma concreta de colecciones legacy (N0 filas 7, 11, 12, 14), el mapeo `"SobreCD"` → `OverDirectCost` (N0 fila 6) y el mapeo `ConceptoPresupuesto` → `DirectCostLine` (`HasMatrix == MatrizId.HasValue`).
 - `DesglosePrecios` se reconstruye desde `PriceBreakdown` sin cambios en su contrato público.
 - Excepciones preservadas: `ArgumentNullException` con `ParamName` `"pct"` y `"proyecto"`; `OverflowException` y `ArgumentOutOfRangeException` (precisión > 28) propagadas desde el paquete (N1 filas 8 y 10 de la tabla N0).
 - Defectos preservados y blindados con goldens: residuo de distribución en el último periodo (puede quedar negativo), `MatrizId = 0` participa en `SumarCostoDirecto`, agrupadores omitidos, excepciones de precisión excesiva.

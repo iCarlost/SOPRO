@@ -33,23 +33,23 @@ public class MotorFacadeN2Tests
 
         var metodos = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
 
-        var esperados = new Dictionary<string, (Type Retorno, Type[] Params)>
+        var esperados = new Dictionary<string, (Type Retorno, (Type Tipo, string Nombre)[] Parametros)>
         {
-            ["RedondearCantidad"]    = (typeof(decimal), new[] { typeof(decimal) }),
-            ["RedondearImporte"]     = (typeof(decimal), new[] { typeof(decimal) }),
-            ["RedondearPorcentaje"]  = (typeof(decimal), new[] { typeof(decimal) }),
-            ["Multiplicar"]          = (typeof(decimal), new[] { typeof(decimal), typeof(decimal) }),
-            ["CalcularImporteSobreBase"] = (typeof(decimal), new[] { typeof(decimal), typeof(decimal) }),
-            ["CalcularPrecioUnitario"]   = (typeof(DesglosePrecios), new[] { typeof(decimal), typeof(BudgetPercentageInput) }),
-            ["DistribuirImporte"]    = (typeof(IReadOnlyList<decimal>), new[] { typeof(decimal), typeof(IReadOnlyList<decimal>) }),
-            ["DistribuirCantidad"]   = (typeof(IReadOnlyList<decimal>), new[] { typeof(decimal), typeof(IReadOnlyList<decimal>) }),
-            ["SumarImportes"]        = (typeof(decimal), new[] { typeof(IEnumerable<decimal>) }),
-            ["SumarCantidades"]      = (typeof(decimal), new[] { typeof(IEnumerable<decimal>) }),
-            ["SumarCostoDirecto"]    = (typeof(decimal), new[] { typeof(IEnumerable<ConceptoPresupuesto>) }),
-            ["FormatCantidad"]       = (typeof(string), new[] { typeof(decimal) }),
-            ["FormatImporte"]        = (typeof(string), new[] { typeof(decimal) }),
-            ["FormatPorcentaje"]     = (typeof(string), new[] { typeof(decimal) }),
-            ["FormatNumero"]         = (typeof(string), new[] { typeof(decimal), typeof(int) }),
+            ["RedondearCantidad"]    = (typeof(decimal), new[] { (typeof(decimal), "valor") }),
+            ["RedondearImporte"]     = (typeof(decimal), new[] { (typeof(decimal), "valor") }),
+            ["RedondearPorcentaje"]  = (typeof(decimal), new[] { (typeof(decimal), "valor") }),
+            ["Multiplicar"]          = (typeof(decimal), new[] { (typeof(decimal), "cantidad"), (typeof(decimal), "precioUnitario") }),
+            ["CalcularImporteSobreBase"] = (typeof(decimal), new[] { (typeof(decimal), "factor"), (typeof(decimal), "baseImporte") }),
+            ["CalcularPrecioUnitario"]   = (typeof(DesglosePrecios), new[] { (typeof(decimal), "costoDirecto"), (typeof(BudgetPercentageInput), "pct") }),
+            ["DistribuirImporte"]    = (typeof(IReadOnlyList<decimal>), new[] { (typeof(decimal), "total"), (typeof(IReadOnlyList<decimal>), "pesos") }),
+            ["DistribuirCantidad"]   = (typeof(IReadOnlyList<decimal>), new[] { (typeof(decimal), "total"), (typeof(IReadOnlyList<decimal>), "pesos") }),
+            ["SumarImportes"]        = (typeof(decimal), new[] { (typeof(IEnumerable<decimal>), "valores") }),
+            ["SumarCantidades"]      = (typeof(decimal), new[] { (typeof(IEnumerable<decimal>), "valores") }),
+            ["SumarCostoDirecto"]    = (typeof(decimal), new[] { (typeof(IEnumerable<ConceptoPresupuesto>), "conceptos") }),
+            ["FormatCantidad"]       = (typeof(string), new[] { (typeof(decimal), "valor") }),
+            ["FormatImporte"]        = (typeof(string), new[] { (typeof(decimal), "valor") }),
+            ["FormatPorcentaje"]     = (typeof(string), new[] { (typeof(decimal), "valor") }),
+            ["FormatNumero"]         = (typeof(string), new[] { (typeof(decimal), "valor"), (typeof(int), "decimales") }),
         };
 
         Assert.AreEqual(esperados.Count, metodos.Length,
@@ -61,8 +61,8 @@ public class MotorFacadeN2Tests
 
             Assert.AreEqual(retorno, m.ReturnType, $"Retorno de {nombre}");
             CollectionAssert.AreEqual(
-                parametros.Select(p => p.ToString()).ToArray(),
-                m.GetParameters().Select(p => p.ParameterType.ToString()).ToArray(),
+                parametros.Select(p => $"{p.Tipo} {p.Nombre}").ToArray(),
+                m.GetParameters().Select(p => $"{p.ParameterType} {p.Name}").ToArray(),
                 $"Parámetros de {nombre}");
         }
 
@@ -70,9 +70,16 @@ public class MotorFacadeN2Tests
         Assert.AreEqual(2, ctors.Length, "Deben conservarse ambos constructores");
 
         Assert.IsTrue(ctors.Any(c =>
-            c.GetParameters().Select(p => p.ParameterType).SequenceEqual(new[] { typeof(Proyecto) })));
+            c.GetParameters().Select(p => (p.ParameterType, p.Name!))
+                .SequenceEqual(new[] { (typeof(Proyecto), "proyecto") })));
         Assert.IsTrue(ctors.Any(c =>
-            c.GetParameters().Select(p => p.ParameterType).SequenceEqual(new[] { typeof(int), typeof(int), typeof(int) })));
+            c.GetParameters().Select(p => (p.ParameterType, p.Name!))
+                .SequenceEqual(new[]
+                {
+                    (typeof(int), "decimalesCantidad"),
+                    (typeof(int), "decimalesImporte"),
+                    (typeof(int), "decimalesPorcentaje"),
+                })));
     }
 
     [TestMethod]
@@ -86,13 +93,47 @@ public class MotorFacadeN2Tests
                     "CargosAdicionales", "PrecioUnitario", "PctIndirectosCentral", "PctIndirectosCampo" },
             ctor.GetParameters().Select(p => p.Name).ToArray());
 
-        foreach (var prop in new[] { "CostoDirecto", "Indirectos", "Financiamiento", "Utilidad",
-                                     "CargosAdicionales", "PrecioUnitario",
-                                     "IndirectosCentral", "IndirectosCampo",
-                                     "Subtotal1", "Subtotal2", "Subtotal3" })
+        CollectionAssert.AreEqual(
+            Enumerable.Repeat(typeof(decimal), 8).ToArray(),
+            ctor.GetParameters().Select(p => p.ParameterType).ToArray());
+        Assert.IsFalse(ctor.GetParameters()[5].HasDefaultValue);
+        Assert.AreEqual(0m, ctor.GetParameters()[6].DefaultValue);
+        Assert.AreEqual(0m, ctor.GetParameters()[7].DefaultValue);
+
+        var propiedadesPosicionales = new[]
         {
-            Assert.IsNotNull(type.GetProperty(prop), $"Falta la propiedad {prop}");
+            "CostoDirecto", "Indirectos", "Financiamiento", "Utilidad",
+            "CargosAdicionales", "PrecioUnitario", "PctIndirectosCentral", "PctIndirectosCampo",
+        };
+        var propiedadesDerivadas = new[]
+        {
+            "IndirectosCentral", "IndirectosCampo", "Subtotal1", "Subtotal2", "Subtotal3",
+        };
+
+        foreach (var nombre in propiedadesPosicionales.Concat(propiedadesDerivadas))
+        {
+            var propiedad = type.GetProperty(nombre);
+            Assert.IsNotNull(propiedad, $"Falta la propiedad {nombre}");
+            Assert.AreEqual(typeof(decimal), propiedad.PropertyType, $"Tipo de {nombre}");
+            Assert.IsTrue(propiedad.GetMethod?.IsPublic, $"Getter público de {nombre}");
+
+            if (propiedadesPosicionales.Contains(nombre))
+            {
+                Assert.IsTrue(propiedad.SetMethod?.IsPublic, $"Setter público de {nombre}");
+                CollectionAssert.Contains(
+                    propiedad.SetMethod!.ReturnParameter.GetRequiredCustomModifiers(),
+                    typeof(System.Runtime.CompilerServices.IsExternalInit),
+                    $"{nombre} debe conservar su setter init");
+            }
+            else
+            {
+                Assert.IsNull(propiedad.SetMethod, $"{nombre} debe seguir siendo solo lectura");
+            }
         }
+
+        Assert.AreEqual(
+            propiedadesPosicionales.Length + propiedadesDerivadas.Length,
+            type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).Length);
     }
 
     [TestMethod]
@@ -119,7 +160,7 @@ public class MotorFacadeN2Tests
     public void MapeoDeModo_ViveEnLaFachada_YReproduceElLegacy()
     {
         var motor = new MotorCalculoSopro(2, 2, 4);
-        string[] modos = { "SobreCD", "SOBRECD", "Acumulables", "Desconocido", null };
+        string?[] modos = { "SobreCD", "SOBRECD", "Acumulables", "Desconocido", null };
 
         // Oráculo congelado: Acumulables → 1297.06, SobreCD → 1270 (cualquier casing)
         foreach (var modo in modos)
@@ -131,7 +172,7 @@ public class MotorFacadeN2Tests
                 Financiamiento = 6m,
                 Utilidad = 8m,
                 CargosAdicionales = 3m,
-                ModoCalculoPorcentajes = modo,
+                ModoCalculoPorcentajes = modo!,
             });
 
             Assert.AreEqual(
@@ -178,5 +219,63 @@ public class MotorFacadeN2Tests
             motor.DistribuirCantidad(10m, new[] { 1m, 1m, 1m }).ToArray());
         Assert.AreEqual(nuevo.SumAmounts(new[] { 1.005m, 2.005m, 3.005m }), motor.SumarImportes(new[] { 1.005m, 2.005m, 3.005m }));
         Assert.AreEqual(nuevo.SumQuantities(new[] { 1.005m, 2.005m }), motor.SumarCantidades(new[] { 1.005m, 2.005m }));
+    }
+
+    [TestMethod]
+    public void Distribuciones_PreservanLosTiposConcretosMutablesDelLegacy()
+    {
+        var motor = new MotorCalculoSopro(2, 2, 4);
+
+        var importes = motor.DistribuirImporte(100m, new[] { 1m, 1m });
+        var cantidades = motor.DistribuirCantidad(100m, new[] { 0m, 0m });
+
+        Assert.IsInstanceOfType<decimal[]>(importes);
+        ((IList<decimal>)importes)[0] = 49m;
+        Assert.AreEqual(49m, importes[0]);
+
+        Assert.IsInstanceOfType<List<decimal>>(cantidades);
+        ((IList<decimal>)cantidades).Add(1m);
+        Assert.AreEqual(3, cantidades.Count);
+
+        var pesosDeUnaSolaEnumeracion = new SingleEnumerationReadOnlyList(1m, 1m);
+        CollectionAssert.AreEqual(
+            new[] { 50m, 50m },
+            motor.DistribuirImporte(100m, pesosDeUnaSolaEnumeracion).ToArray());
+        Assert.AreEqual(1, pesosDeUnaSolaEnumeracion.EnumerationCount);
+    }
+
+    [TestMethod]
+    public void SumarCostoDirecto_MapeaHasMatrixSoloDesdeMatrizIdHasValue()
+    {
+        var motor = new MotorCalculoSopro(2, 2, 4);
+        var conceptos = new[]
+        {
+            new ConceptoPresupuesto { Cantidad = 1m, CostoDirectoUnitario = 10m, MatrizId = 0 },
+            new ConceptoPresupuesto { Cantidad = 1m, CostoDirectoUnitario = 100m, MatrizId = null, Matriz = new Matriz() },
+            new ConceptoPresupuesto { Cantidad = 1m, CostoDirectoUnitario = 1000m, MatrizId = 1, EsAgrupador = true },
+            new ConceptoPresupuesto { Cantidad = 2m, CostoDirectoUnitario = 10m, MatrizId = 2 },
+        };
+
+        Assert.AreEqual(30m, motor.SumarCostoDirecto(conceptos));
+    }
+
+    private sealed class SingleEnumerationReadOnlyList(params decimal[] values) : IReadOnlyList<decimal>
+    {
+        public int EnumerationCount { get; private set; }
+
+        public int Count => values.Length;
+
+        public decimal this[int index] => values[index];
+
+        public IEnumerator<decimal> GetEnumerator()
+        {
+            if (++EnumerationCount > 1)
+                throw new InvalidOperationException("La colección se enumeró más de una vez.");
+
+            return ((IEnumerable<decimal>)values).GetEnumerator();
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
+            => GetEnumerator();
     }
 }

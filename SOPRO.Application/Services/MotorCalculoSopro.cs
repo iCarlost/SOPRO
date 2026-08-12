@@ -37,7 +37,7 @@ namespace SOPRO.Application.Services
     /// <summary>
     /// Fachada legacy del motor de cálculo aritmético con "Precisión de Pantalla".
     ///
-    /// Desde la Fase N2 (PLAN-01 §11) TODA la aritmética está delegada en
+    /// Desde la Fase N2 (PLAN-01 §11) los resultados numéricos están delegados en
     /// <see cref="SoproCalculationEngine"/> (paquete <c>SOPRO.Calculation</c>):
     /// esta clase conserva el assembly, el namespace, la API pública, los parámetros
     /// y los comportamientos legacy documentados, y no contiene una segunda cascada
@@ -196,14 +196,37 @@ namespace SOPRO.Application.Services
         ///   P3 = 1000.00 - 330.00 - 330.00 = 340.00  ← residuo absorbido ✅
         /// </summary>
         public IReadOnlyList<decimal> DistribuirImporte(decimal total, IReadOnlyList<decimal> pesos)
-            => _engine.DistributeAmount(total, pesos);
+        {
+            if (pesos == null || pesos.Count == 0) return Array.Empty<decimal>();
+
+            decimal sumaPesos = pesos.Sum();
+            return AdaptarDistribucionLegacy(
+                _engine.DistributeAmount(total, pesos, sumaPesos),
+                sumaPesos);
+        }
 
         /// <summary>
         /// Distribuye una cantidad total entre N periodos con Ajuste de Residuo.
         /// Usa DecimalesCantidad en lugar de DecimalesImporte.
         /// </summary>
         public IReadOnlyList<decimal> DistribuirCantidad(decimal total, IReadOnlyList<decimal> pesos)
-            => _engine.DistributeQuantity(total, pesos);
+        {
+            if (pesos == null || pesos.Count == 0) return Array.Empty<decimal>();
+
+            decimal sumaPesos = pesos.Sum();
+            return AdaptarDistribucionLegacy(
+                _engine.DistributeQuantity(total, pesos, sumaPesos),
+                sumaPesos);
+        }
+
+        private static IReadOnlyList<decimal> AdaptarDistribucionLegacy(
+            IReadOnlyList<decimal> resultado,
+            decimal sumaPesos)
+        {
+            // El paquete es inmutable; la fachada conserva los tipos concretos mutables del legacy.
+            if (sumaPesos == 0m) return resultado.ToList();
+            return resultado.ToArray();
+        }
 
         // ════════════════════════════════════════════════════════════════════════
         // SUMA DE PRECISIÓN
@@ -279,24 +302,30 @@ namespace SOPRO.Application.Services
         decimal PctIndirectosCentral = 0m,
         decimal PctIndirectosCampo  = 0m)
     {
+        private PriceBreakdown ComoPriceBreakdown()
+            => new(
+                CostoDirecto,
+                Indirectos,
+                Financiamiento,
+                Utilidad,
+                CargosAdicionales,
+                PrecioUnitario,
+                PctIndirectosCentral,
+                PctIndirectosCampo);
+
         /// <summary>Importe de Indirectos OC (oficina central), proporcional al total de indirectos.</summary>
-        public decimal IndirectosCentral =>
-            (PctIndirectosCentral + PctIndirectosCampo) > 0m
-                ? Math.Round(Indirectos * PctIndirectosCentral
-                             / (PctIndirectosCentral + PctIndirectosCampo),
-                             6, MidpointRounding.AwayFromZero)
-                : 0m;
+        public decimal IndirectosCentral => ComoPriceBreakdown().CentralIndirectCosts;
 
         /// <summary>Importe de Indirectos Campo.</summary>
-        public decimal IndirectosCampo => Indirectos - IndirectosCentral;
+        public decimal IndirectosCampo => ComoPriceBreakdown().FieldIndirectCosts;
 
         /// <summary>Subtotal CD + Indirectos.</summary>
-        public decimal Subtotal1 => CostoDirecto + Indirectos;
+        public decimal Subtotal1 => ComoPriceBreakdown().Subtotal1;
 
         /// <summary>Subtotal CD + Ind + Financiamiento.</summary>
-        public decimal Subtotal2 => Subtotal1 + Financiamiento;
+        public decimal Subtotal2 => ComoPriceBreakdown().Subtotal2;
 
         /// <summary>Subtotal CD + Ind + Fin + Utilidad.</summary>
-        public decimal Subtotal3 => Subtotal2 + Utilidad;
+        public decimal Subtotal3 => ComoPriceBreakdown().Subtotal3;
     }
 }

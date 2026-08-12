@@ -65,9 +65,21 @@ public sealed class SoproCalculationEngine
     public IReadOnlyList<decimal> DistributeAmount(decimal total, IReadOnlyList<decimal>? weights)
         => AmountDistributor.DistributeAmount(total, weights, Precision);
 
+    internal IReadOnlyList<decimal> DistributeAmount(
+        decimal total,
+        IReadOnlyList<decimal> weights,
+        decimal totalWeights)
+        => AmountDistributor.DistributeAmount(total, weights, totalWeights, Precision);
+
     /// <summary>Returns an immutable read-only list (see <see cref="AmountDistributor"/>).</summary>
     public IReadOnlyList<decimal> DistributeQuantity(decimal total, IReadOnlyList<decimal>? weights)
         => AmountDistributor.DistributeQuantity(total, weights, Precision);
+
+    internal IReadOnlyList<decimal> DistributeQuantity(
+        decimal total,
+        IReadOnlyList<decimal> weights,
+        decimal totalWeights)
+        => AmountDistributor.DistributeQuantity(total, weights, totalWeights, Precision);
 
     // ═══ Precision sums ═══
 
