@@ -41,9 +41,9 @@ durante compatibilidad: no la navegacion cargada (`Matriz != null`) ni un Id may
 ```csharp
 using Sopro.Calculation;
 
-var motor = new SoproCalculationEngine(new CalculationPrecision(QuantityDecimals: 2,
-                                                                AmountDecimals: 2,
-                                                                PercentageDecimals: 4));
+var motor = new SoproCalculationEngine(new CalculationPrecision(quantityDecimals: 2,
+                                                                amountDecimals: 2,
+                                                                percentageDecimals: 4));
 
 decimal importe = motor.Multiply(652m, 13.3875m);            // 8730.28
 
