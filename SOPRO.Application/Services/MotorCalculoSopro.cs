@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Sopro.Calculation;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
 
@@ -9,8 +10,10 @@ namespace SOPRO.Application.Services
 {
     // ╔══════════════════════════════════════════════════════════════════════════╗
     // ║          MOTOR DE CÁLCULO SOPRO — v2.0  (Auditado 2026-03)             ║
-    // ║          Fuente única de verdad para aritmética con precisión           ║
-    // ║          de pantalla. TODOS los servicios deben usar esta clase.        ║
+    // ║          FACHADA LEGACY (Fase N2, PLAN-01 §11)                           ║
+    // ║          La aritmética con precisión de pantalla vive en                 ║
+    // ║          SOPRO.Calculation (SoproCalculationEngine). Esta clase          ║
+    // ║          conserva la API, las normalizaciones y el formato legacy.      ║
     // ║                                                                         ║
     // ║  ESTADO DE AUDITORÍA INTEGRAL (dictamen externo):                       ║
     // ║    ✅ Motor único — BudgetPricingService delega aquí                    ║
@@ -22,6 +25,8 @@ namespace SOPRO.Application.Services
     // ║    ✅ Programación persiste en NUMERIC (migración automática)            ║
     // ║    ✅ Distribución con ajuste de residuo en último periodo               ║
     // ║    ✅ FormatoHelper sin segunda vía de cálculo (lanza excepción)         ║
+    // ║    ✅ N2 — aritmética delegada a SOPRO.Calculation (Gate N1:            ║
+    // ║       diferenciales exactos + oráculo dorado independiente)             ║
     // ║                                                                         ║
     // ║  DEUDA TÉCNICA DOCUMENTADA (no urgente):                                ║
     // ║    ⚠ Matriz.CalcularCostoDirecto(int) — algoritmo duplicado por        ║
@@ -30,17 +35,23 @@ namespace SOPRO.Application.Services
     // ╚══════════════════════════════════════════════════════════════════════════╝
 
     /// <summary>
-    /// Motor centralizado de cálculo aritmético con "Precisión de Pantalla".
+    /// Fachada legacy del motor de cálculo aritmético con "Precisión de Pantalla".
+    ///
+    /// Desde la Fase N2 (PLAN-01 §11) TODA la aritmética está delegada en
+    /// <see cref="SoproCalculationEngine"/> (paquete <c>SOPRO.Calculation</c>):
+    /// esta clase conserva el assembly, el namespace, la API pública, los parámetros
+    /// y los comportamientos legacy documentados, y no contiene una segunda cascada
+    /// de cálculo (Gate N2).
+    ///
+    /// Lo que queda aquí (decidido en N0):
+    ///   - Los cuatro métodos de formato con la cultura actual (filas 9).
+    ///   - La normalización de entrada y el guard legacy de argumentos.
+    ///   - El mapeo dominio ↔ paquete:
+    ///       * "SobreCD" (casing-insensitive) → OverDirectCost; resto → Acumulables.
+    ///       * ConceptoPresupuesto → DirectCostLine (HasMatrix == MatrizId.HasValue).
     ///
     /// PRINCIPIO FUNDAMENTAL:
     ///   Lo que el usuario VE en pantalla es exactamente lo que se PROCESA.
-    ///   Antes de multiplicar, el P.U. se redondea a los decimales visibles.
-    ///   El resultado se redondea igual. Nunca se acumulan valores sin redondear.
-    ///
-    /// REGLA DE ORO:
-    ///   Redondear cada importe individual ANTES de acumular en totales.
-    ///   El último elemento de una distribución absorbe el residuo de redondeo
-    ///   para que SUM(partes) == total exactamente.
     ///
     /// USO:
     ///   var motor = new MotorCalculoSopro(proyecto);
@@ -53,25 +64,25 @@ namespace SOPRO.Application.Services
     /// </summary>
     public sealed class MotorCalculoSopro
     {
+        private readonly SoproCalculationEngine _engine;
+
         // ── Acceso interno para que RecalculoGlobalService pueda componer ──────
-        internal int DecimalesCantidad  { get; }
-        internal int DecimalesImporte   { get; }
-        internal int DecimalesPorcentaje { get; }
+        internal int DecimalesCantidad  => _engine.QuantityDecimals;
+        internal int DecimalesImporte   => _engine.AmountDecimals;
+        internal int DecimalesPorcentaje => _engine.PercentageDecimals;
 
         public MotorCalculoSopro(Proyecto proyecto)
         {
             if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
-            DecimalesCantidad   = Math.Max(0, proyecto.DecimalesCantidad);
-            DecimalesImporte    = Math.Max(0, proyecto.DecimalesImporte);
-            DecimalesPorcentaje = Math.Max(0, proyecto.DecimalesPorcentaje);
+            _engine = new SoproCalculationEngine(proyecto.DecimalesCantidad,
+                                                 proyecto.DecimalesImporte,
+                                                 proyecto.DecimalesPorcentaje);
         }
 
         /// <summary>Constructor de pruebas / sin proyecto EF.</summary>
         public MotorCalculoSopro(int decimalesCantidad, int decimalesImporte, int decimalesPorcentaje)
         {
-            DecimalesCantidad   = Math.Max(0, decimalesCantidad);
-            DecimalesImporte    = Math.Max(0, decimalesImporte);
-            DecimalesPorcentaje = Math.Max(0, decimalesPorcentaje);
+            _engine = new SoproCalculationEngine(decimalesCantidad, decimalesImporte, decimalesPorcentaje);
         }
 
         // ════════════════════════════════════════════════════════════════════════
@@ -80,15 +91,15 @@ namespace SOPRO.Application.Services
 
         /// <summary>Redondea una cantidad al número de decimales configurado para cantidades.</summary>
         public decimal RedondearCantidad(decimal valor)
-            => Math.Round(valor, DecimalesCantidad, MidpointRounding.AwayFromZero);
+            => _engine.RoundQuantity(valor);
 
         /// <summary>Redondea un importe/precio al número de decimales configurado para importes.</summary>
         public decimal RedondearImporte(decimal valor)
-            => Math.Round(valor, DecimalesImporte, MidpointRounding.AwayFromZero);
+            => _engine.RoundAmount(valor);
 
         /// <summary>Redondea un porcentaje al número de decimales configurado para porcentajes.</summary>
         public decimal RedondearPorcentaje(decimal valor)
-            => Math.Round(valor, DecimalesPorcentaje, MidpointRounding.AwayFromZero);
+            => _engine.RoundPercentage(valor);
 
         // ════════════════════════════════════════════════════════════════════════
         // OPERACIÓN DE PANTALLA PRINCIPAL
@@ -110,17 +121,14 @@ namespace SOPRO.Application.Services
         ///   (NO 652 × 13.3875 = 8,728.65 que el usuario nunca vería)
         /// </summary>
         public decimal Multiplicar(decimal cantidad, decimal precioUnitario)
-        {
-            decimal puVisible = RedondearImporte(precioUnitario);
-            return RedondearImporte(cantidad * puVisible);
-        }
+            => _engine.Multiply(cantidad, precioUnitario);
 
         /// <summary>
         /// Calcula un importe sobre una base monetaria usando la misma política de
         /// precisión visible del motor. Útil para %MO y herramienta porcentual.
         /// </summary>
         public decimal CalcularImporteSobreBase(decimal factor, decimal baseImporte)
-            => Multiplicar(factor, baseImporte);
+            => _engine.CalculateAmountOverBase(factor, baseImporte);
 
         // ════════════════════════════════════════════════════════════════════════
         // CASCADA DE PORCENTAJES CON REDONDEO EN CADA PASO VISIBLE
@@ -136,40 +144,37 @@ namespace SOPRO.Application.Services
         /// Modos:
         ///   "Acumulables" (default): cada porcentaje aplica sobre el subtotal anterior.
         ///   "SobreCD":               todos los porcentajes aplican directamente sobre CD.
+        ///
+        /// La cascada completa se ejecuta en SOPRO.Calculation; aquí solo se
+        /// mapea el texto legacy y se reconstruye <see cref="DesglosePrecios"/>.
         /// </summary>
         public DesglosePrecios CalcularPrecioUnitario(decimal costoDirecto, BudgetPercentageInput pct)
         {
             if (pct == null) throw new ArgumentNullException(nameof(pct));
 
-            bool sobreCD = string.Equals(pct.ModoCalculoPorcentajes, "SobreCD",
-                                         StringComparison.OrdinalIgnoreCase);
-            decimal cd = RedondearImporte(costoDirecto);
+            var desglose = _engine.CalculateUnitPrice(costoDirecto, new PricePercentageInput
+            {
+                ReferenceDirectCost             = pct.CostoDirectoReferencia,
+                CentralIndirectsPercentage      = pct.IndirectosCentral,
+                FieldIndirectsPercentage        = pct.IndirectosCampo,
+                FinancingPercentage             = pct.Financiamiento,
+                ProfitPercentage                = pct.Utilidad,
+                AdditionalChargesPercentage     = pct.CargosAdicionales,
+                Mode                            = string.Equals(pct.ModoCalculoPorcentajes, "SobreCD",
+                                                                 StringComparison.OrdinalIgnoreCase)
+                                                    ? PercentageCalculationMode.OverDirectCost
+                                                    : PercentageCalculationMode.Accumulative,
+            });
 
-            // ── Indirectos ──────────────────────────────────────────────────────
-            decimal pInd = pct.IndirectosCentral + pct.IndirectosCampo;
-            decimal mInd = RedondearImporte(cd * pInd / 100m);
-            decimal sub1 = RedondearImporte(cd + mInd);
-
-            // ── Financiamiento ──────────────────────────────────────────────────
-            decimal baseFin = sobreCD ? cd : sub1;
-            decimal mFin    = RedondearImporte(baseFin * pct.Financiamiento / 100m);
-            decimal sub2    = RedondearImporte(sub1 + mFin);
-
-            // ── Utilidad ────────────────────────────────────────────────────────
-            decimal baseUtil = sobreCD ? cd : sub2;
-            decimal mUtil    = RedondearImporte(baseUtil * pct.Utilidad / 100m);
-            decimal sub3     = RedondearImporte(sub2 + mUtil);
-
-            // ── Cargos Adicionales ──────────────────────────────────────────────
-            decimal baseCargos = sobreCD ? cd : sub3;
-            decimal mCargos    = RedondearImporte(baseCargos * pct.CargosAdicionales / 100m);
-
-            // ── P.U. final ──────────────────────────────────────────────────────
-            // Se construye como suma de partes ya redondeadas para garantizar cuadre
-            decimal pu = RedondearImporte(sub3 + mCargos);
-
-            return new DesglosePrecios(cd, mInd, mFin, mUtil, mCargos, pu,
-                                       pct.IndirectosCentral, pct.IndirectosCampo);
+            return new DesglosePrecios(
+                desglose.DirectCost,
+                desglose.IndirectCosts,
+                desglose.Financing,
+                desglose.Profit,
+                desglose.AdditionalCharges,
+                desglose.UnitPrice,
+                desglose.CentralIndirectsPercentage,
+                desglose.FieldIndirectsPercentage);
         }
 
         // ════════════════════════════════════════════════════════════════════════
@@ -191,53 +196,14 @@ namespace SOPRO.Application.Services
         ///   P3 = 1000.00 - 330.00 - 330.00 = 340.00  ← residuo absorbido ✅
         /// </summary>
         public IReadOnlyList<decimal> DistribuirImporte(decimal total, IReadOnlyList<decimal> pesos)
-        {
-            if (pesos == null || pesos.Count == 0) return Array.Empty<decimal>();
-
-            decimal sumaPesos = pesos.Sum();
-            if (sumaPesos == 0m)
-                return pesos.Select(_ => 0m).ToList();
-
-            var resultado = new decimal[pesos.Count];
-            decimal acumulado = 0m;
-
-            for (int i = 0; i < pesos.Count - 1; i++)
-            {
-                decimal proporcion = pesos[i] / sumaPesos;
-                resultado[i]  = RedondearImporte(total * proporcion);
-                acumulado     += resultado[i];
-            }
-
-            // ✅ Ajuste de Residuo: último periodo = exactamente lo que falta
-            resultado[^1] = RedondearImporte(total - acumulado);
-            return resultado;
-        }
+            => _engine.DistributeAmount(total, pesos);
 
         /// <summary>
         /// Distribuye una cantidad total entre N periodos con Ajuste de Residuo.
         /// Usa DecimalesCantidad en lugar de DecimalesImporte.
         /// </summary>
         public IReadOnlyList<decimal> DistribuirCantidad(decimal total, IReadOnlyList<decimal> pesos)
-        {
-            if (pesos == null || pesos.Count == 0) return Array.Empty<decimal>();
-
-            decimal sumaPesos = pesos.Sum();
-            if (sumaPesos == 0m)
-                return pesos.Select(_ => 0m).ToList();
-
-            var resultado = new decimal[pesos.Count];
-            decimal acumulado = 0m;
-
-            for (int i = 0; i < pesos.Count - 1; i++)
-            {
-                decimal proporcion = pesos[i] / sumaPesos;
-                resultado[i]  = RedondearCantidad(total * proporcion);
-                acumulado     += resultado[i];
-            }
-
-            resultado[^1] = RedondearCantidad(total - acumulado);
-            return resultado;
-        }
+            => _engine.DistributeQuantity(total, pesos);
 
         // ════════════════════════════════════════════════════════════════════════
         // SUMA DE PRECISIÓN
@@ -251,45 +217,35 @@ namespace SOPRO.Application.Services
         /// El total final también se redondea.
         /// </summary>
         public decimal SumarImportes(IEnumerable<decimal> valores)
-        {
-            if (valores == null) return 0m;
-            decimal acc = 0m;
-            foreach (var v in valores)
-                acc += RedondearImporte(v);
-            return RedondearImporte(acc);
-        }
+            => _engine.SumAmounts(valores);
 
         /// <summary>
         /// Suma una colección de cantidades ya redondeadas.
         /// </summary>
         public decimal SumarCantidades(IEnumerable<decimal> valores)
-        {
-            if (valores == null) return 0m;
-            decimal acc = 0m;
-            foreach (var v in valores)
-                acc += RedondearCantidad(v);
-            return RedondearCantidad(acc);
-        }
+            => _engine.SumQuantities(valores);
 
         /// <summary>
         /// Suma el Costo Directo de todos los conceptos hoja de un presupuesto
         /// aplicando la precisión del motor: Multiplicar(Cantidad, CostoDirectoUnitario).
         /// Reemplaza FormatoHelper.CalcularCostoDirectoConPrecision().
+        ///
+        /// Mapeo (Gate N1): HasMatrix == MatrizId.HasValue (no la navegación
+        /// cargada ni un Id mayor que cero); los agrupadores se omiten.
         /// </summary>
-        public decimal SumarCostoDirecto(IEnumerable<SOPRO.Core.Entities.ConceptoPresupuesto> conceptos)
+        public decimal SumarCostoDirecto(IEnumerable<ConceptoPresupuesto> conceptos)
         {
             if (conceptos == null) return 0m;
-            decimal total = 0m;
-            foreach (var c in conceptos)
-            {
-                if (c.EsAgrupador || !c.MatrizId.HasValue) continue;
-                total += Multiplicar(c.Cantidad, c.CostoDirectoUnitario);
-            }
-            return RedondearImporte(total);
+
+            return _engine.SumDirectCost(conceptos.Select(c => new DirectCostLine(
+                c.Cantidad,
+                c.CostoDirectoUnitario,
+                c.EsAgrupador,
+                c.MatrizId.HasValue)));
         }
 
         // ════════════════════════════════════════════════════════════════════════
-        // FORMATEO
+        // FORMATEO (permanece en la fachada: N0, fila 9)
         // ════════════════════════════════════════════════════════════════════════
 
         public string FormatCantidad(decimal valor)
