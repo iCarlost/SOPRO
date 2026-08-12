@@ -1,9 +1,10 @@
 namespace Sopro.Calculation;
 
 /// <summary>
-/// Motor de calculo del paquete: aritmetica con precision de pantalla.
-/// Equivale a <c>MotorCalculoSopro</c> del dominio legacy, sin formato de cultura
-/// (el formato queda en la fachada, N0 fila 9) y sin tipos del dominio SOPRO.
+/// Calculation engine of the package: arithmetic with screen precision.
+/// Equivalent to <c>MotorCalculoSopro</c> of the legacy domain, without culture
+/// formatting (formatting stays in the facade, N0 decision 9) and without SOPRO
+/// domain types.
 /// </summary>
 public sealed class SoproCalculationEngine
 {
@@ -15,74 +16,96 @@ public sealed class SoproCalculationEngine
         Precision = precision;
     }
 
-    public SoproCalculationEngine(int decimalesCantidad, int decimalesImporte, int decimalesPorcentaje)
-        : this(new CalculationPrecision(decimalesCantidad, decimalesImporte, decimalesPorcentaje))
+    public SoproCalculationEngine(int quantityDecimals, int amountDecimals, int percentageDecimals)
+        : this(new CalculationPrecision(quantityDecimals, amountDecimals, percentageDecimals))
     {
     }
 
-    public int DecimalesCantidad => Precision.DecimalesCantidad;
+    public int QuantityDecimals => Precision.QuantityDecimals;
 
-    public int DecimalesImporte => Precision.DecimalesImporte;
+    public int AmountDecimals => Precision.AmountDecimals;
 
-    public int DecimalesPorcentaje => Precision.DecimalesPorcentaje;
+    public int PercentageDecimals => Precision.PercentageDecimals;
 
-    // ═══ Redondeo ═══
+    // ═══ Rounding ═══
 
-    public decimal RedondearCantidad(decimal valor)
-        => Math.Round(valor, Precision.DecimalesCantidad, MidpointRounding.AwayFromZero);
+    public decimal RoundQuantity(decimal value)
+        => Math.Round(value, Precision.QuantityDecimals, MidpointRounding.AwayFromZero);
 
-    public decimal RedondearImporte(decimal valor)
-        => Math.Round(valor, Precision.DecimalesImporte, MidpointRounding.AwayFromZero);
+    public decimal RoundAmount(decimal value)
+        => Math.Round(value, Precision.AmountDecimals, MidpointRounding.AwayFromZero);
 
-    public decimal RedondearPorcentaje(decimal valor)
-        => Math.Round(valor, Precision.DecimalesPorcentaje, MidpointRounding.AwayFromZero);
+    public decimal RoundPercentage(decimal value)
+        => Math.Round(value, Precision.PercentageDecimals, MidpointRounding.AwayFromZero);
 
-    // ═══ Operacion de pantalla principal ═══
+    // ═══ Main screen operation ═══
 
     /// <summary>
-    /// Multiplicacion con precision de pantalla: redondea el P.U. visible,
-    /// multiplica y redondea el resultado (N0, fila 2: la cantidad NO se
-    /// redondea previamente).
+    /// Multiplication with screen precision: rounds the visible unit price,
+    /// multiplies and rounds the result (N0, decision 2: the quantity is NOT
+    /// rounded beforehand).
     /// </summary>
-    public decimal Multiplicar(decimal cantidad, decimal precioUnitario)
+    public decimal Multiply(decimal quantity, decimal unitPrice)
     {
-        decimal puVisible = RedondearImporte(precioUnitario);
-        return RedondearImporte(cantidad * puVisible);
+        decimal visibleUnitPrice = RoundAmount(unitPrice);
+        return RoundAmount(quantity * visibleUnitPrice);
     }
 
-    public decimal CalcularImporteSobreBase(decimal factor, decimal baseImporte)
-        => Multiplicar(factor, baseImporte);
+    public decimal CalculateAmountOverBase(decimal factor, decimal baseAmount)
+        => Multiply(factor, baseAmount);
 
-    // ═══ Cascada de porcentajes ═══
+    // ═══ Percentage cascade ═══
 
-    public PriceBreakdown CalcularPrecioUnitario(decimal costoDirecto, PricePercentageInput porcentajes)
-        => UnitPriceCalculator.Calculate(costoDirecto, porcentajes, Precision);
+    public PriceBreakdown CalculateUnitPrice(decimal directCost, PricePercentageInput percentages)
+        => UnitPriceCalculator.Calculate(directCost, percentages, Precision);
 
-    // ═══ Distribucion temporal ═══
+    // ═══ Temporal distribution ═══
 
-    public IReadOnlyList<decimal> DistribuirImporte(decimal total, IReadOnlyList<decimal> pesos)
-        => AmountDistributor.DistributeImporte(total, pesos, Precision);
+    /// <summary>Returns an immutable read-only list (see <see cref="AmountDistributor"/>).</summary>
+    public IReadOnlyList<decimal> DistributeAmount(decimal total, IReadOnlyList<decimal>? weights)
+        => AmountDistributor.DistributeAmount(total, weights, Precision);
 
-    public IReadOnlyList<decimal> DistribuirCantidad(decimal total, IReadOnlyList<decimal> pesos)
-        => AmountDistributor.DistributeCantidad(total, pesos, Precision);
+    /// <summary>Returns an immutable read-only list (see <see cref="AmountDistributor"/>).</summary>
+    public IReadOnlyList<decimal> DistributeQuantity(decimal total, IReadOnlyList<decimal>? weights)
+        => AmountDistributor.DistributeQuantity(total, weights, Precision);
 
-    // ═══ Sumas de precision ═══
+    // ═══ Precision sums ═══
 
-    public decimal SumarImportes(IEnumerable<decimal> valores)
+    /// <summary>Null collections return zero (N0, decision 12); every element is rounded before accumulating.</summary>
+    public decimal SumAmounts(IEnumerable<decimal>? values)
     {
-        if (valores == null) return 0m;
+        if (values == null) return 0m;
         decimal acc = 0m;
-        foreach (var v in valores)
-            acc += RedondearImporte(v);
-        return RedondearImporte(acc);
+        foreach (var v in values)
+            acc += RoundAmount(v);
+        return RoundAmount(acc);
     }
 
-    public decimal SumarCantidades(IEnumerable<decimal> valores)
+    /// <summary>Null collections return zero; every element is rounded to quantity decimals before accumulating (N0, decision 14).</summary>
+    public decimal SumQuantities(IEnumerable<decimal>? values)
     {
-        if (valores == null) return 0m;
+        if (values == null) return 0m;
         decimal acc = 0m;
-        foreach (var v in valores)
-            acc += RedondearCantidad(v);
-        return RedondearCantidad(acc);
+        foreach (var v in values)
+            acc += RoundQuantity(v);
+        return RoundQuantity(acc);
+    }
+
+    /// <summary>
+    /// Sums the direct cost of all terminal lines with a matrix assigned,
+    /// applying <see cref="Multiply"/> per line and rounding the total.
+    /// Equivalent to <c>MotorCalculoSopro.SumarCostoDirecto</c>.
+    /// Null collections return zero.
+    /// </summary>
+    public decimal SumDirectCost(IEnumerable<DirectCostLine>? lines)
+    {
+        if (lines == null) return 0m;
+        decimal total = 0m;
+        foreach (var line in lines)
+        {
+            if (line.IsGrouping || !line.HasMatrix) continue;
+            total += Multiply(line.Quantity, line.UnitDirectCost);
+        }
+        return RoundAmount(total);
     }
 }

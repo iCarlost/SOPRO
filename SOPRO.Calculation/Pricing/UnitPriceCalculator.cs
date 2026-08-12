@@ -1,56 +1,58 @@
 namespace Sopro.Calculation;
 
 /// <summary>
-/// Cascada de porcentajes con redondeo en cada paso visible.
-/// Equivale a <c>MotorCalculoSopro.CalcularPrecioUnitario</c> del dominio legacy
-/// (N0, fila 3: indirectos central + campo se suman antes del redondeo monetario).
+/// Percentage cascade with rounding at every visible step.
+/// Equivalent to <c>MotorCalculoSopro.CalcularPrecioUnitario</c> of the legacy
+/// domain (N0, decision 3: central + field indirects are added before the
+/// monetary rounding).
 /// </summary>
-public static class UnitPriceCalculator
+internal static class UnitPriceCalculator
 {
     /// <summary>
-    /// Calcula el desglose completo redondeando CADA paso intermedio a
-    /// <c>precision.DecimalesImporte</c> con <c>MidpointRounding.AwayFromZero</c>.
-    /// El P.U. se construye como suma de partes ya redondeadas para garantizar cuadre.
+    /// Computes the full breakdown rounding EVERY intermediate step to
+    /// <c>precision.AmountDecimals</c> with <c>MidpointRounding.AwayFromZero</c>.
+    /// The unit price is built as the sum of already-rounded parts to guarantee
+    /// the balance.
     /// </summary>
     public static PriceBreakdown Calculate(
-        decimal costoDirecto,
-        PricePercentageInput porcentajes,
+        decimal directCost,
+        PricePercentageInput percentages,
         CalculationPrecision precision)
     {
-        ArgumentNullException.ThrowIfNull(porcentajes);
+        ArgumentNullException.ThrowIfNull(percentages);
         ArgumentNullException.ThrowIfNull(precision);
 
-        bool sobreCD = porcentajes.ModoCalculoPorcentajes == PercentageCalculationMode.SobreCD;
-        decimal cd = Round(precision, costoDirecto);
+        bool overDirectCost = percentages.Mode == PercentageCalculationMode.OverDirectCost;
+        decimal cd = Round(precision, directCost);
 
-        decimal pInd = porcentajes.IndirectosCentral + porcentajes.IndirectosCampo;
-        decimal mInd = Round(precision, cd * pInd / 100m);
-        decimal sub1 = Round(precision, cd + mInd);
+        decimal totalIndirects = percentages.CentralIndirectsPercentage + percentages.FieldIndirectsPercentage;
+        decimal amountIndirects = Round(precision, cd * totalIndirects / 100m);
+        decimal subtotal1 = Round(precision, cd + amountIndirects);
 
-        decimal baseFin = sobreCD ? cd : sub1;
-        decimal mFin = Round(precision, baseFin * porcentajes.Financiamiento / 100m);
-        decimal sub2 = Round(precision, sub1 + mFin);
+        decimal baseFinancing = overDirectCost ? cd : subtotal1;
+        decimal amountFinancing = Round(precision, baseFinancing * percentages.FinancingPercentage / 100m);
+        decimal subtotal2 = Round(precision, subtotal1 + amountFinancing);
 
-        decimal baseUtil = sobreCD ? cd : sub2;
-        decimal mUtil = Round(precision, baseUtil * porcentajes.Utilidad / 100m);
-        decimal sub3 = Round(precision, sub2 + mUtil);
+        decimal baseProfit = overDirectCost ? cd : subtotal2;
+        decimal amountProfit = Round(precision, baseProfit * percentages.ProfitPercentage / 100m);
+        decimal subtotal3 = Round(precision, subtotal2 + amountProfit);
 
-        decimal baseCargos = sobreCD ? cd : sub3;
-        decimal mCargos = Round(precision, baseCargos * porcentajes.CargosAdicionales / 100m);
+        decimal baseCharges = overDirectCost ? cd : subtotal3;
+        decimal amountCharges = Round(precision, baseCharges * percentages.AdditionalChargesPercentage / 100m);
 
-        decimal pu = Round(precision, sub3 + mCargos);
+        decimal unitPrice = Round(precision, subtotal3 + amountCharges);
 
         return new PriceBreakdown(
             cd,
-            mInd,
-            mFin,
-            mUtil,
-            mCargos,
-            pu,
-            porcentajes.IndirectosCentral,
-            porcentajes.IndirectosCampo);
+            amountIndirects,
+            amountFinancing,
+            amountProfit,
+            amountCharges,
+            unitPrice,
+            percentages.CentralIndirectsPercentage,
+            percentages.FieldIndirectsPercentage);
     }
 
-    private static decimal Round(CalculationPrecision precision, decimal valor)
-        => Math.Round(valor, precision.DecimalesImporte, MidpointRounding.AwayFromZero);
+    private static decimal Round(CalculationPrecision precision, decimal value)
+        => Math.Round(value, precision.AmountDecimals, MidpointRounding.AwayFromZero);
 }

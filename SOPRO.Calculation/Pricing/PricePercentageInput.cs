@@ -1,26 +1,26 @@
 namespace Sopro.Calculation;
 
 /// <summary>
-/// Entrada de porcentajes de la cascada de precio unitario.
-/// Equivale a <c>BudgetPercentageInput</c> del dominio legacy.
+/// Percentage input of the unit price cascade.
+/// Equivalent to <c>BudgetPercentageInput</c> of the legacy domain.
 /// </summary>
 /// <remarks>
-/// <c>CostoDirectoReferencia</c> se conserva solo por paridad de mapeo con el
-/// legacy: no participa en ningun calculo de <see cref="UnitPriceCalculator"/>.
+/// <c>ReferenceDirectCost</c> is kept only for mapping parity with the legacy:
+/// it does not participate in any calculation of the pricing cascade.
 /// </remarks>
 public sealed record PricePercentageInput
 {
-    public decimal CostoDirectoReferencia { get; init; }
+    public decimal ReferenceDirectCost { get; init; }
 
-    public decimal IndirectosCentral { get; init; }
+    public decimal CentralIndirectsPercentage { get; init; }
 
-    public decimal IndirectosCampo { get; init; }
+    public decimal FieldIndirectsPercentage { get; init; }
 
-    public decimal Financiamiento { get; init; }
+    public decimal FinancingPercentage { get; init; }
 
-    public decimal Utilidad { get; init; }
+    public decimal ProfitPercentage { get; init; }
 
-    public decimal CargosAdicionales { get; init; }
+    public decimal AdditionalChargesPercentage { get; init; }
 
-    public PercentageCalculationMode ModoCalculoPorcentajes { get; init; } = PercentageCalculationMode.Acumulables;
+    public PercentageCalculationMode Mode { get; init; } = PercentageCalculationMode.Accumulative;
 }

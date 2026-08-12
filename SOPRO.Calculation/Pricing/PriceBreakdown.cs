@@ -1,40 +1,41 @@
 namespace Sopro.Calculation;
 
 /// <summary>
-/// Desglose completo de un precio unitario, con cada componente ya redondeado.
-/// Equivale a <c>DesglosePrecios</c> del dominio legacy.
-/// Garantia: CD + Indirectos + Financiamiento + Utilidad + Cargos == PrecioUnitario.
+/// Full breakdown of a unit price, with every component already rounded.
+/// Equivalent to <c>DesglosePrecios</c> of the legacy domain.
+/// Guarantee: DirectCost + IndirectCosts + Financing + Profit + AdditionalCharges
+/// == UnitPrice (at the configured decimals, without a cent of drift).
 /// </summary>
 public sealed record PriceBreakdown(
-    decimal CostoDirecto,
-    decimal Indirectos,
-    decimal Financiamiento,
-    decimal Utilidad,
-    decimal CargosAdicionales,
-    decimal PrecioUnitario,
-    decimal PctIndirectosCentral = 0m,
-    decimal PctIndirectosCampo = 0m)
+    decimal DirectCost,
+    decimal IndirectCosts,
+    decimal Financing,
+    decimal Profit,
+    decimal AdditionalCharges,
+    decimal UnitPrice,
+    decimal CentralIndirectsPercentage = 0m,
+    decimal FieldIndirectsPercentage = 0m)
 {
     /// <summary>
-    /// Importe de Indirectos OC (oficina central), prorrateado con precision fija de
-    /// 6 decimales y <c>MidpointRounding.AwayFromZero</c> (N0, fila 4).
+    /// Central office indirects amount, prorated with a fixed precision of 6
+    /// decimals and <c>MidpointRounding.AwayFromZero</c> (N0, decision 4).
     /// </summary>
-    public decimal IndirectosCentral =>
-        (PctIndirectosCentral + PctIndirectosCampo) > 0m
-            ? Math.Round(Indirectos * PctIndirectosCentral
-                         / (PctIndirectosCentral + PctIndirectosCampo),
+    public decimal CentralIndirectCosts =>
+        (CentralIndirectsPercentage + FieldIndirectsPercentage) > 0m
+            ? Math.Round(IndirectCosts * CentralIndirectsPercentage
+                         / (CentralIndirectsPercentage + FieldIndirectsPercentage),
                          6, MidpointRounding.AwayFromZero)
             : 0m;
 
-    /// <summary>Importe de Indirectos Campo.</summary>
-    public decimal IndirectosCampo => Indirectos - IndirectosCentral;
+    /// <summary>Field indirects amount.</summary>
+    public decimal FieldIndirectCosts => IndirectCosts - CentralIndirectCosts;
 
-    /// <summary>Subtotal CD + Indirectos.</summary>
-    public decimal Subtotal1 => CostoDirecto + Indirectos;
+    /// <summary>Subtotal DirectCost + IndirectCosts.</summary>
+    public decimal Subtotal1 => DirectCost + IndirectCosts;
 
-    /// <summary>Subtotal CD + Ind + Financiamiento.</summary>
-    public decimal Subtotal2 => Subtotal1 + Financiamiento;
+    /// <summary>Subtotal DirectCost + Ind + Financing.</summary>
+    public decimal Subtotal2 => Subtotal1 + Financing;
 
-    /// <summary>Subtotal CD + Ind + Fin + Utilidad.</summary>
-    public decimal Subtotal3 => Subtotal2 + Utilidad;
+    /// <summary>Subtotal DirectCost + Ind + Fin + Profit.</summary>
+    public decimal Subtotal3 => Subtotal2 + Profit;
 }

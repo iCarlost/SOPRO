@@ -8,18 +8,30 @@ procesa.
 - **Cero dependencias runtime** (solo BCL).
 - **Cero tipos SOPRO en la API publica** (nada de `SOPRO.Core`, `SOPRO.Application`,
   EF ni SQLite).
-- Superficie publica minima: solo las 8 clases del arbol.
+- Superficie publica minima (hallazgo 2): `CalculationPrecision`,
+  `SoproCalculationEngine`, `DirectCostLine`, `PricePercentageInput`,
+  `PriceBreakdown` y el enum `PercentageCalculationMode`. Los ayudantes
+  (`UnitPriceCalculator`, `AmountDistributor`) son internos.
+
+## API publica
+
+Toda la API esta en ingles (hallazgo del dictamen N1): los metodos de
+`SoproCalculationEngine` son `RoundQuantity/RoundAmount/RoundPercentage`,
+`Multiply`, `SumQuantities/SumAmounts/SumDirectCost`,
+`DistributeQuantity/DistributeAmount`, `CalculateUnitPrice` y
+`CalculateAmountOverBase`; `Decimales...` de `CalculationPrecision` son
+`QuantityDecimals/AmountDecimals/PercentageDecimals`.
 
 ## Contratos de mapeo (Fase N1, PLAN-01 §10)
 
 | Dominio legacy | Paquete |
 |---|---|
-| `Proyecto` (DecimalesCantidad/Importe/Porcentaje) | `CalculationPrecision` |
+| `Proyecto` (DecimalesCantidad/Importe/Porcentaje) | `CalculationPrecision` (`QuantityDecimals`/`AmountDecimals`/`PercentageDecimals`) |
 | `BudgetPercentageInput` | `PricePercentageInput` |
-| `Proyecto.ModoCalculoPorcentajes` (`"SobreCD"`) | `PercentageCalculationMode` (+ `PercentageCalculationModes.Parse`) |
-| `ConceptoPresupuesto` | `DirectCostLine` |
+| `Proyecto.ModoCalculoPorcentajes` (`"SobreCD"`) | `PercentageCalculationMode` (mapeo: fachada N2; `"SobreCD"` casing-insensitive → `OverDirectCost`, resto → `Accumulative`) |
+| `ConceptoPresupuesto` | `DirectCostLine` (`Quantity`/`UnitDirectCost`/`IsGrouping`/`HasMatrix`) |
 | `DesglosePrecios` | `PriceBreakdown` |
-| `MotorCalculoSopro` | `SoproCalculationEngine`, `UnitPriceCalculator`, `AmountDistributor` |
+| `MotorCalculoSopro` | `SoproCalculationEngine` |
 
 `DirectCostLine.HasMatrix` debe mapear exactamente `ConceptoPresupuesto.MatrizId.HasValue`
 durante compatibilidad: no la navegacion cargada (`Matriz != null`) ni un Id mayor que cero.
@@ -35,23 +47,23 @@ var motor = new SoproCalculationEngine(new CalculationPrecision(decimalesCantida
 
 decimal importe = motor.Multiplicar(652m, 13.3875m);            // 8730.28
 
-var desglose = motor.CalcularPrecioUnitario(1000m, new PricePercentageInput
+var desglose = motor.CalculateUnitPrice(1000m, new PricePercentageInput
 {
-    IndirectosCentral = 5m,
-    IndirectosCampo = 5m,
-    Financiamiento = 6m,
-    Utilidad = 8m,
-    CargosAdicionales = 3m,
-    ModoCalculoPorcentajes = PercentageCalculationModes.Parse(proyecto.ModoCalculoPorcentajes),
+    CentralIndirectsPercentage = 5m,
+    FieldIndirectsPercentage = 5m,
+    FinancingPercentage = 6m,
+    ProfitPercentage = 8m,
+    AdditionalChargesPercentage = 3m,
+    Mode = PercentageCalculationMode.Accumulative,
 });
 
-IReadOnlyList<decimal> partes = motor.DistribuirImporte(1000m, new[] { 33m, 33m, 34m });
+IReadOnlyList<decimal> partes = motor.DistributeAmount(1000m, new[] { 33m, 33m, 34m });
 ```
 
 ## Semantica preservada (decisiones N0, `N0-TABLA-DECISIONES-DIVERGENCIAS.md`)
 
 - Decimales negativos se normalizan a cero (fila 7).
-- `Multiplicar` redondea el P.U. pero no la cantidad (fila 2).
+- `Multiply` redondea el P.U. pero no la cantidad (fila 2).
 - Indirectos central + campo se suman antes del redondeo monetario (fila 3).
 - `PriceBreakdown.IndirectosCentral` prorratea con precision fija de 6 decimales
   y `AwayFromZero`; `IndirectosCampo = Indirectos - IndirectosCentral` (fila 4).

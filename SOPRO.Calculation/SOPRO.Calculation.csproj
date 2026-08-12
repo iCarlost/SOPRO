@@ -6,13 +6,18 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Sopro.Calculation</RootNamespace>
     <AssemblyName>Sopro.Calculation</AssemblyName>
-    <PackageId>Sopro.Calculation</PackageId>
-    <Version>1.0.0</Version>
-    <Description>Nucleo de calculo SOPRO desacoplado: aritmetica con precision de pantalla, cascada de porcentajes y distribucion temporal con ajuste de residuo. Cero dependencias runtime; cero tipos SOPRO en la API publica.</Description>
+    <PackageId>SOPRO.Calculation</PackageId>
+    <Version>0.1.0</Version>
+    <Description>Nucleo de calculo SOPRO desacoplado: aritmetica con precision de pantalla, cascada de porcentajes y distribucion temporal con ajuste de residuo. Cero dependencias runtime; cero tipos SOPRO en la API publica; API publica en ingles.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SOPRO.Tests" />
   </ItemGroup>
 
 </Project>

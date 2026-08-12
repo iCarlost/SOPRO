@@ -1,36 +1,19 @@
 namespace Sopro.Calculation;
 
 /// <summary>
-/// Modo de calculo de porcentajes de la cascada de precio unitario.
+/// Percentage calculation mode of the unit price cascade.
 /// </summary>
 /// <remarks>
-/// Compatibilidad (N0, fila 6): el legacy compara el texto con
-/// <c>"SobreCD"</c> usando <c>OrdinalIgnoreCase</c>; cualquier otro valor
-/// (incluido <c>null</c> y textos desconocidos) cae en <see cref="Acumulables"/>.
-/// Usar <see cref="PercentageCalculationModes.Parse"/> para conservar esa semantica.
+/// Compatibility (N0, decision 6): the legacy compares the text with
+/// <c>"SobreCD"</c> using <c>OrdinalIgnoreCase</c>; anything else (including
+/// <c>null</c> and unknown texts) falls into <see cref="Accumulative"/>.
+/// Mapping of the legacy text to this enum belongs to the N2 facade.
 /// </remarks>
 public enum PercentageCalculationMode
 {
-    /// <summary>Cascada: cada porcentaje aplica sobre el subtotal anterior.</summary>
-    Acumulables,
+    /// <summary>Cascade: each percentage applies over the previous subtotal.</summary>
+    Accumulative,
 
-    /// <summary>Porcentajes directos: todos aplican sobre el costo directo.</summary>
-    SobreCD,
-}
-
-/// <summary>
-/// Convierte el texto legacy de <c>Proyecto.ModoCalculoPorcentajes</c> /
-/// <c>BudgetPercentageInput.ModoCalculoPorcentajes</c> al enum del paquete.
-/// </summary>
-public static class PercentageCalculationModes
-{
-    /// <summary>
-    /// <c>"SobreCD"</c> (cualquier casing) se convierte en <see cref="PercentageCalculationMode.SobreCD"/>;
-    /// todo lo demas (<c>null</c>, vacio, <c>"Acumulables"</c>, desconocidos) en
-    /// <see cref="PercentageCalculationMode.Acumulables"/>.
-    /// </summary>
-    public static PercentageCalculationMode Parse(string? modo)
-        => string.Equals(modo, "SobreCD", StringComparison.OrdinalIgnoreCase)
-            ? PercentageCalculationMode.SobreCD
-            : PercentageCalculationMode.Acumulables;
+    /// <summary>Direct percentages: all apply over the direct cost.</summary>
+    OverDirectCost,
 }

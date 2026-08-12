@@ -1,6 +1,7 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Services;
+using SOPRO.Core.Entities;
 using Sopro.Calculation;
 
 namespace SOPRO.Tests.Calculation;
@@ -10,6 +11,10 @@ namespace SOPRO.Tests.Calculation;
 /// debe producir EXACTAMENTE los mismos resultados que el motor legacy
 /// (MotorCalculoSopro) para los mismos insumos, en toda la matriz de precisiones
 /// y casos de la tabla de divergencias N0.
+///
+/// ORACULO EN N2: cuando la fachada delegue al paquete, esta comparación dejaría de
+/// ser independiente; los goldens exactos congelados en LegacyOracleGoldenTests
+/// quedan como oráculo legacy independiente.
 /// </summary>
 [TestClass]
 public class MotorDifferentialTests
@@ -19,13 +24,29 @@ public class MotorDifferentialTests
         (2, 2, 4),      // configuracion por defecto y del proyecto real
         (4, 2, 4),      // proyecto real (DecimalesCantidad=4)
         (3, 3, 3),
-        (0, 0, 0),      // precision nula (fila 7)
         (2, 2, 2),
+        (1, 1, 1),
+        (0, 0, 0),      // precision nula (fila 7)
+        (28, 28, 28),   // maximo permitido por Math.Round
+        (-1, -1, -1),   // negativas: se normalizan a cero en ambos motores (fila 7)
     };
+
+    // Precision > 28 se prueba por separado: Math.Round lanza en ambas implementaciones (fila 8).
+    private static readonly int PrecisionExcesiva = 29;
 
     private static (MotorCalculoSopro Legacy, SoproCalculationEngine Nuevo) Motores((int Cantidad, int Importe, int Porcentaje) p)
         => (new MotorCalculoSopro(p.Cantidad, p.Importe, p.Porcentaje),
             new SoproCalculationEngine(p.Cantidad, p.Importe, p.Porcentaje));
+
+    /// <summary>
+    /// Mapeo del texto legacy al enum (mismo arbol de decision que el legacy:
+    /// "SobreCD" casing-insensitive, todo lo demas Acumulables). Pertenece a la
+    /// fachada N2; aqui es un helper de prueba para poder usar los insumos legacy.
+    /// </summary>
+    private static PercentageCalculationMode ParseModo(string? modo)
+        => string.Equals(modo, "SobreCD", StringComparison.OrdinalIgnoreCase)
+            ? PercentageCalculationMode.OverDirectCost
+            : PercentageCalculationMode.Accumulative;
 
     [TestMethod]
     public void Redondeo_EsIdenticoEnTodaLaMatrizDePrecisiones()
@@ -38,18 +59,18 @@ public class MotorDifferentialTests
 
             foreach (var valor in valores)
             {
-                Assert.AreEqual(legacy.RedondearCantidad(valor), nuevo.RedondearCantidad(valor),
-                    $"RedondearCantidad({valor}) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
-                Assert.AreEqual(legacy.RedondearImporte(valor), nuevo.RedondearImporte(valor),
-                    $"RedondearImporte({valor}) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
-                Assert.AreEqual(legacy.RedondearPorcentaje(valor), nuevo.RedondearPorcentaje(valor),
-                    $"RedondearPorcentaje({valor}) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+                Assert.AreEqual(legacy.RedondearCantidad(valor), nuevo.RoundQuantity(valor),
+                    $"RoundQuantity({valor}) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+                Assert.AreEqual(legacy.RedondearImporte(valor), nuevo.RoundAmount(valor),
+                    $"RoundAmount({valor}) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+                Assert.AreEqual(legacy.RedondearPorcentaje(valor), nuevo.RoundPercentage(valor),
+                    $"RoundPercentage({valor}) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
             }
         }
     }
 
     [TestMethod]
-    public void Multiplicar_EsIdenticoEnTodaLaMatriz()
+    public void Multiply_EsIdenticoEnTodaLaMatriz()
     {
         (decimal Cantidad, decimal Precio)[] casos =
         {
@@ -72,14 +93,14 @@ public class MotorDifferentialTests
             {
                 Assert.AreEqual(
                     legacy.Multiplicar(cantidad, precio),
-                    nuevo.Multiplicar(cantidad, precio),
-                    $"Multiplicar({cantidad}, {precio}) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+                    nuevo.Multiply(cantidad, precio),
+                    $"Multiply({cantidad}, {precio}) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
             }
         }
     }
 
     [TestMethod]
-    public void CalcularPrecioUnitario_EsIdenticoEnTodaLaMatriz()
+    public void CalculateUnitPrice_EsIdenticoEnTodaLaMatriz()
     {
         (decimal Cd, decimal IndC, decimal IndCampo, decimal Fin, decimal Uti, decimal Cargos, string Modo)[] casos =
         {
@@ -90,7 +111,7 @@ public class MotorDifferentialTests
             (1000m, 5m, 5m, 6m, 8m, 3m, "Desconocido"),
             (100m, 0m, 0m, 0m, 0m, 0m, "Acumulables"),
             (60.005m, 5m, 5m, 6m, 8m, 3m, "Acumulables"),
-            (0m, 10m, 10m, 10m, 10m, 10m, "SobreCD"),
+            (0m, 10m, 10m, 10m, 10m, 10m, "OverDirectCost"),
             (123456.789m, 2.5m, 2.5m, 1.25m, 0.75m, 4.5m, "Acumulables"),
             (1000m, -1m, 1m, 0m, 0m, 0m, "Acumulables"),  // indirectos netos cero
         };
@@ -114,29 +135,29 @@ public class MotorDifferentialTests
 
                 var pct = new PricePercentageInput
                 {
-                    CostoDirectoReferencia = c.Cd,
-                    IndirectosCentral = c.IndC,
-                    IndirectosCampo = c.IndCampo,
-                    Financiamiento = c.Fin,
-                    Utilidad = c.Uti,
-                    CargosAdicionales = c.Cargos,
-                    ModoCalculoPorcentajes = PercentageCalculationModes.Parse(c.Modo),
+                    ReferenceDirectCost = c.Cd,
+                    CentralIndirectsPercentage = c.IndC,
+                    FieldIndirectsPercentage = c.IndCampo,
+                    FinancingPercentage = c.Fin,
+                    ProfitPercentage = c.Uti,
+                    AdditionalChargesPercentage = c.Cargos,
+                    Mode = ParseModo(c.Modo),
                 };
 
                 var legacyResult = legacy.CalcularPrecioUnitario(c.Cd, entrada);
-                var nuevoResult = nuevo.CalcularPrecioUnitario(c.Cd, pct);
+                var nuevoResult = nuevo.CalculateUnitPrice(c.Cd, pct);
 
-                string etiqueta = $"CalcularPrecioUnitario(cd={c.Cd}, modo={c.Modo}) con ({p.Cantidad},{p.Importe},{p.Porcentaje})";
-                Assert.AreEqual(legacyResult.CostoDirecto, nuevoResult.CostoDirecto, etiqueta + " [CD]");
-                Assert.AreEqual(legacyResult.Indirectos, nuevoResult.Indirectos, etiqueta + " [Indirectos]");
-                Assert.AreEqual(legacyResult.Financiamiento, nuevoResult.Financiamiento, etiqueta + " [Financiamiento]");
-                Assert.AreEqual(legacyResult.Utilidad, nuevoResult.Utilidad, etiqueta + " [Utilidad]");
-                Assert.AreEqual(legacyResult.CargosAdicionales, nuevoResult.CargosAdicionales, etiqueta + " [Cargos]");
-                Assert.AreEqual(legacyResult.PrecioUnitario, nuevoResult.PrecioUnitario, etiqueta + " [P.U.]");
-                Assert.AreEqual(legacyResult.PctIndirectosCentral, nuevoResult.PctIndirectosCentral, etiqueta + " [PctIndCentral]");
-                Assert.AreEqual(legacyResult.PctIndirectosCampo, nuevoResult.PctIndirectosCampo, etiqueta + " [PctIndCampo]");
-                Assert.AreEqual(legacyResult.IndirectosCentral, nuevoResult.IndirectosCentral, etiqueta + " [IndCentral]");
-                Assert.AreEqual(legacyResult.IndirectosCampo, nuevoResult.IndirectosCampo, etiqueta + " [IndCampo]");
+                string etiqueta = $"CalculateUnitPrice(cd={c.Cd}, modo={c.Modo}) con ({p.Cantidad},{p.Importe},{p.Porcentaje})";
+                Assert.AreEqual(legacyResult.CostoDirecto, nuevoResult.DirectCost, etiqueta + " [CD]");
+                Assert.AreEqual(legacyResult.Indirectos, nuevoResult.IndirectCosts, etiqueta + " [Indirectos]");
+                Assert.AreEqual(legacyResult.Financiamiento, nuevoResult.Financing, etiqueta + " [Financiamiento]");
+                Assert.AreEqual(legacyResult.Utilidad, nuevoResult.Profit, etiqueta + " [Utilidad]");
+                Assert.AreEqual(legacyResult.CargosAdicionales, nuevoResult.AdditionalCharges, etiqueta + " [Cargos]");
+                Assert.AreEqual(legacyResult.PrecioUnitario, nuevoResult.UnitPrice, etiqueta + " [P.U.]");
+                Assert.AreEqual(legacyResult.PctIndirectosCentral, nuevoResult.CentralIndirectsPercentage, etiqueta + " [PctIndCentral]");
+                Assert.AreEqual(legacyResult.PctIndirectosCampo, nuevoResult.FieldIndirectsPercentage, etiqueta + " [PctIndCampo]");
+                Assert.AreEqual(legacyResult.IndirectosCentral, nuevoResult.CentralIndirectCosts, etiqueta + " [IndCentral]");
+                Assert.AreEqual(legacyResult.IndirectosCampo, nuevoResult.FieldIndirectCosts, etiqueta + " [IndCampo]");
                 Assert.AreEqual(legacyResult.Subtotal1, nuevoResult.Subtotal1, etiqueta + " [Sub1]");
                 Assert.AreEqual(legacyResult.Subtotal2, nuevoResult.Subtotal2, etiqueta + " [Sub2]");
                 Assert.AreEqual(legacyResult.Subtotal3, nuevoResult.Subtotal3, etiqueta + " [Sub3]");
@@ -145,17 +166,17 @@ public class MotorDifferentialTests
     }
 
     [TestMethod]
-    public void DistribuirImporte_EsIdenticoEnTodaLaMatriz()
+    public void DistributeAmount_EsIdenticoEnTodaLaMatriz()
     {
         (decimal Total, decimal[] Pesos)[] casos =
         {
             (100.005m, new[] { 1m, 1m, 1m }),       // fila 1
             (1000m, new[] { 33m, 33m, 34m }),
             (1000m, new[] { 50m, 50m }),
-            (1m, new[] { 1m, 1000000m, 1m }),        // residuo negativo (fila 5)
-            (100m, new[] { -1m, 3m, -2m }),          // pesos negativos (fila 10)
+            (0.02m, new[] { 3m, 3m, 3m, 3m }),       // residuo NEGATIVO real en el ultimo periodo (fila 5)
+            (100m, new[] { -10m, 110m }),            // pesos negativos con suma distinta de cero (fila 10)
             (777.77m, new[] { 42m }),
-            (0m, new[] { 0m, 0m, 0m }),
+            (0m, new[] { 0m, 0m, 0m }),              // guard de suma de pesos cero (fila 11)
             (100m, Array.Empty<decimal>()),
             (100m, null),
             (999999.99m, new[] { 20m, 15m, 10m, 5m, 50m }),
@@ -170,14 +191,14 @@ public class MotorDifferentialTests
             {
                 CollectionAssert.AreEqual(
                     legacy.DistribuirImporte(caso.Total, caso.Pesos).ToArray(),
-                    nuevo.DistribuirImporte(caso.Total, caso.Pesos).ToArray(),
-                    $"DistribuirImporte({caso.Total}, [{string.Join(",", caso.Pesos ?? new decimal[0])}]) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+                    nuevo.DistributeAmount(caso.Total, caso.Pesos).ToArray(),
+                    $"DistributeAmount({caso.Total}, [{string.Join(",", caso.Pesos ?? new decimal[0])}]) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
             }
         }
     }
 
     [TestMethod]
-    public void DistribuirCantidad_EsIdenticoEnTodaLaMatriz()
+    public void DistributeQuantity_EsIdenticoEnTodaLaMatriz()
     {
         (decimal Total, decimal[] Pesos)[] casos =
         {
@@ -197,14 +218,14 @@ public class MotorDifferentialTests
             {
                 CollectionAssert.AreEqual(
                     legacy.DistribuirCantidad(caso.Total, caso.Pesos).ToArray(),
-                    nuevo.DistribuirCantidad(caso.Total, caso.Pesos).ToArray(),
-                    $"DistribuirCantidad({caso.Total}) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+                    nuevo.DistributeQuantity(caso.Total, caso.Pesos).ToArray(),
+                    $"DistributeQuantity({caso.Total}) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
             }
         }
     }
 
     [TestMethod]
-    public void SumarImportes_EsIdenticoEnTodaLaMatriz()
+    public void SumAmounts_EsIdenticoEnTodaLaMatriz()
     {
         decimal[][] casos =
         {
@@ -221,17 +242,17 @@ public class MotorDifferentialTests
 
             foreach (var caso in casos)
             {
-                Assert.AreEqual(legacy.SumarImportes(caso), nuevo.SumarImportes(caso),
-                    $"SumarImportes([{string.Join(",", caso)}]) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+                Assert.AreEqual(legacy.SumarImportes(caso), nuevo.SumAmounts(caso),
+                    $"SumAmounts([{string.Join(",", caso)}]) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
             }
 
-            Assert.AreEqual(legacy.SumarImportes(null), nuevo.SumarImportes(null),
-                $"SumarImportes(null) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+            Assert.AreEqual(legacy.SumarImportes(null), nuevo.SumAmounts(null),
+                $"SumAmounts(null) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
         }
     }
 
     [TestMethod]
-    public void SumarCantidades_EsIdenticoEnTodaLaMatriz()
+    public void SumQuantities_EsIdenticoEnTodaLaMatriz()
     {
         decimal[][] casos =
         {
@@ -246,26 +267,96 @@ public class MotorDifferentialTests
 
             foreach (var caso in casos)
             {
-                Assert.AreEqual(legacy.SumarCantidades(caso), nuevo.SumarCantidades(caso),
-                    $"SumarCantidades([{string.Join(",", caso)}]) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+                Assert.AreEqual(legacy.SumarCantidades(caso), nuevo.SumQuantities(caso),
+                    $"SumQuantities([{string.Join(",", caso)}]) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
             }
 
-            Assert.AreEqual(legacy.SumarCantidades(null), nuevo.SumarCantidades(null),
-                $"SumarCantidades(null) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+            Assert.AreEqual(legacy.SumarCantidades(null), nuevo.SumQuantities(null),
+                $"SumQuantities(null) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
         }
     }
 
     [TestMethod]
-    public void CalcularImporteSobreBase_EsIdentico()
+    public void SumDirectCost_EsIdenticoEnTodaLaMatriz()
+    {
+        var conceptos = new List<ConceptoPresupuesto>
+        {
+            new ConceptoPresupuesto { Cantidad = 10m, CostoDirectoUnitario = 60.005m, EsAgrupador = false, MatrizId = 1 },
+            new ConceptoPresupuesto { Cantidad = 2m, CostoDirectoUnitario = 100.25m, EsAgrupador = false, MatrizId = 2 },
+            new ConceptoPresupuesto { Cantidad = 999m, CostoDirectoUnitario = 1m, EsAgrupador = true, MatrizId = 3 },   // se omite
+            new ConceptoPresupuesto { Cantidad = 999m, CostoDirectoUnitario = 1m, EsAgrupador = false, MatrizId = null }, // se omite
+            new ConceptoPresupuesto { Cantidad = -1m, CostoDirectoUnitario = 5m, EsAgrupador = false, MatrizId = 4 },
+        };
+
+        var lineas = new[]
+        {
+            new DirectCostLine(10m, 60.005m, IsGrouping: false, HasMatrix: true),
+            new DirectCostLine(2m, 100.25m, IsGrouping: false, HasMatrix: true),
+            new DirectCostLine(999m, 1m, IsGrouping: true, HasMatrix: true),
+            new DirectCostLine(999m, 1m, IsGrouping: false, HasMatrix: false),
+            new DirectCostLine(-1m, 5m, IsGrouping: false, HasMatrix: true),
+        };
+
+        foreach (var p in Precisiones)
+        {
+            var (legacy, nuevo) = Motores(p);
+
+            Assert.AreEqual(legacy.SumarCostoDirecto(conceptos), nuevo.SumDirectCost(lineas),
+                $"SumDirectCost con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+            Assert.AreEqual(legacy.SumarCostoDirecto(null), nuevo.SumDirectCost(null),
+                $"SumDirectCost(null) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+            Assert.AreEqual(legacy.SumarCostoDirecto(new List<ConceptoPresupuesto>()), nuevo.SumDirectCost(Array.Empty<DirectCostLine>()),
+                $"SumDirectCost(vacio) con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+        }
+    }
+
+    [TestMethod]
+    public void Multiply_ConOverflow_AmbosMotoresLanzanOverflowException()
     {
         foreach (var p in Precisiones)
         {
             var (legacy, nuevo) = Motores(p);
 
-            Assert.AreEqual(
-                legacy.CalcularImporteSobreBase(652m, 13.3875m),
-                nuevo.CalcularImporteSobreBase(652m, 13.3875m),
-                $"CalcularImporteSobreBase con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+            Assert.ThrowsException<OverflowException>(() => legacy.Multiplicar(decimal.MaxValue, 10m),
+                $"legacy Overflow con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+            Assert.ThrowsException<OverflowException>(() => nuevo.Multiply(decimal.MaxValue, 10m),
+                $"nuevo Overflow con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
+            Assert.ThrowsException<OverflowException>(() => legacy.Multiplicar(-decimal.MaxValue, 10m));
+            Assert.ThrowsException<OverflowException>(() => nuevo.Multiply(-decimal.MaxValue, 10m));
         }
+    }
+
+    [TestMethod]
+    public void CalculateUnitPrice_ConPorcentajesNulos_AmbosLanzanArgumentNullException()
+    {
+        foreach (var p in Precisiones)
+        {
+            var (legacy, nuevo) = Motores(p);
+
+            Assert.ThrowsException<ArgumentNullException>(() => legacy.CalcularPrecioUnitario(1000m, null));
+            Assert.ThrowsException<ArgumentNullException>(() => nuevo.CalculateUnitPrice(1000m, null));
+        }
+    }
+
+    [TestMethod]
+    public void PrecisionMayorA28_AmbosMotoresLanzanEnCadaOperacionQueRedondea()
+    {
+        var legacy = new MotorCalculoSopro(PrecisionExcesiva, PrecisionExcesiva, PrecisionExcesiva);
+        var nuevo = new SoproCalculationEngine(PrecisionExcesiva, PrecisionExcesiva, PrecisionExcesiva);
+
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => legacy.RedondearImporte(1.5m));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => nuevo.RoundAmount(1.5m));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => legacy.RedondearCantidad(1.5m));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => nuevo.RoundQuantity(1.5m));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => legacy.RedondearPorcentaje(1.5m));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => nuevo.RoundPercentage(1.5m));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => legacy.Multiplicar(1m, 2m));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => nuevo.Multiply(1m, 2m));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => legacy.CalcularPrecioUnitario(100m, new BudgetPercentageInput()));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => nuevo.CalculateUnitPrice(100m, new PricePercentageInput()));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => legacy.DistribuirImporte(100m, new[] { 1m, 1m }));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => nuevo.DistributeAmount(100m, new[] { 1m, 1m }));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => legacy.SumarImportes(new[] { 1m }));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => nuevo.SumAmounts(new[] { 1m }));
     }
 }
