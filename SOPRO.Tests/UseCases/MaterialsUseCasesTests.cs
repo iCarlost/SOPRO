@@ -897,37 +897,66 @@ public class MaterialsUseCasesTests
     }
 
     [TestMethod]
-    public async Task SaveMaterial_ActualizaAgrupadoresPadre_TrasPropagacion()
+    public async Task SaveMaterial_ActualizaAgrupadoresPorOrdenYNivel_TrasPropagacion()
     {
+        // La jerarquía legacy se infiere por Orden/Nivel (la persistencia no
+        // establece PadreId): Capitulo (Nivel 0) contiene a Subcapitulo (Nivel 1)
+        // y a sus hojas. Los totales previos de un agrupador deben sustituirse
+        // por la suma real de su bloque — nunca ponerse en cero por no tener
+        // PadreId, ni conservarse obsoletos.
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
 
-        var padre = new ConceptoPresupuesto
+        scenario.Concepto.Nivel = 5;  // hoja legacy ("Concepto")
+        scenario.Concepto.Orden = 2;
+        context.SaveChanges();
+
+        var capitulo = new ConceptoPresupuesto
         {
             ProyectoId = scenario.Proyecto.Id,
-            Clave = "C-PADRE",
-            Descripcion = "Agrupador padre",
-            Unidad = "m3",
+            Clave = "CAP-1",
+            Descripcion = "Capítulo 1",
+            Unidad = string.Empty,
             Cantidad = 1m,
             MatrizId = null,
             CostoDirectoUnitario = 0m,
-            CostoDirectoTotal = 0m,
+            CostoDirectoTotal = 999999.99m,
             PrecioUnitario = 0m,
-            ImporteTotal = 0m,
+            ImporteTotal = 999999.99m,
             Nivel = 0,
             Orden = 0,
             EsAgrupador = true,
             ColumnasPersonalizadasJSON = string.Empty,
             Notas = string.Empty
         };
-        context.ConceptosPresupuesto.Add(padre);
+        context.ConceptosPresupuesto.Add(capitulo);
+
+        var subcapitulo = new ConceptoPresupuesto
+        {
+            ProyectoId = scenario.Proyecto.Id,
+            Clave = "SUB-1",
+            Descripcion = "Subcapítulo 1",
+            Unidad = string.Empty,
+            Cantidad = 1m,
+            MatrizId = null,
+            CostoDirectoUnitario = 0m,
+            CostoDirectoTotal = 500m,
+            PrecioUnitario = 0m,
+            ImporteTotal = 500m,
+            Nivel = 1,
+            Orden = 1,
+            EsAgrupador = true,
+            ColumnasPersonalizadasJSON = string.Empty,
+            Notas = string.Empty
+        };
+        context.ConceptosPresupuesto.Add(subcapitulo);
 
         var sinHijos = new ConceptoPresupuesto
         {
             ProyectoId = scenario.Proyecto.Id,
-            Clave = "C-VACIO",
-            Descripcion = "Agrupador sin hijos",
-            Unidad = "m3",
+            Clave = "CAP-VACIO",
+            Descripcion = "Capítulo sin hojas",
+            Unidad = string.Empty,
             Cantidad = 1m,
             MatrizId = null,
             CostoDirectoUnitario = 0m,
@@ -935,14 +964,12 @@ public class MaterialsUseCasesTests
             PrecioUnitario = 0m,
             ImporteTotal = 500m,
             Nivel = 0,
-            Orden = 1,
+            Orden = 3,
             EsAgrupador = true,
             ColumnasPersonalizadasJSON = string.Empty,
             Notas = string.Empty
         };
         context.ConceptosPresupuesto.Add(sinHijos);
-
-        scenario.Concepto.Padre = padre;
         context.SaveChanges();
 
         using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
@@ -960,15 +987,229 @@ public class MaterialsUseCasesTests
         if (!result.IsSuccess) Assert.Fail(result.Error!.Message);
 
         context.ChangeTracker.Clear();
-        var padrePersistido = context.ConceptosPresupuesto.AsNoTracking().Single(c => c.Clave == "C-PADRE");
-        Assert.AreEqual(1100.00m, padrePersistido.CostoDirectoTotal,
-            "El agrupador padre debe sumar los totales de sus hijos.");
-        Assert.AreEqual(1100.00m, padrePersistido.ImporteTotal);
+        var capituloPersistido = context.ConceptosPresupuesto.AsNoTracking().Single(c => c.Clave == "CAP-1");
+        Assert.AreEqual(1100.00m, capituloPersistido.CostoDirectoTotal,
+            "El capítulo debe sumar los totales de las hojas de su bloque (nunca quedar en cero).");
+        Assert.AreEqual(1100.00m, capituloPersistido.ImporteTotal);
 
-        var vacio = context.ConceptosPresupuesto.AsNoTracking().Single(c => c.Clave == "C-VACIO");
+        var subPersistido = context.ConceptosPresupuesto.AsNoTracking().Single(c => c.Clave == "SUB-1");
+        Assert.AreEqual(1100.00m, subPersistido.CostoDirectoTotal,
+            "El subcapítulo debe sumar las hojas de su bloque, aunque el capítulo lo preceda.");
+        Assert.AreEqual(1100.00m, subPersistido.ImporteTotal);
+
+        var vacio = context.ConceptosPresupuesto.AsNoTracking().Single(c => c.Clave == "CAP-VACIO");
         Assert.AreEqual(0m, vacio.CostoDirectoTotal,
-            "Un agrupador sin hijos debe quedar en cero, no con totales obsoletos.");
+            "Un agrupador sin hojas debe quedar en cero, no con totales obsoletos.");
         Assert.AreEqual(0m, vacio.ImporteTotal);
+    }
+
+    [TestMethod]
+    public async Task SaveMaterial_PropagacionNoCruzaProyectos()
+    {
+        // Un material de P1 referenciado por una matriz de P2 (colisión de Ids
+        // entre bases): guardar el material solo debe recalcular matrices del
+        // proyecto de la sesión, nunca las de otro proyecto.
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+
+        var otroProyecto = CrearOtroProyecto(context);
+        var matrizP2 = new Matriz
+        {
+            ProyectoId = otroProyecto.Id,
+            Clave = "APU-P2",
+            Descripcion = "Matriz de otro proyecto",
+            Unidad = "m3",
+            Tipo = TipoMatriz.APU,
+            Notas = string.Empty,
+            CostoDirecto = 0m
+        };
+        context.Matrices.Add(matrizP2);
+        context.SaveChanges();
+        context.ComponentesMatriz.Add(new ComponenteMatriz
+        {
+            MatrizId = matrizP2.Id,
+            TipoComponente = TipoComponenteMatriz.Material,
+            MaterialId = scenario.Cemento.Id,
+            Cantidad = 1m,
+            Orden = 1,
+            Notas = string.Empty
+        });
+        context.SaveChanges();
+
+        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+
+        var result = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+            MaterialId: scenario.Cemento.Id,
+            Clave: scenario.Cemento.Clave,
+            Descripcion: scenario.Cemento.Descripcion,
+            Unidad: scenario.Cemento.Unidad,
+            PrecioUnitario: 70m,
+            Notas: scenario.Cemento.Notas ?? string.Empty,
+            SaveToMaster: false,
+            ProjectId: scenario.Proyecto.Id));
+
+        if (!result.IsSuccess) Assert.Fail(result.Error!.Message);
+
+        context.ChangeTracker.Clear();
+        Assert.AreEqual(110.00m,
+            context.Matrices.AsNoTracking().Single(m => m.Id == scenario.MatrizApu.Id).CostoDirecto,
+            "La matriz del proyecto de la sesión debe recalcularse.");
+        Assert.AreEqual(0m,
+            context.Matrices.AsNoTracking().Single(m => m.Id == matrizP2.Id).CostoDirecto,
+            "La matriz de otro proyecto no debe recalcularse.");
+        Assert.AreEqual(1,
+            context.ComponentesMatriz.AsNoTracking().Count(c => c.MatrizId == matrizP2.Id),
+            "El componente de la matriz ajena no debe modificarse.");
+    }
+
+    [TestMethod]
+    public async Task DeleteMaterial_NoEliminaComponentesDeOtroProyecto()
+    {
+        // El material de P1 está referenciado por una matriz de P2: eliminar el
+        // material sin tocar datos ajenos es imposible (FK Restrict + aislamiento
+        // por proyecto), así que la operación se rechaza con Conflict sin
+        // modificar NADA: ni el componente ajeno, ni el propio, ni las matrices.
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+
+        var otroProyecto = CrearOtroProyecto(context);
+        var matrizP2 = new Matriz
+        {
+            ProyectoId = otroProyecto.Id,
+            Clave = "APU-P2",
+            Descripcion = "Matriz de otro proyecto",
+            Unidad = "m3",
+            Tipo = TipoMatriz.APU,
+            Notas = string.Empty,
+            CostoDirecto = 0m
+        };
+        context.Matrices.Add(matrizP2);
+        context.SaveChanges();
+        context.ComponentesMatriz.Add(new ComponenteMatriz
+        {
+            MatrizId = matrizP2.Id,
+            TipoComponente = TipoComponenteMatriz.Material,
+            MaterialId = scenario.Cemento.Id,
+            Cantidad = 1m,
+            Orden = 1,
+            Notas = string.Empty
+        });
+        context.SaveChanges();
+
+        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+
+        var result = await new DeleteMaterial().Execute(session, new DeleteMaterialRequest(scenario.Cemento.Id));
+
+        Assert.IsFalse(result.IsSuccess);
+        Assert.AreEqual(AppErrorCode.Conflict, result.Error!.Code);
+
+        context.ChangeTracker.Clear();
+        Assert.AreEqual(1,
+            context.ComponentesMatriz.AsNoTracking().Count(c => c.MatrizId == matrizP2.Id),
+            "El componente de la matriz de otro proyecto debe sobrevivir.");
+        Assert.AreEqual(5,
+            context.ComponentesMatriz.AsNoTracking().Count(c => c.MatrizId == scenario.MatrizApu.Id),
+            "El componente del proyecto de la sesión también debe sobrevivir (rollback).");
+        Assert.IsNotNull(context.Materiales.AsNoTracking().SingleOrDefault(m => m.Id == scenario.Cemento.Id));
+        Assert.AreEqual(100.00m,
+            context.Matrices.AsNoTracking().Single(m => m.Id == scenario.MatrizApu.Id).CostoDirecto,
+            "Ninguna matriz debe recalcularse.");
+    }
+
+    [TestMethod]
+    public async Task PreviewMaterialDeletion_NoCuentaComponentesDeOtroProyecto()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+
+        var otroProyecto = CrearOtroProyecto(context);
+        var matrizP2 = new Matriz
+        {
+            ProyectoId = otroProyecto.Id,
+            Clave = "APU-P2",
+            Descripcion = "Matriz de otro proyecto",
+            Unidad = "m3",
+            Tipo = TipoMatriz.APU,
+            Notas = string.Empty,
+            CostoDirecto = 0m
+        };
+        context.Matrices.Add(matrizP2);
+        context.SaveChanges();
+        context.ComponentesMatriz.Add(new ComponenteMatriz
+        {
+            MatrizId = matrizP2.Id,
+            TipoComponente = TipoComponenteMatriz.Material,
+            MaterialId = scenario.Cemento.Id,
+            Cantidad = 1m,
+            Orden = 1,
+            Notas = string.Empty
+        });
+        context.SaveChanges();
+
+        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+
+        var result = await new PreviewMaterialDeletion().Execute(
+            session, new PreviewMaterialDeletionRequest(scenario.Cemento.Id));
+
+        if (!result.IsSuccess) Assert.Fail(result.Error!.Message);
+        Assert.AreEqual(1, result.Value!.ComponentCount,
+            "El preview debe reflejar el alcance real de la eliminación (solo el proyecto de la sesión).");
+        Assert.AreEqual(1, result.Value.Matrices.Count);
+        Assert.AreEqual(scenario.MatrizApu.Id, result.Value.Matrices[0].MatrizId);
+        Assert.AreEqual(1, result.Value.CrossProjectReferenceCount,
+            "El preview debe advertir las referencias externas que bloquean la eliminación.");
+    }
+
+    [TestMethod]
+    public async Task SaveMaterial_GuardarEnMaestroDosVeces_ReutilizaLaMismaFilaMaestra()
+    {
+        // Pregunta abierta del dictamen: al crear una fila maestra nueva desde un
+        // material de proyecto se persiste la asociación (MaterialMaestroId), de
+        // modo que un segundo guardado con otra clave edita la MISMA fila en
+        // lugar de crear una copia independiente.
+        var masterDbPath = TestDbFactory.CreateTempDbPath();
+
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath, masterDbPath);
+
+        var primero = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+            MaterialId: scenario.Cemento.Id,
+            Clave: "MAT-MAESTRO-1",
+            Descripcion: "Primer guardado en maestro",
+            Unidad: "pza",
+            PrecioUnitario: 10m,
+            Notas: string.Empty,
+            SaveToMaster: true,
+            ProjectId: scenario.Proyecto.Id));
+
+        if (!primero.IsSuccess) Assert.Fail(primero.Error!.Message);
+        Assert.IsTrue(primero.Value!.IsNew);
+
+        var segundo = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+            MaterialId: scenario.Cemento.Id,
+            Clave: "MAT-MAESTRO-2",
+            Descripcion: "Segundo guardado en maestro",
+            Unidad: "pza",
+            PrecioUnitario: 20m,
+            Notas: string.Empty,
+            SaveToMaster: true,
+            ProjectId: scenario.Proyecto.Id));
+
+        if (!segundo.IsSuccess) Assert.Fail(segundo.Error!.Message);
+        Assert.IsFalse(segundo.Value!.IsNew);
+        Assert.AreEqual(primero.Value.MaterialId, segundo.Value.MaterialId,
+            "El segundo guardado debe editar la fila maestra creada por el primero.");
+
+        context.ChangeTracker.Clear();
+        Assert.AreEqual(primero.Value.MaterialId,
+            context.Materiales.AsNoTracking().Single(m => m.Id == scenario.Cemento.Id).MaterialMaestroId,
+            "La asociación maestra debe persistirse en el material local.");
+
+        using var maestro = new SOPRO.Data.Context.SOPROContext(masterDbPath);
+        Assert.AreEqual(1, maestro.Materiales.Count(),
+            "No debe crearse una fila maestra por cada guardado.");
+        Assert.AreEqual("MAT-MAESTRO-2", maestro.Materiales.Single().Clave);
     }
 
     // ---------- FindMatricesUsingMaterial ----------

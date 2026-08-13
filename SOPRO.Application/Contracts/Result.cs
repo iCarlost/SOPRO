@@ -4,6 +4,11 @@ namespace SOPRO.Application.Contracts;
 /// Resultado inmutable de un caso de uso: valor tipado o error tipado, nunca
 /// ambos. Clase sellada sin estado por defecto (no existe una instancia
 /// "inválida"): solo se crea con <see cref="Ok"/> o <see cref="Fail"/>.
+/// <c>Ok(null)</c> está permitido cuando el tipo lo admite (p. ej.
+/// <c>Result&lt;MaterialListItem?&gt;</c> de FindMaterialByKey: "no encontrado"
+/// es un éxito con valor nulo, distinto de un error). Los consumidores deben
+/// comprobar <see cref="IsSuccess"/> antes de leer <see cref="Value"/> o
+/// <see cref="Error"/>.
 /// </summary>
 public sealed class Result<T>
 {

@@ -216,6 +216,22 @@ public sealed class SaveMaterial
 
         await masterCtx.SaveChangesAsync(cancellationToken);
 
+        // Establecer la identidad maestra del material local: al crear una fila
+        // maestra nueva se persiste la asociación (MaterialMaestroId) para que
+        // los guardados posteriores editen la MISMA fila maestra en lugar de
+        // crear una copia independiente por cada guardado.
+        if (esNuevo && session.Project.ProjectId.HasValue && request.MaterialId.HasValue)
+        {
+            var local = await session.Context.Materiales
+                .FindAsync(new object?[] { request.MaterialId.Value }, cancellationToken);
+
+            if (local != null && local.MaterialMaestroId == null)
+            {
+                local.MaterialMaestroId = materialMaestro.Id;
+                await session.Context.SaveChangesAsync(cancellationToken);
+            }
+        }
+
         return Result<SaveMaterialResult>.Ok(new SaveMaterialResult(
             materialMaestro.Id,
             esNuevo,

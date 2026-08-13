@@ -33,13 +33,26 @@ public sealed class PreviewMaterialDeletion
                     $"No se encontró el material con Id {request.MaterialId}.");
             }
 
+            // El alcance real de la eliminación son los componentes de matrices
+            // del proyecto de la sesión (lo que DeleteMaterial elimina). Un
+            // componente de una matriz de otro proyecto no debe contarse ni
+            // mostrarse: el preview debe reflejar exactamente lo que se borrará.
             var componentes = await context.ComponentesMatriz
                 .AsNoTracking()
-                .Where(c => c.MaterialId == request.MaterialId)
+                .Where(c => c.MaterialId == request.MaterialId
+                    && c.Matriz.ProyectoId == session.Project.ProjectId)
                 .ToListAsync(cancellationToken);
 
+            // Referencias fuera del alcance: no se eliminan, pero bloquean la
+            // eliminación del material (FK Restrict + aislamiento de proyecto).
+            int referenciasExternas = await context.ComponentesMatriz
+                .AsNoTracking()
+                .CountAsync(c => c.MaterialId == request.MaterialId
+                    && c.Matriz.ProyectoId != session.Project.ProjectId, cancellationToken);
+
             if (componentes.Count == 0)
-                return Result<MaterialDeletionPreview>.Ok(new MaterialDeletionPreview(0, Array.Empty<MaterialUsageInMatrix>()));
+                return Result<MaterialDeletionPreview>.Ok(
+                    new MaterialDeletionPreview(0, Array.Empty<MaterialUsageInMatrix>(), referenciasExternas));
 
             var matrizIds = componentes.Select(c => c.MatrizId).Distinct().ToList();
 
@@ -52,7 +65,7 @@ public sealed class PreviewMaterialDeletion
                 .ToListAsync(cancellationToken);
 
             return Result<MaterialDeletionPreview>.Ok(
-                new MaterialDeletionPreview(componentes.Count, matrices));
+                new MaterialDeletionPreview(componentes.Count, matrices, referenciasExternas));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

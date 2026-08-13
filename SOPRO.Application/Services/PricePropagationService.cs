@@ -14,40 +14,53 @@ namespace SOPRO.Application.Services
 
     public static class PricePropagationService
     {
-        public static void PropagarMaterial(SOPROContext ctx, int materialId)
-            => Propagar(ctx, TipoComponenteMatriz.Material, materialId);
+        public static void PropagarMaterial(SOPROContext ctx, int materialId, int? proyectoId = null)
+            => Propagar(ctx, TipoComponenteMatriz.Material, materialId, proyectoId);
 
-        public static void PropagarManoDeObra(SOPROContext ctx, int manoDeObraId)
-            => Propagar(ctx, TipoComponenteMatriz.ManoDeObra, manoDeObraId);
+        public static void PropagarManoDeObra(SOPROContext ctx, int manoDeObraId, int? proyectoId = null)
+            => Propagar(ctx, TipoComponenteMatriz.ManoDeObra, manoDeObraId, proyectoId);
 
-        public static void PropagarMaquinaria(SOPROContext ctx, int maquinariaId)
-            => Propagar(ctx, TipoComponenteMatriz.Maquinaria, maquinariaId);
+        public static void PropagarMaquinaria(SOPROContext ctx, int maquinariaId, int? proyectoId = null)
+            => Propagar(ctx, TipoComponenteMatriz.Maquinaria, maquinariaId, proyectoId);
 
-        public static void PropagarEliminacion(SOPROContext ctx, List<int> matrizIdsAfectadas)
+        public static void PropagarEliminacion(SOPROContext ctx, List<int> matrizIdsAfectadas, int? proyectoId = null)
         {
             if (!matrizIdsAfectadas.Any()) return;
 
             var matrices = CargarMatricesConNavegaciones(ctx, matrizIdsAfectadas);
+
+            // La propagación nunca cruza proyectos: una matriz de otro proyecto
+            // no debe recalcularse por un Id numérico compartido.
+            if (proyectoId.HasValue)
+                matrices = matrices.Where(m => m.ProyectoId == proyectoId.Value).ToList();
+            if (!matrices.Any()) return;
+
             RecalcularConMotor(ctx, matrices);
 
-            PropagarAuxiliares(ctx, matrizIdsAfectadas, matrices);
+            PropagarAuxiliares(ctx, matrizIdsAfectadas, matrices, proyectoId);
 
             var todasIds = matrices.Select(m => m.Id).ToList();
             ActualizarConceptos(ctx, matrices, todasIds);
             ctx.SaveChanges();
         }
 
-        private static void Propagar(SOPROContext ctx, TipoComponenteMatriz tipo, int insumoId)
+        private static void Propagar(SOPROContext ctx, TipoComponenteMatriz tipo, int insumoId, int? proyectoId = null)
         {
-            var componentes = ctx.ComponentesMatriz
+            IQueryable<ComponenteMatriz> query = ctx.ComponentesMatriz
                 .Include(c => c.Material)
                 .Include(c => c.ManoDeObra)
                 .Include(c => c.Maquinaria)
                 .Where(c => c.TipoComponente == tipo &&
                     (tipo == TipoComponenteMatriz.Material   ? c.MaterialId   == insumoId :
                      tipo == TipoComponenteMatriz.ManoDeObra ? c.ManoDeObraId == insumoId :
-                     c.MaquinariaId == insumoId))
-                .ToList();
+                     c.MaquinariaId == insumoId));
+
+            // Filtro de proyecto por la matriz propietaria del componente: evita
+            // propagar sobre matrices de otros proyectos por colisión de Ids.
+            if (proyectoId.HasValue)
+                query = query.Where(c => c.Matriz.ProyectoId == proyectoId.Value);
+
+            var componentes = query.ToList();
 
             if (!componentes.Any()) return;
 
@@ -78,7 +91,7 @@ namespace SOPRO.Application.Services
 
             // [FIX] Usar motor con decimales del proyecto en lugar de CalcularCostoDirecto()
             RecalcularConMotor(ctx, matrices);
-            PropagarAuxiliares(ctx, matrizIds, matrices);
+            PropagarAuxiliares(ctx, matrizIds, matrices, proyectoId);
 
             var todasIds = matrices.Select(m => m.Id).ToList();
             ActualizarConceptos(ctx, matrices, todasIds);
@@ -151,10 +164,16 @@ namespace SOPRO.Application.Services
 
         /// <summary>
         /// Recalcula los totales de los conceptos agrupadores de cada proyecto
-        /// afectado (bottom-up por nivel: hijos antes que padres). Cada
-        /// agrupador suma los totales de sus hijos directos, con el redondeo
-        /// del motor del proyecto. Misma semántica que
-        /// <see cref="RecalculoGlobalService"/> (Fase 4).
+        /// afectado. Paridad con la UI (FormPresupuesto → RecalcularTodosLosTotales
+        /// → BudgetHierarchyService.CalculateAggregatorTotal): la jerarquía se
+        /// infiere por Orden/Nivel, NO por PadreId, porque la persistencia legacy
+        /// (FormPresupuesto.Persistencia.btnGuardar_Click) no establece PadreId y
+        /// la UI agrupa por bloques de filas (Orden) con corte por Nivel.
+        ///
+        /// Cada agrupador suma los totales de los conceptos hoja (EsAgrupador =
+        /// false) que le siguen en orden, hasta la primera fila con Nivel menor o
+        /// igual al suyo. Un agrupador sin hojas queda en cero. El redondeo usa el
+        /// motor del proyecto (misma semántica que RecalculoGlobalService, Fase 4).
         /// </summary>
         private static void ActualizarAgrupadores(SOPROContext ctx, List<Proyecto> proyectos)
         {
@@ -162,7 +181,8 @@ namespace SOPRO.Application.Services
             {
                 var todos = ctx.ConceptosPresupuesto
                     .Where(c => c.ProyectoId == proyecto.Id)
-                    .OrderByDescending(c => c.Nivel)
+                    .OrderBy(c => c.Orden)
+                    .ThenBy(c => c.Id)
                     .ToList();
 
                 var agrupadores = todos.Where(c => c.EsAgrupador).ToList();
@@ -172,22 +192,36 @@ namespace SOPRO.Application.Services
 
                 foreach (var agrupador in agrupadores)
                 {
-                    // Sin hijos → totales en cero (paridad con
-                    // RecalculoGlobalService.RecalcularAgrupadores): no deben
-                    // conservarse totales obsoletos de una jerarquía vaciada.
-                    var hijos = todos.Where(c => c.PadreId == agrupador.Id).ToList();
+                    int idx = todos.FindIndex(c => c.Id == agrupador.Id);
+                    var importesCD  = new List<decimal>();
+                    var importesImp = new List<decimal>();
 
-                    agrupador.CostoDirectoTotal = motor.SumarImportes(hijos.Select(h => h.CostoDirectoTotal));
-                    agrupador.ImporteTotal       = motor.SumarImportes(hijos.Select(h => h.ImporteTotal));
+                    for (int j = idx + 1; j < todos.Count; j++)
+                    {
+                        var fila = todos[j];
+                        if (fila.Nivel <= agrupador.Nivel) break;
+                        if (fila.EsAgrupador) continue;
+                        importesCD.Add(fila.CostoDirectoTotal);
+                        importesImp.Add(fila.ImporteTotal);
+                    }
+
+                    agrupador.CostoDirectoTotal = motor.SumarImportes(importesCD);
+                    agrupador.ImporteTotal       = motor.SumarImportes(importesImp);
                     agrupador.FechaModificacion  = DateTime.Now;
                 }
             }
         }
 
-        private static void PropagarAuxiliares(SOPROContext ctx, List<int> matrizIdsOrigen, List<Matriz> todasMatrices)
+        private static void PropagarAuxiliares(SOPROContext ctx, List<int> matrizIdsOrigen, List<Matriz> todasMatrices, int? proyectoId = null)
         {
-            var idsConAuxiliar = ctx.ComponentesMatriz
-                .Where(c => c.AuxiliarId.HasValue && matrizIdsOrigen.Contains(c.AuxiliarId.Value))
+            IQueryable<ComponenteMatriz> query = ctx.ComponentesMatriz
+                .Where(c => c.AuxiliarId.HasValue && matrizIdsOrigen.Contains(c.AuxiliarId.Value));
+
+            // Los auxiliares también se restringen al proyecto de la sesión.
+            if (proyectoId.HasValue)
+                query = query.Where(c => c.Matriz.ProyectoId == proyectoId.Value);
+
+            var idsConAuxiliar = query
                 .Select(c => c.MatrizId)
                 .Distinct()
                 .ToList();
@@ -200,7 +234,7 @@ namespace SOPRO.Application.Services
             var matricesPadre = CargarMatricesConNavegaciones(ctx, idsNuevos);
             RecalcularConMotor(ctx, matricesPadre);
             todasMatrices.AddRange(matricesPadre);
-            PropagarAuxiliares(ctx, idsNuevos, todasMatrices);
+            PropagarAuxiliares(ctx, idsNuevos, todasMatrices, proyectoId);
         }
 
         private static List<Matriz> CargarMatricesConNavegaciones(SOPROContext ctx, List<int> ids)

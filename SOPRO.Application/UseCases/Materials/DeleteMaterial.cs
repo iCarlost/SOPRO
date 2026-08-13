@@ -39,9 +39,28 @@ public sealed class DeleteMaterial
                     $"No se encontró el material con Id {request.MaterialId}.");
             }
 
+            // Solo se eliminan componentes de matrices del proyecto de la sesión:
+            // una colisión numérica de Ids no debe dejar eliminar un componente
+            // que pertenece a una matriz de otro proyecto.
             var componentesEnUso = await context.ComponentesMatriz
-                .Where(c => c.MaterialId == request.MaterialId)
+                .Where(c => c.MaterialId == request.MaterialId
+                    && c.Matriz.ProyectoId == session.Project.ProjectId)
                 .ToListAsync(cancellationToken);
+
+            // El FK MaterialId es Restrict: si el material está referenciado por
+            // matrices de OTRO proyecto, eliminarlo es imposible sin tocar datos
+            // ajenos. La operación se rechaza con un error tipado en lugar de
+            // fallar por restricción o de alcanzar el componente ajeno.
+            bool referenciasExternas = await context.ComponentesMatriz
+                .AnyAsync(c => c.MaterialId == request.MaterialId
+                    && c.Matriz.ProyectoId != session.Project.ProjectId, cancellationToken);
+
+            if (referenciasExternas)
+            {
+                return Result<DeleteMaterialResult>.Fail(
+                    AppErrorCode.Conflict,
+                    "No se puede eliminar el material: está referenciado en matrices de otro proyecto.");
+            }
 
             if (componentesEnUso.Count > 0)
                 context.ComponentesMatriz.RemoveRange(componentesEnUso);
@@ -53,7 +72,8 @@ public sealed class DeleteMaterial
             if (componentesEnUso.Count > 0)
             {
                 matrizIds = componentesEnUso.Select(c => c.MatrizId).Distinct().ToList();
-                RecalculationCoordinatorService.RecalculateAfterInsumoDeletion(context, matrizIds);
+                RecalculationCoordinatorService.RecalculateAfterInsumoDeletion(
+                    context, matrizIds, session.Project.ProjectId);
             }
 
             await tx.CommitAsync(cancellationToken);

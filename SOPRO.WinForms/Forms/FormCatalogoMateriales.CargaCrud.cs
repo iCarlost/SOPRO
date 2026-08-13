@@ -184,6 +184,15 @@ namespace SOPRO.WinForms.Forms
                     if (confirmar != DialogResult.Yes) return;
                 }
 
+                if (preview.CrossProjectReferenceCount > 0)
+                {
+                    MessageBox.Show(
+                        $"Este insumo está referenciado en {preview.CrossProjectReferenceCount} componente(s) de matrices de otro proyecto.\n\n" +
+                        "La eliminación no puede continuar: no se eliminan componentes fuera del proyecto de la sesión.",
+                        "Insumo referenciado en otro proyecto", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
                 var deleteResult = await _deleteMaterial.Execute(
                     _sessionInfo, new DeleteMaterialRequest(materialId));
 

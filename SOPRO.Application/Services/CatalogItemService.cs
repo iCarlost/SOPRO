@@ -30,7 +30,7 @@ namespace SOPRO.Application.Services
 
             await repository.SaveChangesAsync();
 
-            var recalculated = !isNew && RecalculationCoordinatorService.RecalculateAfterMaterialUpdate(context, material!.Id);
+            var recalculated = !isNew && RecalculationCoordinatorService.RecalculateAfterMaterialUpdate(context, material!.Id, material.ProyectoId);
 
             return new CatalogSaveResult
             {
@@ -60,7 +60,7 @@ namespace SOPRO.Application.Services
 
             await repository.SaveChangesAsync();
 
-            var recalculated = !isNew && RecalculationCoordinatorService.RecalculateAfterManoDeObraUpdate(context, manoDeObra!.Id);
+            var recalculated = !isNew && RecalculationCoordinatorService.RecalculateAfterManoDeObraUpdate(context, manoDeObra!.Id, manoDeObra.ProyectoId);
 
             return new CatalogSaveResult
             {
@@ -90,7 +90,7 @@ namespace SOPRO.Application.Services
 
             await repository.SaveChangesAsync();
 
-            var recalculated = !isNew && RecalculationCoordinatorService.RecalculateAfterMaquinariaUpdate(context, maquinaria!.Id);
+            var recalculated = !isNew && RecalculationCoordinatorService.RecalculateAfterMaquinariaUpdate(context, maquinaria!.Id, maquinaria.ProyectoId);
 
             return new CatalogSaveResult
             {
