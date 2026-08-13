@@ -65,7 +65,7 @@ public sealed record ProjectSessionInfo : IDisposable
         if (projectId.HasValue)
         {
             var proyecto = context.Proyectos.Find(projectId.Value);
-            project = new ProjectRef(projectId.Value, proyecto?.Nombre ?? string.Empty);
+            project = proyecto != null ? ProjectRef.FromEntity(proyecto) : new ProjectRef(projectId.Value, string.Empty);
             decimalesImporte = proyecto?.DecimalesImporte;
         }
         else

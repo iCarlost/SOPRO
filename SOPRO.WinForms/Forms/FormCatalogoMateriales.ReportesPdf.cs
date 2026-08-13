@@ -54,7 +54,24 @@ namespace SOPRO.WinForms.Forms
                 Cursor = Cursors.WaitCursor;
                 var svcRep = new ReporteService(_context);
                 var plantilla = svcRep.ObtenerOCrearPlantilla(_proyectoId ?? 0);
-                var proyecto = new Proyecto { Nombre = _proyectoId.HasValue ? _sessionInfo.Project.Name : "Materiales" };
+
+                // El proyecto del encabezado se construye con los metadatos de la
+                // sesión neutral (sin consultar EF desde el formulario).
+                var refProy = _sessionInfo.Project;
+                var proyecto = _proyectoId.HasValue
+                    ? new Proyecto
+                    {
+                        Nombre = refProy.Name,
+                        Descripcion = refProy.Descripcion,
+                        Ubicacion = refProy.Ubicacion,
+                        Convocante = refProy.Convocante,
+                        Contratista = refProy.Contratista,
+                        ApoderadoLegal = refProy.ApoderadoLegal,
+                        FechaInicio = refProy.FechaInicio,
+                        FechaTermino = refProy.FechaTermino,
+                        PlazoEjecucion = refProy.PlazoEjecucion
+                    }
+                    : new Proyecto { Nombre = "Materiales" };
                 var colsVis = _columnasConfig.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
                 var tituloCfg = _proyectoId.HasValue
                     ? new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyectoId.Value, ReportTitleModuleKeys.CatalogoMateriales, lblTitulo.Text)

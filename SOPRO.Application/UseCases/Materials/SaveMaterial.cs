@@ -58,10 +58,14 @@ public sealed class SaveMaterial
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // El contexto compartido de la sesión no debe conservar mutaciones
+            // de una operación que no se confirmó.
+            session.Context.ChangeTracker.Clear();
             throw;
         }
         catch (Exception ex)
         {
+            session.Context.ChangeTracker.Clear();
             return Result<SaveMaterialResult>.Fail(
                 AppErrorCode.Database,
                 "No se pudo guardar el material.",
@@ -137,7 +141,53 @@ public sealed class SaveMaterial
         using var masterCtx = new SOPROContext(session.MasterDatabasePath);
         await masterCtx.Database.EnsureCreatedAsync(cancellationToken);
 
-        bool esNuevo = !request.MaterialId.HasValue;
+        // Identidad de la fila maestra (los Ids NO se comparten entre bases):
+        //  - Sesión de proyecto: la fila maestra asociada del material de origen
+        //    (MaterialMaestroId, lo que escribe FormImportarMaestro). Sin fila
+        //    asociada (material de proyecto puro) → se crea una fila maestra nueva.
+        //  - Sesión del catálogo maestro: el MaterialId ES el Id de la base maestra.
+        int? idFilaMaestra = null;
+        if (session.Project.ProjectId.HasValue)
+        {
+            if (request.MaterialId.HasValue)
+            {
+                var origen = await session.Context.Materiales
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(m => m.Id == request.MaterialId.Value, cancellationToken);
+
+                if (origen == null || !MaterialScope.IsInSessionScope(session, origen))
+                {
+                    return Result<SaveMaterialResult>.Fail(
+                        AppErrorCode.NotFound,
+                        $"No se encontró el material con Id {request.MaterialId.Value}.");
+                }
+
+                idFilaMaestra = origen.MaterialMaestroId;
+            }
+        }
+        else
+        {
+            idFilaMaestra = request.MaterialId;
+        }
+
+        bool esNuevo = !idFilaMaestra.HasValue;
+
+        string claveNormalizada = clave.Trim().ToUpperInvariant();
+
+        // Unicidad de clave en el catálogo maestro sin importar la capitalización
+        // de los datos almacenados (SQLite compara en binario por defecto).
+        int? idExcluir = esNuevo ? null : idFilaMaestra;
+        bool claveDuplicada = await masterCtx.Materiales
+            .AnyAsync(m => m.ProyectoId == null
+                && m.Clave.ToUpper() == claveNormalizada
+                && m.Id != idExcluir, cancellationToken);
+
+        if (claveDuplicada)
+        {
+            return Result<SaveMaterialResult>.Fail(
+                AppErrorCode.Conflict,
+                $"Ya existe un material del catálogo maestro con la clave '{claveNormalizada}'.");
+        }
 
         Material? materialMaestro = null;
         if (esNuevo)
@@ -148,7 +198,7 @@ public sealed class SaveMaterial
         }
         else
         {
-            int materialId = request.MaterialId!.Value;
+            int materialId = idFilaMaestra!.Value;
             var materialMaestroTemp = await masterCtx.Materiales
                 .FindAsync(new object?[] { materialId }, cancellationToken);
 
@@ -156,7 +206,7 @@ public sealed class SaveMaterial
             {
                 return Result<SaveMaterialResult>.Fail(
                     AppErrorCode.NotFound,
-                    $"No se encontró el material del catálogo maestro con Id {request.MaterialId.Value}.");
+                    $"No se encontró el material del catálogo maestro con Id {materialId}.");
             }
 
             materialMaestro = materialMaestroTemp;

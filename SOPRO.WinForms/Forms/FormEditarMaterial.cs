@@ -15,6 +15,12 @@ namespace SOPRO.WinForms.Forms
         private readonly MaterialListItem _material;
         private readonly bool _esNuevo;
 
+        /// <summary>Id del material persistido por el último guardado exitoso (para el selector de insumos).</summary>
+        public int? UltimoMaterialIdGuardado { get; private set; }
+
+        /// <summary>Si el último guardado fue en el catálogo maestro (su Id no existe en el proyecto).</summary>
+        public bool UltimoGuardadoEnMaestro { get; private set; }
+
         public FormEditarMaterial(ProjectSessionInfo sessionInfo, MaterialListItem material = null)
         {
             InitializeComponent();
@@ -143,11 +149,14 @@ namespace SOPRO.WinForms.Forms
 
                 if (!result.IsSuccess)
                 {
-                    MessageBox.Show(result.Error.Message,
-                        result.Error.Code == AppErrorCode.Conflict ? "Clave Duplicada" : "Error al guardar el material",
+                    MessageBox.Show(result.Error!.Message,
+                        result.Error!.Code == AppErrorCode.Conflict ? "Clave Duplicada" : "Error al guardar el material",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
+
+                UltimoMaterialIdGuardado = result.Value!.MaterialId;
+                UltimoGuardadoEnMaestro = rbMaestro.Checked;
 
                 if (result.Value.TriggeredRecalculation)
                     OpenFormsRefreshHelper.RefrescarPresupuestosAbiertos();

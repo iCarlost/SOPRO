@@ -142,6 +142,46 @@ namespace SOPRO.Application.Services
                 concepto.PrecioUnitario = BudgetPricingService.CalculateUnitPrice(proyecto, concepto.CostoDirectoUnitario);
                 concepto.ImporteTotal   = motor.Multiplicar(concepto.Cantidad, concepto.PrecioUnitario);
             }
+
+            // Paridad con RefrescarPreciosDesdeDB → RecalcularTodosLosTotales:
+            // los agrupadores padre se recalculan bottom-up a partir de los
+            // totales de sus hijos directos (RecalculoGlobalService.RecalcularAgrupadores).
+            ActualizarAgrupadores(ctx, proyectos.Values.ToList());
+        }
+
+        /// <summary>
+        /// Recalcula los totales de los conceptos agrupadores de cada proyecto
+        /// afectado (bottom-up por nivel: hijos antes que padres). Cada
+        /// agrupador suma los totales de sus hijos directos, con el redondeo
+        /// del motor del proyecto. Misma semántica que
+        /// <see cref="RecalculoGlobalService"/> (Fase 4).
+        /// </summary>
+        private static void ActualizarAgrupadores(SOPROContext ctx, List<Proyecto> proyectos)
+        {
+            foreach (var proyecto in proyectos)
+            {
+                var todos = ctx.ConceptosPresupuesto
+                    .Where(c => c.ProyectoId == proyecto.Id)
+                    .OrderByDescending(c => c.Nivel)
+                    .ToList();
+
+                var agrupadores = todos.Where(c => c.EsAgrupador).ToList();
+                if (agrupadores.Count == 0) continue;
+
+                var motor = new MotorCalculoSopro(proyecto);
+
+                foreach (var agrupador in agrupadores)
+                {
+                    // Sin hijos → totales en cero (paridad con
+                    // RecalculoGlobalService.RecalcularAgrupadores): no deben
+                    // conservarse totales obsoletos de una jerarquía vaciada.
+                    var hijos = todos.Where(c => c.PadreId == agrupador.Id).ToList();
+
+                    agrupador.CostoDirectoTotal = motor.SumarImportes(hijos.Select(h => h.CostoDirectoTotal));
+                    agrupador.ImporteTotal       = motor.SumarImportes(hijos.Select(h => h.ImporteTotal));
+                    agrupador.FechaModificacion  = DateTime.Now;
+                }
+            }
         }
 
         private static void PropagarAuxiliares(SOPROContext ctx, List<int> matrizIdsOrigen, List<Matriz> todasMatrices)

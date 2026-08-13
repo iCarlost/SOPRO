@@ -169,12 +169,12 @@ namespace SOPRO.WinForms.Forms
 
                 if (!previewResult.IsSuccess)
                 {
-                    MessageBox.Show(previewResult.Error.Message, "Error",
+                    MessageBox.Show(previewResult.Error!.Message, "Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
 
-                var preview = previewResult.Value;
+                var preview = previewResult.Value!;
                 if (preview.ComponentCount > 0)
                 {
                     var confirmar = MessageBox.Show(
@@ -189,12 +189,12 @@ namespace SOPRO.WinForms.Forms
 
                 if (!deleteResult.IsSuccess)
                 {
-                    MessageBox.Show(deleteResult.Error.Message, "Error",
+                    MessageBox.Show(deleteResult.Error!.Message, "Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
 
-                if (deleteResult.Value.TriggeredRecalculation)
+                if (deleteResult.Value!.TriggeredRecalculation)
                     OpenFormsRefreshHelper.RefrescarPresupuestosAbiertos();
 
                 InsumosModificados?.Invoke(null, EventArgs.Empty);

@@ -65,10 +65,12 @@ public sealed class DeleteMaterial
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            context.ChangeTracker.Clear();
             throw;
         }
         catch (Exception ex)
         {
+            context.ChangeTracker.Clear();
             return Result<DeleteMaterialResult>.Fail(
                 AppErrorCode.Database,
                 "No se pudo eliminar el material.",

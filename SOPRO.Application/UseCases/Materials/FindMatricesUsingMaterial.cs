@@ -4,16 +4,15 @@ using SOPRO.Application.Contracts;
 namespace SOPRO.Application.UseCases.Materials;
 
 /// <summary>
-/// Caso de uso (consulta): previsualiza el impacto de eliminar un material:
-/// cuántos componentes de matriz lo usan y en qué matrices. No modifica nada.
-/// Solo opera sobre materiales del alcance de la sesión (aislamiento entre
-/// proyectos y catálogo maestro).
+/// Caso de uso (consulta): matrices donde se usa un material ("Dónde se usa").
+/// Devuelve DTOs de presentación (nunca entidades rastreadas) y solo opera
+/// sobre materiales del alcance de la sesión.
 /// </summary>
-public sealed class PreviewMaterialDeletion
+public sealed class FindMatricesUsingMaterial
 {
-    public async Task<Result<MaterialDeletionPreview>> Execute(
+    public async Task<Result<IReadOnlyList<MaterialUsageInMatrix>>> Execute(
         ProjectSessionInfo session,
-        PreviewMaterialDeletionRequest request,
+        FindMatricesUsingMaterialRequest request,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -28,21 +27,24 @@ public sealed class PreviewMaterialDeletion
 
             if (material == null || !MaterialScope.IsInSessionScope(session, material))
             {
-                return Result<MaterialDeletionPreview>.Fail(
+                return Result<IReadOnlyList<MaterialUsageInMatrix>>.Fail(
                     AppErrorCode.NotFound,
                     $"No se encontró el material con Id {request.MaterialId}.");
             }
 
-            var componentes = await context.ComponentesMatriz
+            var matrizIds = await context.ComponentesMatriz
                 .AsNoTracking()
                 .Where(c => c.MaterialId == request.MaterialId)
+                .Select(c => c.MatrizId)
+                .Distinct()
                 .ToListAsync(cancellationToken);
 
-            if (componentes.Count == 0)
-                return Result<MaterialDeletionPreview>.Ok(new MaterialDeletionPreview(0, Array.Empty<MaterialUsageInMatrix>()));
+            if (matrizIds.Count == 0)
+                return Result<IReadOnlyList<MaterialUsageInMatrix>>.Ok(Array.Empty<MaterialUsageInMatrix>());
 
-            var matrizIds = componentes.Select(c => c.MatrizId).Distinct().ToList();
-
+            // Las matrices se restringen al proyecto de la sesión: el esquema no
+            // garantiza que un Id de matriz referencie el mismo proyecto que el
+            // material, y una colisión numérica no debe cruzar proyectos.
             var matrices = await context.Matrices
                 .AsNoTracking()
                 .Where(m => matrizIds.Contains(m.Id)
@@ -51,8 +53,7 @@ public sealed class PreviewMaterialDeletion
                 .Select(m => new MaterialUsageInMatrix(m.Id, m.Clave, m.Descripcion ?? string.Empty))
                 .ToListAsync(cancellationToken);
 
-            return Result<MaterialDeletionPreview>.Ok(
-                new MaterialDeletionPreview(componentes.Count, matrices));
+            return Result<IReadOnlyList<MaterialUsageInMatrix>>.Ok(matrices);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -60,9 +61,9 @@ public sealed class PreviewMaterialDeletion
         }
         catch (Exception ex)
         {
-            return Result<MaterialDeletionPreview>.Fail(
+            return Result<IReadOnlyList<MaterialUsageInMatrix>>.Fail(
                 AppErrorCode.Database,
-                "No se pudo previsualizar la eliminación del material.",
+                "No se pudo consultar dónde se usa el material.",
                 ex.Message);
         }
     }
