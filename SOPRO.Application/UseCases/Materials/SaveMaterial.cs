@@ -220,15 +220,30 @@ public sealed class SaveMaterial
         // maestra nueva se persiste la asociación (MaterialMaestroId) para que
         // los guardados posteriores editen la MISMA fila maestra en lugar de
         // crear una copia independiente por cada guardado.
+        //
+        // Dos bases (proyecto y maestro) → dos commits: SQLite no admite
+        // transacciones distribuidas. Si la segunda escritura falla se revierte
+        // la fila maestra recién creada (compensación), de modo que la operación
+        // queda sin efectos visibles y es reintentable: no queda una fila
+        // huérfana que provoque Conflict en el reintento.
         if (esNuevo && session.Project.ProjectId.HasValue && request.MaterialId.HasValue)
         {
-            var local = await session.Context.Materiales
-                .FindAsync(new object?[] { request.MaterialId.Value }, cancellationToken);
-
-            if (local != null && local.MaterialMaestroId == null)
+            try
             {
-                local.MaterialMaestroId = materialMaestro.Id;
-                await session.Context.SaveChangesAsync(cancellationToken);
+                var local = await session.Context.Materiales
+                    .FindAsync(new object?[] { request.MaterialId.Value }, cancellationToken);
+
+                if (local != null && local.MaterialMaestroId == null)
+                {
+                    local.MaterialMaestroId = materialMaestro.Id;
+                    await session.Context.SaveChangesAsync(cancellationToken);
+                }
+            }
+            catch
+            {
+                masterCtx.Materiales.Remove(materialMaestro);
+                await masterCtx.SaveChangesAsync(cancellationToken);
+                throw;
             }
         }
 

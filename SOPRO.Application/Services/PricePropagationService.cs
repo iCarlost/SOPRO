@@ -136,7 +136,8 @@ namespace SOPRO.Application.Services
                 .ToDictionary(p => p.Id);
 
             var conceptos = ctx.ConceptosPresupuesto
-                .Where(c => c.MatrizId.HasValue && matrizIds.Contains(c.MatrizId.Value))
+                .Where(c => c.MatrizId.HasValue && matrizIds.Contains(c.MatrizId.Value)
+                    && proyectoIds.Contains(c.ProyectoId))
                 .ToList();
 
             foreach (var concepto in conceptos)
@@ -164,16 +165,20 @@ namespace SOPRO.Application.Services
 
         /// <summary>
         /// Recalcula los totales de los conceptos agrupadores de cada proyecto
-        /// afectado. Paridad con la UI (FormPresupuesto → RecalcularTodosLosTotales
-        /// → BudgetHierarchyService.CalculateAggregatorTotal): la jerarquía se
-        /// infiere por Orden/Nivel, NO por PadreId, porque la persistencia legacy
-        /// (FormPresupuesto.Persistencia.btnGuardar_Click) no establece PadreId y
-        /// la UI agrupa por bloques de filas (Orden) con corte por Nivel.
+        /// afectado. Paridad exacta con la UI (FormPresupuesto → RecalcularTodosLosTotales
+        /// → BudgetHierarchyService.CalculateAggregatorTotal → GridTotales):
         ///
-        /// Cada agrupador suma los totales de los conceptos hoja (EsAgrupador =
-        /// false) que le siguen en orden, hasta la primera fila con Nivel menor o
-        /// igual al suyo. Un agrupador sin hojas queda en cero. El redondeo usa el
-        /// motor del proyecto (misma semántica que RecalculoGlobalService, Fase 4).
+        ///   1) La jerarquía se infiere por Orden/Nivel (la persistencia legacy
+        ///      no establece PadreId), pero el nivel semántico de una fila NO
+        ///      agrupadora es siempre 5 ("Concepto"), sea cual sea su Nivel
+        ///      almacenado: una hoja legacy con Nivel 1 no corta el bloque de un
+        ///      subcapítulo de nivel 1.
+        ///   2) El total del agrupador es ÚNICO: suma del Importe de las hojas de
+        ///      su bloque (el Importe que muestra el grid) y se asigna IGUAL a
+        ///      CostoDirectoTotal e ImporteTotal (GridTotales.cs:313-314). La
+        ///      pantalla muestra CostoDirectoTotal, así que ambos deben coincidir.
+        ///   3) Un agrupador sin hojas queda en cero. Redondeo con el motor del
+        ///      proyecto.
         /// </summary>
         private static void ActualizarAgrupadores(SOPROContext ctx, List<Proyecto> proyectos)
         {
@@ -193,20 +198,23 @@ namespace SOPRO.Application.Services
                 foreach (var agrupador in agrupadores)
                 {
                     int idx = todos.FindIndex(c => c.Id == agrupador.Id);
-                    var importesCD  = new List<decimal>();
-                    var importesImp = new List<decimal>();
+                    var importes = new List<decimal>();
 
                     for (int j = idx + 1; j < todos.Count; j++)
                     {
                         var fila = todos[j];
-                        if (fila.Nivel <= agrupador.Nivel) break;
+
+                        // Toda fila no agrupadora es un concepto de nivel 5.
+                        int nivelFila = fila.EsAgrupador ? fila.Nivel : 5;
+                        if (nivelFila <= agrupador.Nivel) break;
                         if (fila.EsAgrupador) continue;
-                        importesCD.Add(fila.CostoDirectoTotal);
-                        importesImp.Add(fila.ImporteTotal);
+
+                        importes.Add(fila.ImporteTotal);
                     }
 
-                    agrupador.CostoDirectoTotal = motor.SumarImportes(importesCD);
-                    agrupador.ImporteTotal       = motor.SumarImportes(importesImp);
+                    decimal total = motor.SumarImportes(importes);
+                    agrupador.CostoDirectoTotal = total;
+                    agrupador.ImporteTotal       = total;
                     agrupador.FechaModificacion  = DateTime.Now;
                 }
             }
