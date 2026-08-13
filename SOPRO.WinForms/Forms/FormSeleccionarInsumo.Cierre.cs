@@ -50,7 +50,8 @@ namespace SOPRO.WinForms.Forms
             switch (_tipoComponente)
             {
                 case TipoComponenteMatriz.Material:
-                    using (var form = new FormEditarMaterial(_context, _proyectoId))
+                    using (var formSession = LegacySessionBridge.FromLegacy(_context, _proyectoId))
+                    using (var form = new FormEditarMaterial(formSession))
                     {
                         if (form.ShowDialog(this) == DialogResult.OK)
                             nuevoId = _context.Materiales.Where(m => m.ProyectoId == _proyectoId).OrderByDescending(m => m.Id).Select(m => (int?)m.Id).FirstOrDefault();

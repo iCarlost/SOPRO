@@ -15,6 +15,7 @@ using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
 using SOPRO.Application.UseCases.Materials;
 using SOPRO.Application.Models.Catalogs;
+using System.Threading;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -26,8 +27,26 @@ namespace SOPRO.WinForms.Forms
 
         public void RecargarCatalogo() => CargarMateriales();
 
+        // Serializa las cargas sobre el contexto de sesión y descarta resultados
+        // de cargas anteriores (el texto puede cambiar mientras una carga corre).
+        private static readonly SemaphoreSlim _cargaLock = new(1, 1);
+        private CancellationTokenSource? _cargaCts;
+
         private async void CargarMateriales()
         {
+            _cargaCts?.Cancel();
+            var cts = new CancellationTokenSource();
+            _cargaCts = cts;
+
+            try
+            {
+                await _cargaLock.WaitAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
             try
             {
                 btnRefrescar.Enabled = false;
@@ -39,7 +58,9 @@ namespace SOPRO.WinForms.Forms
                     SearchText = txtBuscar.Text,
                     OnlyProjectItems = chkSoloProyecto.Checked,
                     OnlyMasterItems = chkSoloMaestros.Checked,
-                });
+                }, cts.Token);
+
+                if (cts.IsCancellationRequested) return;
 
                 if (!result.IsSuccess)
                 {
@@ -62,6 +83,10 @@ namespace SOPRO.WinForms.Forms
 
                 lblStatus.Text = $"{materiales.Count} material(es) encontrado(s)";
             }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+                // Carga superada por una más reciente: no tocar la UI.
+            }
             catch (Exception ex)
             {
                 MessageBox.Show($"Error al cargar materiales:\n{ex.Message}", "Error",
@@ -71,12 +96,13 @@ namespace SOPRO.WinForms.Forms
             finally
             {
                 btnRefrescar.Enabled = true;
+                _cargaLock.Release();
             }
         }
 
         private void btnNuevo_Click(object sender, EventArgs e)
         {
-            using var form = new FormEditarMaterial(_context, _proyectoId);
+            using var form = new FormEditarMaterial(_sessionInfo);
             if (form.ShowDialog() == DialogResult.OK)
                 CargarMateriales();
         }
@@ -99,7 +125,7 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            using var form = new FormEditarMaterial(_context, _proyectoId, _materialSeleccionado);
+            using var form = new FormEditarMaterial(_sessionInfo, _materialSeleccionado);
             if (form.ShowDialog() == DialogResult.OK)
                 CargarMateriales();
         }
@@ -120,10 +146,16 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
+            // El Id y los datos del mensaje se capturan ANTES del primer await:
+            // la selección puede cambiar mientras la previsualización consulta.
+            int materialId = _materialSeleccionado.Id;
+            string claveConfirmacion = _materialSeleccionado.Clave;
+            string descripcionConfirmacion = _materialSeleccionado.Descripcion;
+
             var result = MessageBox.Show(
                 $"¿Está seguro de eliminar el material?\n\n" +
-                $"Clave: {_materialSeleccionado.Clave}\n" +
-                $"Descripción: {_materialSeleccionado.Descripcion}\n\n" +
+                $"Clave: {claveConfirmacion}\n" +
+                $"Descripción: {descripcionConfirmacion}\n\n" +
                 "Esta acción no se puede deshacer.",
                 "Confirmar Eliminación", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
 
@@ -133,7 +165,7 @@ namespace SOPRO.WinForms.Forms
             {
                 // Previsualización del impacto: la UI solo decide la confirmación.
                 var previewResult = await _previewMaterialDeletion.Execute(
-                    _sessionInfo, new PreviewMaterialDeletionRequest(_materialSeleccionado.Id));
+                    _sessionInfo, new PreviewMaterialDeletionRequest(materialId));
 
                 if (!previewResult.IsSuccess)
                 {
@@ -153,7 +185,7 @@ namespace SOPRO.WinForms.Forms
                 }
 
                 var deleteResult = await _deleteMaterial.Execute(
-                    _sessionInfo, new DeleteMaterialRequest(_materialSeleccionado.Id));
+                    _sessionInfo, new DeleteMaterialRequest(materialId));
 
                 if (!deleteResult.IsSuccess)
                 {
@@ -170,6 +202,10 @@ namespace SOPRO.WinForms.Forms
                 MessageBox.Show("Material eliminado exitosamente.", "Eliminado",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 CargarMateriales();
+            }
+            catch (OperationCanceledException)
+            {
+                // Operación cancelada: no mostrar error.
             }
             catch (Exception ex)
             {

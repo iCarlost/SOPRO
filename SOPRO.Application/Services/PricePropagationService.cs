@@ -135,6 +135,12 @@ namespace SOPRO.Application.Services
                 var motor = new MotorCalculoSopro(proyecto);
                 concepto.CostoDirectoUnitario = motor.RedondearImporte(mat.CostoDirecto);
                 concepto.CostoDirectoTotal    = motor.Multiplicar(concepto.Cantidad, concepto.CostoDirectoUnitario);
+
+                // Paridad con el recálculo de pantalla (FormPresupuesto.RefrescarPreciosDesdeDB):
+                // el Precio Unitario y el Importe Total también deben quedar al día en la
+                // propagación headless, sin depender de que el presupuesto esté abierto.
+                concepto.PrecioUnitario = BudgetPricingService.CalculateUnitPrice(proyecto, concepto.CostoDirectoUnitario);
+                concepto.ImporteTotal   = motor.Multiplicar(concepto.Cantidad, concepto.PrecioUnitario);
             }
         }
 

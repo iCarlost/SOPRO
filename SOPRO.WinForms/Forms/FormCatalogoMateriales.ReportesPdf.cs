@@ -13,6 +13,7 @@ using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
 using SOPRO.Application.Services;
 using SOPRO.Application.Models.Catalogs;
+using SOPRO.Application.UseCases.Materials;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -33,7 +34,7 @@ namespace SOPRO.WinForms.Forms
         {
             try
             {
-                var materiales = dgvMateriales.DataSource as List<Material>;
+                var materiales = dgvMateriales.DataSource as List<MaterialListItem>;
                 if (materiales == null || !materiales.Any())
                 {
                     MessageBox.Show("No hay materiales para exportar.", "Sin datos",
@@ -53,9 +54,7 @@ namespace SOPRO.WinForms.Forms
                 Cursor = Cursors.WaitCursor;
                 var svcRep = new ReporteService(_context);
                 var plantilla = svcRep.ObtenerOCrearPlantilla(_proyectoId ?? 0);
-                Proyecto proyecto = _proyectoId.HasValue
-                    ? _context.Proyectos.Find(_proyectoId.Value)
-                    : new Proyecto { Nombre = "Materiales" };
+                var proyecto = new Proyecto { Nombre = _proyectoId.HasValue ? _sessionInfo.Project.Name : "Materiales" };
                 var colsVis = _columnasConfig.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
                 var tituloCfg = _proyectoId.HasValue
                     ? new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyectoId.Value, ReportTitleModuleKeys.CatalogoMateriales, lblTitulo.Text)

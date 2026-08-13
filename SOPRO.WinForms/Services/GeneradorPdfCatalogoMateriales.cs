@@ -8,6 +8,8 @@ using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
 using SOPRO.Core.Entities;
+using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Materials;
 using DrawingFont = System.Drawing.Font;
 using MColor = MigraDoc.DocumentObjectModel.Color;
 using MOrientation = MigraDoc.DocumentObjectModel.Orientation;
@@ -24,7 +26,7 @@ namespace SOPRO.WinForms.Services
 
         public string Generar(
             Proyecto proyecto,
-            List<Material> materiales,
+            IReadOnlyList<MaterialListItem> materiales,
             PlantillaReporte plantilla,
             List<ColumnaMaterial> columnas,
             string rutaDestino = null,
@@ -256,7 +258,7 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private void ConstruirCuerpo(Section section, Proyecto proyecto, List<Material> materiales, List<ColumnaMaterial> cols, ConfiguracionTituloReporte? tituloCfg)
+        private void ConstruirCuerpo(Section section, Proyecto proyecto, IReadOnlyList<MaterialListItem> materiales, List<ColumnaMaterial> cols, ConfiguracionTituloReporte? tituloCfg)
         {
             var pTitle = section.AddParagraph("CATÁLOGO DE MATERIALES", "CatalogoMaterialesTitle");
             ReportTitleStyleHelper.ApplyToParagraph(pTitle, tituloCfg, "CATÁLOGO DE MATERIALES");
@@ -336,7 +338,7 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private double EstimarAlturaFila(List<ColumnaMaterial> cols, Table table, Material material, double alturaBase)
+        private double EstimarAlturaFila(List<ColumnaMaterial> cols, Table table, MaterialListItem material, double alturaBase)
         {
             double altura = alturaBase;
             for (int i = 0; i < cols.Count; i++)
@@ -364,18 +366,8 @@ namespace SOPRO.WinForms.Services
             return altura;
         }
 
-        private static string ObtenerValor(Material m, ColumnaMaterial c)
-        {
-            return c.NombreInterno switch
-            {
-                "Clave" => m.Clave ?? string.Empty,
-                "Descripcion" => m.Descripcion ?? string.Empty,
-                "Unidad" => m.Unidad ?? string.Empty,
-                "PrecioUnitario" => m.PrecioUnitario.ToString("#,##0.0000"),
-                "Origen" => m.Origen == OrigenInsumo.Maestro ? "Maestro" : "Proyecto",
-                _ => string.Empty
-            };
-        }
+        private static string ObtenerValor(MaterialListItem m, ColumnaMaterial c)
+            => MaterialCatalogExportResolver.ResolveValue(m, c);
 
         private static MParagraphAlignment ConvertirAlineacion(AlineacionColumna a) => a switch
         {

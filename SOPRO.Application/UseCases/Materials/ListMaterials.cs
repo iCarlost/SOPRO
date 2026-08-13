@@ -24,6 +24,8 @@ public sealed class ListMaterials
         ListMaterialsRequest request,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var query = session.Context.Materiales.AsNoTracking();
 
         if (session.Project.ProjectId.HasValue)
@@ -35,23 +37,37 @@ public sealed class ListMaterials
             query = query.Where(m => m.Clave.ToLower().Contains(term) || m.Descripcion.ToLower().Contains(term));
         }
 
-        var list = await query
-            .OrderBy(m => m.Clave)
-            .Select(m => new MaterialListItem(
-                m.Id,
-                m.Clave,
-                m.Descripcion,
-                m.Unidad,
-                m.PrecioUnitario,
-                m.Notas ?? string.Empty,
-                m.Origen))
-            .ToListAsync(cancellationToken);
+        try
+        {
+            var list = await query
+                .OrderBy(m => m.Clave)
+                .Select(m => new MaterialListItem(
+                    m.Id,
+                    m.Clave,
+                    m.Descripcion,
+                    m.Unidad,
+                    m.PrecioUnitario,
+                    m.Notas ?? string.Empty,
+                    m.Origen))
+                .ToListAsync(cancellationToken);
 
-        if (request.OnlyProjectItems)
-            list = list.Where(m => !EsImportado(m.Notas)).ToList();
-        else if (request.OnlyMasterItems)
-            list = list.Where(m => EsImportado(m.Notas)).ToList();
+            if (request.OnlyProjectItems)
+                list = list.Where(m => !EsImportado(m.Notas)).ToList();
+            else if (request.OnlyMasterItems)
+                list = list.Where(m => EsImportado(m.Notas)).ToList();
 
-        return Result<List<MaterialListItem>>.Ok(list);
+            return Result<List<MaterialListItem>>.Ok(list);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return Result<List<MaterialListItem>>.Fail(
+                AppErrorCode.Database,
+                "No se pudo cargar el catálogo de materiales.",
+                ex.Message);
+        }
     }
 }

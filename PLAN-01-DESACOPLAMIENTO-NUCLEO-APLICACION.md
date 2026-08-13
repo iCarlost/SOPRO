@@ -308,14 +308,21 @@ WinForms debe adoptar primero estos casos de uso. Solo después se construye la 
 
 ### Resultado de la implementación (PR N3 — slice materiales)
 
-- Contratos en `SOPRO.Application/Contracts`: `ProjectRef`, `ProjectSessionInfo`, `Result<T>` (con `Error` tipado y anotación `MemberNotNullWhen` para flujo de nulabilidad), `AppError`, `AppErrorCode`, `OperationProgress`.
-- Casos de uso en `SOPRO.Application/UseCases/Materials`: `ListMaterials`, `SaveMaterial`, `DeleteMaterial`, `PreviewMaterialDeletion`. Request inmutables; nunca devuelven entidades rastreadas (`AsNoTracking` y proyección a DTOs).
-- `ProjectSessionInfo` no expone `SOPROContext` en su superficie pública: lo resuelve interno (puente temporal `FromLegacy` hasta N4).
-- `FormCatalogoMateriales` y `FormEditarMaterial` consumen los casos de uso; el formulario no calcula ni persiste (el Grid solo lee DTOs ya recalculados por el motor en el guardado).
+- Contratos en `SOPRO.Application/Contracts`: `ProjectRef`, `ProjectSessionInfo`, `Result<T>` (con `Error` tipado y anotación `MemberNotNullWhen` para flujo de nulabilidad), `AppError`, `AppErrorCode`, `OperationProgress`, `WorkspacePaths`.
+- Casos de uso en `SOPRO.Application/UseCases/Materials`: `ListMaterials`, `SaveMaterial`, `DeleteMaterial`, `PreviewMaterialDeletion`, `FindMaterialByKey` (autocompletado por clave headless, solo en alcance del proyecto). Request inmutables; nunca devuelven entidades rastreadas (`AsNoTracking` y proyección a DTOs).
+- `ProjectSessionInfo` no expone `SOPROContext` en su superficie pública: lo resuelve interno a partir de `DatabasePath` (`Create`); el puente legacy `LegacySessionBridge.FromLegacy(SOPROContext, proyectoId)` queda fuera de la superficie pública de la sesión (N4 sustituirá el ciclo de vida del contexto).
+- Correcciones del dictamen NO-GO (revisión `4b9b7b5`):
+  - Guardado y eliminación con transacción única (`BeginTransactionAsync` + `CommitAsync`): persistencia + propagación del recálculo son una operación lógica atómica; ante fallo o cancelación hay rollback completo (`SaveMaterial.GuardarEnProyectoAsync`, `DeleteMaterial`).
+  - Todos los comandos validan el alcance de la sesión (`MaterialScope.IsInSessionScope`): operar sobre un material de otro proyecto devuelve `NotFound`; el request debe corresponder al proyecto de la sesión.
+  - La propagación headless (`PricePropagationService.ActualizarConceptos`) también actualiza `PrecioUnitario` y `ImporteTotal` del concepto (paridad con `FormPresupuesto.RefrescarPreciosDesdeDB`).
+  - `SaveMaterial.SaveToMaster` escribe en la base del catálogo maestro (`CatalogoMaestro.db` según `WorkspacePaths`, inyectable por prueba), no en la base del proyecto; la fila maestra queda con `ProyectoId = null` y `Origen = Maestro`.
+  - `KeyValidationService` corrige el chequeo de clave única al editar (los `if` que saltaban el tipo excluido eliminados; self-exclusión por Id).
+  - Cargas de catálogo serializadas (`SemaphoreSlim` + `CancellationTokenSource` por carga) y eliminación con `materialId` capturado antes del primer `await` (sin TOCTOU en `FormCatalogoMateriales.CargaCrud`).
+  - Exportación PDF con `MaterialListItem` y `MaterialCatalogExportResolver` en Application (el generador de MigraDoc solo renderiza); ancho y formato de columnas persistidos vía `CatalogColumnLayoutService` (Application), no con EF en los formularios.
+  - Errores de persistencia tipados como `AppErrorCode.Database` (las excepciones EF/SQLite no escapan).
+- `FormCatalogoMateriales` y `FormEditarMaterial` consumen los casos de uso; el formulario no calcula ni persiste (el Grid solo lee DTOs ya recalculados por el motor en el guardado). Formato de columnas, decimales de importe y título del PDF provienen de la sesión neutral.
 - Buscar/eliminar no mutan: previews y consultas con `AsNoTracking`.
-- Validaciones (campos requeridos, clave única en alcance del proyecto) y errores tipados viven en `SaveMaterial`: probados sin formularios en `MaterialsUseCasesTests` (15 pruebas, SQLite real del mismo esquema).
-- Guardado y propagación son la misma operación lógica: un único `SaveChanges` + propagación inmediata dentro del caso de uso (`SaveMaterial.TriggeredRecalculation`, `DeleteMaterial` recalcula matrices afectadas al eliminar componentes en cascada).
-- Paridad legacy conservada: el clon de insumos importados se resuelve por la marca `Notas` ([IMPORTADO DE: …]) en memoria (`ListMaterials.OnlyProjectItems/OnlyMasterItems`), como en `CatalogLoadService`.
+- Validaciones (campos requeridos, clave única en alcance del proyecto) y errores tipados viven en `SaveMaterial`: probados sin formularios en `MaterialsUseCasesTests` (25 pruebas, SQLite real del mismo esquema), incluyendo rollback ante fallo de propagación (overflow), cancelación sin persistencia parcial, reapertura SQLite verificando `PrecioUnitario`/`ImporteTotal`, aislamiento entre proyectos y catálogo maestro, clave duplicada al editar, y resolución de valores de exportación con `MaterialListItem`.
 
 ## 13. Fase N4: Persistencia y ciclo de vida
 

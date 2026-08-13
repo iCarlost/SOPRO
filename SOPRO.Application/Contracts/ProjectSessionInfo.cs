@@ -5,58 +5,82 @@ namespace SOPRO.Application.Contracts;
 
 /// <summary>
 /// Información de sesión neutral para los casos de uso de la frontera de
-/// Application: identidad del proyecto y ruta de la base de datos.
+/// Application: identidad del proyecto y rutas de la base de datos.
 ///
-/// REGLA N3: esta clase NO expone <see cref="SOPROContext"/> en su superficie
-/// pública; el contexto se resuelve de forma interna (puente temporal hasta
-/// que N4 sustituya el ciclo de vida del contexto por operación).
+/// REGLA N3: esta clase NO expone ni recibe <see cref="SOPROContext"/> en su
+/// superficie pública; el contexto se resuelve de forma interna (puente temporal
+/// hasta que N4 sustituya el ciclo de vida del contexto por operación).
 /// </summary>
-public sealed record ProjectSessionInfo
+public sealed record ProjectSessionInfo : IDisposable
 {
     /// <summary>Proyecto activo (o catálogo maestro).</summary>
     public ProjectRef Project { get; }
 
     /// <summary>Ruta de la base de datos de la sesión.</summary>
-    public string? DatabasePath { get; }
+    public string DatabasePath { get; }
+
+    /// <summary>Ruta de la base del catálogo maestro (CatalogoMaestro.db).</summary>
+    public string MasterDatabasePath { get; }
+
+    /// <summary>Decimales de importe del proyecto (null en catálogo maestro).</summary>
+    public int? DecimalesImporte { get; }
 
     /// <summary>Puente interno: contexto de la sesión. Visible solo dentro de Application.</summary>
     internal SOPROContext Context { get; }
 
-    private ProjectSessionInfo(ProjectRef project, SOPROContext context, string? databasePath)
+    private ProjectSessionInfo(
+        ProjectRef project,
+        string databasePath,
+        string masterDatabasePath,
+        int? decimalesImporte,
+        SOPROContext context)
     {
         Project = project;
+        DatabasePath = databasePath;
+        MasterDatabasePath = masterDatabasePath;
+        DecimalesImporte = decimalesImporte;
         Context = context;
-        DatabasePath = databasePath ?? context.DatabasePath;
-    }
-
-    /// <summary>Crea la información de sesión desde una sesión de proyecto existente.</summary>
-    public static ProjectSessionInfo From(ProjectSession session)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-
-        return new ProjectSessionInfo(
-            new ProjectRef(session.Project.Id, session.Project.Nombre ?? string.Empty),
-            session.Context,
-            session.DatabasePath);
     }
 
     /// <summary>
-    /// Puente temporal desde los componentes legacy (UI, servicios): construye la
-    /// información de sesión a partir del contexto compartido y del Id de proyecto.
-    /// Si <paramref name="projectId"/> es <c>null</c>, la sesión corresponde al
-    /// catálogo maestro.
+    /// Crea la información de sesión a partir de un proyecto y la ruta de su
+    /// base de datos. Si <paramref name="projectId"/> es <c>null</c>, la sesión
+    /// corresponde al catálogo maestro.
     /// </summary>
-    /// <remarks>Puente N3→N4: será innecesario cuando el ciclo de vida del contexto
-    /// quede por operación (PLAN-01 §13).</remarks>
-    public static ProjectSessionInfo FromLegacy(SOPROContext context, int? projectId, string? databasePath = null)
+    /// <remarks>
+    /// El contexto se resuelve de la ruta (una operación, un contexto a partir
+    /// de N4). La sesión es la dueña del contexto: el consumidor debe disponerla.
+    /// </remarks>
+    public static ProjectSessionInfo Create(
+        int? projectId,
+        string databasePath,
+        string? masterDatabasePath = null)
     {
-        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(databasePath);
+
+        var context = new SOPROContext(databasePath);
+
+        ProjectRef project;
+        int? decimalesImporte = null;
+        if (projectId.HasValue)
+        {
+            var proyecto = context.Proyectos.Find(projectId.Value);
+            project = new ProjectRef(projectId.Value, proyecto?.Nombre ?? string.Empty);
+            decimalesImporte = proyecto?.DecimalesImporte;
+        }
+        else
+        {
+            project = ProjectRef.Master;
+        }
 
         return new ProjectSessionInfo(
-            projectId.HasValue
-                ? new ProjectRef(projectId, context.Proyectos.Find(projectId.Value)?.Nombre ?? string.Empty)
-                : ProjectRef.Master,
-            context,
-            databasePath);
+            project,
+            databasePath,
+            masterDatabasePath ?? WorkspacePaths.MasterDatabasePath,
+            decimalesImporte,
+            context);
     }
+
+    /// <summary>Libera el contexto interno de la sesión.</summary>
+    public void Dispose() => Context.Dispose();
 }
