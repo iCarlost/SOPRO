@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.Models.ExternalProjects;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -11,6 +12,13 @@ namespace SOPRO.Application.Services
 {
     public sealed class ExternalMatrixImportService
     {
+        private readonly IProjectDbContextFactory _dbContextFactory;
+
+        public ExternalMatrixImportService(IProjectDbContextFactory? dbContextFactory = null)
+        {
+            _dbContextFactory = dbContextFactory ?? new ProjectDbContextFactory();
+        }
+
         public ExternalProjectMatrixLoadResult LoadExternalMatrices(string projectPath, TipoMatriz? tipo = null)
         {
             if (string.IsNullOrWhiteSpace(projectPath))
@@ -18,7 +26,8 @@ namespace SOPRO.Application.Services
             if (!File.Exists(projectPath))
                 throw new FileNotFoundException("No se encontró el proyecto seleccionado.", projectPath);
 
-            using var externalContext = new SOPROContext(projectPath);
+            // N4-3: el contexto del proyecto externo se abre por operación con la fábrica.
+            using var externalContext = _dbContextFactory.Create(projectPath);
             SchemaManager.EnsureCurrentSchema(externalContext);
 
             var projectName = externalContext.Proyectos
@@ -59,7 +68,7 @@ namespace SOPRO.Application.Services
 
         public ExternalMatrixImportPreview BuildPreview(SOPROContext currentContext, int currentProjectId, string projectPath, int externalMatrixId)
         {
-            using var externalContext = new SOPROContext(projectPath);
+            using var externalContext = _dbContextFactory.Create(projectPath);
             SchemaManager.EnsureCurrentSchema(externalContext);
             var graph = LoadGraph(externalContext, externalMatrixId);
 
@@ -140,7 +149,7 @@ namespace SOPRO.Application.Services
 
         public ExternalMatrixImportResult ImportMatrixTree(SOPROContext currentContext, int currentProjectId, string projectPath, int externalMatrixId, ExternalMatrixImportConflictPolicy conflictPolicy)
         {
-            using var externalContext = new SOPROContext(projectPath);
+            using var externalContext = _dbContextFactory.Create(projectPath);
             SchemaManager.EnsureCurrentSchema(externalContext);
             var graph = LoadGraph(externalContext, externalMatrixId);
 

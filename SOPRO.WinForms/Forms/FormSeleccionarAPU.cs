@@ -32,7 +32,7 @@ namespace SOPRO.WinForms.Forms
         // ── Dependencias ────────────────────────────────────────────────────
         private readonly SOPROContext _context;
         private readonly int _proyectoId;
-        private readonly ExternalMatrixImportService _externalMatrixImportService = new();
+        private readonly ExternalMatrixImportService _externalMatrixImportService = new(new ProjectDbContextFactory());
         private readonly ProjectIndexService _projectIndexService;
         private readonly SelectorContextService _selectorContextService;
         private readonly CatalogSearchService _catalogSearchService;
