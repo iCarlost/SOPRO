@@ -11,7 +11,9 @@ using System.Linq;
 using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Materials;
 using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
@@ -130,15 +132,8 @@ namespace SOPRO.WinForms.Forms
             {
                 if (e.Column.Tag is not ColumnaMaterial cfg) return;
 
-                var columnaDb = _context.ColumnasMaterial.Find(cfg.Id);
-                if (columnaDb == null) return;
-
                 int nuevoAncho = Math.Max(40, e.Column.Width);
-                if (columnaDb.AnchoColumna == nuevoAncho) return;
-
-                columnaDb.AnchoColumna = nuevoAncho;
-                columnaDb.FechaModificacion = DateTime.Now;
-                _context.SaveChanges();
+                CatalogColumnLayoutService.GuardarAnchoColumna(_context, cfg.Id, nuevoAncho);
             }
             catch (Exception ex)
             {
@@ -146,13 +141,12 @@ namespace SOPRO.WinForms.Forms
             }
         }
 
-        private int DecimalesImporte => _proyectoId.HasValue
-            ? (_context.Proyectos.Find(_proyectoId.Value)?.DecimalesImporte ?? 2) : 2;
+        private int DecimalesImporte => _sessionInfo.DecimalesImporte ?? 2;
 
         private void DgvMateriales_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
         {
             if (e.RowIndex < 0) return;
-            if (dgvMateriales.Rows[e.RowIndex].DataBoundItem is not Material mat) return;
+            if (dgvMateriales.Rows[e.RowIndex].DataBoundItem is not MaterialListItem mat) return;
             var colName = dgvMateriales.Columns[e.ColumnIndex].Name;
             if (colName == "col_Origen" || colName == "colOrigen")
             {
@@ -180,6 +174,23 @@ namespace SOPRO.WinForms.Forms
                 dgvCol.DefaultCellStyle.ForeColor = TryColor(col.ColorFuente, Color.Black);
                 dgvCol.DefaultCellStyle.Alignment = FormatoHelper.ConvertirAlineacionDgv(col.Alineacion, col.AlineacionVertical);
                 dgvCol.DefaultCellStyle.WrapMode = col.WrapTexto ? DataGridViewTriState.True : DataGridViewTriState.False;
+            }
+            catch { }
+        }
+
+        private static void AplicarEstiloDesdeColumna(DataGridViewTextBoxColumn dgvCol, ColumnaPersonalizada fmt)
+        {
+            try
+            {
+                FontStyle fs = (fmt.Negrita ? FontStyle.Bold : FontStyle.Regular)
+                             | (fmt.Cursiva ? FontStyle.Italic : FontStyle.Regular);
+                string fuente = !string.IsNullOrEmpty(fmt.NombreFuente) ? fmt.NombreFuente : "Segoe UI";
+                float tam = fmt.TamanoFuente > 0 ? fmt.TamanoFuente : 9f;
+                dgvCol.DefaultCellStyle.Font = new Font(fuente, tam, fs);
+                dgvCol.DefaultCellStyle.BackColor = TryColor(fmt.ColorFondo, Color.White);
+                dgvCol.DefaultCellStyle.ForeColor = TryColor(fmt.ColorFuente, Color.Black);
+                dgvCol.DefaultCellStyle.Alignment = FormatoHelper.ConvertirAlineacionDgv(fmt.Alineacion, fmt.AlineacionVertical);
+                dgvCol.DefaultCellStyle.WrapMode = fmt.WrapTexto ? DataGridViewTriState.True : DataGridViewTriState.False;
             }
             catch { }
         }

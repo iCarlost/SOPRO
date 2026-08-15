@@ -11,7 +11,9 @@ using System.Linq;
 using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Materials;
 using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
@@ -26,7 +28,7 @@ namespace SOPRO.WinForms.Forms
         {
             return dgvMateriales.SelectedRows
                 .Cast<DataGridViewRow>()
-                .Select(r => r.DataBoundItem as Material)
+                .Select(r => r.DataBoundItem as MaterialListItem)
                 .Where(x => x != null)
                 .GroupBy(x => x.Id)
                 .Select(g => g.First())
@@ -52,7 +54,7 @@ namespace SOPRO.WinForms.Forms
 
             var seleccion = dgvMateriales.SelectedRows
                 .Cast<DataGridViewRow>()
-                .Select(r => r.DataBoundItem as Material)
+                .Select(r => r.DataBoundItem as MaterialListItem)
                 .Where(x => x != null)
                 .GroupBy(x => x.Id)
                 .Select(g => g.First())

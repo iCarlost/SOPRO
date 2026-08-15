@@ -11,7 +11,9 @@ using System.Linq;
 using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Materials;
 using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
@@ -26,23 +28,13 @@ namespace SOPRO.WinForms.Forms
         {
             if (_colMatRibbon == null) return;
 
-            _colMatRibbon.NombreFuente = fmt.NombreFuente;
-            _colMatRibbon.TamanoFuente = fmt.TamanoFuente;
-            _colMatRibbon.Negrita = fmt.Negrita;
-            _colMatRibbon.Cursiva = fmt.Cursiva;
-            _colMatRibbon.Alineacion = fmt.Alineacion;
-            _colMatRibbon.ColorFondo = fmt.ColorFondo;
-            _colMatRibbon.ColorFuente = fmt.ColorFuente;
-            _colMatRibbon.WrapTexto = fmt.WrapTexto;
-            _colMatRibbon.AlineacionVertical = fmt.AlineacionVertical;
-            _colMatRibbon.FechaModificacion = DateTime.Now;
-            _context.SaveChanges();
+            CatalogColumnLayoutService.GuardarFormatoColumna(_context, _colMatRibbon.Id, fmt);
 
             foreach (DataGridViewColumn col in dgvMateriales.Columns)
             {
                 if (col.Tag == _colMatRibbon)
                 {
-                    AplicarEstiloDesdeColMat((DataGridViewTextBoxColumn)col, _colMatRibbon);
+                    AplicarEstiloDesdeColumna((DataGridViewTextBoxColumn)col, fmt);
                     break;
                 }
             }
@@ -53,19 +45,12 @@ namespace SOPRO.WinForms.Forms
         {
             foreach (DataGridViewColumn col in dgvMateriales.Columns)
             {
-                if (col.Tag is not ColumnaMaterial colMat) continue;
-                colMat.NombreFuente = fmt.NombreFuente;
-                colMat.TamanoFuente = fmt.TamanoFuente;
-                colMat.Negrita = fmt.Negrita;
-                colMat.Cursiva = fmt.Cursiva;
-                colMat.Alineacion = fmt.Alineacion;
-                colMat.ColorFuente = fmt.ColorFuente;
-                colMat.WrapTexto = fmt.WrapTexto;
-                colMat.AlineacionVertical = fmt.AlineacionVertical;
-                colMat.FechaModificacion = DateTime.Now;
-                AplicarEstiloDesdeColMat((DataGridViewTextBoxColumn)col, colMat);
+                if (col.Tag is not ColumnaMaterial) continue;
+
+                AplicarEstiloDesdeColumna((DataGridViewTextBoxColumn)col, fmt);
             }
-            _context.SaveChanges();
+            if (_proyectoId.HasValue)
+                CatalogColumnLayoutService.GuardarFormatoGlobal(_context, _proyectoId.Value, fmt);
             dgvMateriales.Invalidate();
         }
 
@@ -106,8 +91,10 @@ namespace SOPRO.WinForms.Forms
             btnImportarExcel.Visible = false;
             dgvMateriales.AplicarEstiloSOPRO();
             _context = context ?? throw new ArgumentNullException(nameof(context));
-            _repository = new Repository<Material>(_context);
+            _sessionInfo = LegacySessionBridge.FromLegacy(_context, proyectoId);
             _proyectoId = proyectoId;
+
+            this.FormClosed += (s, e) => _sessionInfo.Dispose();
 
             if (_proyectoId.HasValue)
                 new EditableReportTitleHelper(_context, panelTop, lblTitulo, () => _proyectoId ?? 0, ReportTitleModuleKeys.CatalogoMateriales).Attach();

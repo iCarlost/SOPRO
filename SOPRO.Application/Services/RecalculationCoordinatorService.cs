@@ -5,27 +5,27 @@ namespace SOPRO.Application.Services
 {
     public static class RecalculationCoordinatorService
     {
-        public static bool RecalculateAfterMaterialUpdate(SOPROContext context, int materialId)
+        public static bool RecalculateAfterMaterialUpdate(SOPROContext context, int materialId, int? proyectoId = null)
         {
-            PricePropagationService.PropagarMaterial(context, materialId);
+            PricePropagationService.PropagarMaterial(context, materialId, proyectoId);
             return true;
         }
 
-        public static bool RecalculateAfterManoDeObraUpdate(SOPROContext context, int manoDeObraId)
+        public static bool RecalculateAfterManoDeObraUpdate(SOPROContext context, int manoDeObraId, int? proyectoId = null)
         {
-            PricePropagationService.PropagarManoDeObra(context, manoDeObraId);
+            PricePropagationService.PropagarManoDeObra(context, manoDeObraId, proyectoId);
             return true;
         }
 
-        public static bool RecalculateAfterMaquinariaUpdate(SOPROContext context, int maquinariaId)
+        public static bool RecalculateAfterMaquinariaUpdate(SOPROContext context, int maquinariaId, int? proyectoId = null)
         {
-            PricePropagationService.PropagarMaquinaria(context, maquinariaId);
+            PricePropagationService.PropagarMaquinaria(context, maquinariaId, proyectoId);
             return true;
         }
 
-        public static bool RecalculateAfterInsumoDeletion(SOPROContext context, List<int> matrizIds)
+        public static bool RecalculateAfterInsumoDeletion(SOPROContext context, List<int> matrizIds, int? proyectoId = null)
         {
-            PricePropagationService.PropagarEliminacion(context, matrizIds);
+            PricePropagationService.PropagarEliminacion(context, matrizIds, proyectoId);
             return true;
         }
     }

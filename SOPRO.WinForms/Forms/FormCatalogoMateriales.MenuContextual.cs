@@ -8,10 +8,13 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Materials;
 using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
@@ -36,7 +39,7 @@ namespace SOPRO.WinForms.Forms
             if (e.ColumnIndex >= 0)
                 dgvMateriales.CurrentCell = clickedRow.Cells[e.ColumnIndex];
 
-            _materialSeleccionado = clickedRow.DataBoundItem as Material;
+            _materialSeleccionado = clickedRow.DataBoundItem as MaterialListItem;
             if (_materialSeleccionado == null) return;
 
             bool puedeEditar = !(_proyectoId.HasValue && _materialSeleccionado.Origen == OrigenInsumo.Maestro);
@@ -54,24 +57,8 @@ namespace SOPRO.WinForms.Forms
             menu.Items.Add(new ToolStripSeparator());
 
             var itemDonde = new ToolStripMenuItem("📋  Dónde se usa");
-            var matrices = BuscarMatricesDondeSeUsa(_materialSeleccionado.Id, TipoInsumoContexto.Material);
-
-            if (matrices.Count == 0)
-            {
-                var sinUso = itemDonde.DropDownItems.Add("(Sin uso en ninguna matriz)");
-                sinUso.Enabled = false;
-            }
-            else
-            {
-                foreach (var m in matrices)
-                {
-                    string label = m.Clave + " — " + (m.Descripcion?.Length > 50
-                        ? m.Descripcion[..50] + "…" : m.Descripcion ?? "");
-                    var item = itemDonde.DropDownItems.Add(label);
-                    var cap = m;
-                    item.Click += (_, __) => AbrirEditorMatriz(cap);
-                }
-            }
+            itemDonde.DropDownOpening += async (_, __) =>
+                await CargarDondeSeUsaAsync(itemDonde, _materialSeleccionado.Id);
             menu.Items.Add(itemDonde);
             menu.Items.Add(new ToolStripSeparator());
 
@@ -103,24 +90,45 @@ namespace SOPRO.WinForms.Forms
             menu.Show(dgvMateriales, dgvMateriales.PointToClient(Cursor.Position));
         }
 
-        private List<Matriz> BuscarMatricesDondeSeUsa(int insumoId, TipoInsumoContexto tipo)
+        /// <summary>
+        /// "Dónde se usa": la consulta vive en el caso de uso headless
+        /// (FindMatricesUsingMaterial) y devuelve DTOs, no entidades rastreadas.
+        /// </summary>
+        private async Task CargarDondeSeUsaAsync(ToolStripMenuItem itemDonde, int materialId)
         {
-            var matrizIds = _context.Set<ComponenteMatriz>()
-                .Where(c => tipo == TipoInsumoContexto.Material ? c.MaterialId == insumoId
-                          : tipo == TipoInsumoContexto.ManoDeObra ? c.ManoDeObraId == insumoId
-                          : tipo == TipoInsumoContexto.Maquinaria ? c.MaquinariaId == insumoId
-                          : c.HerramientaId == insumoId)
-                .Select(c => c.MatrizId)
-                .Distinct()
-                .ToList();
+            itemDonde.DropDownItems.Clear();
 
-            if (matrizIds.Count == 0) return new List<Matriz>();
+            var result = await new FindMatricesUsingMaterial().Execute(
+                _sessionInfo, new FindMatricesUsingMaterialRequest(materialId));
 
-            return _context.Matrices
-                .Where(m => matrizIds.Contains(m.Id) &&
-                            (_proyectoId == null || m.ProyectoId == _proyectoId))
-                .OrderBy(m => m.Clave)
-                .ToList();
+            if (!result.IsSuccess)
+            {
+                var errorItem = itemDonde.DropDownItems.Add(result.Error!.Message);
+                errorItem.Enabled = false;
+                return;
+            }
+
+            var matrices = result.Value!;
+            if (matrices.Count == 0)
+            {
+                var sinUso = itemDonde.DropDownItems.Add("(Sin uso en ninguna matriz)");
+                sinUso.Enabled = false;
+                return;
+            }
+
+            foreach (var uso in matrices)
+            {
+                string label = uso.Clave + " — " + (uso.Descripcion?.Length > 50
+                    ? uso.Descripcion[..50] + "…" : uso.Descripcion ?? "");
+                var item = itemDonde.DropDownItems.Add(label);
+                int matrizId = uso.MatrizId;
+                item.Click += (_, __) =>
+                {
+                    var matriz = _context.Matrices.Find(matrizId);
+                    if (matriz != null)
+                        AbrirEditorMatriz(matriz);
+                };
+            }
         }
 
         private void AbrirEditorMatriz(Matriz matriz)

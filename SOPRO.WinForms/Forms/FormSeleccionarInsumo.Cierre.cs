@@ -50,10 +50,17 @@ namespace SOPRO.WinForms.Forms
             switch (_tipoComponente)
             {
                 case TipoComponenteMatriz.Material:
-                    using (var form = new FormEditarMaterial(_context, _proyectoId))
+                    using (var formSession = LegacySessionBridge.FromLegacy(_context, _proyectoId))
+                    using (var form = new FormEditarMaterial(formSession))
                     {
-                        if (form.ShowDialog(this) == DialogResult.OK)
-                            nuevoId = _context.Materiales.Where(m => m.ProyectoId == _proyectoId).OrderByDescending(m => m.Id).Select(m => (int?)m.Id).FirstOrDefault();
+                        // El Id del material creado lo devuelve el caso de uso
+                        // (SaveMaterialResult.MaterialId); no se adivina con el
+                        // Id máximo del catálogo. Si se guardó en el maestro, el
+                        // Id pertenece a otra base: NO se compara contra las
+                        // filas del proyecto (una coincidencia numérica
+                        // seleccionaría un material local equivocado).
+                        if (form.ShowDialog(this) == DialogResult.OK && !form.UltimoGuardadoEnMaestro)
+                            nuevoId = form.UltimoMaterialIdGuardado;
                     }
                     break;
                 case TipoComponenteMatriz.ManoDeObra:

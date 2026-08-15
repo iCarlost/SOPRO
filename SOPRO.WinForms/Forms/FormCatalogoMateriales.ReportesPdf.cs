@@ -13,6 +13,7 @@ using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
 using SOPRO.Application.Services;
 using SOPRO.Application.Models.Catalogs;
+using SOPRO.Application.UseCases.Materials;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -33,7 +34,7 @@ namespace SOPRO.WinForms.Forms
         {
             try
             {
-                var materiales = dgvMateriales.DataSource as List<Material>;
+                var materiales = dgvMateriales.DataSource as List<MaterialListItem>;
                 if (materiales == null || !materiales.Any())
                 {
                     MessageBox.Show("No hay materiales para exportar.", "Sin datos",
@@ -53,8 +54,23 @@ namespace SOPRO.WinForms.Forms
                 Cursor = Cursors.WaitCursor;
                 var svcRep = new ReporteService(_context);
                 var plantilla = svcRep.ObtenerOCrearPlantilla(_proyectoId ?? 0);
-                Proyecto proyecto = _proyectoId.HasValue
-                    ? _context.Proyectos.Find(_proyectoId.Value)
+
+                // El proyecto del encabezado se construye con los metadatos de la
+                // sesión neutral (sin consultar EF desde el formulario).
+                var refProy = _sessionInfo.Project;
+                var proyecto = _proyectoId.HasValue
+                    ? new Proyecto
+                    {
+                        Nombre = refProy.Name,
+                        Descripcion = refProy.Descripcion,
+                        Ubicacion = refProy.Ubicacion,
+                        Convocante = refProy.Convocante,
+                        Contratista = refProy.Contratista,
+                        ApoderadoLegal = refProy.ApoderadoLegal,
+                        FechaInicio = refProy.FechaInicio,
+                        FechaTermino = refProy.FechaTermino,
+                        PlazoEjecucion = refProy.PlazoEjecucion
+                    }
                     : new Proyecto { Nombre = "Materiales" };
                 var colsVis = _columnasConfig.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
                 var tituloCfg = _proyectoId.HasValue

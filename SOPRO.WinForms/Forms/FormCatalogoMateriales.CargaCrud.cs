@@ -11,8 +11,11 @@ using System.Linq;
 using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Materials;
 using SOPRO.Application.Models.Catalogs;
+using System.Threading;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -24,21 +27,50 @@ namespace SOPRO.WinForms.Forms
 
         public void RecargarCatalogo() => CargarMateriales();
 
+        // Serializa las cargas sobre el contexto de sesión y descarta resultados
+        // de cargas anteriores (el texto puede cambiar mientras una carga corre).
+        private static readonly SemaphoreSlim _cargaLock = new(1, 1);
+        private CancellationTokenSource? _cargaCts;
+
         private async void CargarMateriales()
         {
+            _cargaCts?.Cancel();
+            var cts = new CancellationTokenSource();
+            _cargaCts = cts;
+
+            try
+            {
+                await _cargaLock.WaitAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
             try
             {
                 btnRefrescar.Enabled = false;
                 lblStatus.Text = "Cargando materiales...";
                 var _gridState = DataGridViewStateHelper.Capture(dgvMateriales);
 
-                var materiales = await _catalogLoadService.LoadMaterialesAsync(_context, new CatalogFilterInput
+                var result = await _listMaterials.Execute(_sessionInfo, new ListMaterialsRequest
                 {
-                    ProyectoId = _proyectoId,
-                    SoloProyecto = chkSoloProyecto.Checked,
-                    SoloMaestros = chkSoloMaestros.Checked,
-                    SearchText = txtBuscar.Text
-                });
+                    SearchText = txtBuscar.Text,
+                    OnlyProjectItems = chkSoloProyecto.Checked,
+                    OnlyMasterItems = chkSoloMaestros.Checked,
+                }, cts.Token);
+
+                if (cts.IsCancellationRequested) return;
+
+                if (!result.IsSuccess)
+                {
+                    MessageBox.Show(result.Error.Message, "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    lblStatus.Text = "Error al cargar materiales";
+                    return;
+                }
+
+                var materiales = result.Value;
 
                 SuspendLayout();
                 using (GridRedrawHelper.Suspend(dgvMateriales))
@@ -51,6 +83,10 @@ namespace SOPRO.WinForms.Forms
 
                 lblStatus.Text = $"{materiales.Count} material(es) encontrado(s)";
             }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+                // Carga superada por una más reciente: no tocar la UI.
+            }
             catch (Exception ex)
             {
                 MessageBox.Show($"Error al cargar materiales:\n{ex.Message}", "Error",
@@ -60,12 +96,13 @@ namespace SOPRO.WinForms.Forms
             finally
             {
                 btnRefrescar.Enabled = true;
+                _cargaLock.Release();
             }
         }
 
         private void btnNuevo_Click(object sender, EventArgs e)
         {
-            using var form = new FormEditarMaterial(_context, _proyectoId);
+            using var form = new FormEditarMaterial(_sessionInfo);
             if (form.ShowDialog() == DialogResult.OK)
                 CargarMateriales();
         }
@@ -88,12 +125,12 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            using var form = new FormEditarMaterial(_context, _proyectoId, _materialSeleccionado);
+            using var form = new FormEditarMaterial(_sessionInfo, _materialSeleccionado);
             if (form.ShowDialog() == DialogResult.OK)
                 CargarMateriales();
         }
 
-        private void btnEliminar_Click(object sender, EventArgs e)
+        private async void btnEliminar_Click(object sender, EventArgs e)
         {
             if (_materialSeleccionado == null)
             {
@@ -109,58 +146,80 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
+            // El Id y los datos del mensaje se capturan ANTES del primer await:
+            // la selección puede cambiar mientras la previsualización consulta.
+            int materialId = _materialSeleccionado.Id;
+            string claveConfirmacion = _materialSeleccionado.Clave;
+            string descripcionConfirmacion = _materialSeleccionado.Descripcion;
+
             var result = MessageBox.Show(
                 $"¿Está seguro de eliminar el material?\n\n" +
-                $"Clave: {_materialSeleccionado.Clave}\n" +
-                $"Descripción: {_materialSeleccionado.Descripcion}\n\n" +
+                $"Clave: {claveConfirmacion}\n" +
+                $"Descripción: {descripcionConfirmacion}\n\n" +
                 "Esta acción no se puede deshacer.",
                 "Confirmar Eliminación", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
 
-            if (result == DialogResult.Yes)
+            if (result != DialogResult.Yes) return;
+
+            try
             {
-                try
+                // Previsualización del impacto: la UI solo decide la confirmación.
+                var previewResult = await _previewMaterialDeletion.Execute(
+                    _sessionInfo, new PreviewMaterialDeletionRequest(materialId));
+
+                if (!previewResult.IsSuccess)
                 {
-                    // Verificar si está en uso en matrices y borrar componentes primero
-                    var componentesEnUso = _context.ComponentesMatriz
-                        .Where(c => c.MaterialId == _materialSeleccionado.Id)
-                        .ToList();
-
-                    if (componentesEnUso.Any())
-                    {
-                        int numMatrices = componentesEnUso.Select(c => c.MatrizId).Distinct().Count();
-                        var confirmar = MessageBox.Show(
-                            $"Este insumo está usado en {componentesEnUso.Count} componente(s) de {numMatrices} matriz/matrices.\n\n" +
-                            "Al eliminarlo, esos componentes también serán eliminados.\n\n¿Desea continuar?",
-                            "Insumo en uso", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-                        if (confirmar != DialogResult.Yes) return;
-                        _context.ComponentesMatriz.RemoveRange(componentesEnUso);
-                    }
-
-
-                    // Primero borrar el insumo y guardar
-                    var enBD = _context.Materiales.Find(_materialSeleccionado.Id);
-                    if (enBD != null) _context.Materiales.Remove(enBD);
-                    _context.SaveChanges();
-
-                    // Ahora propagar a matrices afectadas (el contexto ya refleja el estado real)
-                    if (componentesEnUso.Any())
-                    {
-                        var matrizIds = componentesEnUso.Select(c => c.MatrizId).Distinct().ToList();
-                        RecalculationCoordinatorService.RecalculateAfterInsumoDeletion(_context, matrizIds);
-                        OpenFormsRefreshHelper.RefrescarPresupuestosAbiertos();
-                    }
-
-                    InsumosModificados?.Invoke(null, EventArgs.Empty);
-
-                    MessageBox.Show("Material eliminado exitosamente.", "Eliminado",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    CargarMateriales();
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Error al eliminar el material:\n{ex.Message}", "Error",
+                    MessageBox.Show(previewResult.Error!.Message, "Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
                 }
+
+                var preview = previewResult.Value!;
+                if (preview.ComponentCount > 0)
+                {
+                    var confirmar = MessageBox.Show(
+                        $"Este insumo está usado en {preview.ComponentCount} componente(s) de {preview.AffectedMatrixCount} matriz/matrices.\n\n" +
+                        "Al eliminarlo, esos componentes también serán eliminados.\n\n¿Desea continuar?",
+                        "Insumo en uso", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                    if (confirmar != DialogResult.Yes) return;
+                }
+
+                if (preview.CrossProjectReferenceCount > 0)
+                {
+                    MessageBox.Show(
+                        $"Este insumo está referenciado en {preview.CrossProjectReferenceCount} componente(s) de matrices de otro proyecto.\n\n" +
+                        "La eliminación no puede continuar: no se eliminan componentes fuera del proyecto de la sesión.",
+                        "Insumo referenciado en otro proyecto", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                var deleteResult = await _deleteMaterial.Execute(
+                    _sessionInfo, new DeleteMaterialRequest(materialId));
+
+                if (!deleteResult.IsSuccess)
+                {
+                    MessageBox.Show(deleteResult.Error!.Message, "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (deleteResult.Value!.TriggeredRecalculation)
+                    OpenFormsRefreshHelper.RefrescarPresupuestosAbiertos();
+
+                InsumosModificados?.Invoke(null, EventArgs.Empty);
+
+                MessageBox.Show("Material eliminado exitosamente.", "Eliminado",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                CargarMateriales();
+            }
+            catch (OperationCanceledException)
+            {
+                // Operación cancelada: no mostrar error.
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error al eliminar el material:\n{ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -188,7 +247,7 @@ namespace SOPRO.WinForms.Forms
         private void dgvMateriales_SelectionChanged(object sender, EventArgs e)
         {
             _materialSeleccionado = dgvMateriales.SelectedRows.Count > 0
-                ? dgvMateriales.SelectedRows[0].DataBoundItem as Material
+                ? dgvMateriales.SelectedRows[0].DataBoundItem as MaterialListItem
                 : null;
             ActualizarEstadoBotones();
         }

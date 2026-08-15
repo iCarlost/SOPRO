@@ -1,0 +1,70 @@
+using Microsoft.EntityFrameworkCore;
+using SOPRO.Application.Contracts;
+
+namespace SOPRO.Application.UseCases.Materials;
+
+/// <summary>
+/// Caso de uso (consulta): matrices donde se usa un material ("Dónde se usa").
+/// Devuelve DTOs de presentación (nunca entidades rastreadas) y solo opera
+/// sobre materiales del alcance de la sesión.
+/// </summary>
+public sealed class FindMatricesUsingMaterial
+{
+    public async Task<Result<IReadOnlyList<MaterialUsageInMatrix>>> Execute(
+        ProjectSessionInfo session,
+        FindMatricesUsingMaterialRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var context = session.Context;
+
+        try
+        {
+            var material = await context.Materiales
+                .AsNoTracking()
+                .FirstOrDefaultAsync(m => m.Id == request.MaterialId, cancellationToken);
+
+            if (material == null || !MaterialScope.IsInSessionScope(session, material))
+            {
+                return Result<IReadOnlyList<MaterialUsageInMatrix>>.Fail(
+                    AppErrorCode.NotFound,
+                    $"No se encontró el material con Id {request.MaterialId}.");
+            }
+
+            var matrizIds = await context.ComponentesMatriz
+                .AsNoTracking()
+                .Where(c => c.MaterialId == request.MaterialId)
+                .Select(c => c.MatrizId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
+            if (matrizIds.Count == 0)
+                return Result<IReadOnlyList<MaterialUsageInMatrix>>.Ok(Array.Empty<MaterialUsageInMatrix>());
+
+            // Las matrices se restringen al proyecto de la sesión: el esquema no
+            // garantiza que un Id de matriz referencie el mismo proyecto que el
+            // material, y una colisión numérica no debe cruzar proyectos.
+            var matrices = await context.Matrices
+                .AsNoTracking()
+                .Where(m => matrizIds.Contains(m.Id)
+                    && m.ProyectoId == session.Project.ProjectId)
+                .OrderBy(m => m.Clave)
+                .Select(m => new MaterialUsageInMatrix(m.Id, m.Clave, m.Descripcion ?? string.Empty))
+                .ToListAsync(cancellationToken);
+
+            return Result<IReadOnlyList<MaterialUsageInMatrix>>.Ok(matrices);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return Result<IReadOnlyList<MaterialUsageInMatrix>>.Fail(
+                AppErrorCode.Database,
+                "No se pudo consultar dónde se usa el material.",
+                ex.Message);
+        }
+    }
+}
