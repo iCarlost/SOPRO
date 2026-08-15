@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
+using SOPRO.Data.Factories;
 
 namespace SOPRO.Application.UseCases.Materials;
 
@@ -13,9 +14,19 @@ namespace SOPRO.Application.UseCases.Materials;
 ///   - Búsqueda por Clave o Descripción (casing-insensitive).
 ///   - SoleProjectItems / SoleMasterItems se resuelven por la marca de origen
 ///     en Notas (ImportOriginStampService.ExtractProjectName), en memoria.
+///
+/// N4: el contexto es POR OPERACIÓN (IProjectDbContextFactory transient);
+/// cada paso de I/O comprueba la cancelación.
 /// </summary>
 public sealed class ListMaterials
 {
+    private readonly IProjectDbContextFactory _factory;
+
+    public ListMaterials(IProjectDbContextFactory factory)
+    {
+        _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+    }
+
     private static bool EsImportado(string? notas)
         => !string.IsNullOrWhiteSpace(ImportOriginStampService.ExtractProjectName(notas));
 
@@ -26,19 +37,21 @@ public sealed class ListMaterials
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var query = session.Context.Materiales.AsNoTracking();
-
-        if (session.Project.ProjectId.HasValue)
-            query = query.Where(m => m.ProyectoId == session.Project.ProjectId.Value);
-
-        if (!string.IsNullOrWhiteSpace(request.SearchText))
-        {
-            var term = request.SearchText.Trim().ToLower();
-            query = query.Where(m => m.Clave.ToLower().Contains(term) || m.Descripcion.ToLower().Contains(term));
-        }
+        await using var context = await _factory.CreateAsync(session.DatabasePath, cancellationToken);
 
         try
         {
+            var query = context.Materiales.AsNoTracking();
+
+            if (session.Project.ProjectId.HasValue)
+                query = query.Where(m => m.ProyectoId == session.Project.ProjectId.Value);
+
+            if (!string.IsNullOrWhiteSpace(request.SearchText))
+            {
+                var term = request.SearchText.Trim().ToLower();
+                query = query.Where(m => m.Clave.ToLower().Contains(term) || m.Descripcion.ToLower().Contains(term));
+            }
+
             var list = await query
                 .OrderBy(m => m.Clave)
                 .Select(m => new MaterialListItem(
@@ -50,6 +63,7 @@ public sealed class ListMaterials
                     m.Notas ?? string.Empty,
                     m.Origen))
                 .ToListAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (request.OnlyProjectItems)
                 list = list.Where(m => !EsImportado(m.Notas)).ToList();
@@ -58,7 +72,7 @@ public sealed class ListMaterials
 
             return Result<List<MaterialListItem>>.Ok(list);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             throw;
         }

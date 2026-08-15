@@ -94,7 +94,10 @@ namespace SOPRO.WinForms.Forms
             _sessionInfo = LegacySessionBridge.FromLegacy(_context, proyectoId);
             _proyectoId = proyectoId;
 
-            this.FormClosed += (s, e) => _sessionInfo.Dispose();
+            // N4: la sesión es datos puros (no posee contexto): no hay Dispose.
+            _listMaterials = new ListMaterials(_factory);
+            _deleteMaterial = new DeleteMaterial(_factory);
+            _previewMaterialDeletion = new PreviewMaterialDeletion(_factory);
 
             if (_proyectoId.HasValue)
                 new EditableReportTitleHelper(_context, panelTop, lblTitulo, () => _proyectoId ?? 0, ReportTitleModuleKeys.CatalogoMateriales).Attach();

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.Contracts;
+using SOPRO.Data.Factories;
 
 namespace SOPRO.Application.UseCases.Materials;
 
@@ -8,9 +9,19 @@ namespace SOPRO.Application.UseCases.Materials;
 /// sesión (mismo proyecto). Devuelve <c>null</c> si no existe; nunca entidades
 /// rastreadas. Es la versión headless del autocompletado por clave de la UI
 /// legacy (FormEditarMaterial).
+///
+/// N4: el contexto es POR OPERACIÓN (IProjectDbContextFactory transient);
+/// cada paso de I/O comprueba la cancelación.
 /// </summary>
 public sealed class FindMaterialByKey
 {
+    private readonly IProjectDbContextFactory _factory;
+
+    public FindMaterialByKey(IProjectDbContextFactory factory)
+    {
+        _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+    }
+
     public async Task<Result<MaterialListItem?>> Execute(
         ProjectSessionInfo session,
         FindMaterialByKeyRequest request,
@@ -27,12 +38,15 @@ public sealed class FindMaterialByKey
 
         try
         {
-            var material = await session.Context.Materiales
+            await using var context = await _factory.CreateAsync(session.DatabasePath, cancellationToken);
+
+            var material = await context.Materiales
                 .AsNoTracking()
                 .Where(m => m.ProyectoId == session.Project.ProjectId.Value)
                 .Where(m => m.Clave.ToUpper() == clave.ToUpper())
                 .OrderBy(m => m.Id)
                 .FirstOrDefaultAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (material == null)
                 return Result<MaterialListItem?>.Ok(null);
@@ -46,7 +60,7 @@ public sealed class FindMaterialByKey
                 material.Notas ?? string.Empty,
                 material.Origen));
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             throw;
         }

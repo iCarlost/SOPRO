@@ -5,6 +5,7 @@ using SOPRO.Application.Models.ExternalProjects;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -92,7 +93,7 @@ namespace SOPRO.WinForms.Forms
             _projectIndexService    = new ProjectIndexService(workspaceService);
             _selectorContextService = new SelectorContextService(workspaceService);
             _projectUsageService    = new ProjectUsageService(workspaceService);
-            _catalogSearchService   = new CatalogSearchService(_projectIndexService, _projectUsageService);
+            _catalogSearchService   = new CatalogSearchService(_projectIndexService, _projectUsageService, new ProjectDbContextFactory());
             _projectIndexService.RefreshKnownProjects(_context.DatabasePath, force: true);
             _projectNameActual      = _context.Proyectos.Find(_proyectoId)?.Nombre
                                       ?? Path.GetFileNameWithoutExtension(_context.DatabasePath);

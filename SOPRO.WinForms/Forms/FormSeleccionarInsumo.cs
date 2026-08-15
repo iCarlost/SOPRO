@@ -11,6 +11,7 @@ using SOPRO.Application.Models.ExternalProjects;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 using SOPRO.WinForms.Helpers;
 
 namespace SOPRO.WinForms.Forms
@@ -59,7 +60,7 @@ namespace SOPRO.WinForms.Forms
             var workspaceService = new ProjectWorkspaceService();
             _projectIndexService = new ProjectIndexService(workspaceService);
             _projectUsageService = new ProjectUsageService(workspaceService);
-            _insumoSearchService = new InsumoSearchService(_projectIndexService, _projectUsageService, workspaceService);
+            _insumoSearchService = new InsumoSearchService(_projectIndexService, _projectUsageService, workspaceService, new ProjectDbContextFactory());
             _projectNameActual = _context.Proyectos.Find(_proyectoId)?.Nombre ?? Path.GetFileNameWithoutExtension(_context.DatabasePath);
 
             InsumosSeleccionados = new List<object>();

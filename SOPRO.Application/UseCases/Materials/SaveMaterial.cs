@@ -1,10 +1,9 @@
-using System.Transactions;
 using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.Contracts;
 using SOPRO.Application.DTOs.Catalog;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
-using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 
 namespace SOPRO.Application.UseCases.Materials;
 
@@ -21,9 +20,19 @@ namespace SOPRO.Application.UseCases.Materials;
 /// Guardar "en maestro" (SaveToMaster) escribe en la base del catálogo maestro
 /// (CatalogoMaestro.db), no en la base del proyecto: la fila maestra es una
 /// entidad compartida entre proyectos.
+///
+/// N4: el contexto es POR OPERACIÓN (IProjectDbContextFactory transient);
+/// cada paso de I/O comprueba la cancelación (ThrowIfCancellationRequested).
 /// </summary>
 public sealed class SaveMaterial
 {
+    private readonly IProjectDbContextFactory _factory;
+
+    public SaveMaterial(IProjectDbContextFactory factory)
+    {
+        _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+    }
+
     public async Task<Result<SaveMaterialResult>> Execute(
         ProjectSessionInfo session,
         SaveMaterialRequest request,
@@ -56,16 +65,14 @@ public sealed class SaveMaterial
 
             return await GuardarEnProyectoAsync(session, request, clave, cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            // El contexto compartido de la sesión no debe conservar mutaciones
-            // de una operación que no se confirmó.
-            session.Context.ChangeTracker.Clear();
+            // El contexto es por operación (await using): no hay estado
+            // compartido que limpiar; la transacción se revierte al disponerse.
             throw;
         }
         catch (Exception ex)
         {
-            session.Context.ChangeTracker.Clear();
             return Result<SaveMaterialResult>.Fail(
                 AppErrorCode.Database,
                 "No se pudo guardar el material.",
@@ -79,7 +86,8 @@ public sealed class SaveMaterial
         string clave,
         CancellationToken cancellationToken)
     {
-        var context = session.Context;
+        await using var context = await _factory.CreateAsync(session.DatabasePath, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (request.ProjectId.HasValue)
         {
@@ -95,12 +103,14 @@ public sealed class SaveMaterial
         }
 
         await using var tx = await context.Database.BeginTransactionAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
 
         Material? material = null;
         if (request.MaterialId.HasValue)
         {
             material = await context.Materiales
                 .FindAsync(new object?[] { request.MaterialId.Value }, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (material == null || !MaterialScope.IsInSessionScope(session, material))
             {
@@ -124,6 +134,10 @@ public sealed class SaveMaterial
             },
             material);
 
+        // Cancelación entre la persistencia y el commit: la transacción se
+        // revierte al disponerse (nada queda persistido).
+        cancellationToken.ThrowIfCancellationRequested();
+
         await tx.CommitAsync(cancellationToken);
 
         return Result<SaveMaterialResult>.Ok(new SaveMaterialResult(
@@ -138,8 +152,12 @@ public sealed class SaveMaterial
         string clave,
         CancellationToken cancellationToken)
     {
-        using var masterCtx = new SOPROContext(session.MasterDatabasePath);
+        await using var masterCtx = await _factory.CreateAsync(session.MasterDatabasePath, cancellationToken);
         await masterCtx.Database.EnsureCreatedAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await using var context = await _factory.CreateAsync(session.DatabasePath, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
 
         // Identidad de la fila maestra (los Ids NO se comparten entre bases):
         //  - Sesión de proyecto: la fila maestra asociada del material de origen
@@ -151,9 +169,10 @@ public sealed class SaveMaterial
         {
             if (request.MaterialId.HasValue)
             {
-                var origen = await session.Context.Materiales
+                var origen = await context.Materiales
                     .AsNoTracking()
                     .FirstOrDefaultAsync(m => m.Id == request.MaterialId.Value, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
 
                 if (origen == null || !MaterialScope.IsInSessionScope(session, origen))
                 {
@@ -181,6 +200,7 @@ public sealed class SaveMaterial
             .AnyAsync(m => m.ProyectoId == null
                 && m.Clave.ToUpper() == claveNormalizada
                 && m.Id != idExcluir, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (claveDuplicada)
         {
@@ -201,6 +221,7 @@ public sealed class SaveMaterial
             int materialId = idFilaMaestra!.Value;
             var materialMaestroTemp = await masterCtx.Materiales
                 .FindAsync(new object?[] { materialId }, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (materialMaestroTemp == null)
             {
@@ -222,27 +243,30 @@ public sealed class SaveMaterial
         // crear una copia independiente por cada guardado.
         //
         // Dos bases (proyecto y maestro) → dos commits: SQLite no admite
-        // transacciones distribuidas. Si la segunda escritura falla se revierte
+        // transacciones distribuidas. Si la segunda escritura falla (o la
+        // operación se cancela ANTES del segundo SaveChangesAsync), se revierte
         // la fila maestra recién creada (compensación), de modo que la operación
-        // queda sin efectos visibles y es reintentable: no queda una fila
-        // huérfana que provoque Conflict en el reintento.
+        // queda sin efectos visibles y es reintentable. La compensación guarda
+        // sin token: debe completarse aunque la operación se haya cancelado.
         if (esNuevo && session.Project.ProjectId.HasValue && request.MaterialId.HasValue)
         {
             try
             {
-                var local = await session.Context.Materiales
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var local = await context.Materiales
                     .FindAsync(new object?[] { request.MaterialId.Value }, cancellationToken);
 
                 if (local != null && local.MaterialMaestroId == null)
                 {
                     local.MaterialMaestroId = materialMaestro.Id;
-                    await session.Context.SaveChangesAsync(cancellationToken);
+                    await context.SaveChangesAsync(cancellationToken);
                 }
             }
             catch
             {
                 masterCtx.Materiales.Remove(materialMaestro);
-                await masterCtx.SaveChangesAsync(cancellationToken);
+                await masterCtx.SaveChangesAsync(CancellationToken.None);
                 throw;
             }
         }

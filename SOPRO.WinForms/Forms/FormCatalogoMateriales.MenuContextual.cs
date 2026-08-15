@@ -98,7 +98,7 @@ namespace SOPRO.WinForms.Forms
         {
             itemDonde.DropDownItems.Clear();
 
-            var result = await new FindMatricesUsingMaterial().Execute(
+            var result = await new FindMatricesUsingMaterial(_factory).Execute(
                 _sessionInfo, new FindMatricesUsingMaterialRequest(materialId));
 
             if (!result.IsSuccess)

@@ -102,7 +102,7 @@ namespace SOPRO.WinForms.Forms
 
         private void btnNuevo_Click(object sender, EventArgs e)
         {
-            using var form = new FormEditarMaterial(_sessionInfo);
+            using var form = new FormEditarMaterial(_sessionInfo, factory: _factory);
             if (form.ShowDialog() == DialogResult.OK)
                 CargarMateriales();
         }
@@ -125,7 +125,7 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            using var form = new FormEditarMaterial(_sessionInfo, _materialSeleccionado);
+            using var form = new FormEditarMaterial(_sessionInfo, _materialSeleccionado, _factory);
             if (form.ShowDialog() == DialogResult.OK)
                 CargarMateriales();
         }

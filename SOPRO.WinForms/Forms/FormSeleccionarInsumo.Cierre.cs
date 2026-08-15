@@ -50,7 +50,8 @@ namespace SOPRO.WinForms.Forms
             switch (_tipoComponente)
             {
                 case TipoComponenteMatriz.Material:
-                    using (var formSession = LegacySessionBridge.FromLegacy(_context, _proyectoId))
+                    // N4: la sesión es datos puros (no posee contexto): no se dispone.
+                    var formSession = LegacySessionBridge.FromLegacy(_context, _proyectoId);
                     using (var form = new FormEditarMaterial(formSession))
                     {
                         // El Id del material creado lo devuelve el caso de uso

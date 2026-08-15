@@ -14,6 +14,7 @@ using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
 using SOPRO.Application.Models.Catalogs;
 using SOPRO.Application.UseCases.Materials;
+using SOPRO.Data.Factories;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -25,10 +26,14 @@ namespace SOPRO.WinForms.Forms
         private readonly ProjectSessionInfo _sessionInfo;
         private readonly int? _proyectoId;
 
+        // N4: la fábrica de contextos es transient por uso; la sesión ya no posee
+        // contexto, cada caso de uso abre y libera el suyo dentro del método.
+        private readonly IProjectDbContextFactory _factory = new ProjectDbContextFactory();
+
         // Casos de uso de la frontera N3: la UI no calcula ni persiste materiales directamente.
-        private readonly ListMaterials _listMaterials = new();
-        private readonly DeleteMaterial _deleteMaterial = new();
-        private readonly PreviewMaterialDeletion _previewMaterialDeletion = new();
+        private readonly ListMaterials _listMaterials;
+        private readonly DeleteMaterial _deleteMaterial;
+        private readonly PreviewMaterialDeletion _previewMaterialDeletion;
 
         private MaterialListItem _materialSeleccionado;
         private List<ColumnaMaterial> _columnasConfig = new List<ColumnaMaterial>();

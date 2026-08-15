@@ -5,6 +5,7 @@ using SOPRO.Application.Models;
 using SOPRO.Application.Models.Selector;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 
 namespace SOPRO.Application.Services
 {
@@ -15,14 +16,20 @@ namespace SOPRO.Application.Services
         private readonly ProjectIndexService _projectIndexService;
         private readonly ProjectUsageService _projectUsageService;
         private readonly ProjectWorkspaceService _workspaceService;
+        private readonly IProjectDbContextFactory _factory;
 
         private string InsumoIndexFolder => Path.Combine(_workspaceService.LocalDataFolder, "selector-insumo-index");
 
-        public InsumoSearchService(ProjectIndexService projectIndexService, ProjectUsageService projectUsageService, ProjectWorkspaceService workspaceService)
+        public InsumoSearchService(
+            ProjectIndexService projectIndexService,
+            ProjectUsageService projectUsageService,
+            ProjectWorkspaceService workspaceService,
+            IProjectDbContextFactory factory)
         {
             _projectIndexService = projectIndexService ?? throw new ArgumentNullException(nameof(projectIndexService));
             _projectUsageService = projectUsageService ?? throw new ArgumentNullException(nameof(projectUsageService));
             _workspaceService = workspaceService ?? throw new ArgumentNullException(nameof(workspaceService));
+            _factory = factory ?? throw new ArgumentNullException(nameof(factory));
         }
 
         public IReadOnlyList<InsumoSearchResultDto> SearchInsumos(
@@ -161,7 +168,7 @@ namespace SOPRO.Application.Services
             if (!File.Exists(projectPath))
                 throw new FileNotFoundException("No se encontró el proyecto a indexar.", projectPath);
 
-            using var context = new SOPROContext(projectPath);
+            using var context = _factory.Create(projectPath);
             SchemaManager.EnsureCurrentSchema(context);
             var normalizedPath = NormalizePath(projectPath);
             var projectName = context.Proyectos.AsNoTracking().OrderBy(p => p.Id).Select(p => p.Nombre).FirstOrDefault() ?? Path.GetFileNameWithoutExtension(normalizedPath);

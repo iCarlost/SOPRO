@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.Contracts;
+using SOPRO.Data.Factories;
 
 namespace SOPRO.Application.UseCases.Materials;
 
@@ -8,9 +9,19 @@ namespace SOPRO.Application.UseCases.Materials;
 /// cuántos componentes de matriz lo usan y en qué matrices. No modifica nada.
 /// Solo opera sobre materiales del alcance de la sesión (aislamiento entre
 /// proyectos y catálogo maestro).
+///
+/// N4: el contexto es POR OPERACIÓN (IProjectDbContextFactory transient);
+/// cada paso de I/O comprueba la cancelación.
 /// </summary>
 public sealed class PreviewMaterialDeletion
 {
+    private readonly IProjectDbContextFactory _factory;
+
+    public PreviewMaterialDeletion(IProjectDbContextFactory factory)
+    {
+        _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+    }
+
     public async Task<Result<MaterialDeletionPreview>> Execute(
         ProjectSessionInfo session,
         PreviewMaterialDeletionRequest request,
@@ -18,13 +29,14 @@ public sealed class PreviewMaterialDeletion
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var context = session.Context;
+        await using var context = await _factory.CreateAsync(session.DatabasePath, cancellationToken);
 
         try
         {
             var material = await context.Materiales
                 .AsNoTracking()
                 .FirstOrDefaultAsync(m => m.Id == request.MaterialId, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (material == null || !MaterialScope.IsInSessionScope(session, material))
             {
@@ -42,6 +54,7 @@ public sealed class PreviewMaterialDeletion
                 .Where(c => c.MaterialId == request.MaterialId
                     && c.Matriz.ProyectoId == session.Project.ProjectId)
                 .ToListAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Referencias fuera del alcance: no se eliminan, pero bloquean la
             // eliminación del material (FK Restrict + aislamiento de proyecto).
@@ -49,6 +62,7 @@ public sealed class PreviewMaterialDeletion
                 .AsNoTracking()
                 .CountAsync(c => c.MaterialId == request.MaterialId
                     && c.Matriz.ProyectoId != session.Project.ProjectId, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (componentes.Count == 0)
                 return Result<MaterialDeletionPreview>.Ok(
@@ -63,11 +77,12 @@ public sealed class PreviewMaterialDeletion
                 .OrderBy(m => m.Clave)
                 .Select(m => new MaterialUsageInMatrix(m.Id, m.Clave, m.Descripcion ?? string.Empty))
                 .ToListAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
             return Result<MaterialDeletionPreview>.Ok(
                 new MaterialDeletionPreview(componentes.Count, matrices, referenciasExternas));
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             throw;
         }
