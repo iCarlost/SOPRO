@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 using SOPRO.Application.DTOs.Presupuesto;
 using SOPRO.Application.DTOs.Catalog;
 using SOPRO.Application.DTOs.Matrices;
@@ -291,7 +292,7 @@ namespace SOPRO.WinForms.Forms
             var workspaceService = new ProjectWorkspaceService();
             _projectIndexService = new ProjectIndexService(workspaceService);
             _projectUsageService = new ProjectUsageService(workspaceService);
-            _catalogSearchService = new CatalogSearchService(_projectIndexService, _projectUsageService);
+            _catalogSearchService = new CatalogSearchService(_projectIndexService, _projectUsageService, new ProjectDbContextFactory());
             _projectIndexService.RefreshKnownProjects(context.DatabasePath, force: true);
             // Recargar proyecto fresco desde BD para tener los % actualizados
             _proyecto = context.Proyectos.Find(proyecto.Id) ?? proyecto;

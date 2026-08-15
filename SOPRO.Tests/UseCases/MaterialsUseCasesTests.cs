@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,6 +8,8 @@ using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
 using SOPRO.Application.UseCases.Materials;
 using SOPRO.Core.Entities;
+using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 using SOPRO.Tests.TestInfrastructure;
 
 namespace SOPRO.Tests.UseCases;
@@ -18,12 +20,31 @@ namespace SOPRO.Tests.UseCases;
 /// "Guardado y propagación son una operación lógica única": una transacción
 /// única + propagación inmediata dentro del caso de uso, con rollback completo
 /// ante cualquier fallo.
+///
+/// Gate N4: la sesión es datos puros y cada caso de uso abre su contexto por
+/// operación (IProjectDbContextFactory); la fábrica de prueba permite inyectar
+/// fallos deterministas (cancelación en puntos concretos de I/O).
 /// </summary>
 [TestClass]
 public class MaterialsUseCasesTests
 {
+    private static readonly IProjectDbContextFactory Fabrica = new ProjectDbContextFactory();
+
     private static ProjectSessionInfo CrearSession(int? proyectoId, string databasePath, string? masterDatabasePath = null)
-        => ProjectSessionInfo.Create(proyectoId, databasePath, masterDatabasePath);
+    {
+        if (proyectoId.HasValue)
+        {
+            using var lectura = new SOPROContext(databasePath);
+            var proyecto = lectura.Proyectos.Find(proyectoId.Value);
+            return ProjectSessionInfo.Create(
+                proyecto != null ? ProjectRef.FromEntity(proyecto) : new ProjectRef(proyectoId.Value, string.Empty),
+                databasePath,
+                masterDatabasePath,
+                proyecto?.DecimalesImporte);
+        }
+
+        return ProjectSessionInfo.Create(ProjectRef.Master, databasePath, masterDatabasePath);
+    }
 
     // ---------- ListMaterials ----------
 
@@ -54,8 +75,8 @@ public class MaterialsUseCasesTests
         });
         context.SaveChanges();
 
-        using var session = CrearSession(null, context.DatabasePath, TestDbFactory.CreateTempDbPath());
-        var result = await new ListMaterials().Execute(session, new ListMaterialsRequest());
+        var session = CrearSession(null, context.DatabasePath, TestDbFactory.CreateTempDbPath());
+        var result = await new ListMaterials(Fabrica).Execute(session, new ListMaterialsRequest());
 
         if (!result.IsSuccess) Assert.Fail(result.Error!.Message);
         Assert.AreEqual(2, result.Value!.Count);
@@ -83,8 +104,8 @@ public class MaterialsUseCasesTests
         });
         context.SaveChanges();
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
-        var result = await new ListMaterials().Execute(session, new ListMaterialsRequest());
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var result = await new ListMaterials(Fabrica).Execute(session, new ListMaterialsRequest());
 
         if (!result.IsSuccess) Assert.Fail(result.Error!.Message);
         Assert.AreEqual(1, result.Value!.Count);
@@ -97,13 +118,13 @@ public class MaterialsUseCasesTests
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var porDescripcion = (await new ListMaterials().Execute(
+        var porDescripcion = (await new ListMaterials(Fabrica).Execute(
             session, new ListMaterialsRequest(SearchText: "GRIS"))).Value!;
-        var porClave = (await new ListMaterials().Execute(
+        var porClave = (await new ListMaterials(Fabrica).Execute(
             session, new ListMaterialsRequest(SearchText: "mat-ceM"))).Value!;
-        var sinResultados = (await new ListMaterials().Execute(
+        var sinResultados = (await new ListMaterials(Fabrica).Execute(
             session, new ListMaterialsRequest(SearchText: "no-existe"))).Value!;
 
         Assert.AreEqual(1, porDescripcion.Count);
@@ -130,11 +151,11 @@ public class MaterialsUseCasesTests
         });
         context.SaveChanges();
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var soloProyecto = (await new ListMaterials().Execute(
+        var soloProyecto = (await new ListMaterials(Fabrica).Execute(
             session, new ListMaterialsRequest(OnlyProjectItems: true))).Value!;
-        var soloMaestro = (await new ListMaterials().Execute(
+        var soloMaestro = (await new ListMaterials(Fabrica).Execute(
             session, new ListMaterialsRequest(OnlyMasterItems: true))).Value!;
 
         Assert.IsFalse(soloProyecto.Any(m => m.Clave == "MAT-IMP"));
@@ -151,11 +172,11 @@ public class MaterialsUseCasesTests
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var encontrado = (await new FindMaterialByKey().Execute(
+        var encontrado = (await new FindMaterialByKey(Fabrica).Execute(
             session, new FindMaterialByKeyRequest("mat-cEm"))).Value!;
-        var inexistente = (await new FindMaterialByKey().Execute(
+        var inexistente = (await new FindMaterialByKey(Fabrica).Execute(
             session, new FindMaterialByKeyRequest("NO-EXISTE"))).Value!;
 
         Assert.IsNotNull(encontrado);
@@ -179,8 +200,8 @@ public class MaterialsUseCasesTests
         });
         context.SaveChanges();
 
-        using var session = CrearSession(null, context.DatabasePath, TestDbFactory.CreateTempDbPath());
-        var resultado = await new FindMaterialByKey().Execute(
+        var session = CrearSession(null, context.DatabasePath, TestDbFactory.CreateTempDbPath());
+        var resultado = await new FindMaterialByKey(Fabrica).Execute(
             session, new FindMaterialByKeyRequest("MAESTRO-01"));
 
         Assert.IsTrue(resultado.IsSuccess);
@@ -194,9 +215,9 @@ public class MaterialsUseCasesTests
     {
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var result = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: null,
             Clave: "MAT-NUEVO",
             Descripcion: "Material nuevo de prueba",
@@ -222,9 +243,9 @@ public class MaterialsUseCasesTests
     public async Task SaveMaterial_CamposRequeridos_FallaValidacion()
     {
         using var context = TestDbFactory.CreateContext();
-        using var session = CrearSession(null, context.DatabasePath, TestDbFactory.CreateTempDbPath());
+        var session = CrearSession(null, context.DatabasePath, TestDbFactory.CreateTempDbPath());
 
-        var result = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var result = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: null,
             Clave: "   ",
             Descripcion: "Sin clave",
@@ -244,9 +265,9 @@ public class MaterialsUseCasesTests
     {
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var result = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: null,
             Clave: scenario.Cemento.Clave,
             Descripcion: "Clave repetida",
@@ -279,9 +300,9 @@ public class MaterialsUseCasesTests
         });
         context.SaveChanges();
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var result = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: scenario.Cemento.Id,
             Clave: "MAT-EXTRA",
             Descripcion: scenario.Cemento.Descripcion,
@@ -302,9 +323,9 @@ public class MaterialsUseCasesTests
     {
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var result = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: scenario.Cemento.Id,
             Clave: scenario.Cemento.Clave,
             Descripcion: scenario.Cemento.Descripcion,
@@ -331,9 +352,9 @@ public class MaterialsUseCasesTests
     {
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var result = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: scenario.Cemento.Id,
             Clave: scenario.Cemento.Clave,
             Descripcion: scenario.Cemento.Descripcion,
@@ -361,13 +382,13 @@ public class MaterialsUseCasesTests
     {
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
         await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
-            new SaveMaterial().Execute(session, new SaveMaterialRequest(
+            new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
                 MaterialId: null,
                 Clave: "MAT-NUEVO",
                 Descripcion: "Nunca debe persistir",
@@ -389,9 +410,9 @@ public class MaterialsUseCasesTests
         using (var context = TestDbFactory.CreateContextAt(dbPath))
         {
             var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-            using var session = CrearSession(scenario.Proyecto.Id, dbPath);
+            var session = CrearSession(scenario.Proyecto.Id, dbPath);
 
-            var result = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+            var result = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
                 MaterialId: scenario.Cemento.Id,
                 Clave: scenario.Cemento.Clave,
                 Descripcion: scenario.Cemento.Descripcion,
@@ -423,9 +444,9 @@ public class MaterialsUseCasesTests
         var masterDbPath = TestDbFactory.CreateTempDbPath();
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath, masterDbPath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath, masterDbPath);
 
-        var result = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var result = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: null,
             Clave: "  mat-maestro  ",
             Descripcion: "Material maestro",
@@ -455,9 +476,9 @@ public class MaterialsUseCasesTests
     {
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var result = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: 9999,
             Clave: "X",
             Descripcion: "X",
@@ -491,9 +512,9 @@ public class MaterialsUseCasesTests
         context.Materiales.Add(ajeno);
         context.SaveChanges();
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var result = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: ajeno.Id,
             Clave: "MAT-AJENO",
             Descripcion: "Intento de edición ajena",
@@ -515,7 +536,7 @@ public class MaterialsUseCasesTests
     {
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
         var soltero = new Material
         {
             ProyectoId = scenario.Proyecto.Id,
@@ -529,7 +550,7 @@ public class MaterialsUseCasesTests
         context.Materiales.Add(soltero);
         context.SaveChanges();
 
-        var result = await new PreviewMaterialDeletion().Execute(
+        var result = await new PreviewMaterialDeletion(Fabrica).Execute(
             session, new PreviewMaterialDeletionRequest(soltero.Id));
 
         if (!result.IsSuccess) Assert.Fail(result.Error!.Message);
@@ -544,9 +565,9 @@ public class MaterialsUseCasesTests
     {
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new PreviewMaterialDeletion().Execute(
+        var result = await new PreviewMaterialDeletion(Fabrica).Execute(
             session, new PreviewMaterialDeletionRequest(scenario.Cemento.Id));
 
         if (!result.IsSuccess) Assert.Fail(result.Error!.Message);
@@ -576,9 +597,9 @@ public class MaterialsUseCasesTests
         context.Materiales.Add(ajeno);
         context.SaveChanges();
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new PreviewMaterialDeletion().Execute(
+        var result = await new PreviewMaterialDeletion(Fabrica).Execute(
             session, new PreviewMaterialDeletionRequest(ajeno.Id));
 
         Assert.IsFalse(result.IsSuccess);
@@ -593,7 +614,7 @@ public class MaterialsUseCasesTests
     {
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
         var soltero = new Material
         {
             ProyectoId = scenario.Proyecto.Id,
@@ -607,7 +628,7 @@ public class MaterialsUseCasesTests
         context.Materiales.Add(soltero);
         context.SaveChanges();
 
-        var result = await new DeleteMaterial().Execute(
+        var result = await new DeleteMaterial(Fabrica).Execute(
             session, new DeleteMaterialRequest(soltero.Id));
 
         if (!result.IsSuccess) Assert.Fail(result.Error!.Message);
@@ -621,9 +642,9 @@ public class MaterialsUseCasesTests
     {
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new DeleteMaterial().Execute(
+        var result = await new DeleteMaterial(Fabrica).Execute(
             session, new DeleteMaterialRequest(scenario.Cemento.Id));
 
         if (!result.IsSuccess) Assert.Fail(result.Error!.Message);
@@ -646,9 +667,9 @@ public class MaterialsUseCasesTests
     {
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new DeleteMaterial().Execute(
+        var result = await new DeleteMaterial(Fabrica).Execute(
             session, new DeleteMaterialRequest(9999));
 
         Assert.IsFalse(result.IsSuccess);
@@ -675,9 +696,9 @@ public class MaterialsUseCasesTests
         context.Materiales.Add(ajeno);
         context.SaveChanges();
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new DeleteMaterial().Execute(
+        var result = await new DeleteMaterial(Fabrica).Execute(
             session, new DeleteMaterialRequest(ajeno.Id));
 
         Assert.IsFalse(result.IsSuccess);
@@ -710,9 +731,9 @@ public class MaterialsUseCasesTests
 
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath, masterDbPath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath, masterDbPath);
 
-        var result = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var result = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: scenario.Cemento.Id,
             Clave: "MAT-MAESTRO",
             Descripcion: "Material guardado en maestro",
@@ -783,9 +804,9 @@ public class MaterialsUseCasesTests
         context.Materiales.Add(importado);
         context.SaveChanges();
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath, masterDbPath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath, masterDbPath);
 
-        var result = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var result = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: importado.Id,
             Clave: "MAT-IMP-EDITADA",
             Descripcion: "Importado actualizado en el maestro",
@@ -827,9 +848,9 @@ public class MaterialsUseCasesTests
         }
 
         using var context = TestDbFactory.CreateContext();
-        using var session = CrearSession(null, context.DatabasePath, masterDbPath);
+        var session = CrearSession(null, context.DatabasePath, masterDbPath);
 
-        var duplicada = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var duplicada = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: null,
             Clave: "MAT-OLD",
             Descripcion: "Equivalente en mayúsculas",
@@ -842,7 +863,7 @@ public class MaterialsUseCasesTests
         Assert.IsFalse(duplicada.IsSuccess);
         Assert.AreEqual(AppErrorCode.Conflict, duplicada.Error!.Code);
 
-        var edicionMismaClave = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var edicionMismaClave = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: 1,
             Clave: "mat-old",
             Descripcion: "Edición de la misma fila",
@@ -863,9 +884,9 @@ public class MaterialsUseCasesTests
     {
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var fallido = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var fallido = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: scenario.Cemento.Id,
             Clave: scenario.Cemento.Clave,
             Descripcion: scenario.Cemento.Descripcion,
@@ -879,7 +900,7 @@ public class MaterialsUseCasesTests
 
         // Operación posterior sobre el mismo contexto compartido: el tracker no
         // debe conservar las entidades mutadas por la operación fallida.
-        var limpio = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var limpio = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: null,
             Clave: "MAT-LIMPIO",
             Descripcion: "Operación posterior",
@@ -975,9 +996,9 @@ public class MaterialsUseCasesTests
         context.ConceptosPresupuesto.Add(sinHijos);
         context.SaveChanges();
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var result = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: scenario.Cemento.Id,
             Clave: scenario.Cemento.Clave,
             Descripcion: scenario.Cemento.Descripcion,
@@ -1040,9 +1061,9 @@ public class MaterialsUseCasesTests
         });
         context.SaveChanges();
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var result = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: scenario.Cemento.Id,
             Clave: scenario.Cemento.Clave,
             Descripcion: scenario.Cemento.Descripcion,
@@ -1097,9 +1118,9 @@ public class MaterialsUseCasesTests
         context.ConceptosPresupuesto.Add(conceptoP2);
         context.SaveChanges();
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var saveResult = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var saveResult = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: scenario.Cemento.Id,
             Clave: scenario.Cemento.Clave,
             Descripcion: scenario.Cemento.Descripcion,
@@ -1116,7 +1137,7 @@ public class MaterialsUseCasesTests
             "El concepto de otro proyecto no debe recalcularse con el guardado de P1.");
         Assert.AreEqual(1998m, p2TrasGuardado.ImporteTotal);
 
-        var deleteResult = await new DeleteMaterial().Execute(session, new DeleteMaterialRequest(scenario.Cemento.Id));
+        var deleteResult = await new DeleteMaterial(Fabrica).Execute(session, new DeleteMaterialRequest(scenario.Cemento.Id));
         if (!deleteResult.IsSuccess) Assert.Fail(deleteResult.Error!.Message);
 
         context.ChangeTracker.Clear();
@@ -1141,7 +1162,7 @@ public class MaterialsUseCasesTests
 
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath, masterDbPath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath, masterDbPath);
 
         // Inyectar un fallo determinista en la SEGUNDA escritura (la asociación
         // local): un trigger que aborta cualquier UPDATE de MaterialMaestroId.
@@ -1153,7 +1174,7 @@ public class MaterialsUseCasesTests
                 "BEGIN SELECT RAISE(ABORT, 'boom'); END;");
         }
 
-        var primero = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var primero = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: scenario.Cemento.Id,
             Clave: "MAT-MAESTRO",
             Descripcion: "Guardado en maestro",
@@ -1182,7 +1203,7 @@ public class MaterialsUseCasesTests
             trg.Database.ExecuteSqlRaw("DROP TRIGGER trg_fail_assoc;");
         }
 
-        var reintento = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var reintento = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: scenario.Cemento.Id,
             Clave: "MAT-MAESTRO",
             Descripcion: "Guardado en maestro",
@@ -1240,9 +1261,9 @@ public class MaterialsUseCasesTests
         });
         context.SaveChanges();
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new DeleteMaterial().Execute(session, new DeleteMaterialRequest(scenario.Cemento.Id));
+        var result = await new DeleteMaterial(Fabrica).Execute(session, new DeleteMaterialRequest(scenario.Cemento.Id));
 
         Assert.IsFalse(result.IsSuccess);
         Assert.AreEqual(AppErrorCode.Conflict, result.Error!.Code);
@@ -1290,9 +1311,9 @@ public class MaterialsUseCasesTests
         });
         context.SaveChanges();
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new PreviewMaterialDeletion().Execute(
+        var result = await new PreviewMaterialDeletion(Fabrica).Execute(
             session, new PreviewMaterialDeletionRequest(scenario.Cemento.Id));
 
         if (!result.IsSuccess) Assert.Fail(result.Error!.Message);
@@ -1315,9 +1336,9 @@ public class MaterialsUseCasesTests
 
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath, masterDbPath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath, masterDbPath);
 
-        var primero = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var primero = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: scenario.Cemento.Id,
             Clave: "MAT-MAESTRO-1",
             Descripcion: "Primer guardado en maestro",
@@ -1330,7 +1351,7 @@ public class MaterialsUseCasesTests
         if (!primero.IsSuccess) Assert.Fail(primero.Error!.Message);
         Assert.IsTrue(primero.Value!.IsNew);
 
-        var segundo = await new SaveMaterial().Execute(session, new SaveMaterialRequest(
+        var segundo = await new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
             MaterialId: scenario.Cemento.Id,
             Clave: "MAT-MAESTRO-2",
             Descripcion: "Segundo guardado en maestro",
@@ -1391,9 +1412,9 @@ public class MaterialsUseCasesTests
         });
         context.SaveChanges();
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new FindMatricesUsingMaterial().Execute(
+        var result = await new FindMatricesUsingMaterial(Fabrica).Execute(
             session, new FindMatricesUsingMaterialRequest(importado.Id));
 
         if (!result.IsSuccess) Assert.Fail(result.Error!.Message);
@@ -1407,9 +1428,9 @@ public class MaterialsUseCasesTests
     {
         using var context = TestDbFactory.CreateContext();
         var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new FindMatricesUsingMaterial().Execute(
+        var result = await new FindMatricesUsingMaterial(Fabrica).Execute(
             session, new FindMatricesUsingMaterialRequest(9999));
 
         Assert.IsFalse(result.IsSuccess);
@@ -1436,9 +1457,9 @@ public class MaterialsUseCasesTests
         context.Materiales.Add(ajeno);
         context.SaveChanges();
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new FindMatricesUsingMaterial().Execute(
+        var result = await new FindMatricesUsingMaterial(Fabrica).Execute(
             session, new FindMatricesUsingMaterialRequest(ajeno.Id));
 
         Assert.IsFalse(result.IsSuccess);
@@ -1489,9 +1510,9 @@ public class MaterialsUseCasesTests
         });
         context.SaveChanges();
 
-        using var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
 
-        var result = await new FindMatricesUsingMaterial().Execute(
+        var result = await new FindMatricesUsingMaterial(Fabrica).Execute(
             session, new FindMatricesUsingMaterialRequest(materialLocal.Id));
 
         if (!result.IsSuccess) Assert.Fail(result.Error!.Message);
@@ -1552,5 +1573,240 @@ public class MaterialsUseCasesTests
         context.Proyectos.Add(otroProyecto);
         context.SaveChanges();
         return otroProyecto;
+    }
+
+    // ---------- N4: cancelación antes del commit y contexto por operación ----------
+
+    [TestMethod]
+    public async Task SaveMaterial_CanceladoDuranteSaveChanges_RollbackCompleto()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+
+        var cts = new CancellationTokenSource();
+        var contextoHook = new SaveHookContext(context.DatabasePath, cts) { CancelBeforeSave = true };
+        var save = new SaveMaterial(new TestDbContextFactory
+        {
+            CreateForPath = p => p == context.DatabasePath ? contextoHook : new SOPROContext(p)
+        });
+
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+            save.Execute(session, new SaveMaterialRequest(
+                MaterialId: scenario.Cemento.Id,
+                Clave: scenario.Cemento.Clave,
+                Descripcion: scenario.Cemento.Descripcion,
+                Unidad: scenario.Cemento.Unidad,
+                PrecioUnitario: 70m,
+                Notas: scenario.Cemento.Notas ?? string.Empty,
+                SaveToMaster: false,
+                ProjectId: scenario.Proyecto.Id), cts.Token));
+
+        context.ChangeTracker.Clear();
+        Assert.AreEqual(60m,
+            context.Materiales.AsNoTracking().Single(m => m.Id == scenario.Cemento.Id).PrecioUnitario,
+            "La cancelación durante SaveChangesAsync debe revertir TODO (rollback).");
+    }
+
+    [TestMethod]
+    public async Task SaveMaterial_CanceladoEntreSaveChangesYCommit_NoPersisteNada()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+
+        var cts = new CancellationTokenSource();
+        var contextoHook = new SaveHookContext(context.DatabasePath, cts) { CancelAfterSave = true };
+        var save = new SaveMaterial(new TestDbContextFactory
+        {
+            CreateForPath = p => p == context.DatabasePath ? contextoHook : new SOPROContext(p)
+        });
+
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+            save.Execute(session, new SaveMaterialRequest(
+                MaterialId: scenario.Cemento.Id,
+                Clave: scenario.Cemento.Clave,
+                Descripcion: scenario.Cemento.Descripcion,
+                Unidad: scenario.Cemento.Unidad,
+                PrecioUnitario: 70m,
+                Notas: scenario.Cemento.Notas ?? string.Empty,
+                SaveToMaster: false,
+                ProjectId: scenario.Proyecto.Id), cts.Token));
+
+        context.ChangeTracker.Clear();
+        Assert.AreEqual(60m,
+            context.Materiales.AsNoTracking().Single(m => m.Id == scenario.Cemento.Id).PrecioUnitario,
+            "La cancelación entre SaveChangesAsync y CommitAsync debe revertir la transacción (nada queda persistido).");
+    }
+
+    [TestMethod]
+    public async Task SaveMaterial_MaestroCanceladoAntesDeLaAsociacion_CompensaYRevierteFilaMaestra()
+    {
+        var masterDbPath = TestDbFactory.CreateTempDbPath();
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath, masterDbPath);
+
+        var cts = new CancellationTokenSource();
+        var maestroHook = new SaveHookContext(masterDbPath, cts) { CancelAfterSave = true };
+        var save = new SaveMaterial(new TestDbContextFactory
+        {
+            CreateForPath = p => p == masterDbPath ? maestroHook : new SOPROContext(p)
+        });
+
+        var request = new SaveMaterialRequest(
+            MaterialId: scenario.Cemento.Id,
+            Clave: "MAT-MAESTRO",
+            Descripcion: "Guardado en maestro",
+            Unidad: "pza",
+            PrecioUnitario: 10m,
+            Notas: string.Empty,
+            SaveToMaster: true,
+            ProjectId: scenario.Proyecto.Id);
+
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+            save.Execute(session, request, cts.Token));
+
+        using (var maestro = new SOPROContext(masterDbPath))
+        {
+            Assert.AreEqual(0, maestro.Materiales.Count(),
+                "La cancelación ANTES de la asociación debe disparar la compensación: la fila maestra se revierte.");
+        }
+
+        context.ChangeTracker.Clear();
+        Assert.IsNull(context.Materiales.AsNoTracking().Single(m => m.Id == scenario.Cemento.Id).MaterialMaestroId,
+            "La asociación local nunca debe persistirse si la operación se canceló.");
+    }
+
+    [TestMethod]
+    public async Task SaveMaterial_MaestroCanceladoDespuesDeLaAsociacion_OperacionCompleta()
+    {
+        var masterDbPath = TestDbFactory.CreateTempDbPath();
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath, masterDbPath);
+
+        var cts = new CancellationTokenSource();
+        var proyectoHook = new SaveHookContext(context.DatabasePath, cts) { CancelAfterSave = true };
+        var save = new SaveMaterial(new TestDbContextFactory
+        {
+            CreateForPath = p => p == context.DatabasePath ? proyectoHook : new SOPROContext(p)
+        });
+
+        var result = await save.Execute(session, new SaveMaterialRequest(
+            MaterialId: scenario.Cemento.Id,
+            Clave: "MAT-MAESTRO",
+            Descripcion: "Guardado en maestro",
+            Unidad: "pza",
+            PrecioUnitario: 10m,
+            Notas: string.Empty,
+            SaveToMaster: true,
+            ProjectId: scenario.Proyecto.Id), cts.Token);
+
+        Assert.IsTrue(result.IsSuccess,
+            "La cancelación DESPUÉS del segundo SaveChangesAsync no debe abortar la operación ya completa.");
+
+        using (var maestro = new SOPROContext(masterDbPath))
+        {
+            Assert.AreEqual(1, maestro.Materiales.Count());
+        }
+
+        context.ChangeTracker.Clear();
+        Assert.AreEqual(result.Value!.MaterialId,
+            context.Materiales.AsNoTracking().Single(m => m.Id == scenario.Cemento.Id).MaterialMaestroId,
+            "La asociación maestra quedó persistida antes de la cancelación.");
+    }
+
+    [TestMethod]
+    public async Task DeleteMaterial_CanceladoDuranteSaveChanges_RollbackCompleto()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+
+        var cts = new CancellationTokenSource();
+        var contextoHook = new SaveHookContext(context.DatabasePath, cts) { CancelBeforeSave = true };
+        var delete = new DeleteMaterial(new TestDbContextFactory
+        {
+            CreateForPath = p => p == context.DatabasePath ? contextoHook : new SOPROContext(p)
+        });
+
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+            delete.Execute(session, new DeleteMaterialRequest(scenario.Cemento.Id), cts.Token));
+
+        context.ChangeTracker.Clear();
+        Assert.IsNotNull(context.Materiales.AsNoTracking().SingleOrDefault(m => m.Id == scenario.Cemento.Id),
+            "La cancelación durante la eliminación debe revertir TODO: el material sigue existiendo.");
+        Assert.AreEqual(1,
+            context.ComponentesMatriz.AsNoTracking().Count(c => c.MaterialId == scenario.Cemento.Id),
+            "Los componentes de matriz eliminados dentro de la transacción también se revierten.");
+    }
+
+    [TestMethod]
+    public async Task ListMaterials_FabricaInvocadaUnaVezPorComando()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+        var session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+
+        var factory = new TestDbContextFactory();
+        var list = new ListMaterials(factory);
+
+        var result = await list.Execute(session, new ListMaterialsRequest());
+
+        Assert.IsTrue(result.IsSuccess);
+        Assert.AreEqual(1, factory.Creations,
+            "Un comando construye y libera UN contexto (transient por uso).");
+    }
+
+    /// <summary>
+    /// Contexto con ganchos de prueba: inyecta cancelación en puntos concretos
+    /// de I/O (antes o después de un SaveChangesAsync) de forma determinista.
+    /// </summary>
+    private sealed class SaveHookContext : SOPROContext
+    {
+        private readonly CancellationTokenSource _cts;
+        public bool CancelBeforeSave;
+        public bool CancelAfterSave;
+
+        public SaveHookContext(string dbPath, CancellationTokenSource cts) : base(dbPath)
+        {
+            _cts = cts;
+        }
+
+        public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            if (CancelBeforeSave)
+            {
+                _cts.Cancel();
+                throw new OperationCanceledException(_cts.Token);
+            }
+
+            int saved = await base.SaveChangesAsync(cancellationToken);
+
+            if (CancelAfterSave)
+                _cts.Cancel();
+
+            return saved;
+        }
+    }
+
+    /// <summary>
+    /// Fábrica de prueba: cuenta las construcciones y permite sustituir el
+    /// contexto por ruta (para inyectar <see cref="SaveHookContext"/>).
+    /// </summary>
+    private sealed class TestDbContextFactory : IProjectDbContextFactory
+    {
+        public Func<string, SOPROContext>? CreateForPath { get; set; }
+        public int Creations { get; private set; }
+
+        public SOPROContext Create(string databasePath)
+        {
+            Creations++;
+            return CreateForPath?.Invoke(databasePath) ?? new SOPROContext(databasePath);
+        }
+
+        public Task<SOPROContext> CreateAsync(string databasePath, CancellationToken cancellationToken = default)
+            => Task.FromResult(Create(databasePath));
     }
 }

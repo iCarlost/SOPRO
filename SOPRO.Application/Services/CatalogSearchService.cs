@@ -5,6 +5,7 @@ using SOPRO.Application.Models.ExternalProjects;
 using SOPRO.Application.Models.Selector;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 
 namespace SOPRO.Application.Services
 {
@@ -12,11 +13,16 @@ namespace SOPRO.Application.Services
     {
         private readonly ProjectIndexService _projectIndexService;
         private readonly ProjectUsageService _projectUsageService;
+        private readonly IProjectDbContextFactory _factory;
 
-        public CatalogSearchService(ProjectIndexService projectIndexService, ProjectUsageService projectUsageService)
+        public CatalogSearchService(
+            ProjectIndexService projectIndexService,
+            ProjectUsageService projectUsageService,
+            IProjectDbContextFactory factory)
         {
             _projectIndexService = projectIndexService ?? throw new ArgumentNullException(nameof(projectIndexService));
             _projectUsageService = projectUsageService ?? throw new ArgumentNullException(nameof(projectUsageService));
+            _factory = factory ?? throw new ArgumentNullException(nameof(factory));
         }
 
         public IReadOnlyList<CatalogSearchResultDto> SearchMatrices(
@@ -155,7 +161,7 @@ namespace SOPRO.Application.Services
             if (!File.Exists(projectPath))
                 throw new FileNotFoundException("No se encontró el proyecto a indexar.", projectPath);
 
-            using var context = new SOPROContext(projectPath);
+            using var context = _factory.Create(projectPath);
             SchemaManager.EnsureCurrentSchema(context);
             var normalizedPath = NormalizePath(projectPath);
             var projectName = context.Proyectos

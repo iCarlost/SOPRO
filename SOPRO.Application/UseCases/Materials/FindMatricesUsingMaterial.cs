@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.Contracts;
+using SOPRO.Data.Factories;
 
 namespace SOPRO.Application.UseCases.Materials;
 
@@ -7,9 +8,19 @@ namespace SOPRO.Application.UseCases.Materials;
 /// Caso de uso (consulta): matrices donde se usa un material ("Dónde se usa").
 /// Devuelve DTOs de presentación (nunca entidades rastreadas) y solo opera
 /// sobre materiales del alcance de la sesión.
+///
+/// N4: el contexto es POR OPERACIÓN (IProjectDbContextFactory transient);
+/// cada paso de I/O comprueba la cancelación.
 /// </summary>
 public sealed class FindMatricesUsingMaterial
 {
+    private readonly IProjectDbContextFactory _factory;
+
+    public FindMatricesUsingMaterial(IProjectDbContextFactory factory)
+    {
+        _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+    }
+
     public async Task<Result<IReadOnlyList<MaterialUsageInMatrix>>> Execute(
         ProjectSessionInfo session,
         FindMatricesUsingMaterialRequest request,
@@ -17,13 +28,14 @@ public sealed class FindMatricesUsingMaterial
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var context = session.Context;
+        await using var context = await _factory.CreateAsync(session.DatabasePath, cancellationToken);
 
         try
         {
             var material = await context.Materiales
                 .AsNoTracking()
                 .FirstOrDefaultAsync(m => m.Id == request.MaterialId, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (material == null || !MaterialScope.IsInSessionScope(session, material))
             {
@@ -38,6 +50,7 @@ public sealed class FindMatricesUsingMaterial
                 .Select(c => c.MatrizId)
                 .Distinct()
                 .ToListAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (matrizIds.Count == 0)
                 return Result<IReadOnlyList<MaterialUsageInMatrix>>.Ok(Array.Empty<MaterialUsageInMatrix>());
@@ -52,10 +65,11 @@ public sealed class FindMatricesUsingMaterial
                 .OrderBy(m => m.Clave)
                 .Select(m => new MaterialUsageInMatrix(m.Id, m.Clave, m.Descripcion ?? string.Empty))
                 .ToListAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
             return Result<IReadOnlyList<MaterialUsageInMatrix>>.Ok(matrices);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             throw;
         }

@@ -5,6 +5,7 @@ using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
 using SOPRO.Application.UseCases.Materials;
 using SOPRO.Core.Entities;
+using SOPRO.Data.Factories;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -14,6 +15,7 @@ namespace SOPRO.WinForms.Forms
         private readonly int? _proyectoId;
         private readonly MaterialListItem _material;
         private readonly bool _esNuevo;
+        private readonly IProjectDbContextFactory _factory;
 
         /// <summary>Id del material persistido por el último guardado exitoso (para el selector de insumos).</summary>
         public int? UltimoMaterialIdGuardado { get; private set; }
@@ -21,7 +23,10 @@ namespace SOPRO.WinForms.Forms
         /// <summary>Si el último guardado fue en el catálogo maestro (su Id no existe en el proyecto).</summary>
         public bool UltimoGuardadoEnMaestro { get; private set; }
 
-        public FormEditarMaterial(ProjectSessionInfo sessionInfo, MaterialListItem material = null)
+        public FormEditarMaterial(
+            ProjectSessionInfo sessionInfo,
+            MaterialListItem material = null,
+            IProjectDbContextFactory? factory = null)
         {
             InitializeComponent();
 
@@ -29,6 +34,7 @@ namespace SOPRO.WinForms.Forms
             _proyectoId = sessionInfo.Project.ProjectId;
             _material = material;
             _esNuevo = material == null;
+            _factory = factory ?? new ProjectDbContextFactory();
 
             ConfigurarFormulario();
 
@@ -84,7 +90,7 @@ namespace SOPRO.WinForms.Forms
             string clave = txtClave.Text.Trim();
             if (string.IsNullOrWhiteSpace(clave)) return;
 
-            var result = await new FindMaterialByKey().Execute(
+            var result = await new FindMaterialByKey(_factory).Execute(
                 _sessionInfo, new FindMaterialByKeyRequest(clave));
 
             if (!result.IsSuccess || result.Value == null) return;
@@ -137,7 +143,7 @@ namespace SOPRO.WinForms.Forms
             {
                 // Validaciones y persistencia viven en el caso de uso SaveMaterial
                 // (probables sin formularios, PLAN-01 §12).
-                var result = await new SaveMaterial().Execute(_sessionInfo, new SaveMaterialRequest(
+                var result = await new SaveMaterial(_factory).Execute(_sessionInfo, new SaveMaterialRequest(
                     MaterialId: _esNuevo ? null : _material.Id,
                     Clave: txtClave.Text,
                     Descripcion: txtDescripcion.Text,

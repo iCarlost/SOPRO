@@ -1,17 +1,16 @@
-using SOPRO.Application.Models;
-using SOPRO.Data.Context;
-
 namespace SOPRO.Application.Contracts;
 
 /// <summary>
 /// Información de sesión neutral para los casos de uso de la frontera de
 /// Application: identidad del proyecto y rutas de la base de datos.
 ///
-/// REGLA N3: esta clase NO expone ni recibe <see cref="SOPROContext"/> en su
-/// superficie pública; el contexto se resuelve de forma interna (puente temporal
-/// hasta que N4 sustituya el ciclo de vida del contexto por operación).
+/// REGLA N4: la sesión NO posee ni expone <c>SOPROContext</c> (ni es
+/// desechable): los casos de uso construyen y liberan su contexto dentro del
+/// método a través de <c>IProjectDbContextFactory</c> (una operación, un
+/// contexto). La identidad del proyecto se resuelve al crear la sesión
+/// (puente legacy) y viaja como datos puros.
 /// </summary>
-public sealed record ProjectSessionInfo : IDisposable
+public sealed record ProjectSessionInfo
 {
     /// <summary>Proyecto activo (o catálogo maestro).</summary>
     public ProjectRef Project { get; }
@@ -25,62 +24,36 @@ public sealed record ProjectSessionInfo : IDisposable
     /// <summary>Decimales de importe del proyecto (null en catálogo maestro).</summary>
     public int? DecimalesImporte { get; }
 
-    /// <summary>Puente interno: contexto de la sesión. Visible solo dentro de Application.</summary>
-    internal SOPROContext Context { get; }
-
     private ProjectSessionInfo(
         ProjectRef project,
         string databasePath,
         string masterDatabasePath,
-        int? decimalesImporte,
-        SOPROContext context)
+        int? decimalesImporte)
     {
         Project = project;
         DatabasePath = databasePath;
         MasterDatabasePath = masterDatabasePath;
         DecimalesImporte = decimalesImporte;
-        Context = context;
     }
 
     /// <summary>
-    /// Crea la información de sesión a partir de un proyecto y la ruta de su
-    /// base de datos. Si <paramref name="projectId"/> es <c>null</c>, la sesión
-    /// corresponde al catálogo maestro.
+    /// Crea la información de sesión a partir de la identidad del proyecto y la
+    /// ruta de su base de datos. <see cref="ProjectRef.Master"/> para la sesión
+    /// del catálogo maestro.
     /// </summary>
-    /// <remarks>
-    /// El contexto se resuelve de la ruta (una operación, un contexto a partir
-    /// de N4). La sesión es la dueña del contexto: el consumidor debe disponerla.
-    /// </remarks>
     public static ProjectSessionInfo Create(
-        int? projectId,
+        ProjectRef project,
         string databasePath,
-        string? masterDatabasePath = null)
+        string? masterDatabasePath = null,
+        int? decimalesImporte = null)
     {
+        ArgumentNullException.ThrowIfNull(project);
         ArgumentNullException.ThrowIfNull(databasePath);
-
-        var context = new SOPROContext(databasePath);
-
-        ProjectRef project;
-        int? decimalesImporte = null;
-        if (projectId.HasValue)
-        {
-            var proyecto = context.Proyectos.Find(projectId.Value);
-            project = proyecto != null ? ProjectRef.FromEntity(proyecto) : new ProjectRef(projectId.Value, string.Empty);
-            decimalesImporte = proyecto?.DecimalesImporte;
-        }
-        else
-        {
-            project = ProjectRef.Master;
-        }
 
         return new ProjectSessionInfo(
             project,
             databasePath,
             masterDatabasePath ?? WorkspacePaths.MasterDatabasePath,
-            decimalesImporte,
-            context);
+            decimalesImporte);
     }
-
-    /// <summary>Libera el contexto interno de la sesión.</summary>
-    public void Dispose() => Context.Dispose();
 }
