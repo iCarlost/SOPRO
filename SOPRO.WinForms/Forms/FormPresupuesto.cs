@@ -31,7 +31,7 @@ namespace SOPRO.WinForms.Forms
         private int _selectorApuEmbebidoRowIndex = -1;
         private EventHandler _onInsumosModificados; // Guardado para poder desuscribir al cerrar
         private bool _validacionAperturaMostrada = false;
-        private readonly ExternalMatrixImportService _externalMatrixImportService = new();
+        private readonly ExternalMatrixImportService _externalMatrixImportService = new(new ProjectDbContextFactory());
         private readonly ProjectIndexService _projectIndexService;
         private readonly ProjectUsageService _projectUsageService;
         private readonly CatalogSearchService _catalogSearchService;

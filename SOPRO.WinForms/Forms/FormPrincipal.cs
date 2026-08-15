@@ -157,6 +157,9 @@ namespace SOPRO.WinForms.Forms
 
             try
             {
+                // N4-3: nunca sobrescribir una sesión abierta: se cierra la anterior
+                // primero (libera contexto y candado de workspace).
+                CloseCurrentSession();
                 _currentSession = _projectLifecycleService.CreateProject(formNuevo.Proyecto);
 
                 MessageBox.Show(
@@ -303,6 +306,9 @@ namespace SOPRO.WinForms.Forms
         {
             try
             {
+                // N4-3: nunca sobrescribir una sesión abierta: su candado de workspace
+                // bloquearía la nueva apertura. Se cierra la anterior primero.
+                CloseCurrentSession();
                 _currentSession = _projectLifecycleService.OpenProject(projectPath);
                 AbrirProyecto(_currentProject!);
             }
@@ -318,10 +324,11 @@ namespace SOPRO.WinForms.Forms
 
         private void CloseCurrentSession()
         {
+            // N4-3: la sesión es IDisposable: libera contexto y candado de workspace.
+            // El GC.Collect/WaitForPendingFinalizers previos no eran necesarios y
+            // ocultaban errores de disposición.
             _projectLifecycleService.CloseProjectSession(_currentSession);
             _currentSession = null;
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
         }
     }
 }

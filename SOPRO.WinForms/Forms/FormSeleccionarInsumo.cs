@@ -29,7 +29,7 @@ namespace SOPRO.WinForms.Forms
         private readonly SOPROContext _context;
         private readonly int _proyectoId;
         private readonly TipoComponenteMatriz _tipoComponente;
-        private readonly ExternalInsumoImportService _externalInsumoImportService = new();
+        private readonly ExternalInsumoImportService _externalInsumoImportService = new(new ProjectDbContextFactory());
         private readonly ProjectIndexService _projectIndexService;
         private readonly InsumoSearchService _insumoSearchService;
         private readonly ProjectUsageService _projectUsageService;
