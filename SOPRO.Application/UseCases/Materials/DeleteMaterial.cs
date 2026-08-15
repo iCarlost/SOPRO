@@ -100,8 +100,11 @@ public sealed class DeleteMaterial
         }
         catch (OperationCanceledException)
         {
-            // El contexto es por operación (await using): no hay estado
-            // compartido que limpiar; la transacción se revierte al disponerse.
+            // N4-2: el catch no filtra con when (cancellationToken.IsCancellationRequested):
+            // cualquier OperationCanceledException interrumpe por diseño, provenga o no de
+            // este token (la cancelación es un abandono, no un fallo recuperable). El
+            // contexto es por operación (await using): no hay estado compartido que limpiar;
+            // la transacción se revierte al disponerse.
             throw;
         }
         catch (Exception ex)

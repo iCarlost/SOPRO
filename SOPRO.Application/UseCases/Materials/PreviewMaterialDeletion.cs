@@ -84,6 +84,9 @@ public sealed class PreviewMaterialDeletion
         }
         catch (OperationCanceledException)
         {
+            // N4-2: sin filtro when (cancellationToken.IsCancellationRequested): cualquier
+            // OperationCanceledException interrumpe por diseño; el contexto es por operación
+            // (await using), no hay estado compartido que limpiar.
             throw;
         }
         catch (Exception ex)
