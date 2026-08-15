@@ -2,60 +2,83 @@ using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.Models;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 
 namespace SOPRO.Application.Services
 {
     public class ProjectLifecycleService
     {
         private readonly ProjectWorkspaceService _workspaceService;
+        private readonly IProjectDbContextFactory _dbContextFactory;
 
-        public ProjectLifecycleService(ProjectWorkspaceService workspaceService)
+        public ProjectLifecycleService(
+            ProjectWorkspaceService workspaceService,
+            IProjectDbContextFactory? dbContextFactory = null)
         {
             _workspaceService = workspaceService;
+            _dbContextFactory = dbContextFactory ?? new ProjectDbContextFactory();
         }
 
         public ProjectSession CreateProject(Proyecto proyecto)
         {
             var dbPath = _workspaceService.BuildProjectDatabasePath(proyecto.Nombre);
-            var context = new SOPROContext(dbPath);
-            context.Database.EnsureCreated();
 
-            // Fuente única de verdad del schema
-            SchemaManager.EnsureCurrentSchema(context);
+            // N4-2: el candado se toma ANTES de tocar la base; se libera al cerrar
+            // la sesión (CloseProjectSession → Dispose). Si algo falla después de
+            // adquirirlo, se libera aquí mismo.
+            var workspaceLock = WorkspaceLock.Acquire(dbPath);
+            try
+            {
+                var context = _dbContextFactory.Create(dbPath);
+                context.Database.EnsureCreated();
 
-            context.Proyectos.Add(proyecto);
-            context.SaveChanges();
+                // Fuente única de verdad del schema
+                SchemaManager.EnsureCurrentSchema(context);
 
-            EnsureDefaultColumns(context, proyecto.Id);
+                context.Proyectos.Add(proyecto);
+                context.SaveChanges();
 
-            return new ProjectSession(context, proyecto, dbPath);
+                EnsureDefaultColumns(context, proyecto.Id);
+
+                return new ProjectSession(context, proyecto, dbPath, workspaceLock);
+            }
+            catch
+            {
+                workspaceLock.Dispose();
+                throw;
+            }
         }
 
         public ProjectSession OpenProject(string projectPath)
         {
-            var context = new SOPROContext(projectPath);
+            var workspaceLock = WorkspaceLock.Acquire(projectPath);
+            try
+            {
+                var context = _dbContextFactory.Create(projectPath);
 
-            // Fuente única de verdad del schema — actualiza cualquier DB viejo
-            SchemaManager.EnsureCurrentSchema(context);
+                // Fuente única de verdad del schema — actualiza cualquier DB viejo
+                SchemaManager.EnsureCurrentSchema(context);
 
-            var project = context.Proyectos.FirstOrDefault()
-                ?? throw new InvalidOperationException("El archivo no contiene un proyecto válido.");
+                var project = context.Proyectos.FirstOrDefault()
+                    ?? throw new InvalidOperationException("El archivo no contiene un proyecto válido.");
 
-            EnsureDefaultColumns(context, project.Id);
+                EnsureDefaultColumns(context, project.Id);
 
-            return new ProjectSession(context, project, projectPath);
+                return new ProjectSession(context, project, projectPath, workspaceLock);
+            }
+            catch
+            {
+                workspaceLock.Dispose();
+                throw;
+            }
         }
 
         public void CloseProjectSession(ProjectSession? session)
         {
-            if (session?.Context == null)
-                return;
-
-            var connection = session.Context.Database.GetDbConnection();
-            if (connection != null && connection.State != System.Data.ConnectionState.Closed)
-                connection.Close();
-
-            session.Context.Dispose();
+            // N4-2: la sesión es la dueña de su contexto y de su candado; el cierre
+            // no accede a session.Context (regla: cero accesos directos al contexto
+            // desde Application).
+            session?.Dispose();
         }
 
         /// <summary>
