@@ -2,7 +2,9 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
+using SOPRO.Application.Contracts;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 using SOPRO.WinForms.Helpers;
 
 namespace SOPRO.WinForms.Forms
@@ -141,17 +143,15 @@ namespace SOPRO.WinForms.Forms
         
         private void InicializarMasterContext()
         {
-            var masterDbPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "SOPRO",
-                "CatalogoMaestro.db"
-            );
-            
+            // N4-4: la ruta del maestro vive en Application (WorkspacePaths) y el
+            // contexto se abre con la fábrica (una sola forma de construir contextos).
+            var masterDbPath = WorkspacePaths.MasterDatabasePath;
+
             // Crear directorio si no existe
             var dir = Path.GetDirectoryName(masterDbPath);
             if (!Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
-            
+
             // Crear base de datos maestra si no existe
             if (!File.Exists(masterDbPath))
             {
@@ -162,8 +162,8 @@ namespace SOPRO.WinForms.Forms
                     MessageBoxIcon.Information
                 );
             }
-            
-            _masterContext = new SOPROContext(masterDbPath);
+
+            _masterContext = new ProjectDbContextFactory().Create(masterDbPath);
             _masterContext.Database.EnsureCreated();
             SOPRO.Application.Services.SchemaManager.EnsureCurrentSchema(_masterContext);
         }
