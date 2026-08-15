@@ -378,6 +378,15 @@ WinForms debe adoptar primero estos casos de uso. Solo después se construye la 
 - Fuga de sesión corregida en `FormPrincipal` (hallazgo 1 del dictamen N4-2): `OpenProjectPath` y `BtnNuevoProyecto_Click` cierran la sesión previa ANTES de abrir/crear (nunca sobrescriben una sesión con candado retenido; también cubre el fallo del ctor de `FormProyecto` que dejaba la sesión y el candado retenidos para siempre). `CloseCurrentSession` ya no llama `GC.Collect`/`WaitForPendingFinalizers` (innecesarios con `IDisposable` y ocultaban errores de disposición).
 - Tests: la cobertura existente `ExternalImportPrecisionTests` ejercita ahora el camino de fábrica (los servicios se construyen sin argumentos → fábrica por defecto con DBs reales en temp). 250/250 (no se añadieron tests nuevos: el cambio es mecánico y queda cubierto por la suite de importación).
 
+### PR N4-4 (bootstrap y catálogo maestro a la fábrica) — implementado, pendiente de dictamen
+
+- `FormCatalogoMaestro` y `FormImportarMaestro`: eliminan el literal duplicado de la ruta del maestro y usan `WorkspacePaths.MasterDatabasePath` (Application) — la misma fuente que usan los casos de uso N3; el contexto del maestro se abre con `ProjectDbContextFactory`.
+- `FormPresupuesto`: campo `_factory` compartido; el preview de APU externo del autocompletado abre su contexto de solo lectura por operación con la fábrica (`using var`).
+- `DatabaseInitializer.cs` ELIMINADO: era código muerto (cero referencias fuera de la propia clase; la inicialización real del maestro la hace `FormCatalogoMaestro.InicializarMasterContext`). Eliminarlo quitó 2 `new SOPROContext` del árbol sin tocar comportamiento.
+- Decisión documentada (desviación del plan propuesto por el dictamen): NO se añadieron `CreateMasterAsync()`/`CreateReadOnlyAsync()` a la fábrica — `Create` ya es la única forma de construir contextos (mismo archivo SQLite, mismo esquema); la semántica de maestro/solo-lectura es del sitio que abre, no del constructor. El objetivo del dictamen (migrar esos 4 sitios a la fábrica) se cumple con la API existente.
+- `grep "new SOPROContext"` en WinForms → 0 (en todo el repo solo queda el constructor de `SOPROContext` y el contexto legacy por formulario, que es el modelo que N5 retirará).
+- Verificación: 250/250, Release 0 errores, `git diff --check` limpio.
+
 1. Sustituir `ProjectSession.Context` por información neutral de sesión.
 2. Crear un contexto por consulta o comando.
 3. Prohibir el contexto compartido dentro de `Task.Run`.

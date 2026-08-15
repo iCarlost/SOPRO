@@ -171,7 +171,8 @@ namespace SOPRO.WinForms.Forms
             if (item.EsActual || string.Equals(SelectorUiDefaults.NormalizePath(item.RutaProyecto), SelectorUiDefaults.NormalizePath(_context.DatabasePath), StringComparison.OrdinalIgnoreCase))
                 return ConstruirPreviewApuDesdeContexto(_context, item, _proyecto.Nombre);
 
-            using var externalContext = new SOPROContext(item.RutaProyecto);
+            // N4-4: contexto externo de solo lectura por operación, abierto con la fábrica.
+            using var externalContext = _factory.Create(item.RutaProyecto);
             var nombreProyecto = externalContext.Proyectos.Select(p => p.Nombre).FirstOrDefault();
             return ConstruirPreviewApuDesdeContexto(externalContext, item, nombreProyecto ?? item.NombreProyecto);
         }
