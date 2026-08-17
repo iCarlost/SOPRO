@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Sopro.Calculation;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -6,13 +7,16 @@ using SOPRO.Data.Context;
 namespace SOPRO.Application.Services
 {
     // ╔══════════════════════════════════════════════════════════════════════════╗
-    // ║  BudgetPreviewCalculationService — VERSIÓN CORREGIDA v1.0              ║
+    // ║  BudgetPreviewCalculationService — VERSIÓN CORREGIDA v2.0              ║
+    // ║                                                                         ║
+    // ║  [N5-3] Toda aritmética delegada directo a SoproCalculationEngine      ║
+    // ║         (SOPRO.Calculation), sin pasar por la fachada legacy.          ║
     // ║                                                                         ║
     // ║  CAMBIOS RESPECTO A LA VERSIÓN ORIGINAL:                                ║
     // ║  [FIX-1] Eliminado MultiplyUsingDisplayPrecision privado duplicado.    ║
     // ║  [FIX-2] Eliminado RoundImporte privado duplicado.                     ║
-    // ║  [FIX-3] BuildPreview: desglose por concepto usa motor.CalcularPrecio- ║
-    // ║          Unitario() para redondear cada paso intermedio — igual que     ║
+    // ║  [FIX-3] BuildPreview: desglose por concepto usa CalcularPrecioUnitario ║
+    // ║          para redondear cada paso intermedio — igual que                ║
     // ║          BudgetLoadService. Los totales acumulan importes ya            ║
     // ║          redondeados por concepto.                                      ║
     // ║  [FIX-4] BuildPreviewFromReferenceCost: pasos sin Round → con motor.   ║
@@ -36,8 +40,10 @@ namespace SOPRO.Application.Services
             if (conceptos.Count == 0)
                 return BuildPreviewFromReferenceCost(input.CostoDirectoReferencia, input, proyecto);
 
-            // [FIX-1] Motor: fuente única de aritmética
-            var motor = new MotorCalculoSopro(proyecto);
+            // [N5-3] Motor del paquete directo: fuente única de aritmética
+            var engine = new SoproCalculationEngine(proyecto.DecimalesCantidad,
+                                                    proyecto.DecimalesImporte,
+                                                    proyecto.DecimalesPorcentaje);
 
             decimal totalCd     = 0m;
             decimal totalOc     = 0m;
@@ -52,22 +58,22 @@ namespace SOPRO.Application.Services
 
             foreach (var concepto in conceptos)
             {
-                decimal cdUnit   = motor.RedondearImporte(concepto.CostoDirectoUnitario);
+                decimal cdUnit   = engine.RoundAmount(concepto.CostoDirectoUnitario);
                 decimal cantidad = concepto.Cantidad;
 
                 // [FIX-3] Desglose con redondeo en cada paso — igual que BudgetLoadService
-                var desglose = motor.CalcularPrecioUnitario(cdUnit, input);
+                var desglose = engine.CalculateUnitPrice(cdUnit, BuildEnginePercentages(input));
 
-                totalCd     += motor.Multiplicar(cantidad, cdUnit);
-                totalOc     += motor.Multiplicar(cantidad, desglose.IndirectosCentral);
-                totalCampo  += motor.Multiplicar(cantidad, desglose.IndirectosCampo);
-                totalSub1   += motor.Multiplicar(cantidad, desglose.Subtotal1);
-                totalFin    += motor.Multiplicar(cantidad, desglose.Financiamiento);
-                totalSub2   += motor.Multiplicar(cantidad, desglose.Subtotal2);
-                totalUtil   += motor.Multiplicar(cantidad, desglose.Utilidad);
-                totalSub3   += motor.Multiplicar(cantidad, desglose.Subtotal3);
-                totalCargos += motor.Multiplicar(cantidad, desglose.CargosAdicionales);
-                totalFinal  += motor.Multiplicar(cantidad, desglose.PrecioUnitario);
+                totalCd     += engine.Multiply(cantidad, cdUnit);
+                totalOc     += engine.Multiply(cantidad, desglose.CentralIndirectCosts);
+                totalCampo  += engine.Multiply(cantidad, desglose.FieldIndirectCosts);
+                totalSub1   += engine.Multiply(cantidad, desglose.Subtotal1);
+                totalFin    += engine.Multiply(cantidad, desglose.Financing);
+                totalSub2   += engine.Multiply(cantidad, desglose.Subtotal2);
+                totalUtil   += engine.Multiply(cantidad, desglose.Profit);
+                totalSub3   += engine.Multiply(cantidad, desglose.Subtotal3);
+                totalCargos += engine.Multiply(cantidad, desglose.AdditionalCharges);
+                totalFinal  += engine.Multiply(cantidad, desglose.UnitPrice);
             }
 
             return new BudgetPercentagePreviewResult
@@ -98,9 +104,13 @@ namespace SOPRO.Application.Services
 
             // Si hay proyecto, usar motor para redondear; si no, valores de alta precisión
             // (este path solo se llega cuando no hay conceptos — impacto mínimo)
-            var motor = proyecto != null ? new MotorCalculoSopro(proyecto) : null;
+            var engine = proyecto != null
+                ? new SoproCalculationEngine(proyecto.DecimalesCantidad,
+                                             proyecto.DecimalesImporte,
+                                             proyecto.DecimalesPorcentaje)
+                : null;
 
-            decimal R(decimal v) => motor != null ? motor.RedondearImporte(v) : v;
+            decimal R(decimal v) => engine != null ? engine.RoundAmount(v) : v;
 
             decimal mOC, mCampo, sub1, mFin, sub2, mUtil, sub3, mCarg, puFinal;
             decimal cd = R(costoDirecto);
@@ -149,9 +159,24 @@ namespace SOPRO.Application.Services
             };
         }
 
-        // [FIX-1][FIX-2] Eliminados:
+        // [FIX-1][FIX-2][N5-3] Eliminados:
         //   private static decimal MultiplyUsingDisplayPrecision(...)
         //   private static decimal RoundImporte(...)
-        // Reemplazados por MotorCalculoSopro.Multiplicar() y .RedondearImporte()
+        // Reemplazados por SoproCalculationEngine.Multiply() y .RoundAmount()
+
+        private static PricePercentageInput BuildEnginePercentages(BudgetPercentageInput pct)
+            => new PricePercentageInput
+            {
+                ReferenceDirectCost             = pct.CostoDirectoReferencia,
+                CentralIndirectsPercentage      = pct.IndirectosCentral,
+                FieldIndirectsPercentage        = pct.IndirectosCampo,
+                FinancingPercentage             = pct.Financiamiento,
+                ProfitPercentage                = pct.Utilidad,
+                AdditionalChargesPercentage     = pct.CargosAdicionales,
+                Mode                            = string.Equals(pct.ModoCalculoPorcentajes, "SobreCD",
+                                                                StringComparison.OrdinalIgnoreCase)
+                                                    ? PercentageCalculationMode.OverDirectCost
+                                                    : PercentageCalculationMode.Accumulative
+            };
     }
 }
