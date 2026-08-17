@@ -473,6 +473,9 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 - Sin cambio de API: los consumidores de WinForms (`FormPresupuesto`, `FormFinanciamiento.FlujoCaja`) no se tocan en este PR; sus construcciones directas de la fachada se migran en los pasos 13-17 del orden.
 - Tests (`SOPRO.Tests/Services/Presupuesto/BudgetPricingServiceTests.cs`, 17 nuevos): paridad exacta servicio↔fachada para `CalculateUnitPrice` en ambos modos y 4 combinaciones de decimales, `MultiplyUsingDisplayPrecision` y `RoundImporte` (baterías con casos de redondeo simétrico y extremos); valores dorados fijos (Acumulables 5/5/2/8/3 → PU 1248.11; SobreCD → 1230.00; 652 × 13.3875 → 8730.28; redondeo `AwayFromZero` con 2.005); factor de precios en ambos modos (1.3032030 y 1.28).
 - Verificación: 270/270 (253 + 17 nuevos), Release 0 errores, `git diff --check` limpio.
+- Dictamen GO (barrido independiente del auditor: 8,560 casos de paridad servicio↔fachada con semilla fija, 0 discrepancias; Release y Debug 270/270). Hallazgos no bloqueantes anotados:
+  - `CalculateFactor` conserva lógica propia (multiplicador sin redondeo, dorado en ambos modos): cuando `SOPRO.Calculation` exponga un `CalculateFactor`, delegar también para consistencia (N5/N6).
+  - `BuildEngine` construye un engine por operación (POCO sin estado, costo irrelevante); solo replantear si algún llamador hace bucles masivos por P.U.
 
 ## 15. Fase N6: Empaquetado y validación privada
 
