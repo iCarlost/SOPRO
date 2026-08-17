@@ -482,6 +482,9 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 - `MatrixComponentCalculationService.Recalculate` construía `new MotorCalculoSopro(decimalesImporte, decimalesImporte, 4)` para sus 5 operaciones (`Multiplicar`, `RedondearImporte`, `CalcularImporteSobreBase`, `SumarImportes`, `RedondearImporte` en totales). Ahora construye `SoproCalculationEngine(decimalesImporte, decimalesImporte, 4)` directo con el mapeo 1:1 (`Multiply`, `RoundAmount`, `CalculateAmountOverBase`, `SumAmounts`). Sin cambio de API ni de algoritmo: mismo orden de pasadas (materiales/maquinaria/auxiliares → base MO normal + cuadrillas → %MO y herramientas → totales).
 - Tests: batería de paridad en `SOPRO.Tests/Services/MatrixComponentCalculationParityTests.cs` — 1,000 escenarios aleatorios deterministas (semilla fija) × 5 configuraciones de decimales (0-4) comparando componente a componente y total a total contra una referencia compuesta con las primitivas de la fachada (oráculo diferencial): 0 discrepancias; más 2 dorados nuevos fuera de la configuración estándar (decimales 0 y 3). Los 10 tests existentes de `Recalculate` (dorados a 2 decimales, edge cases, anidados) siguen verdes sin tocar.
 - Verificación: 273/273 (270 + 3 nuevos), Release 0 errores, `git diff --check` limpio.
+- Dictamen GO (barrido independiente del auditor: 36,746 comparaciones con semilla 987654321, 7 configs de decimales 0-6 y valores de 4 decimales, 0 fallos; Release y Debug 273/273). Hallazgos no bloqueantes anotados:
+  - El rango de la batería del PR es 0-4 decimales con valores de 3 decimales; el barrido del auditor extendió a 0-6 y 4 decimales sin divergencias (margen confirmado).
+  - `TotalManoObraResumen` se inicializa en 0 y se reasigna (:80 + :88): patrón heredado del original, inofensivo; se limpia si `MatrixComponentTotals` migra a constructor primario (opcional).
 
 ## 15. Fase N6: Empaquetado y validación privada
 
