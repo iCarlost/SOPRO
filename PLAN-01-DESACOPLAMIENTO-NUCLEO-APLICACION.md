@@ -497,6 +497,12 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
   - La batería del PR usa porcentajes de 2 decimales; el barrido del auditor cubrió 0-7 con 4 decimales sin divergencias (margen, no defecto).
   - `BuildEnginePercentages` ahora existe en 3 sitios (BudgetPricingService, BudgetPreviewCalculationService y la fachada MotorCalculoSopro): consolidar en un solo lugar cuando N5 avance un par de pasos más (o que SOPRO.Calculation exponga el mapeo desde un input tipo BudgetPercentageInput) para evitar el triple mantenimiento del criterio SobreCD. Seguimiento en N5/N6.
 
+### PR N5-4 (`BudgetConceptAssignmentService` — cuarto consumidor migrado al motor)
+
+- `BuildDraftFromConcept` y `BuildDraftFromMatrix` migrados de `MotorCalculoSopro` a `SoproCalculationEngine` (helper `BuildEngine` con los decimales del proyecto): `RedondearImporte` → `RoundAmount` (cdUnit por [FIX-2]) y `Multiplicar` → `Multiply` (cdTotal e importe por [FIX-1]/[FIX-3]/[FIX-4]). El P.U. sigue viniendo de `BudgetPricingService.CalculateUnitPrice` (ya sobre el motor desde N5-1). Sin cambio de API ni de lógica de negocio (claves, confirmaciones, tipos de matriz).
+- Tests (`SOPRO.Tests/Services/Presupuesto/BudgetConceptAssignmentParityTests.cs`, 5 nuevos — no existían tests previos para este servicio): batería de paridad de `BuildDraftFromSelectedMatrix` (500 escenarios deterministas, decimales aleatorios 0-6, modos Acumulables/SobreCD/sobrecd/null y porcentajes aleatorios) contra referencia compuesta con fachada; batería del camino "copia desde grid" vía `ResolveByKey` (300 escenarios, sin BD — el draft se compara campo a campo incluido MatrizId); dorados de ambos drafts (13.3875×652 → cdUnit 13.39, PU 16.71, cdTotal 8730.28, importe 10894.92; 100×10 → PU 124.82, cdTotal 1000.00, importe 1248.20); y caso de cantidad inválida → default 1.
+- Verificación: 281/281 (276 + 5 nuevos), Release 0 errores, `git diff --check` limpio.
+
 ## 15. Fase N6: Empaquetado y validación privada
 
 ### Metadatos obligatorios
