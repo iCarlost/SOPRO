@@ -466,6 +466,14 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 - Los escenarios oficial y real permanecen verdes.
 - La fachada solo se retira según una decisión de compatibilidad con consumidores autorizados.
 
+### PR N5-1 (`BudgetPricingService` — primer consumidor migrado al motor)
+
+- `BudgetPricingService` era el único wrapper que aún pasaba por la fachada (`MotorCalculoSopro`) para su aritmética: `CalculateUnitPrice` (ambas sobrecargas), `MultiplyUsingDisplayPrecision` y `RoundImporte`. El resto (factor, header, letras, porcentajes) son utilidades puras sin delegación.
+- Ahora construye directamente `SoproCalculationEngine` (de `SOPRO.Calculation`) con la misma configuración de decimales que usaba la fachada (`Proyecto.Decimales*`, o 2/2/4 sin proyecto), y mapea `BudgetPercentageInput` → `PricePercentageInput` con el mismo criterio legacy ("SobreCD" case-insensitive → `OverDirectCost`; el resto → `Accumulative`). La fachada conserva ese mapeo y sigue siendo el oráculo diferencial contra el paquete.
+- Sin cambio de API: los consumidores de WinForms (`FormPresupuesto`, `FormFinanciamiento.FlujoCaja`) no se tocan en este PR; sus construcciones directas de la fachada se migran en los pasos 13-17 del orden.
+- Tests (`SOPRO.Tests/Services/Presupuesto/BudgetPricingServiceTests.cs`, 17 nuevos): paridad exacta servicio↔fachada para `CalculateUnitPrice` en ambos modos y 4 combinaciones de decimales, `MultiplyUsingDisplayPrecision` y `RoundImporte` (baterías con casos de redondeo simétrico y extremos); valores dorados fijos (Acumulables 5/5/2/8/3 → PU 1248.11; SobreCD → 1230.00; 652 × 13.3875 → 8730.28; redondeo `AwayFromZero` con 2.005); factor de precios en ambos modos (1.3032030 y 1.28).
+- Verificación: 270/270 (253 + 17 nuevos), Release 0 errores, `git diff --check` limpio.
+
 ## 15. Fase N6: Empaquetado y validación privada
 
 ### Metadatos obligatorios
