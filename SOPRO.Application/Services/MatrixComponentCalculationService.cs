@@ -1,15 +1,22 @@
+using Sopro.Calculation;
 using SOPRO.Application.Models.Matrices;
 using SOPRO.Core.Entities;
 
 namespace SOPRO.Application.Services
 {
+    // ╔══════════════════════════════════════════════════════════════════════════╗
+    // ║  MatrixComponentCalculationService — delegador directo al motor          ║
+    // ║  (N5-2, PLAN-01 §14): toda aritmética vive en SoproCalculationEngine;   ║
+    // ║  esta clase ya no pasa por la fachada legacy MotorCalculoSopro.          ║
+    // ╚══════════════════════════════════════════════════════════════════════════╝
+
     public static class MatrixComponentCalculationService
     {
         public static MatrixComponentTotals Recalculate(IList<ComponenteMatriz> componentes, int decimalesImporte)
         {
             if (componentes == null) throw new ArgumentNullException(nameof(componentes));
 
-            var motor = new MotorCalculoSopro(decimalesImporte, decimalesImporte, 4);
+            var engine = new SoproCalculationEngine(decimalesImporte, decimalesImporte, 4);
 
             foreach (var comp in componentes)
             {
@@ -17,17 +24,17 @@ namespace SOPRO.Application.Services
                 {
                     case TipoComponenteMatriz.Material:
                         if (comp.Material != null)
-                            comp.Importe = motor.Multiplicar(comp.Cantidad, comp.Material.PrecioUnitario);
+                            comp.Importe = engine.Multiply(comp.Cantidad, comp.Material.PrecioUnitario);
                         break;
 
                     case TipoComponenteMatriz.Maquinaria:
                         if (comp.Maquinaria != null)
-                            comp.Importe = motor.Multiplicar(comp.Cantidad, comp.Maquinaria.CostoHorario);
+                            comp.Importe = engine.Multiply(comp.Cantidad, comp.Maquinaria.CostoHorario);
                         break;
 
                     case TipoComponenteMatriz.Auxiliar:
                         if (comp.Auxiliar != null)
-                            comp.Importe = motor.Multiplicar(comp.Cantidad, comp.Auxiliar.CostoDirecto);
+                            comp.Importe = engine.Multiply(comp.Cantidad, comp.Auxiliar.CostoDirecto);
                         break;
                 }
             }
@@ -39,13 +46,13 @@ namespace SOPRO.Application.Services
                 {
                     if (!comp.ManoDeObra.EsPorcentajeMO)
                     {
-                        comp.Importe = motor.Multiplicar(comp.Cantidad, comp.ManoDeObra.SalarioReal);
-                        baseManoObra = motor.RedondearImporte(baseManoObra + comp.Importe);
+                        comp.Importe = engine.Multiply(comp.Cantidad, comp.ManoDeObra.SalarioReal);
+                        baseManoObra = engine.RoundAmount(baseManoObra + comp.Importe);
                     }
                 }
                 else if (comp.TipoComponente == TipoComponenteMatriz.Auxiliar && comp.Auxiliar?.Tipo == TipoMatriz.Cuadrilla)
                 {
-                    baseManoObra = motor.RedondearImporte(baseManoObra + comp.Importe);
+                    baseManoObra = engine.RoundAmount(baseManoObra + comp.Importe);
                 }
             }
 
@@ -54,39 +61,39 @@ namespace SOPRO.Application.Services
                 if (comp.TipoComponente == TipoComponenteMatriz.ManoDeObra && comp.ManoDeObra != null)
                 {
                     if (comp.ManoDeObra.EsPorcentajeMO)
-                        comp.Importe = motor.CalcularImporteSobreBase(comp.Cantidad, baseManoObra);
+                        comp.Importe = engine.CalculateAmountOverBase(comp.Cantidad, baseManoObra);
                 }
                 else if (comp.TipoComponente == TipoComponenteMatriz.Herramienta && comp.Herramienta != null)
                 {
                     comp.Importe = comp.Herramienta.EsPorcentajeMO
-                        ? motor.CalcularImporteSobreBase(comp.Cantidad, baseManoObra)
-                        : motor.Multiplicar(comp.Cantidad, comp.Herramienta.PrecioUnitario);
+                        ? engine.CalculateAmountOverBase(comp.Cantidad, baseManoObra)
+                        : engine.Multiply(comp.Cantidad, comp.Herramienta.PrecioUnitario);
                 }
             }
 
-            var totalHerramientaPorcentajeMo = motor.SumarImportes(
+            var totalHerramientaPorcentajeMo = engine.SumAmounts(
                 componentes
                     .Where(c => c.TipoComponente == TipoComponenteMatriz.Herramienta && c.Herramienta?.EsPorcentajeMO == true)
                     .Select(c => c.Importe));
 
             var totals = new MatrixComponentTotals
             {
-                TotalMaterial = motor.SumarImportes(componentes.Where(c => c.TipoComponente == TipoComponenteMatriz.Material).Select(c => c.Importe)),
-                BaseManoObra = motor.RedondearImporte(baseManoObra),
-                TotalManoObra = motor.SumarImportes(
+                TotalMaterial = engine.SumAmounts(componentes.Where(c => c.TipoComponente == TipoComponenteMatriz.Material).Select(c => c.Importe)),
+                BaseManoObra = engine.RoundAmount(baseManoObra),
+                TotalManoObra = engine.SumAmounts(
                     componentes.Where(c => c.TipoComponente == TipoComponenteMatriz.ManoDeObra ||
                                            (c.TipoComponente == TipoComponenteMatriz.Auxiliar && c.Auxiliar?.Tipo == TipoMatriz.Cuadrilla))
                                .Select(c => c.Importe)),
-                TotalMaquinaria = motor.SumarImportes(componentes.Where(c => c.TipoComponente == TipoComponenteMatriz.Maquinaria).Select(c => c.Importe)),
-                TotalBasicos = motor.SumarImportes(
+                TotalMaquinaria = engine.SumAmounts(componentes.Where(c => c.TipoComponente == TipoComponenteMatriz.Maquinaria).Select(c => c.Importe)),
+                TotalBasicos = engine.SumAmounts(
                     componentes.Where(c => c.TipoComponente == TipoComponenteMatriz.Auxiliar && c.Auxiliar?.Tipo != TipoMatriz.Cuadrilla)
                                .Select(c => c.Importe)),
-                TotalHerramientas = motor.SumarImportes(componentes.Where(c => c.TipoComponente == TipoComponenteMatriz.Herramienta).Select(c => c.Importe)),
+                TotalHerramientas = engine.SumAmounts(componentes.Where(c => c.TipoComponente == TipoComponenteMatriz.Herramienta).Select(c => c.Importe)),
                 TotalManoObraResumen = 0
             };
 
-            totals.TotalManoObraResumen = motor.RedondearImporte(totals.TotalManoObra + totalHerramientaPorcentajeMo);
-            totals.CostoDirectoTotal = motor.RedondearImporte(
+            totals.TotalManoObraResumen = engine.RoundAmount(totals.TotalManoObra + totalHerramientaPorcentajeMo);
+            totals.CostoDirectoTotal = engine.RoundAmount(
                 totals.TotalMaterial + totals.TotalManoObra + totals.TotalMaquinaria + totals.TotalBasicos + totals.TotalHerramientas);
             return totals;
         }

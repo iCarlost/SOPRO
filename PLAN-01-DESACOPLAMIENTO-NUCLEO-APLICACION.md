@@ -477,6 +477,12 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
   - `CalculateFactor` conserva lógica propia (multiplicador sin redondeo, dorado en ambos modos): cuando `SOPRO.Calculation` exponga un `CalculateFactor`, delegar también para consistencia (N5/N6).
   - `BuildEngine` construye un engine por operación (POCO sin estado, costo irrelevante); solo replantear si algún llamador hace bucles masivos por P.U.
 
+### PR N5-2 (`MatrixComponentCalculationService` — segundo consumidor migrado al motor)
+
+- `MatrixComponentCalculationService.Recalculate` construía `new MotorCalculoSopro(decimalesImporte, decimalesImporte, 4)` para sus 5 operaciones (`Multiplicar`, `RedondearImporte`, `CalcularImporteSobreBase`, `SumarImportes`, `RedondearImporte` en totales). Ahora construye `SoproCalculationEngine(decimalesImporte, decimalesImporte, 4)` directo con el mapeo 1:1 (`Multiply`, `RoundAmount`, `CalculateAmountOverBase`, `SumAmounts`). Sin cambio de API ni de algoritmo: mismo orden de pasadas (materiales/maquinaria/auxiliares → base MO normal + cuadrillas → %MO y herramientas → totales).
+- Tests: batería de paridad en `SOPRO.Tests/Services/MatrixComponentCalculationParityTests.cs` — 1,000 escenarios aleatorios deterministas (semilla fija) × 5 configuraciones de decimales (0-4) comparando componente a componente y total a total contra una referencia compuesta con las primitivas de la fachada (oráculo diferencial): 0 discrepancias; más 2 dorados nuevos fuera de la configuración estándar (decimales 0 y 3). Los 10 tests existentes de `Recalculate` (dorados a 2 decimales, edge cases, anidados) siguen verdes sin tocar.
+- Verificación: 273/273 (270 + 3 nuevos), Release 0 errores, `git diff --check` limpio.
+
 ## 15. Fase N6: Empaquetado y validación privada
 
 ### Metadatos obligatorios
