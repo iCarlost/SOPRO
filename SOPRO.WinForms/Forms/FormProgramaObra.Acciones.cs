@@ -58,10 +58,11 @@ namespace SOPRO.WinForms.Forms
                 {
                     SetOcupado(true, "Sincronizando programa...");
                     var dbPath = _context.DatabasePath;
+                    var proyectoIdSync = _proyecto.Id;
                     var resultSinPrograma = await Task.Run(() =>
                     {
                         using var ctx = _factory.Create(dbPath);
-                        return _syncService.SyncFromBudget(ctx, _proyecto.Id);
+                        return _syncService.SyncFromBudget(ctx, proyectoIdSync);
                     });
                     lblEstado.Text = resultSinPrograma.Message;
                     CargarPrograma();

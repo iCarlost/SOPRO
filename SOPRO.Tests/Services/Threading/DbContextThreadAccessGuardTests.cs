@@ -1,4 +1,4 @@
-﻿using System.Data.Common;
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -12,30 +12,30 @@ namespace SOPRO.Tests.Services.Threading;
 
 /// <summary>
 /// Pruebas de hilo del Gate N4 (N4-5): cero <see cref="SOPROContext"/> usado
-/// desde mÃºltiples hilos. El patrÃ³n prohibido es el contexto COMPARTIDO dentro
-/// de <c>Task.Run</c>; el patrÃ³n adoptado es contexto propio por operaciÃ³n
-/// (abierto con la fÃ¡brica y descartado al terminar el bloque) mientras el
-/// contexto de sesiÃ³n se queda exclusivamente en el hilo de UI.
+/// desde múltiples hilos. El patrón prohibido es el contexto COMPARTIDO dentro
+/// de <c>Task.Run</c>; el patrón adoptado es contexto propio por operación
+/// (abierto con la fábrica y descartado al terminar el bloque) mientras el
+/// contexto de sesión se queda exclusivamente en el hilo de UI.
 ///
 /// El <see cref="ThreadAccessGuardInterceptor"/> es el contador de accesos
 /// concurrentes: por instancia registra si dos comandos se ejecutan a la vez
-/// desde hilos distintos. EF Core ademÃ¡s detecta el abuso en la misma instancia
+/// desde hilos distintos. EF Core además detecta el abuso en la misma instancia
 /// ("A second operation was started on this context instance") y lo lanza como
-/// <see cref="InvalidOperationException"/>, asÃ­ que ambos mecanismos cubren
+/// <see cref="InvalidOperationException"/>, así que ambos mecanismos cubren
 /// los dos patrones.
 /// </summary>
 [TestClass]
 public class DbContextThreadAccessGuardTests
 {
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ────────────────────────────────────────────────────────────────────────
     // SEAM: contador de accesos concurrentes por instancia de contexto
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Interceptor que cuenta superposiciones de comandos en la MISMA instancia
     /// desde hilos distintos (contador de accesos concurrentes). Opcionalmente
-    /// detiene el primer comando (gate) para forzar la superposiciÃ³n de forma
-    /// determinista y seÃ±aliza cuando ese primer comando entrÃ³.
+    /// detiene el primer comando (gate) para forzar la superposición de forma
+    /// determinista y señaliza cuando ese primer comando entró.
     /// </summary>
     private sealed class ThreadAccessGuardInterceptor : DbCommandInterceptor
     {
@@ -53,7 +53,7 @@ public class DbContextThreadAccessGuardTests
             _entered = entered;
         }
 
-        /// <summary>NÃºmero de accesos concurrentes detectados en esta instancia.</summary>
+        /// <summary>Número de accesos concurrentes detectados en esta instancia.</summary>
         public long Violations => Interlocked.Read(ref _violations);
 
         private void Enter()
@@ -171,7 +171,7 @@ public class DbContextThreadAccessGuardTests
 
     /// <summary>
     /// Contexto con el contador de accesos concurrentes conectado
-    /// (via <c>OnConfiguring</c>, sin tocar la producciÃ³n).
+    /// (via <c>OnConfiguring</c>, sin tocar la producción).
     /// </summary>
     private sealed class GuardedContext : SOPROContext
     {
@@ -191,12 +191,12 @@ public class DbContextThreadAccessGuardTests
         }
     }
 
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ────────────────────────────────────────────────────────────────────────
     // PRUEBAS
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// PatrÃ³n prohibido (antes de N4-5): la MISMA instancia usada desde dos
+    /// Patrón prohibido (antes de N4-5): la MISMA instancia usada desde dos
     /// hilos a la vez. EF Core lo detecta y lo rechaza de forma determinista:
     /// es la prueba de que el contador y el guard tienen algo que medir.
     /// </summary>
@@ -215,13 +215,13 @@ public class DbContextThreadAccessGuardTests
         using var gateContext = new GuardedContext(dbPath, new ThreadAccessGuardInterceptor(gate, entered));
 
         // El hilo 1 inicia un comando sobre gateContext y queda DETENIDO dentro
-        // del interceptor: el comando estÃ¡ en vuelo pero la base no se toca.
+        // del interceptor: el comando está en vuelo pero la base no se toca.
         var t1 = Task.Run(() => gateContext.Proyectos.Count());
         Assert.IsTrue(entered.Wait(TimeSpan.FromSeconds(10)),
-            "El primer comando del contexto no entrÃ³ al interceptor.");
+            "El primer comando del contexto no entró al interceptor.");
 
         // El hilo 2 intenta usar la MISMA instancia mientras el hilo 1 tiene
-        // una operaciÃ³n en vuelo: EF Core rechaza el acceso concurrente.
+        // una operación en vuelo: EF Core rechaza el acceso concurrente.
         var t2 = Task.Run(() => gateContext.Proyectos.Count());
         Exception? error = null;
         try
@@ -236,21 +236,22 @@ public class DbContextThreadAccessGuardTests
         gate.Set();
         t1.Wait(TimeSpan.FromSeconds(10));
 
-        Assert.IsNotNull(error, "EF Core debiÃ³ rechazar el acceso concurrente a la misma instancia.");
+        Assert.IsNotNull(error, "EF Core debió rechazar el acceso concurrente a la misma instancia.");
         Assert.IsInstanceOfType<InvalidOperationException>(error);
         Assert.IsTrue(error!.Message.Contains("second operation", StringComparison.OrdinalIgnoreCase)
                       || error.Message.Contains("concurrently", StringComparison.OrdinalIgnoreCase),
             $"El mensaje debe ser el de contexto en uso: {error.Message}");
 
-        // El contexto compartido quedÃ³ servible: la lectura original completÃ³.
+        // El contexto compartido quedó servible: la lectura original completó.
         Assert.AreEqual(1, compartido.Proyectos.Count());
     }
 
     /// <summary>
-    /// PatrÃ³n N4-5: la operaciÃ³n de segundo plano usa su PROPIO contexto
-    /// (fÃ¡brica, transient) mientras el contexto de sesiÃ³n permanece en el
-    /// hilo de UI. Con la superposiciÃ³n FORZADA entre ambos (gate) el contador
-    /// de accesos concurrentes debe quedar en cero en las dos instancias.
+    /// Patrón N4-5: la operación de segundo plano usa su PROPIO contexto
+    /// (fábrica, transient) mientras el contexto de sesión permanece en el
+    /// hilo de UI. Con la superposición FORZADA entre ambos (gate) el contador
+    /// de accesos concurrentes debe quedar en cero en el contexto de sesión
+    /// (el contexto propio se descarta dentro del bloque y no es asertable).
     /// </summary>
     [TestMethod]
     public void OperacionEnSegundoPlano_ConContextoPropio_CeroAccesosConcurrentes()
@@ -266,9 +267,9 @@ public class DbContextThreadAccessGuardTests
         var gate = new ManualResetEventSlim(false);
         var entered = new ManualResetEventSlim(false);
 
-        // "Task.Run": la operaciÃ³n abre su contexto con la fÃ¡brica (transient),
+        // "Task.Run": la operación abre su contexto con la fábrica (transient),
         // lo usa y lo descarta DENTRO del bloque. El gate detiene su primer
-        // comando para garantizar la superposiciÃ³n temporal con la UI.
+        // comando para garantizar la superposición temporal con la UI.
         var tFondo = Task.Run(() =>
         {
             using var propio = new GuardedContext(dbPath, new ThreadAccessGuardInterceptor(gate, entered));
@@ -277,10 +278,10 @@ public class DbContextThreadAccessGuardTests
         });
 
         Assert.IsTrue(entered.Wait(TimeSpan.FromSeconds(10)),
-            "El comando del contexto de fondo no entrÃ³ al interceptor.");
+            "El comando del contexto de fondo no entró al interceptor.");
         try
         {
-            // Mientras el fondo estÃ¡ en vuelo, la UI lee del contexto compartido.
+            // Mientras el fondo está en vuelo, la UI lee del contexto compartido.
             for (int i = 0; i < 25; i++)
             {
                 _ = compartido.Proyectos.Count();
@@ -293,20 +294,20 @@ public class DbContextThreadAccessGuardTests
         }
 
         Assert.IsTrue(tFondo.Wait(TimeSpan.FromSeconds(20)),
-            "La operaciÃ³n de fondo no completÃ³.");
+            "La operación de fondo no completó.");
         tFondo.GetAwaiter().GetResult();
 
         Assert.AreEqual(0, compartido.Violations,
-            "El contexto de sesiÃ³n fue usado desde mÃ¡s de un hilo.");
+            "El contexto de sesión fue usado desde más de un hilo.");
         Assert.IsTrue(tFondo.IsCompletedSuccessfully,
-            "La operaciÃ³n de fondo fallÃ³.");
+            "La operación de fondo falló.");
     }
 
     /// <summary>
-    /// Carga de trabajo real (forma de btnRecalcular): el cÃ¡lculo de programa
+    /// Carga de trabajo real (forma de btnRecalcular): el cálculo de programa
     /// (recalcular + regenerar periodos + distribuir) corre en segundo plano con
     /// contexto propio mientras la UI consulta el contexto compartido. La
-    /// operaciÃ³n completa, los resultados persisten y el contador queda en cero.
+    /// operación completa, los resultados persisten y el contador queda en cero.
     /// </summary>
     [TestMethod]
     public void RecalcularProgramaEnSegundoPlano_ConContextoPropio_CompletaSinViolaciones()
@@ -369,10 +370,10 @@ public class DbContextThreadAccessGuardTests
         });
 
         Assert.IsTrue(entered.Wait(TimeSpan.FromSeconds(10)),
-            "El primer comando del cÃ¡lculo de fondo no entrÃ³ al interceptor.");
+            "El primer comando del cálculo de fondo no entró al interceptor.");
         try
         {
-            // La UI consulta el contexto compartido mientras el cÃ¡lculo estÃ¡ en vuelo.
+            // La UI consulta el contexto compartido mientras el cálculo está en vuelo.
             for (int i = 0; i < 40 && !tFondo.IsCompleted; i++)
             {
                 _ = compartido.ActividadesProgramadas.Count(a => a.ProgramaObraId == programaId);
@@ -385,13 +386,13 @@ public class DbContextThreadAccessGuardTests
         }
 
         Assert.IsTrue(tFondo.Wait(TimeSpan.FromSeconds(30)),
-            "El recÃ¡lculo de fondo no completÃ³.");
+            "El recálculo de fondo no completó.");
         tFondo.GetAwaiter().GetResult();
 
         Assert.AreEqual(0, compartido.Violations,
-            "El contexto de sesiÃ³n fue usado desde mÃ¡s de un hilo durante el recÃ¡lculo.");
+            "El contexto de sesión fue usado desde más de un hilo durante el recálculo.");
         Assert.IsTrue(tFondo.IsCompletedSuccessfully,
-            "El cÃ¡lculo de fondo fallÃ³ (la operaciÃ³n no debe lanzar).");
+            "El cálculo de fondo falló (la operación no debe lanzar).");
 
         // Resultados persistidos visibles con lectura fresca del contexto compartido.
         var actividades = compartido.ActividadesProgramadas
@@ -399,11 +400,11 @@ public class DbContextThreadAccessGuardTests
             .ToList();
         Assert.AreEqual(2, actividades.Count);
         Assert.IsTrue(actividades.All(a => a.FechaInicioProgramada.HasValue && a.FechaFinProgramada.HasValue),
-            "El recÃ¡lculo debe dejar fechas programadas a todas las hojas.");
+            "El recálculo debe dejar fechas programadas a todas las hojas.");
         Assert.IsTrue(compartido.PeriodosPrograma.Count(p => p.ProgramaObraId == programaId) > 0,
-            "La regeneraciÃ³n debe crear periodos del programa.");
+            "La regeneración debe crear periodos del programa.");
         Assert.IsTrue(compartido.DistribucionesPeriodo.Count(d => d.ActividadProgramada.ProgramaObraId == programaId) > 0,
-            "La distribuciÃ³n debe repartir importes en los periodos.");
+            "La distribución debe repartir importes en los periodos.");
     }
 
     private static Proyecto CrearProyecto(string nombre) => new Proyecto
