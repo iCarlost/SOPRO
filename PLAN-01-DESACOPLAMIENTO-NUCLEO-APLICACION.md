@@ -506,6 +506,12 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
   - La consolidación de `BuildEngine` (ahora en N5-1, N5-3, N5-4) y `BuildEnginePercentages` (N5-1, N5-3, fachada) acumula urgencia: unificar en un solo sitio o exponerlo desde SOPRO.Calculation (mismo seguimiento N5/N6).
   - Supuesto de cobertura: la batería de concepto reusa la semántica de la de matriz (comparten aritmética); si `BuildDraftFromConcept` divergiera algún día (p. ej. reusar el P.U. del origen en vez de recalcularlo), la referencia compuesta no lo detectaría por diseño — cobertura actual suficiente.
 
+### PR N5-5 (`BudgetRowEditFlowService` — quinto consumidor migrado al motor)
+
+- `HandleQuantityCellChange` migrado de `MotorCalculoSopro` a `SoproCalculationEngine` (único sitio numérico del servicio): `RedondearCantidad` → `RoundQuantity` (primera aparición de esta operación en N5), `Multiplicar` → `Multiply`, `RedondearImporte` → `RoundAmount` (IVA y total). El P.U. sigue viniendo de `BudgetPricingService.CalculateUnitPrice` (N5-1) con el CD unitario crudo — el motor redondea internamente, igual que antes. `HandleTypeCellChange` no tiene aritmética. Sin cambio de API ni de lógica.
+- Tests (`SOPRO.Tests/Services/Presupuesto/BudgetRowEditFlowParityTests.cs`, 5 nuevos — no existía cobertura previa): batería de paridad de 800 escenarios deterministas (decimales 0-6, modos Acumulables/SobreCD/sobrecd/null, IVA 0 o aleatorio, 10% de textos inválidos/vacíos) contra referencia compuesta con fachada — 8 campos por escenario incluidos los textos en letra; dorados con IVA (652×124.82 → importe 81382.64, IVA 13021.22, total 94403.86), sin IVA (total = subtotal), normalización de cantidad visible (652.5555 → 652.56) y textos inválidos/sin matriz → resultado vacío.
+- Verificación: 286/286 (281 + 5 nuevos), Release 0 errores, `git diff --check` limpio.
+
 ## 15. Fase N6: Empaquetado y validación privada
 
 ### Metadatos obligatorios
