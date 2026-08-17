@@ -1,3 +1,4 @@
+using Sopro.Calculation;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -5,17 +6,20 @@ using SOPRO.Data.Context;
 namespace SOPRO.Application.Services
 {
     // ╔══════════════════════════════════════════════════════════════════════════╗
-    // ║  BudgetConceptAssignmentService — VERSIÓN CORREGIDA v1.0               ║
+    // ║  BudgetConceptAssignmentService — VERSIÓN CORREGIDA v2.0               ║
+    // ║                                                                         ║
+    // ║  [N5-4] Toda aritmética delegada directo a SoproCalculationEngine      ║
+    // ║         (SOPRO.Calculation), sin pasar por la fachada legacy.          ║
     // ║                                                                         ║
     // ║  CAMBIOS RESPECTO A LA VERSIÓN ORIGINAL:                                ║
-    // ║  [FIX-1] BuildDraftFromMatrix: CostoDirectoTotal usa motor.Multiplicar  ║
+    // ║  [FIX-1] BuildDraftFromMatrix: CostoDirectoTotal usa Multiplicar        ║
     // ║          en lugar de  matriz.CostoDirecto * cantidad  sin redondear.    ║
     // ║  [FIX-2] BuildDraftFromMatrix: CostoDirectoUnitario pasa por            ║
-    // ║          motor.RedondearImporte antes de persistir.                     ║
+    // ║          RoundAmount antes de persistir.                                ║
     // ║  [FIX-3] BuildDraftFromConcept: CostoDirectoTotal recalculado con       ║
-    // ║          motor.Multiplicar en lugar de copiar el valor sin actualizar.  ║
+    // ║          Multiplicar en lugar de copiar el valor sin actualizar.        ║
     // ║  [FIX-4] MultiplyUsingDisplayPrecision de BudgetPricingService          ║
-    // ║          reemplazado por motor.Multiplicar en ambos métodos Build*.     ║
+    // ║          reemplazado por Multiplicar en ambos métodos Build*.           ║
     // ╚══════════════════════════════════════════════════════════════════════════╝
 
     public static class BudgetConceptAssignmentService
@@ -175,12 +179,12 @@ namespace SOPRO.Application.Services
         private static BudgetConceptAssignmentDraft BuildDraftFromConcept(
             Proyecto proyecto, string key, ConceptoPresupuesto sourceConcept)
         {
-            var motor          = new MotorCalculoSopro(proyecto);
-            decimal cdUnit     = motor.RedondearImporte(sourceConcept.CostoDirectoUnitario); // [FIX-2]
+            var engine         = BuildEngine(proyecto);
+            decimal cdUnit     = engine.RoundAmount(sourceConcept.CostoDirectoUnitario); // [FIX-2]
             decimal pu         = BudgetPricingService.CalculateUnitPrice(proyecto, cdUnit);
             decimal cantidad   = sourceConcept.Cantidad;
-            decimal cdTotal    = motor.Multiplicar(cantidad, cdUnit);  // [FIX-3] recalculado
-            decimal importe    = motor.Multiplicar(cantidad, pu);      // [FIX-4]
+            decimal cdTotal    = engine.Multiply(cantidad, cdUnit);  // [FIX-3] recalculado
+            decimal importe    = engine.Multiply(cantidad, pu);      // [FIX-4]
 
             return new BudgetConceptAssignmentDraft
             {
@@ -200,11 +204,11 @@ namespace SOPRO.Application.Services
         private static BudgetConceptAssignmentDraft BuildDraftFromMatrix(
             Proyecto proyecto, string key, Matriz matriz, decimal cantidad)
         {
-            var motor      = new MotorCalculoSopro(proyecto);
-            decimal cdUnit = motor.RedondearImporte(matriz.CostoDirecto); // [FIX-2]
+            var engine      = BuildEngine(proyecto);
+            decimal cdUnit = engine.RoundAmount(matriz.CostoDirecto); // [FIX-2]
             decimal pu     = BudgetPricingService.CalculateUnitPrice(proyecto, cdUnit);
-            decimal cdTotal = motor.Multiplicar(cantidad, cdUnit);         // [FIX-1] con Round
-            decimal importe = motor.Multiplicar(cantidad, pu);             // [FIX-4]
+            decimal cdTotal = engine.Multiply(cantidad, cdUnit);         // [FIX-1] con Round
+            decimal importe = engine.Multiply(cantidad, pu);             // [FIX-4]
 
             return new BudgetConceptAssignmentDraft
             {
@@ -227,5 +231,10 @@ namespace SOPRO.Application.Services
             return decimal.TryParse(raw, out decimal cantidad) && cantidad > 0
                 ? cantidad : defaultValue;
         }
+
+        private static SoproCalculationEngine BuildEngine(Proyecto proyecto)
+            => new SoproCalculationEngine(proyecto.DecimalesCantidad,
+                                          proyecto.DecimalesImporte,
+                                          proyecto.DecimalesPorcentaje);
     }
 }
