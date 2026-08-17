@@ -387,6 +387,21 @@ WinForms debe adoptar primero estos casos de uso. Solo después se construye la 
 - `grep "new SOPROContext"` en WinForms → 0 (en todo el repo solo queda el constructor de `SOPROContext` y el contexto legacy por formulario, que es el modelo que N5 retirará).
 - Verificación: 250/250, Release 0 errores, `git diff --check` limpio.
 
+### PR N4-5 (cero DbContext en `Task.Run` — cierre del Gate N4) — implementado, pendiente de dictamen
+
+- Acción 3 del plan (prohibir el contexto compartido dentro de `Task.Run`) aplicada en las 7 ocurrencias confirmadas de `FormProgramaObra.*`/`FormProyecto.Formato.cs` (el plan anotó 8; el recuento real tras N4-1..N4-4 es 7):
+  - `FormProgramaObra.Acciones.cs`: sincronizar desde presupuesto, recalcular, actualizar calendario y cambiar tipo de periodo.
+  - `FormProgramaObra.Dependencias.cs`: regeneración fire-and-forget tras guardar dependencias.
+  - `FormProgramaObra.EdicionActividades.cs`: recálculo + redistribución tras editar celda.
+  - `FormProyecto.Formato.cs`: recálculo global (ribbon/F9).
+- Patrón N4-5 por bloque: la ruta de la base se captura ANTES en el hilo de UI (`_context.DatabasePath`); dentro del `Task.Run` la operación abre SU propio contexto transient con la fábrica (`using var ctx = _factory.Create(dbPath)`), lo usa y lo descarta ahí mismo. El contexto de sesión queda exclusivamente en el hilo de UI; el candado de hilo es estructural (cada instancia es usada desde un solo hilo), no de coordinación.
+- `RegenerarPeriodosYDistribuciones` dejó de cerrar sobre `_context`: ahora recibe el contexto por parámetro (los 6 call sites están dentro de bloques `Task.Run`).
+- El contador de accesos concurrentes pedido por el plan vive en `SOPRO.Tests/Services/Threading/DbContextThreadAccessGuardTests.cs`: `ThreadAccessGuardInterceptor` (interceptor de comandos EF, conectado vía `OnConfiguring` sin tocar producción) cuenta, por instancia, si dos comandos se ejecutan a la vez desde hilos distintos; un gate (`ManualResetEventSlim`) detiene el primer comando para forzar la superposición de forma determinista.
+- Tests (3 nuevos, deterministas): contexto compartido usado desde dos hilos → EF Core lo rechaza (`InvalidOperationException` "second operation…", patrón prohibido); operación de fondo con contexto propio mientras la UI lee el compartido → 0 violaciones en ambas instancias con la superposición forzada; carga de trabajo real (recalcular + regenerar periodos + distribuir en segundo plano, forma de `btnRecalcular`) → completa, 0 violaciones y resultados persistidos verificados con lectura fresca.
+- Acción 4 del plan (snapshots antes del cálculo CPU): satisfecha parcialmente por diseño — los servicios de programación son lecto-escritura mezclada (leer → calcular → `SaveChanges`); partirlos en "cargar snapshot puro → calcular puro → persistir" es la migración de servicios de N5 (empezando por `BudgetPricingService`). N4-5 elimina el riesgo del Gate (contexto compartido en hilos) sin reescribir los servicios; el refresco de la UI tras la operación ya recarga con lectura fresca (`CargarPrograma`), por lo que no queda estado compartido entre hilos.
+- Riesgo residual documentado (preexistente y estrictamente menor que antes): dos ESCRITORES distintos sobre el mismo archivo SQLite en la misma ventana temporal (p. ej. edición de grid durante la regeneración fire-and-forget) pueden chocar con `SQLITE_BUSY`; `Microsoft.Data.Sqlite` espera hasta 30 s por defecto y el formulario muestra el error tipado. Antes del cambio el choque era peor: la MISMA instancia desde dos hilos (EF la rechaza).
+- Verificación: 253/253 (250 + 3 nuevos), Release 0 errores, `git diff --check` limpio.
+
 1. Sustituir `ProjectSession.Context` por información neutral de sesión.
 2. Crear un contexto por consulta o comando.
 3. Prohibir el contexto compartido dentro de `Task.Run`.

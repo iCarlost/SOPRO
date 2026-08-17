@@ -160,18 +160,20 @@ namespace SOPRO.WinForms.Forms
                 var actividadId  = dto.Id;
                 var programaId   = _programaActual.ProgramaObraId;
                 var tipoPeriodo  = ObtenerTipoPeriodoSeleccionado();
+                var dbPathAct = _context.DatabasePath;
                 SetOcupado(true, $"Actualizando '{dto.Clave}'...");
 
                 await Task.Run(() =>
                 {
+                    using var ctx = _factory.Create(dbPathAct);
                     // 1. Recalcular fechas de esta actividad
-                    _calculationService.RecalculateActivity(_context, actividadId);
+                    _calculationService.RecalculateActivity(ctx, actividadId);
                     // 2. Redistribuir solo esta actividad
-                    _distributionService.DistributeUniform(_context, actividadId);
+                    _distributionService.DistributeUniform(ctx, actividadId);
                     // 3. Recalcular agrupadores y ruta crítica del programa completo
-                    _calculationService.RecalculateProgram(_context, programaId);
+                    _calculationService.RecalculateProgram(ctx, programaId);
                     // 4. Regenerar periodos si las fechas del programa cambiaron
-                    RegenerarPeriodosYDistribuciones(programaId, tipoPeriodo);
+                    RegenerarPeriodosYDistribuciones(ctx, programaId, tipoPeriodo);
                 });
 
                 if (!_isUndoRedo

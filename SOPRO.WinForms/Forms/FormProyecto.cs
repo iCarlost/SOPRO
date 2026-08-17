@@ -7,6 +7,7 @@ using System.Windows.Forms;
 using Microsoft.EntityFrameworkCore;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.UI.Controls;
 using SOPRO.Application.Services;
@@ -17,6 +18,7 @@ namespace SOPRO.WinForms.Forms
     {
         private SOPROContext _context;
         private readonly Proyecto _proyecto;
+        private readonly IProjectDbContextFactory _factory = new ProjectDbContextFactory();
 
         private bool _cargandoRibbon = false;
         private IGridFormato _formActivo = null;
