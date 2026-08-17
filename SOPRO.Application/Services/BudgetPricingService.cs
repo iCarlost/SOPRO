@@ -1,3 +1,4 @@
+using Sopro.Calculation;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -5,11 +6,13 @@ using SOPRO.Data.Context;
 namespace SOPRO.Application.Services
 {
     // ╔══════════════════════════════════════════════════════════════════════════╗
-    // ║  BudgetPricingService — WRAPPER DELEGADOR v2.0                         ║
+    // ║  BudgetPricingService — WRAPPER DELEGADOR v3.0                         ║
     // ║                                                                         ║
     // ║  Esta clase ya NO contiene lógica de cálculo propia.                    ║
-    // ║  Toda operación numérica se delega a MotorCalculoSopro.                 ║
-    // ║  Se mantiene por compatibilidad con llamadores existentes.              ║
+    // ║  Toda operación numérica se delega a SoproCalculationEngine             ║
+    // ║  (SOPRO.Calculation), sin pasar por la fachada legacy                   ║
+    // ║  (N5-1, PLAN-01 §14). Se mantiene por compatibilidad                    ║
+    // ║  con llamadores existentes.                                             ║
     // ║                                                                         ║
     // ║  ConvertirALetras, BuildHeaderInfo y RefreshProjectPercentages          ║
     // ║  son utilidades puras que no implican aritmética de precisión.          ║
@@ -73,31 +76,31 @@ namespace SOPRO.Application.Services
             return f;
         }
 
-        // ── Delegadores → MotorCalculoSopro ────────────────────────────────────
+        // ── Delegadores → SoproCalculationEngine ─────────────────────────────
 
-        /// <summary>Delega a MotorCalculoSopro.CalcularPrecioUnitario().</summary>
+        /// <summary>Delega a SoproCalculationEngine.CalculateUnitPrice().</summary>
         public static decimal CalculateUnitPrice(Proyecto proyecto, decimal costoDirecto)
         {
-            var motor = new MotorCalculoSopro(proyecto);
-            var pct   = BuildPercentageInput(proyecto);
-            return motor.CalcularPrecioUnitario(costoDirecto, pct).PrecioUnitario;
+            var engine = BuildEngine(proyecto);
+            var pct    = BuildPercentageInput(proyecto);
+            return engine.CalculateUnitPrice(costoDirecto, BuildEnginePercentages(pct)).UnitPrice;
         }
 
-        /// <summary>Delega a MotorCalculoSopro.CalcularPrecioUnitario().</summary>
+        /// <summary>Delega a SoproCalculationEngine.CalculateUnitPrice().</summary>
         public static decimal CalculateUnitPrice(BudgetPercentageInput input, decimal costoDirecto)
         {
             // Sin proyecto no hay configuración de decimales; usar 2 como fallback seguro
-            var motor = new MotorCalculoSopro(2, 2, 4);
-            return motor.CalcularPrecioUnitario(costoDirecto, input).PrecioUnitario;
+            var engine = new SoproCalculationEngine(2, 2, 4);
+            return engine.CalculateUnitPrice(costoDirecto, BuildEnginePercentages(input)).UnitPrice;
         }
 
-        /// <summary>Delega a MotorCalculoSopro.Multiplicar().</summary>
+        /// <summary>Delega a SoproCalculationEngine.Multiply().</summary>
         public static decimal MultiplyUsingDisplayPrecision(Proyecto proyecto, decimal cantidad, decimal precioUnitario)
-            => new MotorCalculoSopro(proyecto).Multiplicar(cantidad, precioUnitario);
+            => BuildEngine(proyecto).Multiply(cantidad, precioUnitario);
 
-        /// <summary>Delega a MotorCalculoSopro.RedondearImporte().</summary>
+        /// <summary>Delega a SoproCalculationEngine.RoundAmount().</summary>
         public static decimal RoundImporte(Proyecto proyecto, decimal valor)
-            => new MotorCalculoSopro(proyecto).RedondearImporte(valor);
+            => BuildEngine(proyecto).RoundAmount(valor);
 
         // ── Utilidades puras (sin cálculo numérico de precisión) ────────────────
 
@@ -134,6 +137,26 @@ namespace SOPRO.Application.Services
         }
 
         // ── Helper privado ───────────────────────────────────────────────────────
+        private static SoproCalculationEngine BuildEngine(Proyecto proyecto)
+            => new SoproCalculationEngine(proyecto.DecimalesCantidad,
+                                          proyecto.DecimalesImporte,
+                                          proyecto.DecimalesPorcentaje);
+
+        private static PricePercentageInput BuildEnginePercentages(BudgetPercentageInput pct)
+            => new PricePercentageInput
+            {
+                ReferenceDirectCost             = pct.CostoDirectoReferencia,
+                CentralIndirectsPercentage      = pct.IndirectosCentral,
+                FieldIndirectsPercentage        = pct.IndirectosCampo,
+                FinancingPercentage             = pct.Financiamiento,
+                ProfitPercentage                = pct.Utilidad,
+                AdditionalChargesPercentage     = pct.CargosAdicionales,
+                Mode                            = string.Equals(pct.ModoCalculoPorcentajes, "SobreCD",
+                                                                StringComparison.OrdinalIgnoreCase)
+                                                    ? PercentageCalculationMode.OverDirectCost
+                                                    : PercentageCalculationMode.Accumulative
+            };
+
         private static BudgetPercentageInput BuildPercentageInput(Proyecto proyecto)
             => new BudgetPercentageInput
             {
