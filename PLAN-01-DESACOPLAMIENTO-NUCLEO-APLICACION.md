@@ -486,6 +486,14 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
   - El rango de la batería del PR es 0-4 decimales con valores de 3 decimales; el barrido del auditor extendió a 0-6 y 4 decimales sin divergencias (margen confirmado).
   - `TotalManoObraResumen` se inicializa en 0 y se reasigna (:80 + :88): patrón heredado del original, inofensivo; se limpia si `MatrixComponentTotals` migra a constructor primario (opcional).
 
+### PR N5-3 (`BudgetPreviewCalculationService` — tercer consumidor migrado al motor)
+
+- Dos sitios migrados de `MotorCalculoSopro` a `SoproCalculationEngine`:
+  - `BuildPreview`: `CalcularPrecioUnitario` → `CalculateUnitPrice` con el mapeo `BudgetPercentageInput` → `PricePercentageInput` (helper `BuildEnginePercentages` idéntico al de N5-1); `DesglosePrecios` → `PriceBreakdown` del paquete (`IndirectosCentral` → `CentralIndirectCosts`, `IndirectosCampo` → `FieldIndirectCosts`, `Financiamiento` → `Financing`, `Utilidad` → `Profit`, `CargosAdicionales` → `AdditionalCharges`, `PrecioUnitario` → `UnitPrice`; `Subtotal1..3` conservan el nombre). El mapeo es exacto porque `DesglosePrecios` ya delegaba sus propiedades computadas a `PriceBreakdown`.
+  - `BuildPreviewFromReferenceCost`: el redondeador local `R(v)` ahora usa `engine.RoundAmount` (o identidad sin proyecto); la cascada de referencia (porcentajes redondeados por separado) se conserva intacta, incluida la divergencia documentada con la ruta "con conceptos".
+- Tests (`SOPRO.Tests/Services/Presupuesto/BudgetPreviewCalculationParityTests.cs`, 3 nuevos): batería con conceptos reales en BD (300 escenarios deterministas con decimales aleatorios 0-6, modos Acumulables/SobreCD/sobrecd/null y `CostoDirectoReferencia` aleatorio) contra referencia compuesta con fachada; batería de la ruta de referencia sin BD (800 escenarios, con y sin proyecto); y caso dorado de `CostoDirectoReferencia` no nulo sin conceptos (1234.567 → CD 1234.57, PU 1540.89) con verificación de la delegación directa.
+- Verificación: 276/276 (273 + 3 nuevos), Release 0 errores, `git diff --check` limpio.
+
 ## 15. Fase N6: Empaquetado y validación privada
 
 ### Metadatos obligatorios
