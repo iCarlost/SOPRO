@@ -223,8 +223,13 @@ namespace SOPRO.WinForms.Forms
 
             var programaIdDep = _programaActual.ProgramaObraId;
             var tipoPeriodoDep = ObtenerTipoPeriodoSeleccionado();
+            var dbPathDep = _context.DatabasePath;
             SetOcupado(true, $"Actualizando dependencias de '{actividad.Clave}'...");
-            _ = Task.Run(() => RegenerarPeriodosYDistribuciones(programaIdDep, tipoPeriodoDep))
+            _ = Task.Run(() =>
+                {
+                    using var ctx = _factory.Create(dbPathDep);
+                    RegenerarPeriodosYDistribuciones(ctx, programaIdDep, tipoPeriodoDep);
+                })
                 .ContinueWith(_ =>
                 {
                     BeginInvoke(new Action(() =>

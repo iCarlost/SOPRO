@@ -57,7 +57,13 @@ namespace SOPRO.WinForms.Forms
                 try
                 {
                     SetOcupado(true, "Sincronizando programa...");
-                    var resultSinPrograma = await Task.Run(() => _syncService.SyncFromBudget(_context, _proyecto.Id));
+                    var dbPath = _context.DatabasePath;
+                    var proyectoIdSync = _proyecto.Id;
+                    var resultSinPrograma = await Task.Run(() =>
+                    {
+                        using var ctx = _factory.Create(dbPath);
+                        return _syncService.SyncFromBudget(ctx, proyectoIdSync);
+                    });
                     lblEstado.Text = resultSinPrograma.Message;
                     CargarPrograma();
                 }
@@ -78,10 +84,12 @@ namespace SOPRO.WinForms.Forms
                 SetOcupado(true, "Recalculando programa...");
                 var programaId = _programaActual.ProgramaObraId;
                 var tipoPeriodo = ObtenerTipoPeriodoSeleccionado();
+                var dbPathRecalc = _context.DatabasePath;
                 await Task.Run(() =>
                 {
-                    _calculationService.RecalculateProgram(_context, programaId);
-                    RegenerarPeriodosYDistribuciones(programaId, tipoPeriodo);
+                    using var ctx = _factory.Create(dbPathRecalc);
+                    _calculationService.RecalculateProgram(ctx, programaId);
+                    RegenerarPeriodosYDistribuciones(ctx, programaId, tipoPeriodo);
                 });
                 CargarPrograma(state);
                 lblEstado.Text = "Programa recalculado correctamente.";
@@ -124,13 +132,15 @@ namespace SOPRO.WinForms.Forms
                 var state = DataGridViewStateHelper.Capture(dgvActividades);
                 var programaId2 = _programaActual.ProgramaObraId;
                 var tipoPeriodo2 = ObtenerTipoPeriodoSeleccionado();
+                var dbPathCalendario = _context.DatabasePath;
                 SetOcupado(true, "Actualizando calendario...");
                 try
                 {
                     await Task.Run(() =>
                     {
-                        _calculationService.RecalculateProgram(_context, programaId2);
-                        RegenerarPeriodosYDistribuciones(programaId2, tipoPeriodo2);
+                        using var ctx = _factory.Create(dbPathCalendario);
+                        _calculationService.RecalculateProgram(ctx, programaId2);
+                        RegenerarPeriodosYDistribuciones(ctx, programaId2, tipoPeriodo2);
                     });
                     CargarPrograma(state);
                     lblEstado.Text = "Calendario laboral actualizado.";
@@ -212,11 +222,13 @@ namespace SOPRO.WinForms.Forms
                 _context.SaveChanges();
 
                 var programaId3 = programa.Id;
+                var dbPathTipoPeriodo = _context.DatabasePath;
                 SetOcupado(true, $"Regenerando periodos en modo {nuevoTipo}...");
                 await Task.Run(() =>
                 {
-                    _calculationService.RecalculateProgram(_context, programaId3);
-                    RegenerarPeriodosYDistribuciones(programaId3, nuevoTipo);
+                    using var ctx = _factory.Create(dbPathTipoPeriodo);
+                    _calculationService.RecalculateProgram(ctx, programaId3);
+                    RegenerarPeriodosYDistribuciones(ctx, programaId3, nuevoTipo);
                 });
                 CargarPrograma(state);
                 lblEstado.Text = $"Periodos regenerados en modo {nuevoTipo}.";
@@ -245,15 +257,15 @@ namespace SOPRO.WinForms.Forms
                 lblEstado.Text = mensaje;
         }
 
-        private void RegenerarPeriodosYDistribuciones(int programaObraId, TipoPeriodoPrograma tipoPeriodo)
+        private void RegenerarPeriodosYDistribuciones(SOPROContext ctx, int programaObraId, TipoPeriodoPrograma tipoPeriodo)
         {
-            _generationService.RegeneratePeriodsFromProgramRange(_context, programaObraId, tipoPeriodo);
+            _generationService.RegeneratePeriodsFromProgramRange(ctx, programaObraId, tipoPeriodo);
 
             // Batch: distribuye todas las actividades hoja en una sola transacción
             // en lugar de N SaveChanges (uno por actividad).
-            _distributionService.DistributeUniformBatch(_context, programaObraId);
+            _distributionService.DistributeUniformBatch(ctx, programaObraId);
 
-            _calculationService.RecalculateProgram(_context, programaObraId);
+            _calculationService.RecalculateProgram(ctx, programaObraId);
         }
     }
 }

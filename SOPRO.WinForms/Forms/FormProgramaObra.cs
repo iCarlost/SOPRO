@@ -7,6 +7,7 @@ using SOPRO.Application.DTOs.Programacion;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using SOPRO.WinForms.Controls;
@@ -19,6 +20,7 @@ namespace SOPRO.WinForms.Forms
     {
         private readonly SOPROContext _context;
         private readonly Proyecto _proyecto;
+        private readonly IProjectDbContextFactory _factory = new ProjectDbContextFactory();
         private readonly ProgramacionLoadService _loadService = new();
         private readonly ProgramacionGenerationService _generationService = new();
         private readonly ProgramacionCalculationService _calculationService = new();

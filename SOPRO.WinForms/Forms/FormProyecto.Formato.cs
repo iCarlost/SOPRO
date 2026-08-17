@@ -165,7 +165,12 @@ namespace SOPRO.WinForms.Forms
 
             try
             {
-                resultado = await Task.Run(() => svc.Ejecutar(_context, proyId));
+                var dbPathRecalculo = _context.DatabasePath;
+                resultado = await Task.Run(() =>
+                {
+                    using var ctx = _factory.Create(dbPathRecalculo);
+                    return svc.Ejecutar(ctx, proyId);
+                });
             }
             catch (Exception ex)
             {
