@@ -515,6 +515,13 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
   - `Subtotal` siempre es copia de `Importe` y ambos se reportan en `BudgetQuantityChangeResult`: heredado del original, semánticamente redundante pero parte del contrato del DTO — anotado para la limpieza de DTOs en N6.
   - El servicio usa el patrón inline (`new SoproCalculationEngine` en el cuerpo) en vez del helper `BuildEngine` de N5-4; la consolidación futura (ya registrada) unificará todos los sitios por igual.
 
+### PR N5-6 (`BudgetLoadService` — sexto consumidor migrado al motor)
+
+- `BuildRowDisplay` (único sitio numérico del servicio) migra su aritmética a `SoproCalculationEngine`: `CalcularPrecioUnitario` → `CalculateUnitPrice` con `PricePercentageInput` construido inline (mismo criterio de `BuildEnginePercentages`: "SobreCD" case-insensitive → `OverDirectCost`, resto → `Accumulative`; el null → Accumulative igual que el `?? "Acumulables"` previo), `Multiplicar` → `Multiply`, `RedondearImporte` → `RoundAmount` (IVA y total). `BudgetPercentageInput` deja de usarse en el servicio. Mapeo de resultados del breakdown: `Indirectos→IndirectCosts`, `Financiamiento→Financing`, `Utilidad→Profit`, `PrecioUnitario→UnitPrice` (primer consumo directo de los miembros del breakdown; `DesglosePrecios` de la fachada es un record equivalente por construcción). `BuildColumnDefinitions`/`GetTypeText` sin aritmética — intactos.
+- DECISIÓN (documentada en el header del servicio): `FormatCantidad`/`FormatImporte`/`FormatPorcentaje` PERMANECEN en `MotorCalculoSopro` — por N0 fila 9 el formato con cultura es rol sancionado de la fachada y el motor no tiene formato por diseño; el motor del paquete no ofrece equivalente y crearlo duplicaría la única vía. La variable `motor` queda exclusivamente para esas llamadas de formato. Se consolida cuando exista un formateador compartido (mismo bucket que la consolidación de helpers).
+- Tests (`SOPRO.Tests/Services/Presupuesto/BudgetLoadServiceParityTests.cs`, 5 nuevos — no existía cobertura previa): batería de paridad de 600 escenarios de concepto hoja (decimales 0-6/0-7, porcentajes 0-40/0-20, IVA 0-20 con 10% en cero, modos Acumulables/SobreCD/sobrecd/SOBRECD/null) y 200 de agrupador (nivel 0-7) contra referencia compuesta con fachada — las 22 entradas del diccionario `ValuesByInternalName` por escenario; dorados con cultura controlada es-MX (hoja: CD 100, 5/5/2/8/3 → Indirectos 10.00/Financiamiento 2.20/Utilidad 8.98/PU 124.82, importe 1248.20, IVA 199.71, total 1447.91; agrupador: "Nivel 1"/$5,432.10/resto vacío; sin IVA: total = subtotal).
+- Verificación: 291/291 (286 + 5 nuevos), Release 0 errores, `git diff --check` limpio.
+
 ## 15. Fase N6: Empaquetado y validación privada
 
 ### Metadatos obligatorios
