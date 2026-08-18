@@ -1,9 +1,16 @@
+using Sopro.Calculation;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 
 namespace SOPRO.Application.Services
 {
+    // ╔══════════════════════════════════════════════════════════════════════════╗
+    // ║  BudgetRowEditFlowService — delegador directo al motor                   ║
+    // ║  [N5-5] Toda aritmética delegada a SoproCalculationEngine                ║
+    // ║         (SOPRO.Calculation), sin pasar por la fachada legacy.            ║
+    // ╚══════════════════════════════════════════════════════════════════════════╝
+
     public static class BudgetRowEditFlowService
     {
         public static BudgetRowTypeChangeResult HandleTypeCellChange(SOPROContext context, Proyecto proyecto, BudgetRowTypeChangeInput input)
@@ -68,19 +75,21 @@ namespace SOPRO.Application.Services
             if (string.IsNullOrWhiteSpace(cantidadTexto) || !decimal.TryParse(cantidadTexto, out decimal cantidad))
                 return new BudgetQuantityChangeResult();
 
-            var _motorFlow = new MotorCalculoSopro(proyecto);
+            var engine = new SoproCalculationEngine(proyecto.DecimalesCantidad,
+                                                   proyecto.DecimalesImporte,
+                                                   proyecto.DecimalesPorcentaje);
             // Normalizar la cantidad inmediatamente a la precisión visible del proyecto
             // para evitar fugas de precisión: lo que el usuario ve = lo que se calcula
-            cantidad = _motorFlow.RedondearCantidad(cantidad);
+            cantidad = engine.RoundQuantity(cantidad);
 
             decimal puFinal = BudgetPricingService.CalculateUnitPrice(proyecto, concepto.CostoDirectoUnitario);
-            decimal importe  = _motorFlow.Multiplicar(cantidad, puFinal);
+            decimal importe  = engine.Multiply(cantidad, puFinal);
             decimal subtotal = importe;
             // PorcentajeIVA del proyecto (default 16 en el constructor de Proyecto).
             // Si el usuario lo puso en 0 = sin IVA. No aplicar fallback implícito.
             decimal tasaIva  = proyecto.PorcentajeIVA / 100m;
-            decimal iva      = _motorFlow.RedondearImporte(subtotal * tasaIva);
-            decimal total    = _motorFlow.RedondearImporte(subtotal + iva);
+            decimal iva      = engine.RoundAmount(subtotal * tasaIva);
+            decimal total    = engine.RoundAmount(subtotal + iva);
 
             return new BudgetQuantityChangeResult
             {
