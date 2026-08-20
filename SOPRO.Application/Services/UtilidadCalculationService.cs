@@ -1,3 +1,4 @@
+using Sopro.Calculation;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -15,6 +16,14 @@ namespace SOPRO.Application.Services
     // ║          estar hardcodeados a 2 decimales.                              ║
     // ║  NOTA: porcentajeBruto y porcentajeNeto conservan precision 5 porque    ║
     // ║        son coeficientes intermedios de cálculo, no valores visibles.    ║
+    // ║                                                                         ║
+    // ║  [N5-7] Aritmética delegada directo a SoproCalculationEngine            ║
+    // ║         (SOPRO.Calculation), sin pasar por la fachada legacy:           ║
+    // ║         RedondearImporte → RoundAmount (5 sitios: baseUtilidad,         ║
+    // ║         importeUtilidad, importeIsr, importePtu, utilidadNeta).         ║
+    // ║         Los Math.Round(..., 5) de porcentajeBruto/porcentajeNeto se     ║
+    // ║         conservan: son coeficientes intermedios con precisión fija 5,   ║
+    // ║         no operaciones del motor. BuildPreview (N5-3) sigue intacto.    ║
     // ╚══════════════════════════════════════════════════════════════════════════╝
 
     public class UtilidadCalculationService
@@ -26,8 +35,9 @@ namespace SOPRO.Application.Services
             if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
             if (input == null)    throw new ArgumentNullException(nameof(input));
 
-            // Motor: respeta DecimalesImporte del proyecto [FIX-1] [FIX-2]
-            var motor = new MotorCalculoSopro(proyecto);
+            // [N5-7] Respetar DecimalesImporte del proyecto [FIX-1] [FIX-2]
+            var engine = new SoproCalculationEngine(
+                proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
 
             var preview = BudgetPreviewCalculationService.BuildPreview(context, proyecto,
                 new BudgetPercentageInput
@@ -42,7 +52,7 @@ namespace SOPRO.Application.Services
                 });
 
             // [FIX-1] Usar motor en lugar de decimal.Round(..., 2)
-            decimal baseUtilidad = motor.RedondearImporte(preview.Subtotal2);
+            decimal baseUtilidad = engine.RoundAmount(preview.Subtotal2);
 
             decimal porcentajeBruto;
             decimal porcentajeNeto;
@@ -64,11 +74,11 @@ namespace SOPRO.Application.Services
                 porcentajeNeto  = Math.Round(porcentajeBruto * factor, 5, MidpointRounding.AwayFromZero);
             }
 
-            // [FIX-2] Importes visibles: usar motor.RedondearImporte (respeta DecimalesImporte)
-            decimal importeUtilidad = motor.RedondearImporte(baseUtilidad * porcentajeBruto / 100m);
-            decimal importeIsr      = motor.RedondearImporte(importeUtilidad * Math.Max(0m, input.Isr) / 100m);
-            decimal importePtu      = motor.RedondearImporte(importeUtilidad * Math.Max(0m, input.Ptu) / 100m);
-            decimal utilidadNeta    = motor.RedondearImporte(importeUtilidad - importeIsr - importePtu);
+            // [FIX-2] Importes visibles: usar engine.RoundAmount (respeta DecimalesImporte)
+            decimal importeUtilidad = engine.RoundAmount(baseUtilidad * porcentajeBruto / 100m);
+            decimal importeIsr      = engine.RoundAmount(importeUtilidad * Math.Max(0m, input.Isr) / 100m);
+            decimal importePtu      = engine.RoundAmount(importeUtilidad * Math.Max(0m, input.Ptu) / 100m);
+            decimal utilidadNeta    = engine.RoundAmount(importeUtilidad - importeIsr - importePtu);
 
             return new UtilidadCalculationResult
             {
