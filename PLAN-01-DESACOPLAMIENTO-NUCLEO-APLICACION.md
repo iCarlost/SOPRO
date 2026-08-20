@@ -536,6 +536,12 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
   - La batería no cubría el branch asistido `factor <= 0` (ISR máx 39, PTU máx 29): se añadió el dorado explícito `Calcular_Dorado_FactorMenorOIgualACero` en el mismo PR (asistido → bruto 0; directo → neto negativo heredado sin clamp).
   - Nota de entorno: durante la auditoría el SDK se actualizó a 9.0.317; bajo ese SDK el build produce 556 warnings (vs ~452 preexistentes) y 0 errores, suites verdes. Los warnings adicionales son del SDK más nuevo, no de este paso.
 
+### PR N5-8 (`MatrixComponentEditingService` — octavo consumidor migrado al motor)
+
+- `UpdateUnitPrice` (único sitio numérico) migra su única operación del motor de `MotorCalculoSopro` a `SoproCalculationEngine.Multiply` (mismo criterio de configuración: `new SoproCalculationEngine(decimalesImporte, decimalesImporte, 4)` — igual que el ctor de la fachada usado antes). `SyncRendimiento` conserva `Math.Round(1/cantidad, 5, AwayFromZero)`: precisión fija 5 por contrato de captura (documentado en el header del servicio), no es operación del motor — mismo patrón que los coeficientes de N5-7. `UpdateDescription`/`UpdateUnit`/`UpdateQuantity`/`UpdateQuantityFromDialog`/`TryParseDecimal` sin aritmética de motor — intactos. Sin cambios de API.
+- Tests (`SOPRO.Tests/Services/Matrices/MatrixComponentEditingServiceParityTests.cs`, 6 nuevos — no existía cobertura previa): batería de paridad de 600 escenarios de `UpdateUnitPrice` (decimalesImporte 0-6, cantidades y precios con 3 decimales, 10% de textos con formato `$`/`,` ejercitando el path de parseo — la referencia replica `TryParseDecimal` idéntico, el oráculo diferencial valida Success/ErrorMessage/RequiresRecalculation/Importe/PrecioUnitario) contra referencia compuesta con la fachada; dorados: P.U. visible redondeado antes de multiplicar (13.3875 × R2(124.8225)=124.82 → R2(1671.02775) = 1671.03, con el P.U. crudo 124.8225 conservado en el material), cero decimales (R0(15.49)=15 → 10×15 = 150), no-materiales → Fail sin tocar Importe, texto inválido/negativo/vacío → Fail sin tocar Importe, y `SyncRendimiento` (0.33333 para maquinaria, 0 para el resto).
+- Verificación: 302/302 (296 + 6 nuevos), Release 0 errores, `git diff --check` limpio.
+
 ## 15. Fase N6: Empaquetado y validación privada
 
 ### Metadatos obligatorios

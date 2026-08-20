@@ -1,9 +1,19 @@
+using Sopro.Calculation;
 using SOPRO.Application.Models.Matrices;
 using SOPRO.Core.Entities;
 using System.Globalization;
 
 namespace SOPRO.Application.Services
 {
+    // ╔══════════════════════════════════════════════════════════════════════════╗
+    // ║  MatrixComponentEditingService — [N5-8]                                 ║
+    // ║  UpdateUnitPrice migró su única operación del motor de MotorCalculo-     ║
+    // ║  Sopro a SoproCalculationEngine.Multiply (SOPRO.Calculation).            ║
+    // ║  SyncRendimiento conserva Math.Round(1/cantidad, 5, AwayFromZero):       ║
+    // ║  precisión fija 5 por contrato de captura, no es operación del motor.    ║
+    // ║  El resto de métodos no tienen aritmética de motor. Sin cambios de API.  ║
+    // ╚══════════════════════════════════════════════════════════════════════════╝
+
     public static class MatrixComponentEditingService
     {
         public static MatrixComponentEditResult UpdateDescription(ComponenteMatriz component, string value)
@@ -91,8 +101,8 @@ namespace SOPRO.Application.Services
             }
 
             component.Material.PrecioUnitario = unitPrice;
-            var motor = new MotorCalculoSopro(decimalesImporte, decimalesImporte, 4);
-            component.Importe = motor.Multiplicar(component.Cantidad, unitPrice);
+            var engine = new SoproCalculationEngine(decimalesImporte, decimalesImporte, 4);
+            component.Importe = engine.Multiply(component.Cantidad, unitPrice);
             return MatrixComponentEditResult.Ok();
         }
 
