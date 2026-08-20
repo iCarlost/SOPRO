@@ -14,7 +14,7 @@ public class BudgetLoadServiceParityTests
     //    inline, Multiply, RoundAmount). El formato (FormatCantidad/Importe/
     //    Porcentaje) permanece en la fachada por N0 fila 9.
     //    Paridad exacta contra referencia compuesta con primitivas de la
-    //    fachada (oráculo diferencial, 22 entradas del diccionario) + dorados.
+    //    fachada (oráculo diferencial, 23 entradas del diccionario) + dorados.
 
     [TestMethod]
     public void BuildRowDisplay_ConceptoHoja_ParidadConFachada_BateriaAleatoriaConSemilla()
