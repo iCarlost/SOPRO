@@ -12,7 +12,9 @@ namespace SOPRO.Tests.Services.Precios;
 // migradas a SoproCalculationEngine se validan replicando el flujo COMPLETO de
 // propagación (Propagar → RecalcularConMotor → PropagarAuxiliares recursivo →
 // ActualizarConceptos → ActualizarAgrupadores) con primitivas de MotorCalculoSopro
-// en un contexto gemelo construido desde los MISMOS valores.
+// en un contexto gemelo construido desde los MISMOS valores. Antes de cada fase
+// se MODIFICA el precio del insumo propagado (hallazgo del dictamen N5-11), de
+// modo que ninguna propagación sea idempotente.
 
 [TestClass]
 public class PricePropagationServiceParityTests
@@ -31,14 +33,26 @@ public class PricePropagationServiceParityTests
             var esc = await CrearEscenario(ctx, v, iter);
             var escRef = await CrearEscenario(ctxRef, v, iter);
 
+            esc.Material.PrecioUnitario = v.NuevoPu;
+            escRef.Material.PrecioUnitario = v.NuevoPu;
+            ctx.SaveChanges();
+            ctxRef.SaveChanges();
             PricePropagationService.PropagarMaterial(ctx, esc.Material.Id);
             PropagarConFachada(ctxRef, TipoComponenteMatriz.Material, escRef.Material.Id);
             CompararEstado(ctx, ctxRef, esc, escRef, iter, "material");
 
+            esc.ManoDeObra.SalarioReal = v.NuevoSr;
+            escRef.ManoDeObra.SalarioReal = v.NuevoSr;
+            ctx.SaveChanges();
+            ctxRef.SaveChanges();
             PricePropagationService.PropagarManoDeObra(ctx, esc.ManoDeObra.Id);
             PropagarConFachada(ctxRef, TipoComponenteMatriz.ManoDeObra, escRef.ManoDeObra.Id);
             CompararEstado(ctx, ctxRef, esc, escRef, iter, "mano-de-obra");
 
+            esc.Maquinaria.CostoHorario = v.NuevoCh;
+            escRef.Maquinaria.CostoHorario = v.NuevoCh;
+            ctx.SaveChanges();
+            ctxRef.SaveChanges();
             PricePropagationService.PropagarMaquinaria(ctx, esc.Maquinaria.Id);
             PropagarConFachada(ctxRef, TipoComponenteMatriz.Maquinaria, escRef.Maquinaria.Id);
             CompararEstado(ctx, ctxRef, esc, escRef, iter, "maquinaria");
@@ -307,13 +321,15 @@ public class PricePropagationServiceParityTests
 
     private sealed record Valores(
         int DecImporte, int Pct, decimal Pu, decimal Sr, decimal Ch,
-        decimal Cm, decimal Cmo, decimal Cmaq, decimal Caux, decimal Cc, decimal Ccb);
+        decimal Cm, decimal Cmo, decimal Cmaq, decimal Caux, decimal Cc, decimal Ccb,
+        decimal NuevoPu, decimal NuevoSr, decimal NuevoCh);
 
     private static Valores GenerarValores(Random rnd) => new(
         rnd.Next(0, 5),
         rnd.Next(0, 31),
         Valor(rnd), Valor(rnd), Valor(rnd),
-        Valor(rnd), Valor(rnd), Valor(rnd), Valor(rnd), Valor(rnd), Valor(rnd));
+        Valor(rnd), Valor(rnd), Valor(rnd), Valor(rnd), Valor(rnd), Valor(rnd),
+        Valor(rnd), Valor(rnd), Valor(rnd));
 
     private static decimal Valor(Random rnd) => rnd.Next(1, 1_000_000) / 1000m;
 

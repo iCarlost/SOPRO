@@ -152,16 +152,16 @@ namespace SOPRO.Application.Services
                 if (!mat.ProyectoId.HasValue) continue;
                 if (!proyectos.TryGetValue(mat.ProyectoId.Value, out var proyecto)) continue;
 
-                var motor = new SoproCalculationEngine(
+                var engine = new SoproCalculationEngine(
                     proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
-                concepto.CostoDirectoUnitario = motor.RoundAmount(mat.CostoDirecto);
-                concepto.CostoDirectoTotal    = motor.Multiply(concepto.Cantidad, concepto.CostoDirectoUnitario);
+                concepto.CostoDirectoUnitario = engine.RoundAmount(mat.CostoDirecto);
+                concepto.CostoDirectoTotal    = engine.Multiply(concepto.Cantidad, concepto.CostoDirectoUnitario);
 
                 // Paridad con el recálculo de pantalla (FormPresupuesto.RefrescarPreciosDesdeDB):
                 // el Precio Unitario y el Importe Total también deben quedar al día en la
                 // propagación headless, sin depender de que el presupuesto esté abierto.
                 concepto.PrecioUnitario = BudgetPricingService.CalculateUnitPrice(proyecto, concepto.CostoDirectoUnitario);
-                concepto.ImporteTotal   = motor.Multiply(concepto.Cantidad, concepto.PrecioUnitario);
+                concepto.ImporteTotal   = engine.Multiply(concepto.Cantidad, concepto.PrecioUnitario);
             }
 
             // Paridad con RefrescarPreciosDesdeDB → RecalcularTodosLosTotales:
@@ -200,7 +200,7 @@ namespace SOPRO.Application.Services
                 var agrupadores = todos.Where(c => c.EsAgrupador).ToList();
                 if (agrupadores.Count == 0) continue;
 
-                var motor = new SoproCalculationEngine(
+                var engine = new SoproCalculationEngine(
                     proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
 
                 foreach (var agrupador in agrupadores)
@@ -220,7 +220,7 @@ namespace SOPRO.Application.Services
                         importes.Add(fila.ImporteTotal);
                     }
 
-                    decimal total = motor.SumAmounts(importes);
+                    decimal total = engine.SumAmounts(importes);
                     agrupador.CostoDirectoTotal = total;
                     agrupador.ImporteTotal       = total;
                     agrupador.FechaModificacion  = DateTime.Now;
