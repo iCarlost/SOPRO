@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Sopro.Calculation;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -17,6 +18,20 @@ namespace SOPRO.Application.Services
     // ║          MultiplyUsingDisplayPrecision() y RoundImporte() locales.      ║
     // ║          Toda aritmética delegada a MotorCalculoSopro.                  ║
     // ║  [FIX-4] FormatCantidad/Importe/Porcentaje: delegados al motor.         ║
+    // ║                                                                         ║
+    // ║  [N5-6] Aritmética delegada directo a SoproCalculationEngine            ║
+    // ║         (SOPRO.Calculation), sin pasar por la fachada legacy:           ║
+    // ║         CalcularPrecioUnitario → CalculateUnitPrice (con                 ║
+    // ║         PricePercentageInput construido inline, mismo criterio que      ║
+    // ║         BuildEnginePercentages: "SobreCD" sin importar mayúsculas →     ║
+    // ║         OverDirectCost, resto → Accumulative), Multiplicar → Multiply,   ║
+    // ║         RedondearImporte → RoundAmount (IVA y total). BudgetPercentage- ║
+    // ║         Input deja de usarse en este servicio (se construye directo     ║
+    // ║         el tipo del motor).                                             ║
+    // ║  [N5-6] FormatCantidad/Importe/Porcentaje PERMANECEN en la fachada      ║
+    // ║         por N0 fila 9 (el formato con cultura es rol sancionado de      ║
+    // ║         MotorCalculoSopro; el motor no tiene formato por diseño).       ║
+    // ║         La variable motor queda solo para esas llamadas de formato.     ║
     // ╚══════════════════════════════════════════════════════════════════════════╝
 
     public static class BudgetLoadService
@@ -137,16 +152,23 @@ namespace SOPRO.Application.Services
             if (concepto == null) throw new ArgumentNullException(nameof(concepto));
 
             // ── Motor: instancia única por llamada, configuración del proyecto ───
+            // [N5-6] Aritmética en el engine; la fachada solo para formato (N0 fila 9).
             var motor = new MotorCalculoSopro(proyecto);
+            var engine = new SoproCalculationEngine(
+                proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
 
-            var pctInput = new BudgetPercentageInput
+            var pctInput = new PricePercentageInput
             {
-                IndirectosCentral      = proyecto.PorcentajeIndirectosCentral,
-                IndirectosCampo        = proyecto.PorcentajeIndirectosCampo,
-                Financiamiento         = proyecto.PorcentajeFinanciamiento,
-                Utilidad               = proyecto.PorcentajeUtilidad,
-                CargosAdicionales      = proyecto.PorcentajeCargosAdicionales,
-                ModoCalculoPorcentajes = proyecto.ModoCalculoPorcentajes ?? "Acumulables"
+                CentralIndirectsPercentage = proyecto.PorcentajeIndirectosCentral,
+                FieldIndirectsPercentage   = proyecto.PorcentajeIndirectosCampo,
+                FinancingPercentage        = proyecto.PorcentajeFinanciamiento,
+                ProfitPercentage           = proyecto.PorcentajeUtilidad,
+                AdditionalChargesPercentage= proyecto.PorcentajeCargosAdicionales,
+                Mode                       = string.Equals(
+                                                proyecto.ModoCalculoPorcentajes, "SobreCD",
+                                                StringComparison.OrdinalIgnoreCase)
+                                                ? PercentageCalculationMode.OverDirectCost
+                                                : PercentageCalculationMode.Accumulative
             };
 
             var values = new Dictionary<string, object?>();
@@ -186,18 +208,18 @@ namespace SOPRO.Application.Services
 
                 // [FIX-1] Desglose con redondeo en cada paso intermedio visible.
                 //         Garantía: CD + Indirectos + Financiamiento + Utilidad + Cargos == P.U.
-                var desglose = motor.CalcularPrecioUnitario(concepto.CostoDirectoUnitario, pctInput);
+                var desglose = engine.CalculateUnitPrice(concepto.CostoDirectoUnitario, pctInput);
 
-                decimal pu      = desglose.PrecioUnitario;
-                decimal importe = motor.Multiplicar(concepto.Cantidad, pu);
+                decimal pu      = desglose.UnitPrice;
+                decimal importe = engine.Multiply(concepto.Cantidad, pu);
 
                 // [FIX-2] IVA y Total redondeados con el motor usando tasa del proyecto
                 decimal subtotal = importe;
                 // PorcentajeIVA del proyecto (default 16 en el constructor de Proyecto).
                 // Si el usuario lo puso en 0 = sin IVA. No aplicar fallback implícito.
                 decimal tasaIva  = proyecto.PorcentajeIVA / 100m;
-                decimal iva      = motor.RedondearImporte(subtotal * tasaIva);
-                decimal total    = motor.RedondearImporte(subtotal + iva);
+                decimal iva      = engine.RoundAmount(subtotal * tasaIva);
+                decimal total    = engine.RoundAmount(subtotal + iva);
 
                 decimal pctIndTotal = proyecto.PorcentajeIndirectosCentral
                                     + proyecto.PorcentajeIndirectosCampo;
@@ -217,9 +239,9 @@ namespace SOPRO.Application.Services
                 values["Observaciones"]           = string.Empty;
 
                 // [FIX-1] Columnas de desglose: valores del DesglosePrecios ya redondeados
-                values["Indirectos"]          = motor.FormatImporte(desglose.Indirectos);
-                values["Financiamiento"]      = motor.FormatImporte(desglose.Financiamiento);
-                values["Utilidad"]            = motor.FormatImporte(desglose.Utilidad);
+                values["Indirectos"]          = motor.FormatImporte(desglose.IndirectCosts);
+                values["Financiamiento"]      = motor.FormatImporte(desglose.Financing);
+                values["Utilidad"]            = motor.FormatImporte(desglose.Profit);
                 values["PrecioUnitarioFinal"] = motor.FormatImporte(pu);
                 values["Subtotal"]            = motor.FormatImporte(subtotal);
                 values["IVA"]                 = motor.FormatImporte(iva);
