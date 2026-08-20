@@ -88,6 +88,39 @@ public class MatrixCostAdjustmentParityTests
         }
     }
 
+    [TestMethod]
+    public void AdjustMatrixByTargetCost_Dorado_YaEnMonto()
+    {
+        var proyecto = CrearProyecto(2, 2, 4);
+        var specs = new List<Spec>
+        {
+            new(TipoComponenteMatriz.Material, 2m, 100m, false, false),
+            new(TipoComponenteMatriz.ManoDeObra, 1m, 300m, false, false)
+        };
+        var matriz = ConstruirMatriz(specs);
+        var scopes = MatrixAdjustmentScopes.Materiales;
+        decimal current = matriz.Componentes.Sum(c => c.Importe);
+
+        // Target = costo actual exacto → branch "ya-en-monto":
+        // FactorApplied 1, mensaje correspondiente, sin cambios de estado.
+        var result = MatrixCostAdjustmentService.AdjustMatrixByTargetCost(matriz, proyecto, scopes, current);
+
+        Assert.IsTrue(result.Success);
+        Assert.AreEqual(current, result.CurrentCost);
+        Assert.AreEqual(current, result.TargetCost);
+        Assert.AreEqual(current, result.AchievedCost);
+        Assert.AreEqual(1m, result.FactorApplied);
+        Assert.AreEqual("La matriz ya se encuentra en el monto solicitado.", result.Message);
+        Assert.AreEqual(current, matriz.CostoDirecto);
+
+        var material = matriz.Componentes.Single(c => c.TipoComponente == TipoComponenteMatriz.Material);
+        var manoObra = matriz.Componentes.Single(c => c.TipoComponente == TipoComponenteMatriz.ManoDeObra);
+        Assert.AreEqual(2m, material.Cantidad);
+        Assert.AreEqual(200m, material.Importe);
+        Assert.AreEqual(1m, manoObra.Cantidad);
+        Assert.AreEqual(300m, manoObra.Importe);
+    }
+
     // ── Referencias compuestas con la fachada (código pre-migración) ──────────
 
     private static MatrixAdjustmentBasis? GetAdjustmentBasisConFachada(
