@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Sopro.Calculation;
 using SOPRO.Application.DTOs.Matrices;
 using SOPRO.Application.Models;
 using SOPRO.Core.Entities;
@@ -6,6 +7,15 @@ using SOPRO.Data.Context;
 
 namespace SOPRO.Application.Services
 {
+    // ╔══════════════════════════════════════════════════════════════════════════╗
+    // ║  MatrixApplicationService — [N5-10]                                    ║
+    // ║  Única operación del motor: RedondearImporte del CostoDirectoTotal      ║
+    // ║  recalculado en la cascada (PropagateCascadeAsync). Migrada de           ║
+    // ║  MotorCalculoSopro a SoproCalculationEngine.RoundAmount                  ║
+    // ║  (SOPRO.Calculation). MapComponent conserva Math.Round(1/cantidad, 5):   ║
+    // ║  precisión fija por contrato de captura, no es operación del motor.      ║
+    // ║  Sin cambios de API ni de comportamiento observable.                     ║
+    // ╚══════════════════════════════════════════════════════════════════════════╝
     public static class MatrixApplicationService
     {
         public static async Task<bool> ExistsByKeyAsync(SOPROContext context, int proyectoId, string clave, int? excludeMatrixId = null)
@@ -246,8 +256,9 @@ namespace SOPRO.Application.Services
                     {
                         var totals = MatrixComponentCalculationService.Recalculate(
                             affectedMatrix.Componentes.ToList(), proyecto.DecimalesImporte);
-                        affectedMatrix.CostoDirecto = new MotorCalculoSopro(proyecto)
-                            .RedondearImporte(totals.CostoDirectoTotal);
+                        affectedMatrix.CostoDirecto = new SoproCalculationEngine(
+                            proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje)
+                            .RoundAmount(totals.CostoDirectoTotal);
                     }
                     else
                     {

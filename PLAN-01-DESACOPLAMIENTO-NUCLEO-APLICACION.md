@@ -552,6 +552,12 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 - Dictamen GO (barrido independiente del auditor: 55,000 comparaciones de RoundQuantity, 0 fallos, precisiones 0-10 y factores positivos/negativos; replay exacto confirmó 41 casos bajo mínimo y 187 búsquedas binarias; Debug y Release 306/306). Hallazgo no bloqueante anotado y corregido:
   - El branch "ya-en-monto" (tolerancia ±0.01) nunca se ejecutó en la batería: el multiplicador continuo aleatorio lo hace extremadamente improbable. Añadido el dorado explícito `AdjustMatrixByTargetCost_Dorado_YaEnMonto` (target = CurrentCost exacto → FactorApplied 1, mensaje "La matriz ya se encuentra en el monto solicitado." y estado profundo intacto). No bloqueaba: RoundQuantity validado directamente y el branch no cambió.
 
+### PR N5-10 (`MatrixApplicationService` — décimo consumidor migrado al motor)
+
+- Única operación del motor del servicio: `RedondearImporte(totals.CostoDirectoTotal)` en la cascada (`PropagateCascadeAsync`) → `SoproCalculationEngine.RoundAmount`. `MapComponent` conserva `Math.Round(1/cantidad, 5, AwayFromZero)` (precisión fija por contrato de captura, no es operación del motor — patrón N5-8). CRUD/consultas EF intactos. Sin cambios de API ni de comportamiento observable.
+- Tests (`SOPRO.Tests/Services/Matrices/MatrixApplicationServiceParityTests.cs`, 3 nuevos — no existía cobertura previa): paridad de integración sobre SQLite — `SaveAsync` (edición) dispara la cascada en dos contextos construidos desde los MISMOS valores aleatorios (100 escenarios, decimales importe 0-4, cantidades/precios con 3 decimales; el esperado independiente recalcula B con el CD nuevo de A + RoundAmount, y la referencia replica SaveAsync+PropagateCascadeAsync con la fachada) comparando IsNew/CascadedMatricesUpdated/CostoDirecto de la matriz dependiente/estado de componentes; dorado fijo (A CD 350, B: aux 2×350=700 + mat 3×100=300 → CostoDirecto 1000.00, cascadas=1); sin dependientes → 0 cascadas. Nota: un primer intento falló porque los dos `CrearEscenario` consumían valores aleatorios distintos — corregido extrayendo `Valores` una sola vez por iteración.
+- Verificación: 309/309 (306 + 3 nuevos), Release 0 errores, `git diff --check` limpio.
+
 ## 15. Fase N6: Empaquetado y validación privada
 
 ### Metadatos obligatorios
