@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Sopro.Calculation;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 
@@ -10,6 +11,11 @@ namespace SOPRO.Application.Services
     // ║  [FIX] Reemplaza mat.CalcularCostoDirecto() (sin decimales) por        ║
     // ║        MatrixComponentCalculationService.Recalculate() que usa el motor ║
     // ║        con la configuración de decimales del proyecto propietario.      ║
+    // ║                                                                         ║
+    // ║  [N5-11] Motor migrado a SoproCalculationEngine: Multiplicar → Multiply ║
+    // ║          (3 sitios), RedondearImporte → RoundAmount (2 sitios),        ║
+    // ║          SumarImportes → SumAmounts (1 sitio). CRUD/consultas EF       ║
+    // ║          intactos, sin cambios de API ni de comportamiento observable.  ║
     // ╚══════════════════════════════════════════════════════════════════════════╝
 
     public static class PricePropagationService
@@ -85,8 +91,7 @@ namespace SOPRO.Application.Services
                 var mat = matrices.FirstOrDefault(m => m.Id == comp.MatrizId);
                 int dec = (mat?.ProyectoId.HasValue == true && proyectos.TryGetValue(mat.ProyectoId!.Value, out var proy))
                     ? proy.DecimalesImporte : 2;
-                var motor = new MotorCalculoSopro(dec, dec, 4);
-                comp.Importe = motor.Multiplicar(comp.Cantidad, pu);
+                comp.Importe = new SoproCalculationEngine(dec, dec, 4).Multiply(comp.Cantidad, pu);
             }
 
             // [FIX] Usar motor con decimales del proyecto en lugar de CalcularCostoDirecto()
@@ -120,8 +125,9 @@ namespace SOPRO.Application.Services
                 if (!proyectos.TryGetValue(mat.ProyectoId.Value, out var proyecto)) continue;
                 var totals = MatrixComponentCalculationService.Recalculate(
                     mat.Componentes.ToList(), proyecto.DecimalesImporte);
-                mat.CostoDirecto = new MotorCalculoSopro(proyecto)
-                    .RedondearImporte(totals.CostoDirectoTotal);
+                mat.CostoDirecto = new SoproCalculationEngine(
+                    proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje)
+                    .RoundAmount(totals.CostoDirectoTotal);
             }
         }
 
@@ -146,15 +152,16 @@ namespace SOPRO.Application.Services
                 if (!mat.ProyectoId.HasValue) continue;
                 if (!proyectos.TryGetValue(mat.ProyectoId.Value, out var proyecto)) continue;
 
-                var motor = new MotorCalculoSopro(proyecto);
-                concepto.CostoDirectoUnitario = motor.RedondearImporte(mat.CostoDirecto);
-                concepto.CostoDirectoTotal    = motor.Multiplicar(concepto.Cantidad, concepto.CostoDirectoUnitario);
+                var engine = new SoproCalculationEngine(
+                    proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
+                concepto.CostoDirectoUnitario = engine.RoundAmount(mat.CostoDirecto);
+                concepto.CostoDirectoTotal    = engine.Multiply(concepto.Cantidad, concepto.CostoDirectoUnitario);
 
                 // Paridad con el recálculo de pantalla (FormPresupuesto.RefrescarPreciosDesdeDB):
                 // el Precio Unitario y el Importe Total también deben quedar al día en la
                 // propagación headless, sin depender de que el presupuesto esté abierto.
                 concepto.PrecioUnitario = BudgetPricingService.CalculateUnitPrice(proyecto, concepto.CostoDirectoUnitario);
-                concepto.ImporteTotal   = motor.Multiplicar(concepto.Cantidad, concepto.PrecioUnitario);
+                concepto.ImporteTotal   = engine.Multiply(concepto.Cantidad, concepto.PrecioUnitario);
             }
 
             // Paridad con RefrescarPreciosDesdeDB → RecalcularTodosLosTotales:
@@ -193,7 +200,8 @@ namespace SOPRO.Application.Services
                 var agrupadores = todos.Where(c => c.EsAgrupador).ToList();
                 if (agrupadores.Count == 0) continue;
 
-                var motor = new MotorCalculoSopro(proyecto);
+                var engine = new SoproCalculationEngine(
+                    proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
 
                 foreach (var agrupador in agrupadores)
                 {
@@ -212,7 +220,7 @@ namespace SOPRO.Application.Services
                         importes.Add(fila.ImporteTotal);
                     }
 
-                    decimal total = motor.SumarImportes(importes);
+                    decimal total = engine.SumAmounts(importes);
                     agrupador.CostoDirectoTotal = total;
                     agrupador.ImporteTotal       = total;
                     agrupador.FechaModificacion  = DateTime.Now;
