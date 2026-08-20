@@ -40,8 +40,8 @@ public class MatrixComponentEditingServiceParityTests
             };
 
             string texto = iter % 10 == 0
-                ? "$" + precio.ToString("N2") + " MXN"
-                : precio.ToString();
+                ? "$" + precio.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("en-US"))
+                : precio.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
             var resultado = MatrixComponentEditingService.UpdateUnitPrice(componente, texto, decimalesImporte);
             var resultadoRef = UpdateUnitPriceConFachada(componenteRef, texto, decimalesImporte);
