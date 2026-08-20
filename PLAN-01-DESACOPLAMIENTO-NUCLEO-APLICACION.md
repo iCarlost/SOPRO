@@ -544,6 +544,12 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 - Dictamen GO (barrido independiente del auditor: 4,500 escenarios, 22,500 comparaciones, 0 fallos — precisiones 0-8, culturas en-US/es-MX/es-ES, 900 textos monetarios válidos y 900 con sufijo inválido; Debug y Release 302/302). Hallazgo no bloqueante anotado y corregido:
   - Los textos "formateados" de la batería generaban `$1,234.50 MXN`: `TryParseDecimal` no elimina el sufijo "MXN", así que esos 60 escenarios fallaban en ambos lados sin comparar Importe/P.U. Corregido en el mismo PR: el texto monetario ahora usa `"$" + N2` con cultura en-US y el texto plano usa InvariantCulture — el path de strip de `$`/`,` queda ejercitado de verdad. No se amplió el parser (alteraría comportamiento legacy).
 
+### PR N5-9 (`MatrixCostAdjustmentService` — noveno consumidor migrado al motor)
+
+- Única operación del motor del servicio: `motor.RedondearCantidad(original * factor)` en `ApplyFactor` → `engine.RoundQuantity`. Los tres motores de instancia (GetAdjustmentBasis, AdjustMatrixByFactor, AdjustMatrixByTargetCost) y los parámetros privados de `ApplyFactor`/`EvaluateCost` se re-tipan de `MotorCalculoSopro` a `SoproCalculationEngine` (privados, sin impacto de API). `SyncRendimiento` y `MatrixComponentCalculationService.Recalculate` (N5-2) compartidos e intactos. Sin cambios de comportamiento observable.
+- Tests (`SOPRO.Tests/Services/Matrices/MatrixCostAdjustmentParityTests.cs`, 3 nuevos — se suman a los 5 existentes de `MatrixCostAdjustmentServiceTests`): baterías de paridad contra referencias que replican el flujo completo de los tres métodos públicos con la fachada (oráculo diferencial) — 400 escenarios de `GetAdjustmentBasis`, 300 de `AdjustMatrixByFactor` (factores 0-3, 10% negativos → Fail) y 300 de `AdjustMatrixByTargetCost` (target 30%-170% del costo actual: debajo del mínimo, ya-en-monto y búsqueda binaria) — matrices aleatorias de 3-8 componentes de los 5 tipos (incluyendo auxiliares cuadrilla/básico y %MO), decimales cantidad 0-4/importe 0-6/porcentaje 0-7, alcances aleatorios de 1-4 rubros; comparación completa de resultados (Success/Message/CurrentCost/TargetCost/AchievedCost/FactorApplied) + `CostoDirecto` + estado profundo de componentes (Cantidad/Importe/Rendimiento por índice ordenado).
+- Verificación: 305/305 (302 + 3 nuevos), Release 0 errores, `git diff --check` limpio.
+
 ## 15. Fase N6: Empaquetado y validación privada
 
 ### Metadatos obligatorios

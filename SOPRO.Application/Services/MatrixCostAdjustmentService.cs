@@ -1,7 +1,17 @@
+using Sopro.Calculation;
 using SOPRO.Core.Entities;
 
 namespace SOPRO.Application.Services
 {
+    // ╔══════════════════════════════════════════════════════════════════════════╗
+    // ║  MatrixCostAdjustmentService — [N5-9]                                  ║
+    // ║  Única operación del motor: RedondearCantidad (en ApplyFactor).          ║
+    // ║  Migrada de MotorCalculoSopro a SoproCalculationEngine.RoundQuantity     ║
+    // ║  (SOPRO.Calculation). Los tres motores de instancia y los parámetros     ║
+    // ║  privados ApplyFactor/EvaluateCost se re-tipan a SoproCalculationEngine. ║
+    // ║  SyncRendimiento y Recalculate son compartidos e intactos.               ║
+    // ║  Sin cambios de API ni de comportamiento observable.                     ║
+    // ╚══════════════════════════════════════════════════════════════════════════╝
     [System.Flags]
     public enum MatrixAdjustmentScopes
     {
@@ -46,7 +56,8 @@ namespace SOPRO.Application.Services
             if (scopes == MatrixAdjustmentScopes.None) return null;
 
             var componentes = matrix.Componentes.OrderBy(c => c.Orden).ThenBy(c => c.Id).ToList();
-            var motor = new MotorCalculoSopro(proyecto);
+            var engine = new SoproCalculationEngine(
+                proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
             var originales = componentes.ToDictionary(c => c, c => c.Cantidad);
             var ajustables = componentes.Where(c => IsAdjustable(c, scopes)).ToList();
             if (ajustables.Count == 0)
@@ -56,9 +67,9 @@ namespace SOPRO.Application.Services
                 return null;
             }
 
-            var currentCost = EvaluateCost(componentes, originales, 1m, motor, proyecto.DecimalesImporte, scopes);
+            var currentCost = EvaluateCost(componentes, originales, 1m, engine, proyecto.DecimalesImporte, scopes);
             var adjustableCurrentAmount = ajustables.Sum(c => c.Importe);
-            var minCost = EvaluateCost(componentes, originales, 0m, motor, proyecto.DecimalesImporte, scopes);
+            var minCost = EvaluateCost(componentes, originales, 0m, engine, proyecto.DecimalesImporte, scopes);
             RestoreOriginalQuantities(componentes, originales);
             MatrixComponentCalculationService.Recalculate(componentes, proyecto.DecimalesImporte);
 
@@ -90,7 +101,8 @@ namespace SOPRO.Application.Services
                 return Fail("El factor de reajuste no puede ser negativo.");
 
             var componentes = matrix.Componentes.OrderBy(c => c.Orden).ThenBy(c => c.Id).ToList();
-            var motor = new MotorCalculoSopro(proyecto);
+            var engine = new SoproCalculationEngine(
+                proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
             var originales = componentes.ToDictionary(c => c, c => c.Cantidad);
             var ajustables = componentes.Where(c => IsAdjustable(c, scopes)).ToList();
             if (ajustables.Count == 0)
@@ -100,8 +112,8 @@ namespace SOPRO.Application.Services
                 return Fail("La matriz no contiene componentes ajustables para los rubros seleccionados.");
             }
 
-            var currentCost = EvaluateCost(componentes, originales, 1m, motor, proyecto.DecimalesImporte, scopes);
-            ApplyFactor(componentes, originales, factor, motor, proyecto.DecimalesImporte, scopes);
+            var currentCost = EvaluateCost(componentes, originales, 1m, engine, proyecto.DecimalesImporte, scopes);
+            ApplyFactor(componentes, originales, factor, engine, proyecto.DecimalesImporte, scopes);
             var achieved = componentes.Sum(c => c.Importe);
             matrix.CostoDirecto = achieved;
             matrix.FechaUltimoCalculo = DateTime.Now;
@@ -136,7 +148,8 @@ namespace SOPRO.Application.Services
                 return Fail("El monto objetivo debe ser mayor que cero.");
 
             var componentes = matrix.Componentes.OrderBy(c => c.Orden).ThenBy(c => c.Id).ToList();
-            var motor = new MotorCalculoSopro(proyecto);
+            var engine = new SoproCalculationEngine(
+                proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
             var originales = componentes.ToDictionary(c => c, c => c.Cantidad);
             var ajustables = componentes.Where(c => IsAdjustable(c, scopes)).ToList();
 
@@ -147,7 +160,7 @@ namespace SOPRO.Application.Services
                 return Fail("La matriz no contiene componentes ajustables para los rubros seleccionados.");
             }
 
-            var currentCost = EvaluateCost(componentes, originales, 1m, motor, proyecto.DecimalesImporte, scopes);
+            var currentCost = EvaluateCost(componentes, originales, 1m, engine, proyecto.DecimalesImporte, scopes);
             var adjustableCurrentAmount = ajustables.Sum(c => c.Importe);
             if (adjustableCurrentAmount <= 0m)
             {
@@ -156,11 +169,11 @@ namespace SOPRO.Application.Services
                 return Fail("Los rubros seleccionados no tienen importe ajustable dentro de la matriz.", currentCost, targetCost, currentCost);
             }
 
-            var minCost = EvaluateCost(componentes, originales, 0m, motor, proyecto.DecimalesImporte, scopes);
+            var minCost = EvaluateCost(componentes, originales, 0m, engine, proyecto.DecimalesImporte, scopes);
 
             if (Math.Abs(targetCost - currentCost) <= 0.01m)
             {
-                ApplyFactor(componentes, originales, 1m, motor, proyecto.DecimalesImporte, scopes);
+                ApplyFactor(componentes, originales, 1m, engine, proyecto.DecimalesImporte, scopes);
                 matrix.CostoDirecto = currentCost;
                 return new MatrixCostAdjustmentResult
                 {
@@ -190,12 +203,12 @@ namespace SOPRO.Application.Services
             {
                 low = 1m;
                 high = 2m;
-                var highCost = EvaluateCost(componentes, originales, high, motor, proyecto.DecimalesImporte, scopes);
+                var highCost = EvaluateCost(componentes, originales, high, engine, proyecto.DecimalesImporte, scopes);
                 int guard = 0;
                 while (highCost < targetCost && guard < 20)
                 {
                     high *= 2m;
-                    highCost = EvaluateCost(componentes, originales, high, motor, proyecto.DecimalesImporte, scopes);
+                    highCost = EvaluateCost(componentes, originales, high, engine, proyecto.DecimalesImporte, scopes);
                     guard++;
                 }
             }
@@ -207,7 +220,7 @@ namespace SOPRO.Application.Services
             for (int i = 0; i < 40; i++)
             {
                 var mid = (low + high) / 2m;
-                var midCost = EvaluateCost(componentes, originales, mid, motor, proyecto.DecimalesImporte, scopes);
+                var midCost = EvaluateCost(componentes, originales, mid, engine, proyecto.DecimalesImporte, scopes);
                 var diff = Math.Abs(midCost - targetCost);
                 if (diff < bestDiff)
                 {
@@ -225,7 +238,7 @@ namespace SOPRO.Application.Services
                     high = mid;
             }
 
-            ApplyFactor(componentes, originales, bestFactor, motor, proyecto.DecimalesImporte, scopes);
+            ApplyFactor(componentes, originales, bestFactor, engine, proyecto.DecimalesImporte, scopes);
             bestCost = componentes.Sum(c => c.Importe);
             matrix.CostoDirecto = bestCost;
             matrix.FechaUltimoCalculo = DateTime.Now;
@@ -261,11 +274,11 @@ namespace SOPRO.Application.Services
             IList<ComponenteMatriz> componentes,
             IReadOnlyDictionary<ComponenteMatriz, decimal> originales,
             decimal factor,
-            MotorCalculoSopro motor,
+            SoproCalculationEngine engine,
             int decimalesImporte,
             MatrixAdjustmentScopes scopes)
         {
-            ApplyFactor(componentes, originales, factor, motor, decimalesImporte, scopes);
+            ApplyFactor(componentes, originales, factor, engine, decimalesImporte, scopes);
             return componentes.Count == 0 ? 0m : componentes.Sum(c => c.Importe);
         }
 
@@ -273,7 +286,7 @@ namespace SOPRO.Application.Services
             IList<ComponenteMatriz> componentes,
             IReadOnlyDictionary<ComponenteMatriz, decimal> originales,
             decimal factor,
-            MotorCalculoSopro motor,
+            SoproCalculationEngine engine,
             int decimalesImporte,
             MatrixAdjustmentScopes scopes)
         {
@@ -283,7 +296,7 @@ namespace SOPRO.Application.Services
                 var original = kv.Value;
                 if (IsAdjustable(componente, scopes))
                 {
-                    var nuevaCantidad = motor.RedondearCantidad(original * factor);
+                    var nuevaCantidad = engine.RoundQuantity(original * factor);
                     if (nuevaCantidad < 0m) nuevaCantidad = 0m;
                     componente.Cantidad = nuevaCantidad;
                     MatrixComponentEditingService.SyncRendimiento(componente);
