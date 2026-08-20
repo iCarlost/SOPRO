@@ -526,6 +526,12 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
   - La batería del PR genera precisión cantidad/importe 0-4 y porcentaje 0-6 (no 0-6/0-7 como declaraba el plan); el barrido independiente cubrió el rango declarado sin divergencias — texto del plan corregido al rango real de la batería.
   - El mapeo inline de porcentajes añade un sitio más al bucket de consolidación N5/N6 (BuildEngine/BuildEnginePercentages) ya registrado.
 
+### PR N5-7 (`UtilidadCalculationService` — séptimo consumidor migrado al motor)
+
+- `Calcular` (único sitio numérico) migra sus 5 `RedondearImporte` de `MotorCalculoSopro` a `SoproCalculationEngine.RoundAmount` (baseUtilidad, importeUtilidad, importeIsr, importePtu, utilidadNeta). `MotorCalculoSopro` desaparece por completo de este servicio (no había formato). Los `Math.Round(..., 5, AwayFromZero)` de `porcentajeBruto`/`porcentajeNeto` se conservan por diseño: son coeficientes intermedios con precisión fija 5 (documentado en el header del servicio), no operaciones del motor. `BuildPreview` (N5-3) sigue intacto y compartido. Sin cambios de API.
+- Tests (`SOPRO.Tests/Services/Presupuesto/UtilidadCalculationParityTests.cs`, 4 nuevos — se suman a los 2 dorados existentes de `UtilidadCalculationServiceTests`): batería de paridad de 300 escenarios deterministas (mitad con conceptos reales en BD — matriz + 1-4 conceptos — y mitad por costo de referencia; decimales 0-6, porcentajes de cascada 0-40/0-20, utilidad/ISR/PTU con valores negativos ocasionales para ejercitar los `Math.Max(0, ...)`, modos Acumulables/SobreCD/sobrecd/null, asistido/directo) contra referencia compuesta con la fachada — 10 campos por escenario; dorados: directo (CD 1000, 10/5/2 → base 1173.00, bruto 8.00000, neto 4.80000, utilidad 93.84, ISR 28.15, PTU 9.38, neta 56.31), asistido (deseada 6, ISR 20/PTU 5 → bruto 8.00000, neta 70.38) y sin conceptos con referencia de 3 decimales (1234.567 → base 1385.19, utilidad 110.82, ISR 33.25, PTU 11.08, neta 66.49).
+- Verificación: 295/295 (291 + 4 nuevos), Release 0 errores, `git diff --check` limpio.
+
 ## 15. Fase N6: Empaquetado y validación privada
 
 ### Metadatos obligatorios
