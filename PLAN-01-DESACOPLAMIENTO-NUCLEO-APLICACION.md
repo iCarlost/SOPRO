@@ -565,6 +565,12 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 - Verificación: 312/312 (309 + 3 nuevos), Release 0 errores, `git diff --check` limpio.
 - Hallazgos del dictamen N5-11 (corregidos en esta rama): (1) las variables locales ahora llamadas `engine` conservaban el nombre `motor` (PricePropagationService.cs:155 y :203) — renombradas; (2) la batería ejecutaba las fases sin modificar el precio del insumo propagado, dejando escrituras idempotentes tras el setup — ahora cada fase modifica primero el precio (PrecioUnitario/SalarioReal/CostoHorario) en AMBOS contextos con el mismo valor, de modo que ninguna propagación es idempotente y se valida una actualización efectiva.
 
+### PR N5-12 (`ExternalMatrixImportService` — duodécimo consumidor migrado al motor)
+
+- Único motor del servicio: `RedondearImporte` → `RoundAmount` en `RecalcularÁrbol` (post-orden, auxiliares antes que padres) con las tres precisiones del proyecto destino. `RecalcularConMotorDelProyecto` reutiliza la ruta canónica `PricePropagationService.RecalcularConMotor` (N5-11) y el Rendimiento de maquinaria conserva `Math.Round 5` por contrato. Copia de importación/CRUD intactos.
+- Tests (`SOPRO.Tests/Services/Importacion/ExternalMatrixImportServiceParityTests.cs`, 3 nuevos; el dorado O2 preexistente 30.03 ya cubría la línea end-to-end): batería de 25 árboles aleatorios de 3 niveles (raíz 2 materiales + auxiliar → hijo 1 material + auxiliar → nieto 1 material) con decimales importe del destino 0-4, oráculo independiente solo con `Math.Round` sobre el Recalculate compartido recorriendo post-orden (valida que el CostoDirecto redondeado del auxiliar es el que consume su padre); dorado con auxiliar (hijo 2×20.00=40.00 → raíz 3×10.01=30.03 + aux 2×40.00=80.00 = **110.03**); dorado matriz sin componentes → 0.00 (no se copia el costo del origen).
+- Verificación: 315/315 (312 + 3 nuevos), Release 0 errores, `git diff --check` limpio.
+
 ## 15. Fase N6: Empaquetado y validación privada
 
 ### Metadatos obligatorios

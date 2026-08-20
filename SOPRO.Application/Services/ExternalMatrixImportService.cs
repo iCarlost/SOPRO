@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Sopro.Calculation;
 using SOPRO.Application.Models.ExternalProjects;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -10,6 +11,14 @@ using System.Linq;
 
 namespace SOPRO.Application.Services
 {
+    // ╔══════════════════════════════════════════════════════════════════════════╗
+    // ║  [N5-12] Único motor del servicio: RedondearImporte → RoundAmount en    ║
+    // ║          RecalcularÁrbol, con las tres precisiones del proyecto destino. ║
+    // ║          RecalcularConMotorDelProyecto reutiliza la ruta                 ║
+    // ║          canónica (PricePropagationService.RecalcularConMotor, N5-11) y  ║
+    // ║          el Rendimiento de maquinaria conserva Math.Round 5 por contrato.║
+    // ║          CRUD/copia de importación intactos.                             ║
+    // ╚══════════════════════════════════════════════════════════════════════════╝
     public sealed class ExternalMatrixImportService
     {
         private readonly IProjectDbContextFactory _dbContextFactory;
@@ -383,7 +392,9 @@ namespace SOPRO.Application.Services
                 RecalcularÁrbol(ctx, proyecto, matrices, comp.AuxiliarId!.Value, visitados);
 
             var totals = MatrixComponentCalculationService.Recalculate(matriz.Componentes.ToList(), proyecto.DecimalesImporte);
-            matriz.CostoDirecto = new MotorCalculoSopro(proyecto).RedondearImporte(totals.CostoDirectoTotal);
+            matriz.CostoDirecto = new SoproCalculationEngine(
+                proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje)
+                .RoundAmount(totals.CostoDirectoTotal);
         }
 
         private static MatrixGraph LoadGraph(SOPROContext externalContext, int externalMatrixId)
