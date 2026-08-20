@@ -13,8 +13,8 @@ namespace SOPRO.Application.Services
 {
     // ╔══════════════════════════════════════════════════════════════════════════╗
     // ║  [N5-12] Único motor del servicio: RedondearImporte → RoundAmount en    ║
-    // ║          RecalcularÁrbol (:386), con las tres precisiones del proyecto  ║
-    // ║          destino. RecalcularConMotorDelProyecto reutiliza la ruta        ║
+    // ║          RecalcularÁrbol, con las tres precisiones del proyecto destino. ║
+    // ║          RecalcularConMotorDelProyecto reutiliza la ruta                 ║
     // ║          canónica (PricePropagationService.RecalcularConMotor, N5-11) y  ║
     // ║          el Rendimiento de maquinaria conserva Math.Round 5 por contrato.║
     // ║          CRUD/copia de importación intactos.                             ║

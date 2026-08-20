@@ -254,7 +254,7 @@ public class ExternalMatrixImportServiceParityTests
 
         foreach (var comp in matriz.Componentes.Where(c => c.AuxiliarId.HasValue))
         {
-            var aux = importadas.Single(m => m.Id == comp.AuxiliarId.Value);
+            var aux = importadas.Single(m => m.Id == comp.AuxiliarId!.Value);
             EsperadoPostOrden(importadas, aux, decImp, visitadas, iter);
         }
 
