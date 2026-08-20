@@ -570,6 +570,13 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 - Único motor del servicio: `RedondearImporte` → `RoundAmount` en `RecalcularÁrbol` (post-orden, auxiliares antes que padres) con las tres precisiones del proyecto destino. `RecalcularConMotorDelProyecto` reutiliza la ruta canónica `PricePropagationService.RecalcularConMotor` (N5-11) y el Rendimiento de maquinaria conserva `Math.Round 5` por contrato. Copia de importación/CRUD intactos.
 - Tests (`SOPRO.Tests/Services/Importacion/ExternalMatrixImportServiceParityTests.cs`, 3 nuevos; el dorado O2 preexistente 30.03 ya cubría la línea end-to-end): batería de 25 árboles aleatorios de 3 niveles (raíz 2 materiales + auxiliar → hijo 1 material + auxiliar → nieto 1 material) con decimales importe del destino 0-4, oráculo independiente solo con `Math.Round` sobre el Recalculate compartido recorriendo post-orden (valida que el CostoDirecto redondeado del auxiliar es el que consume su padre); dorado con auxiliar (hijo 2×20.00=40.00 → raíz 3×10.01=30.03 + aux 2×40.00=80.00 = **110.03**); dorado matriz sin componentes → 0.00 (no se copia el costo del origen).
 - Verificación: 315/315 (312 + 3 nuevos), Release 0 errores, `git diff --check` limpio.
+- Hallazgos del dictamen N5-12 (corregidos en `c66a7f4`): `CS8629` en `ExternalMatrixImportServiceParityTests.cs:257` (`comp.AuxiliarId.Value`) → `comp.AuxiliarId!.Value`; referencia de línea rígida `:386` eliminada del header de `ExternalMatrixImportService`.
+
+### PR N5-13 (`ExternalInsumoImportService` — decimotercer consumidor migrado al motor)
+
+- Tres operaciones `Multiplicar` → `Multiply` (Importe del componente importado de Material/Maquinaria/Auxiliar) con la precisión del proyecto destino (o `2/2/4` sin proyecto). El auxiliar reutiliza `ImportMatrixTree` (N5-12) para obtener el CostoDirecto redondeado del básico; `Rendimiento` conserva `Math.Round 5`.
+- Tests (`SOPRO.Tests/Services/Importacion/ExternalInsumoImportServiceParityTests.cs`, 2 nuevos; O1 preexistente 20.02 ya cubría Material/Maquinaria): batería de 35 iteraciones × 3 insumos con decimales importe del destino 0-4, oráculo independiente `Math.Round(RoundAmount(precio) × cantidad)` sin engine ni fachada (material `puMat`, maquinaria `costoMaq`, auxiliar `puMat` → `CD 10.01` → `20.02`); dorado 10.005 × 2 = **20.02** (básico importado 10.01 y auxiliar 2 × 10.01 = 20.02).
+- Verificación: 317/317 (315 + 2 nuevos), Release 0 errores, `git diff --check` limpio.
 
 ## 15. Fase N6: Empaquetado y validación privada
 

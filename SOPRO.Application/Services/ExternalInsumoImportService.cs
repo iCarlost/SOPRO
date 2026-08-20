@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Sopro.Calculation;
 using SOPRO.Application.Models.ExternalProjects;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -11,6 +12,13 @@ using System.Linq;
 
 namespace SOPRO.Application.Services
 {
+    // ╔══════════════════════════════════════════════════════════════════════════╗
+    // ║  [N5-12] (Imports externos, parte 2) Motor del servicio: las 3 llamadas ║
+    // ║          Multiplicar → Multiply (Importe del componente importado de     ║
+    // ║          Material/Maquinaria/Auxiliar) con la precisión del proyecto     ║
+    // ║          destino (o 2/2/4 si no hay proyecto). Rendimiento conserva     ║
+    // ║          Math.Round 5 por contrato. Copia/CRUD de importación intactos.  ║
+    // ╚══════════════════════════════════════════════════════════════════════════╝
     public sealed class ExternalInsumoImportService
     {
         private readonly ExternalMatrixImportService _matrixImportService;
@@ -153,9 +161,9 @@ namespace SOPRO.Application.Services
             // Motor con la precisión del proyecto destino (precisión de pantalla).
             var proyectoDestino = currentContext.Proyectos.AsNoTracking()
                 .FirstOrDefault(p => p.Id == currentProjectId);
-            var motor = proyectoDestino != null
-                ? new MotorCalculoSopro(proyectoDestino)
-                : new MotorCalculoSopro(2, 2, 4);
+            var engine = proyectoDestino != null
+                ? new SoproCalculationEngine(proyectoDestino.DecimalesCantidad, proyectoDestino.DecimalesImporte, proyectoDestino.DecimalesPorcentaje)
+                : new SoproCalculationEngine(2, 2, 4);
 
             foreach (var item in list)
             {
@@ -181,7 +189,7 @@ namespace SOPRO.Application.Services
                             currentContext.SaveChanges();
                             result.ImportedMateriales++;
                         }
-                        result.ImportedComponents.Add(new ComponenteMatriz { MaterialId = target.Id, Material = target, TipoComponente = TipoComponenteMatriz.Material, Cantidad = cantidad, Importe = motor.Multiplicar(cantidad, target.PrecioUnitario) });
+                        result.ImportedComponents.Add(new ComponenteMatriz { MaterialId = target.Id, Material = target, TipoComponente = TipoComponenteMatriz.Material, Cantidad = cantidad, Importe = engine.Multiply(cantidad, target.PrecioUnitario) });
                         break;
                     }
                     case TipoComponenteMatriz.ManoDeObra:
@@ -227,7 +235,7 @@ namespace SOPRO.Application.Services
                             currentContext.SaveChanges();
                             result.ImportedMaquinaria++;
                         }
-                        result.ImportedComponents.Add(new ComponenteMatriz { MaquinariaId = target.Id, Maquinaria = target, TipoComponente = TipoComponenteMatriz.Maquinaria, Cantidad = cantidad, Rendimiento = cantidad > 0 ? Math.Round(1m / cantidad, 5, MidpointRounding.AwayFromZero) : 0m, Importe = motor.Multiplicar(cantidad, target.CostoHorario) });
+                        result.ImportedComponents.Add(new ComponenteMatriz { MaquinariaId = target.Id, Maquinaria = target, TipoComponente = TipoComponenteMatriz.Maquinaria, Cantidad = cantidad, Rendimiento = cantidad > 0 ? Math.Round(1m / cantidad, 5, MidpointRounding.AwayFromZero) : 0m, Importe = engine.Multiply(cantidad, target.CostoHorario) });
                         break;
                     }
                     case TipoComponenteMatriz.Herramienta:
@@ -264,7 +272,7 @@ namespace SOPRO.Application.Services
                             result.ImportedManoDeObra += matrixResult.ImportedManoDeObra;
                             result.ImportedMaquinaria += matrixResult.ImportedMaquinaria;
                             result.ImportedHerramientas += matrixResult.ImportedHerramientas;
-                            result.ImportedComponents.Add(new ComponenteMatriz { AuxiliarId = target.Id, Auxiliar = target, TipoComponente = TipoComponenteMatriz.Auxiliar, Cantidad = cantidad, Importe = motor.Multiplicar(cantidad, target.CostoDirecto) });
+                            result.ImportedComponents.Add(new ComponenteMatriz { AuxiliarId = target.Id, Auxiliar = target, TipoComponente = TipoComponenteMatriz.Auxiliar, Cantidad = cantidad, Importe = engine.Multiply(cantidad, target.CostoDirecto) });
                         }
                         break;
                     }
