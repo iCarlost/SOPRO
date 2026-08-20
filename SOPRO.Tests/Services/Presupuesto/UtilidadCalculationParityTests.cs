@@ -180,6 +180,57 @@ public class UtilidadCalculationParityTests
         Assert.AreEqual(66.49m, result.UtilidadNetaEstimada);
     }
 
+    [TestMethod]
+    public void Calcular_Dorado_FactorMenorOIgualACero()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var proyecto = CrearProyecto(2, 2, 4);
+        context.Proyectos.Add(proyecto);
+        context.SaveChanges();
+
+        // ISR 60 + PTU 50 → factor 1-1.1 = -0.1 ≤ 0: asistido devuelve bruto 0
+        // (sin división), directo devuelve neto negativo (sin clamp, heredado).
+        var asistido = new UtilidadCalculationService().Calcular(context, proyecto, new UtilidadCalculationInput
+        {
+            CostoDirectoReferencia = 1000m,
+            IndirectosCentral = 10m,
+            IndirectosCampo = 5m,
+            Financiamiento = 2m,
+            UtilidadNetaDeseada = 6m,
+            Isr = 60m,
+            Ptu = 50m,
+            ModoCalculoPorcentajes = "Acumulables",
+            ModoAsistido = true
+        });
+
+        Assert.AreEqual(0.00000m, asistido.PorcentajeUtilidadBruta);
+        Assert.AreEqual(6.00000m, asistido.PorcentajeUtilidadNeta);
+        Assert.AreEqual(0.00m, asistido.ImporteUtilidad);
+        Assert.AreEqual(0.00m, asistido.ImporteIsr);
+        Assert.AreEqual(0.00m, asistido.ImportePtu);
+        Assert.AreEqual(0.00m, asistido.UtilidadNetaEstimada);
+
+        var directo = new UtilidadCalculationService().Calcular(context, proyecto, new UtilidadCalculationInput
+        {
+            CostoDirectoReferencia = 1000m,
+            IndirectosCentral = 10m,
+            IndirectosCampo = 5m,
+            Financiamiento = 2m,
+            UtilidadDirecta = 8m,
+            Isr = 60m,
+            Ptu = 50m,
+            ModoCalculoPorcentajes = "Acumulables",
+            ModoAsistido = false
+        });
+
+        Assert.AreEqual(8.00000m, directo.PorcentajeUtilidadBruta);
+        Assert.AreEqual(-0.80000m, directo.PorcentajeUtilidadNeta);
+        Assert.AreEqual(93.84m, directo.ImporteUtilidad);
+        Assert.AreEqual(56.30m, directo.ImporteIsr);
+        Assert.AreEqual(46.92m, directo.ImportePtu);
+        Assert.AreEqual(-9.38m, directo.UtilidadNetaEstimada);
+    }
+
     // ── Referencia compuesta con la fachada (código pre-migración) ────────────
 
     private static UtilidadCalculationResult CalcularConFachada(
