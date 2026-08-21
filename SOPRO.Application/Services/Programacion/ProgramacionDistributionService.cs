@@ -23,8 +23,9 @@ namespace SOPRO.Application.Services
     // ║                                                                         ║
     // ║  [N5-15] Motor migrado a SoproCalculationEngine: las 3 construcciones   ║
     // ║          (DistributeUniform, DistributeUniformBatch,                    ║
-    // ║          DistributeByPercentages) y los 18 redondeos/multiplicaciones   ║
-    // ║          usan engine con las tres precisiones del proyecto.             ║
+    // ║          DistributeByPercentages) y las 24 operaciones                  ║
+    // ║          (Multiply ×6, RoundAmount ×3, RoundQuantity ×6,                ║
+    // ║          RoundPercentage ×9) usan engine con las tres precisiones.      ║
     // ╚══════════════════════════════════════════════════════════════════════════╝
 
     public sealed class ProgramacionDistributionService

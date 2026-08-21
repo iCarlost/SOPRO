@@ -10,9 +10,10 @@ namespace SOPRO.Tests.Services.Programacion;
 
 // [N5-15] Paridad de ProgramacionDistributionService contra la fachada:
 // las 3 construcciones (DistributeUniform, DistributeUniformBatch,
-// DistributeByPercentages) y los 18 redondeos/multiplicaciones usan
-// SoproCalculationEngine. El oráculo replica el flujo completo con
-// MotorCalculoSopro en un contexto gemelo construido desde los MISMOS valores.
+// DistributeByPercentages) y las 24 operaciones (Multiply ×6, RoundAmount ×3,
+// RoundQuantity ×6, RoundPercentage ×9) usan SoproCalculationEngine.
+// El oráculo replica el flujo completo con MotorCalculoSopro en un contexto
+// gemelo construido desde los MISMOS valores.
 
 [TestClass]
 public class ProgramacionDistributionServiceParityTests
@@ -36,6 +37,30 @@ public class ProgramacionDistributionServiceParityTests
             DistributeUniformConFachada(ctxRef, actividadIdRef);
 
             CompararDistribuciones(ctx, ctxRef, actividadId, actividadIdRef, iter);
+        }
+    }
+
+    [TestMethod]
+    public void DistributeUniformBatch_BateriaParidadConFachada_SemillaFija()
+    {
+        var rnd = new Random(20260826);
+
+        for (int iter = 0; iter < 30; iter++)
+        {
+            using var ctx = TestDbFactory.CreateContext();
+            using var ctxRef = TestDbFactory.CreateContext();
+
+            var v1 = GenerarValores(rnd);
+            var v2 = GenerarValores(rnd);
+            var (programaId, actividadIds) = CrearEscenarioBatch(ctx, v1, v2, iter);
+            var (programaIdRef, actividadIdsRef) = CrearEscenarioBatch(ctxRef, v1, v2, iter);
+
+            var service = new ProgramacionDistributionService();
+            service.DistributeUniformBatch(ctx, programaId);
+            DistributeUniformBatchConFachada(ctxRef, programaIdRef);
+
+            for (int i = 0; i < actividadIds.Count; i++)
+                CompararDistribuciones(ctx, ctxRef, actividadIds[i], actividadIdsRef[i], iter);
         }
     }
 
@@ -172,6 +197,15 @@ public class ProgramacionDistributionServiceParityTests
         return (actividadId, programaId, periodoIds);
     }
 
+    private static (int programaId, List<int> actividadIds) CrearEscenarioBatch(SOPROContext ctx, Valores v1, Valores v2, int iter)
+    {
+        var proyecto = CrearProyecto(ctx, v1.DecCantidad, v1.DecImporte, v1.DecPorcentaje);
+        var programaId = CrearProgramaConPeriodos(ctx, proyecto.Id);
+        var act1 = CrearActividad(ctx, programaId, v1.CantidadTotal, v1.PrecioUnitario);
+        var act2 = CrearActividad(ctx, programaId, v2.CantidadTotal, v2.PrecioUnitario);
+        return (programaId, new List<int> { act1, act2 });
+    }
+
     private static int CrearProgramaConPeriodos(SOPROContext ctx, int proyectoId)
     {
         var programa = new ProgramaObra
@@ -251,7 +285,7 @@ public class ProgramacionDistributionServiceParityTests
     {
         var actividad = context.ActividadesProgramadas
             .Include(a => a.ProgramaObra).ThenInclude(p => p.Proyecto)
-            .Include(a => a.ProgramaObra).ThenInclude(p => p.CalendarioLaboral).ThenInclude(c => c.Excepciones)
+            .Include(a => a.ProgramaObra).ThenInclude(p => p.CalendarioLaboral).ThenInclude(c => c!.Excepciones)
             .Include(a => a.Distribuciones)
             .FirstOrDefault(a => a.Id == actividadId);
         if (actividad == null) return;
@@ -295,6 +329,58 @@ public class ProgramacionDistributionServiceParityTests
         actividad.ImporteProgramado = importeTotal;
         actividad.AvanceProgramadoPorcentaje = actividad.CantidadTotal == 0m ? 0m : 100m;
         actividad.FechaModificacion = DateTime.Now;
+        context.SaveChanges();
+    }
+
+    private static void DistributeUniformBatchConFachada(SOPROContext context, int programaObraId)
+    {
+        var actividades = context.ActividadesProgramadas
+            .Include(a => a.ProgramaObra).ThenInclude(p => p.Proyecto)
+            .Include(a => a.ProgramaObra).ThenInclude(p => p.CalendarioLaboral).ThenInclude(c => c!.Excepciones)
+            .Include(a => a.Distribuciones)
+            .Where(a => a.ProgramaObraId == programaObraId && !a.EsResumen)
+            .ToList();
+        if (!actividades.Any()) return;
+        var todosLosPeriodos = context.PeriodosPrograma.Where(p => p.ProgramaObraId == programaObraId).OrderBy(p => p.NumeroPeriodo).ToList();
+        if (!todosLosPeriodos.Any()) return;
+        var todasLasDistribuciones = actividades.SelectMany(a => a.Distribuciones).ToList();
+        context.DistribucionesPeriodo.RemoveRange(todasLasDistribuciones);
+        foreach (var actividad in actividades)
+        {
+            var proyecto = actividad.ProgramaObra?.Proyecto;
+            var motor = proyecto != null ? new MotorCalculoSopro(proyecto) : new MotorCalculoSopro(4, 2, 4);
+            var fechaInicio = actividad.FechaInicioProgramada?.Date;
+            var fechaFin = actividad.FechaFinProgramada?.Date ?? fechaInicio;
+            var periodos = todosLosPeriodos;
+            if (fechaInicio.HasValue && fechaFin.HasValue)
+                periodos = todosLosPeriodos.Where(p => p.FechaInicio.Date <= fechaFin.Value && p.FechaFin.Date >= fechaInicio.Value).OrderBy(p => p.NumeroPeriodo).ToList();
+            if (!periodos.Any())
+                periodos = fechaInicio.HasValue ? todosLosPeriodos.Where(p => p.FechaInicio.Date <= fechaInicio.Value && p.FechaFin.Date >= fechaInicio.Value).ToList() : todosLosPeriodos.Take(1).ToList();
+            if (!periodos.Any()) periodos = todosLosPeriodos.Take(1).ToList();
+            var tramos = BuildWorkingDayDistribution(periodos, actividad.ProgramaObra?.CalendarioLaboral, fechaInicio, fechaFin);
+            if (!tramos.Any())
+                tramos = periodos.Select((periodo, index) => new DistributionSlice(periodo, index == 0 ? 1 : 0)).Where(x => x.WorkingDays > 0).ToList();
+            var totalDias = tramos.Sum(x => x.WorkingDays);
+            if (totalDias <= 0) totalDias = tramos.Count;
+            decimal importeTotal = motor.Multiplicar(actividad.CantidadTotal, actividad.PrecioUnitario);
+            decimal cantidadAcumulada = 0m, porcentajeAcumulado = 0m, importeAcumulado = 0m;
+            for (int i = 0; i < tramos.Count; i++)
+            {
+                var tramo = tramos[i]; var esUltimo = i == tramos.Count - 1;
+                decimal cantidad = esUltimo ? motor.RedondearCantidad(actividad.CantidadTotal - cantidadAcumulada) : motor.RedondearCantidad(actividad.CantidadTotal * (totalDias == 0 ? 0m : (decimal)tramo.WorkingDays / totalDias));
+                cantidadAcumulada += cantidad;
+                decimal porcentaje = esUltimo ? motor.RedondearPorcentaje(100m - porcentajeAcumulado) : (actividad.CantidadTotal == 0m ? motor.RedondearPorcentaje((totalDias == 0 ? 0m : (decimal)tramo.WorkingDays / totalDias) * 100m) : motor.RedondearPorcentaje((cantidad / actividad.CantidadTotal) * 100m));
+                porcentajeAcumulado += porcentaje;
+                decimal importe = esUltimo ? motor.RedondearImporte(importeTotal - importeAcumulado) : motor.Multiplicar(cantidad, actividad.PrecioUnitario);
+                importeAcumulado += importe;
+                context.DistribucionesPeriodo.Add(new DistribucionPeriodo { ActividadProgramadaId = actividad.Id, PeriodoProgramaId = tramo.Periodo.Id, CantidadProgramada = cantidad, PorcentajeProgramado = porcentaje, PrecioUnitario = actividad.PrecioUnitario, ImporteProgramado = importe });
+            }
+            actividad.MetodoDistribucion = MetodoDistribucionActividad.Uniforme;
+            actividad.CantidadProgramada = actividad.CantidadTotal;
+            actividad.ImporteProgramado = importeTotal;
+            actividad.AvanceProgramadoPorcentaje = actividad.CantidadTotal == 0m ? 0m : 100m;
+            actividad.FechaModificacion = DateTime.Now;
+        }
         context.SaveChanges();
     }
 

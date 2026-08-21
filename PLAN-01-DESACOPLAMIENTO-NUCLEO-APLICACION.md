@@ -588,9 +588,9 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 
 ### PR N5-15 (`ProgramacionDistributionService` — decimoquinto consumidor migrado al motor)
 
-- Tres construcciones (`DistributeUniform`, `DistributeUniformBatch`, `DistributeByPercentages`) y 18 operaciones (`Multiply` ×3, `RoundAmount` ×3, `RoundQuantity` ×6, `RoundPercentage` ×6) migradas a `SoproCalculationEngine` con las tres precisiones del proyecto (fallback `4/2/4`). Sin cambios de API ni de comportamiento observable.
-- Tests (`SOPRO.Tests/Services/Programacion/ProgramacionDistributionServiceParityTests.cs`, 3 nuevos): baterías de 30 escenarios para `DistributeUniform` y `DistributeByPercentages` con decimales cantidad/importe 0-4 y porcentaje 0-6, oráculo diferencial que replica el flujo completo con `MotorCalculoSopro` en contexto gemelo; dorado uniforme `5.00/500.00/50.00` con paridad y valores conocidos.
-- Verificación: 323/323 (320 + 3 nuevos), Release 0 errores, `git diff --check` limpio.
+- Tres construcciones (`DistributeUniform`, `DistributeUniformBatch`, `DistributeByPercentages`) y 24 operaciones (`Multiply` ×6, `RoundAmount` ×3, `RoundQuantity` ×6, `RoundPercentage` ×9) migradas a `SoproCalculationEngine` con las tres precisiones del proyecto (fallback `4/2/4`). Sin cambios de API ni de comportamiento observable.
+- Tests (`SOPRO.Tests/Services/Programacion/ProgramacionDistributionServiceParityTests.cs`, 4 nuevos): baterías de 30 escenarios para `DistributeUniform`, `DistributeUniformBatch` y `DistributeByPercentages` con decimales cantidad/importe 0-4 y porcentaje 0-6, oráculo diferencial que replica el flujo completo con `MotorCalculoSopro` en contexto gemelo; dorado uniforme `5.00/500.00/50.00` con paridad y valores conocidos.
+- Verificación: 324/324 (320 + 4 nuevos), Release 0 errores, `git diff --check` limpio.
 
 ## 15. Fase N6: Empaquetado y validación privada
 
