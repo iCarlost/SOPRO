@@ -8,7 +8,7 @@ using SOPRO.Tests.TestInfrastructure;
 namespace SOPRO.Tests.Services.Programacion;
 
 // [N5-14] Paridad de ProgramacionCurvaSService contra la fachada:
-// los 10 redondeos de BuildInternal (RoundAmount ×4, RoundQuantity ×2,
+// los 10 redondeos de BuildInternal (RoundAmount ×3, RoundQuantity ×3,
 // RoundPercentage ×4) más las dos construcciones del motor en BuildFinancialCurve
 // usan SoproCalculationEngine con las tres precisiones del proyecto.
 // El oráculo replica el flujo completo con MotorCalculoSopro en un contexto
@@ -83,16 +83,23 @@ public class ProgramacionCurvaSServiceParityTests
     public void BuildFinancialCurve_Sobrecargas_ConProyectoExistente_Coinciden()
     {
         using var ctx = TestDbFactory.CreateContext();
+        using var ctxRef = TestDbFactory.CreateContext();
 
         var proyecto = CrearProyecto(ctx, 2, 2, 4);
+        var proyectoRef = CrearProyecto(ctxRef, 2, 2, 4);
         var programaId = CrearEscenarioFijo(ctx, proyecto);
+        var programaIdRef = CrearEscenarioFijo(ctxRef, proyectoRef);
 
         var service = new ProgramacionCurvaSService();
         var rowsConProyecto = service.BuildFinancialCurve(ctx, programaId, proyecto);
         var rowsFallback = service.BuildFinancialCurve(ctx, programaId);
+        var rowsRef = BuildFinancialCurveFallbackConFachada(ctxRef, programaIdRef);
 
         Assert.AreEqual(rowsConProyecto.Count, rowsFallback.Count);
         CompararFilas(rowsConProyecto, rowsFallback, 998);
+
+        // La sobrecarga que carga el proyecto debe coincidir con la fachada
+        CompararFilas(rowsFallback, rowsRef, 997);
 
         // Valores con 2/2/4 (proyecto de este escenario)
         Assert.AreEqual(333.34m, rowsFallback[0].ImportePeriodo);

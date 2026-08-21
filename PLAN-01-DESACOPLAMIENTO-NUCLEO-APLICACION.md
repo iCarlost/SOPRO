@@ -581,7 +581,7 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 
 ### PR N5-14 (`ProgramacionCurvaSService` — decimocuarto consumidor migrado al motor)
 
-- Diez redondeos en `BuildInternal` (`RoundAmount` ×4, `RoundQuantity` ×2, `RoundPercentage` ×4) más las dos construcciones del motor en `BuildFinancialCurve` (con proyecto y fallback `2/2/4`) migrados a `SoproCalculationEngine` con las tres precisiones del proyecto. Sin cambios de API ni de comportamiento observable.
+- Diez redondeos en `BuildInternal` (`RoundAmount` ×3, `RoundQuantity` ×3, `RoundPercentage` ×4) más las dos construcciones del motor en `BuildFinancialCurve` (con proyecto y fallback `2/2/4`) migrados a `SoproCalculationEngine` con las tres precisiones del proyecto. Sin cambios de API ni de comportamiento observable.
 - Tests (`SOPRO.Tests/Services/Programacion/ProgramacionCurvaSServiceParityTests.cs`, 3 nuevos; el dorado existente `333.34/3.333` ya cubría 3/2/4): batería de 50 escenarios con decimales cantidad/importe 0-4 y porcentaje 0-6, oráculo diferencial que replica `BuildInternal` con `MotorCalculoSopro` en contexto gemelo; dorado de paridad y valores conocidos `333.34/333.34/3.333/33.3340` y `1000.01/10.000`; sobrecargas con proyecto existente coinciden (`333.34` y `3.33` con `2/2/4`).
 - Verificación: 320/320 (317 + 3 nuevos), Release 0 errores, `git diff --check` limpio.
 

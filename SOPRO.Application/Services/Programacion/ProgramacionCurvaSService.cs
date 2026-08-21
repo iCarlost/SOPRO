@@ -21,8 +21,8 @@ namespace SOPRO.Application.Services
     // ║  [FIX-3] Porcentajes: usan engine.RoundPercentage() en lugar de        ║
     // ║          hardcoded 4. Consistente con resto del sistema.                ║
     // ║                                                                         ║
-    // ║  [N5-14] Motor migrado a SoproCalculationEngine: los 8 redondeos de     ║
-    // ║          BuildInternal (RoundAmount ×4, RoundQuantity ×2,               ║
+    // ║  [N5-14] Motor migrado a SoproCalculationEngine: los 10 redondeos de    ║
+    // ║          BuildInternal (RoundAmount ×3, RoundQuantity ×3,               ║
     // ║          RoundPercentage ×4) más las dos construcciones del motor en    ║
     // ║          BuildFinancialCurve usan engine con las tres precisiones del   ║
     // ║          proyecto. Sin cambios de API ni de comportamiento observable.   ║
