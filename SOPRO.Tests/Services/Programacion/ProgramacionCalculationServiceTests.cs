@@ -138,4 +138,108 @@ public class ProgramacionCalculationServiceTests
         DecimalesImporte = 2,
         DecimalesPorcentaje = 4
     };
+
+    [TestMethod]
+    public void RecalculateActivity_BateriaParidadConFachada()
+    {
+        var rnd = new Random(20260827);
+        for (int iter = 0; iter < 50; iter++)
+        {
+            using var ctx = TestDbFactory.CreateContext();
+            var decCant = rnd.Next(0, 5);
+            var decImp = rnd.Next(0, 5);
+            var decPct = rnd.Next(0, 7);
+            var proyecto = CrearProyectoConPrecisiones($"N5-17-{iter}", decCant, decImp, decPct);
+            ctx.Proyectos.Add(proyecto);
+            ctx.SaveChanges();
+
+            var programa = new ProgramaObra
+            {
+                ProyectoId = proyecto.Id,
+                Nombre = $"Programa {iter}",
+                FechaInicioPrograma = new DateTime(2026, 1, 1),
+                Activo = true
+            };
+            ctx.ProgramasObra.Add(programa);
+            ctx.SaveChanges();
+
+            var cantidad = rnd.Next(1, 100000) / 1000m;
+            var precio = rnd.Next(1, 100000) / 1000m;
+            var actividad = new ActividadProgramada
+            {
+                ProgramaObraId = programa.Id,
+                EsResumen = false,
+                Descripcion = "Actividad paridad",
+                CantidadTotal = cantidad,
+                PrecioUnitario = precio,
+                FechaInicioProgramada = new DateTime(2026, 1, 1),
+                FechaFinProgramada = new DateTime(2026, 1, 10),
+                DuracionDiasHabiles = 5,
+                MetodoDistribucion = MetodoDistribucionActividad.Uniforme
+            };
+            ctx.ActividadesProgramadas.Add(actividad);
+            ctx.SaveChanges();
+
+            new ProgramacionCalculationService().RecalculateActivity(ctx, actividad.Id);
+
+            var actualizada = ctx.ActividadesProgramadas.Find(actividad.Id)!;
+            var esperado = new MotorCalculoSopro(proyecto).Multiplicar(cantidad, precio);
+            Assert.AreEqual(esperado, actualizada.ImporteTotal, $"iter={iter} ImporteTotal");
+        }
+    }
+
+    [TestMethod]
+    public void RecalculateActivity_Dorado_ParidadYValoresConocidos()
+    {
+        using var ctx = TestDbFactory.CreateContext();
+        var proyecto = CrearProyectoConPrecisiones("N5-17-dorado", 2, 2, 4);
+        ctx.Proyectos.Add(proyecto);
+        ctx.SaveChanges();
+
+        var programa = new ProgramaObra
+        {
+            ProyectoId = proyecto.Id,
+            Nombre = "Programa dorado",
+            FechaInicioPrograma = new DateTime(2026, 1, 1),
+            Activo = true
+        };
+        ctx.ProgramasObra.Add(programa);
+        ctx.SaveChanges();
+
+        var actividad = new ActividadProgramada
+        {
+            ProgramaObraId = programa.Id,
+            EsResumen = false,
+            Descripcion = "Actividad dorado",
+            CantidadTotal = 10m,
+            PrecioUnitario = 10m,
+            FechaInicioProgramada = new DateTime(2026, 1, 1),
+            FechaFinProgramada = new DateTime(2026, 1, 10),
+            DuracionDiasHabiles = 5,
+            MetodoDistribucion = MetodoDistribucionActividad.Uniforme
+        };
+        ctx.ActividadesProgramadas.Add(actividad);
+        ctx.SaveChanges();
+
+        new ProgramacionCalculationService().RecalculateActivity(ctx, actividad.Id);
+
+        var actualizada = ctx.ActividadesProgramadas.Find(actividad.Id)!;
+        Assert.AreEqual(100m, actualizada.ImporteTotal);
+    }
+
+    private static Proyecto CrearProyectoConPrecisiones(string nombre, int decCant, int decImp, int decPct) => new()
+    {
+        Nombre = nombre,
+        Descripcion = string.Empty,
+        Ubicacion = string.Empty,
+        Convocante = string.Empty,
+        Contratista = string.Empty,
+        ApoderadoLegal = string.Empty,
+        FechaInicio = new DateTime(2026, 1, 1),
+        FechaTermino = new DateTime(2026, 12, 31),
+        PlazoEjecucion = 365,
+        DecimalesCantidad = decCant,
+        DecimalesImporte = decImp,
+        DecimalesPorcentaje = decPct
+    };
 }
