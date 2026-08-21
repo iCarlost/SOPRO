@@ -1,6 +1,6 @@
 # Plan 01: Desacoplamiento del Núcleo y la Aplicación
 
-**Estado:** N0 cerrado (PR #2, merge `508188a`); N1 cerrado (PR #3, merge `b9a4576` + `eaa2f67`); N2 implementado en `feat/calculation-n2-facade` — `MotorCalculoSopro` delega los resultados numéricos en `SOPRO.Calculation` conservando API, normalizaciones, excepciones, forma de colecciones y formato (suite 197/197, Gate N2 pendiente de integración del PR)
+**Estado:** N0 cerrado (PR #2, `508188a`); N1 cerrado (PR #3, `b9a4576`+`eaa2f67`); N2 cerrado; N3 (slice inicial de Application) cerrado; N4 cerrado (PRs N4-1..N4-5 integrados, Gate N4 operativo cerrado); N5 en curso (13/17 grupos completos, 1 parcial, 3 pendientes; rama `feat/application-n5-17-programacioncalculation` en revisión); N6 scaffold parcial (PackageId/versión 0.1.0/README presentes; falta CI, doc XML, changelog, global.json, consumidor externo, baseline API); N7 no iniciado.
 **Decisión arquitectónica:** [ADR-001](ADR-001-ARQUITECTURA-OBJETIVO.md)  
 **Plan dependiente:** [Plan 02: Migración WinForms a WPF](PLAN-02-MIGRACION-WINFORMS-WPF.md)  
 **Distribución actual:** repositorio y paquete privados; sin publicación en NuGet.org
@@ -348,7 +348,7 @@ WinForms debe adoptar primero estos casos de uso. Solo después se construye la 
 
 ## 13. Fase N4: Persistencia y ciclo de vida
 
-### PR N4-1 (frontera de sesión + cancelación + servicios de búsqueda) — implementado, pendiente de dictamen
+### PR N4-1 (frontera de sesión + cancelación + servicios de búsqueda) — integrado; Gate N4 cerrado
 
 - `ProjectSessionInfo` es datos puros: ya no posee ni expone `SOPROContext` (ni es `IDisposable`); la identidad del proyecto viaja como `ProjectRef` resuelto por el puente legacy (`LegacySessionBridge.FromLegacy`). `grep "session\.Context"` en `SOPRO.Application` → 0.
 - Puerto `IProjectDbContextFactory` (transient por uso, decisión confirmada) con implementación `ProjectDbContextFactory` en `SOPRO.Data/Factories`. El puerto vive en Data (junto al tipo que produce): ubicarlo en Application exigiría que Data referencie Application (ciclo; hoy Application → Data). Desviación técnica documentada del plan.
@@ -359,7 +359,7 @@ WinForms debe adoptar primero estos casos de uso. Solo después se construye la 
 - Tests N4-1 (6 nuevos, deterministas vía `SaveHookContext`/`TestDbContextFactory` en `MaterialsUseCasesTests`): cancelación durante SaveChangesAsync (rollback), entre SaveChanges y Commit (rollback), compensación del maestro antes de la asociación (0 filas maestras, asociación nula), operación completa después de la asociación, rollback de `DeleteMaterial` y una invocación de la fábrica por comando.
 - Pendiente para PRs N4 posteriores (orden del plan): `ExternalMatrixImportService`/`ExternalInsumoImportService` (contexto externo), `MatrixConsolidationService`, `SchemaManager`; prohibición de `Task.Run` con contexto (8 ocurrencias en `FormProgramaObra.*`/`FormProyecto.Formato.cs`); snapshots para cálculo en segundo plano; pruebas de hilo con contador de accesos concurrentes.
 
-### PR N4-2 (ciclo de vida + bloqueo de workspace + hallazgo 1) — implementado, pendiente de dictamen
+### PR N4-2 (ciclo de vida + bloqueo de workspace + hallazgo 1) — integrado; Gate N4 cerrado
 
 - Hallazgo 1 del dictamen N4-1: documentado en los 6 casos de uso — el `catch (OperationCanceledException)` no filtra con `when (cancellationToken.IsCancellationRequested)`: cualquier OCE interrumpe por diseño (la cancelación es un abandono, no un fallo recuperable); el contexto es por operación, no hay estado que limpiar.
 - `ProjectLifecycleService` migrado: el constructor recibe `IProjectDbContextFactory` opcional (por defecto `ProjectDbContextFactory`); `CreateProject`/`OpenProject` ya no construyen `SOPROContext` directamente. `CloseProjectSession` ya no accede a `session.Context`: la sesión es la dueña de su contexto y de su candado y se cierra con `Dispose` (`grep session\.Context` en Application → 0).
@@ -368,7 +368,7 @@ WinForms debe adoptar primero estos casos de uso. Solo después se construye la 
 - Tests (7 nuevos, `WorkspaceLockTests`): creación del archivo junto a la base, segunda adquisición rechazada (mensaje con ruta), liberación al disponer (archivo eliminado, re-adquisición posible), doble dispose idempotente, `OpenProject` mientras otra sesión abierta → rechazada y reabre al cerrar, apertura fallida sin candado retenido y cierre con sesión nula. El conflicto lo impone el SO (FileShare.None), por lo que son deterministas sin procesos auxiliares.
 - Deuda observada (fuera de alcance N4-2, backlog): `BtnNuevoProyecto_Click` sobrescribe `_currentSession` sin cerrar la sesión anterior (fuga preexistente del contexto; con el candado solo se nota al crear mientras otra está abierta); migración de `ExternalMatrixImportService`/`ExternalInsumoImportService`/`MatrixConsolidationService` (contexto externo) y `SchemaManager`; dependencia `_context` residual en `FormSeleccionarInsumo.Cierre.cs:54`; `async void` en 9 handlers; alinear los 26 `ChangeTracker.Clear()` de tests al modelo de fábrica.
 
-### PR N4-3 (contexto externo + fuga de sesión) — implementado, pendiente de dictamen
+### PR N4-3 (contexto externo + fuga de sesión) — integrado; Gate N4 cerrado
 
 - `ExternalMatrixImportService`: constructor recibe `IProjectDbContextFactory` opcional (default `ProjectDbContextFactory`); los 3 contextos externos (`LoadExternalMatrices`, `BuildPreview`, `ImportMatrixTree`) se abren por operación con la fábrica. El contexto del proyecto DESTINO sigue llegando por parámetro (lo posee el formulario legacy; se migrará cuando la UI salga del modelo de contexto compartido).
 - `ExternalInsumoImportService`: mismo patrón (2 contextos externos) y pasa la fábrica al `ExternalMatrixImportService` interno (una sola fábrica por composición). Las lecturas SQL directas de herramientas (`SqliteConnection` manual) no construyen `SOPROContext` y quedan fuera de la regla.
@@ -378,7 +378,7 @@ WinForms debe adoptar primero estos casos de uso. Solo después se construye la 
 - Fuga de sesión corregida en `FormPrincipal` (hallazgo 1 del dictamen N4-2): `OpenProjectPath` y `BtnNuevoProyecto_Click` cierran la sesión previa ANTES de abrir/crear (nunca sobrescriben una sesión con candado retenido; también cubre el fallo del ctor de `FormProyecto` que dejaba la sesión y el candado retenidos para siempre). `CloseCurrentSession` ya no llama `GC.Collect`/`WaitForPendingFinalizers` (innecesarios con `IDisposable` y ocultaban errores de disposición).
 - Tests: la cobertura existente `ExternalImportPrecisionTests` ejercita ahora el camino de fábrica (los servicios se construyen sin argumentos → fábrica por defecto con DBs reales en temp). 250/250 (no se añadieron tests nuevos: el cambio es mecánico y queda cubierto por la suite de importación).
 
-### PR N4-4 (bootstrap y catálogo maestro a la fábrica) — implementado, pendiente de dictamen
+### PR N4-4 (bootstrap y catálogo maestro a la fábrica) — integrado; Gate N4 cerrado
 
 - `FormCatalogoMaestro` y `FormImportarMaestro`: eliminan el literal duplicado de la ruta del maestro y usan `WorkspacePaths.MasterDatabasePath` (Application) — la misma fuente que usan los casos de uso N3; el contexto del maestro se abre con `ProjectDbContextFactory`.
 - `FormPresupuesto`: campo `_factory` compartido; el preview de APU externo del autocompletado abre su contexto de solo lectura por operación con la fábrica (`using var`).
@@ -387,7 +387,7 @@ WinForms debe adoptar primero estos casos de uso. Solo después se construye la 
 - `grep "new SOPROContext"` en WinForms → 0 (en todo el repo solo queda el constructor de `SOPROContext` y el contexto legacy por formulario, que es el modelo que N5 retirará).
 - Verificación: 250/250, Release 0 errores, `git diff --check` limpio.
 
-### PR N4-5 (cero DbContext en `Task.Run` — cierre del Gate N4) — implementado, pendiente de dictamen
+### PR N4-5 (cero DbContext en `Task.Run` — cierre del Gate N4) — integrado; Gate N4 cerrado
 
 - Acción 3 del plan (prohibir el contexto compartido dentro de `Task.Run`) aplicada en las 7 ocurrencias confirmadas de `FormProgramaObra.*`/`FormProyecto.Formato.cs` (el plan anotó 8; el recuento real tras N4-1..N4-4 es 7):
   - `FormProgramaObra.Acciones.cs`: sincronizar desde presupuesto, recalcular, actualizar calendario y cambiar tipo de periodo.
@@ -446,6 +446,32 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 17. WinForms y reporting
 
 `RecalculoGlobalService` se migra al final de sus dependencias porque coordina matrices, presupuesto y programación.
+
+### Estado ejecutivo de N5 (17 grupos del Orden recomendado)
+
+La numeración `N5-1`…`N5-16` corresponde a PRs integrados; algunos grupos originales se dividieron en varios PR, por lo que el conteo de PRs no equivale al de grupos. Estado actual de la rama `feat/application-n5-17-programacioncalculation`: **13 completos, 1 parcial, 3 pendientes** (Programación y Curva S completa; restan Explosión de insumos, recálculo global, financiamiento y WinForms/reporting).
+
+| # | Grupo (Orden N5) | Consumidor(es) | Estado | PRs |
+|---|---|---|---|---|
+| 1 | Presupuesto | `BudgetPricingService` | Completo | N5-1 |
+| 2 | Edición matrices | `MatrixComponentCalculationService` | Completo | N5-2 |
+| 3 | Preview | `BudgetPreviewCalculationService` | Completo | N5-3 |
+| 4 | Asignación concepto | `BudgetConceptAssignmentService` | Completo | N5-4 |
+| 5 | Edición de fila | `BudgetRowEditFlowService` | Completo | N5-5 |
+| 6 | Carga presupuesto | `BudgetLoadService` | Completo | N5-6 |
+| 7 | Utilidad | `UtilidadCalculationService` | Completo | N5-7 |
+| 8 | Edición componente | `MatrixComponentEditingService` | Completo | N5-8 |
+| 9 | Ajuste costo | `MatrixCostAdjustmentService` | Completo | N5-9 |
+| 10 | Aplicación matriz | `MatrixApplicationService` | Completo | N5-10 |
+| 11 | Propagación precio | `PricePropagationService` | Completo | N5-11 |
+| 12 | Imports externos | `ExternalMatrixImportService`, `ExternalInsumoImportService` | Completo | N5-12, N5-13 |
+| 13 | Programación y Curva S | `ProgramacionCurvaSService`, `ProgramacionDistributionService`, `ProgramacionCalculationService` | Completo | N5-14, N5-15, N5-17 completos |
+| 14 | Explosión y programa de insumos | `ProgramacionInsumosService`, `ExplosionInsumosService` | Parcial | `ProgramacionInsumosService` completo (N5-16); `ExplosionInsumosService` pendiente (N5-18) |
+| 15 | Recálculo global | `RecalculoGlobalService` | Pendiente | N5-19 |
+| 16 | Financiamiento | `FinanciamientoCalculationService` | Pendiente | — |
+| 17 | WinForms y reporting | UI + PDF/Excel | Pendiente | — |
+
+`BudgetLoadService` (N5-6) conserva `MotorCalculoSopro` **solo para `Format*`** (contrato N0 fila 9); no contiene cálculos pendientes. Los grupos parciales/pendientes aún instancian la fachada para cálculo o la reciben como parámetro privado de tipo motor (4 en `ExplosionInsumosService`, 5 en `RecalculoGlobalService`), o construyen `MotorCalculoSopro` directamente en WinForms (~20 ocurrencias).
 
 ### Verificación por consumidor
 
