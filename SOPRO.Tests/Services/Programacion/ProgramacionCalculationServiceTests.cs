@@ -1,7 +1,9 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Programacion;
 using SOPRO.Core.Entities;
 using SOPRO.Tests.TestInfrastructure;
+using Sopro.Calculation;
 
 namespace SOPRO.Tests.Services.Programacion;
 
@@ -226,6 +228,120 @@ public class ProgramacionCalculationServiceTests
         var actualizada = ctx.ActividadesProgramadas.Find(actividad.Id)!;
         Assert.AreEqual(100m, actualizada.ImporteTotal);
     }
+
+    [TestMethod]
+    public void RecalculateActivityInternal_SinProyecto_RedondeaProductoCrudo()
+    {
+        var actividad = CrearActividadRedondeo();
+        var engine = new SoproCalculationEngine(2, 2, 4);
+
+        ProgramacionCalculationService.RecalculateActivityInternal(
+            actividad, CalendarioCache.Fallback, engine, proyectoPresente: false);
+
+        Assert.AreEqual(0.02m, actividad.ImporteTotal);
+    }
+
+    [TestMethod]
+    public void RecalculateActivityInternal_ConProyecto_RedondeaPrecioAntesDeMultiplicar()
+    {
+        var actividad = CrearActividadRedondeo();
+        var engine = new SoproCalculationEngine(2, 2, 4);
+
+        ProgramacionCalculationService.RecalculateActivityInternal(
+            actividad, CalendarioCache.Fallback, engine, proyectoPresente: true);
+
+        Assert.AreEqual(0.03m, actividad.ImporteTotal);
+    }
+
+    [TestMethod]
+    public void RecalculateActivity_RegresionRedondeo_ConProyectoEsEquivalente()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var proyecto = CrearProyectoConPrecisiones("N5-17-regresion-actividad", 2, 2, 4);
+        context.Proyectos.Add(proyecto);
+        context.SaveChanges();
+
+        var programa = new ProgramaObra
+        {
+            ProyectoId = proyecto.Id,
+            Nombre = "Programa regresion actividad",
+            FechaInicioPrograma = new DateTime(2026, 1, 1),
+            Activo = true
+        };
+        context.ProgramasObra.Add(programa);
+        context.SaveChanges();
+
+        var actividad = new ActividadProgramada
+        {
+            ProgramaObraId = programa.Id,
+            EsResumen = false,
+            Descripcion = "Regresion actividad",
+            CantidadTotal = 3m,
+            PrecioUnitario = 0.005m,
+            FechaInicioProgramada = new DateTime(2026, 1, 1),
+            FechaFinProgramada = new DateTime(2026, 1, 10),
+            DuracionDiasHabiles = 5,
+            MetodoDistribucion = MetodoDistribucionActividad.Uniforme
+        };
+        context.ActividadesProgramadas.Add(actividad);
+        context.SaveChanges();
+
+        new ProgramacionCalculationService().RecalculateActivity(context, actividad.Id);
+
+        var actualizada = context.ActividadesProgramadas.Find(actividad.Id)!;
+        Assert.AreEqual(0.03m, actualizada.ImporteTotal);
+    }
+
+    [TestMethod]
+    public void RecalculateProgram_RegresionRedondeo_ConProyectoEsEquivalente()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var proyecto = CrearProyectoConPrecisiones("N5-17-regresion-programa", 2, 2, 4);
+        context.Proyectos.Add(proyecto);
+        context.SaveChanges();
+
+        var programa = new ProgramaObra
+        {
+            ProyectoId = proyecto.Id,
+            Nombre = "Programa regresion",
+            FechaInicioPrograma = new DateTime(2026, 1, 1),
+            Activo = true
+        };
+        context.ProgramasObra.Add(programa);
+        context.SaveChanges();
+
+        var actividad = new ActividadProgramada
+        {
+            ProgramaObraId = programa.Id,
+            EsResumen = false,
+            Descripcion = "Regresion programa",
+            CantidadTotal = 3m,
+            PrecioUnitario = 0.005m,
+            FechaInicioProgramada = new DateTime(2026, 1, 1),
+            FechaFinProgramada = new DateTime(2026, 1, 10),
+            DuracionDiasHabiles = 5,
+            MetodoDistribucion = MetodoDistribucionActividad.Uniforme
+        };
+        context.ActividadesProgramadas.Add(actividad);
+        context.SaveChanges();
+
+        new ProgramacionCalculationService().RecalculateProgram(context, programa.Id);
+
+        var actualizada = context.ActividadesProgramadas.Find(actividad.Id)!;
+        Assert.AreEqual(0.03m, actualizada.ImporteTotal);
+    }
+
+    private static ActividadProgramada CrearActividadRedondeo() => new()
+    {
+        EsResumen = false,
+        Descripcion = "Regresion redondeo",
+        CantidadTotal = 3m,
+        PrecioUnitario = 0.005m,
+        FechaInicioProgramada = new DateTime(2026, 1, 1),
+        FechaFinProgramada = new DateTime(2026, 1, 10),
+        DuracionDiasHabiles = 5,
+        MetodoDistribucion = MetodoDistribucionActividad.Uniforme
+    };
 
     private static Proyecto CrearProyectoConPrecisiones(string nombre, int decCant, int decImp, int decPct) => new()
     {

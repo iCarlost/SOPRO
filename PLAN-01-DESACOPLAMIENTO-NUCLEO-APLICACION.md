@@ -1,6 +1,6 @@
 # Plan 01: Desacoplamiento del Núcleo y la Aplicación
 
-**Estado:** N0 cerrado (PR #2, `508188a`); N1 cerrado (PR #3, `b9a4576`+`eaa2f67`); N2 cerrado; N3 (slice inicial de Application) cerrado; N4 cerrado (PRs N4-1..N4-5 integrados, Gate N4 operativo cerrado); N5 en curso (12/17 grupos completos, 2 parciales, 3 pendientes; 16 PRs consumidores integrados, último PR #26 `acb7b2b`); N6 scaffold parcial (PackageId/versión 0.1.0/README presentes; falta CI, doc XML, changelog, global.json, consumidor externo, baseline API); N7 no iniciado.
+**Estado:** N0 cerrado (PR #2, `508188a`); N1 cerrado (PR #3, `b9a4576`+`eaa2f67`); N2 cerrado; N3 (slice inicial de Application) cerrado; N4 cerrado (PRs N4-1..N4-5 integrados, Gate N4 operativo cerrado); N5 en curso (13/17 grupos completos, 1 parcial, 3 pendientes; rama `feat/application-n5-17-programacioncalculation` en revisión); N6 scaffold parcial (PackageId/versión 0.1.0/README presentes; falta CI, doc XML, changelog, global.json, consumidor externo, baseline API); N7 no iniciado.
 **Decisión arquitectónica:** [ADR-001](ADR-001-ARQUITECTURA-OBJETIVO.md)  
 **Plan dependiente:** [Plan 02: Migración WinForms a WPF](PLAN-02-MIGRACION-WINFORMS-WPF.md)  
 **Distribución actual:** repositorio y paquete privados; sin publicación en NuGet.org
@@ -449,7 +449,7 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 
 ### Estado ejecutivo de N5 (17 grupos del Orden recomendado)
 
-La numeración `N5-1`…`N5-16` corresponde a PRs integrados; algunos grupos originales se dividieron en varios PR, por lo que el conteo de PRs no equivale al de grupos. Estado al corte commit `cb13492` (rama `feat/application-n5-17-programacioncalculation`): **13 completos, 1 parcial, 3 pendientes** (Programación y Curva S completa; restan Explosión de insumos, recálculo global, financiamiento y WinForms/reporting).
+La numeración `N5-1`…`N5-16` corresponde a PRs integrados; algunos grupos originales se dividieron en varios PR, por lo que el conteo de PRs no equivale al de grupos. Estado actual de la rama `feat/application-n5-17-programacioncalculation`: **13 completos, 1 parcial, 3 pendientes** (Programación y Curva S completa; restan Explosión de insumos, recálculo global, financiamiento y WinForms/reporting).
 
 | # | Grupo (Orden N5) | Consumidor(es) | Estado | PRs |
 |---|---|---|---|---|

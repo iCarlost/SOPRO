@@ -44,10 +44,11 @@ namespace SOPRO.Application.Services
 
             foreach (var actividad in actividadesNoResumen)
             {
-                var engine = programa.Proyecto != null
-                    ? new SoproCalculationEngine(programa.Proyecto.DecimalesCantidad, programa.Proyecto.DecimalesImporte, programa.Proyecto.DecimalesPorcentaje)
+                var proyectoPresente = programa.Proyecto != null;
+                var engine = proyectoPresente
+                    ? new SoproCalculationEngine(programa.Proyecto!.DecimalesCantidad, programa.Proyecto.DecimalesImporte, programa.Proyecto.DecimalesPorcentaje)
                     : new SoproCalculationEngine(2, 2, 4);
-                RecalculateActivityInternal(actividad, cache, engine);
+                RecalculateActivityInternal(actividad, cache, engine, proyectoPresente);
                 fechasBaseSinDependencias[actividad.Id] = actividad.FechaInicioProgramada.HasValue
                     ? CalendarioCache.SanitizarFecha(actividad.FechaInicioProgramada.Value.Date)
                     : fechaBasePrograma;
@@ -128,10 +129,11 @@ namespace SOPRO.Application.Services
                 fechaFinAct = fechaIniAct;
             var cacheAct = new CalendarioCache(calAct, fechaIniAct, fechaFinAct);
             var proyecto = actividad.ProgramaObra?.Proyecto;
-            var engine = proyecto != null
-                ? new SoproCalculationEngine(proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje)
+            var proyectoPresente = proyecto != null;
+            var engine = proyectoPresente
+                ? new SoproCalculationEngine(proyecto!.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje)
                 : new SoproCalculationEngine(2, 2, 4);
-            RecalculateActivityInternal(actividad, cacheAct, engine);
+            RecalculateActivityInternal(actividad, cacheAct, engine, proyectoPresente);
             context.SaveChanges();
         }
 
@@ -595,11 +597,13 @@ namespace SOPRO.Application.Services
             return current;
         }
 
-        private static void RecalculateActivityInternal(ActividadProgramada actividad, CalendarioCache cache, SoproCalculationEngine engine)
+        internal static void RecalculateActivityInternal(ActividadProgramada actividad, CalendarioCache cache, SoproCalculationEngine engine, bool proyectoPresente)
         {
             if (actividad.CantidadTotal > 0)
             {
-                actividad.ImporteTotal = engine.Multiply(actividad.CantidadTotal, actividad.PrecioUnitario);
+                actividad.ImporteTotal = proyectoPresente
+                    ? engine.Multiply(actividad.CantidadTotal, actividad.PrecioUnitario)
+                    : engine.RoundAmount(actividad.CantidadTotal * actividad.PrecioUnitario);
             }
 
             var frentes = Math.Max(1, actividad.FrentesTrabajo);
