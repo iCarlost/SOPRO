@@ -449,7 +449,7 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 
 ### Estado ejecutivo de N5 (17 grupos del Orden recomendado)
 
-La numeración `N5-1`…`N5-16` corresponde a PRs integrados; algunos grupos originales se dividieron en varios PR, por lo que el conteo de PRs (16) no equivale al de grupos (17). Estado al corte PR #26 (`acb7b2b`): **12 completos, 2 parciales, 3 pendientes** (~71% nominal; el esfuerzo restante supera el 29% por WinForms/reporting y recálculo global).
+La numeración `N5-1`…`N5-16` corresponde a PRs integrados; algunos grupos originales se dividieron en varios PR, por lo que el conteo de PRs no equivale al de grupos. Estado al corte commit `cb13492` (rama `feat/application-n5-17-programacioncalculation`): **13 completos, 1 parcial, 3 pendientes** (Programación y Curva S completa; restan Explosión de insumos, recálculo global, financiamiento y WinForms/reporting).
 
 | # | Grupo (Orden N5) | Consumidor(es) | Estado | PRs |
 |---|---|---|---|---|
@@ -465,7 +465,7 @@ La numeración `N5-1`…`N5-16` corresponde a PRs integrados; algunos grupos ori
 | 10 | Aplicación matriz | `MatrixApplicationService` | Completo | N5-10 |
 | 11 | Propagación precio | `PricePropagationService` | Completo | N5-11 |
 | 12 | Imports externos | `ExternalMatrixImportService`, `ExternalInsumoImportService` | Completo | N5-12, N5-13 |
-| 13 | Programación y Curva S | `ProgramacionCurvaSService`, `ProgramacionDistributionService`, `ProgramacionCalculationService` | Parcial | N5-14, N5-15 completos; `ProgramacionCalculationService` pendiente (N5-17) |
+| 13 | Programación y Curva S | `ProgramacionCurvaSService`, `ProgramacionDistributionService`, `ProgramacionCalculationService` | Completo | N5-14, N5-15, N5-17 completos |
 | 14 | Explosión y programa de insumos | `ProgramacionInsumosService`, `ExplosionInsumosService` | Parcial | `ProgramacionInsumosService` completo (N5-16); `ExplosionInsumosService` pendiente (N5-18) |
 | 15 | Recálculo global | `RecalculoGlobalService` | Pendiente | N5-19 |
 | 16 | Financiamiento | `FinanciamientoCalculationService` | Pendiente | — |
