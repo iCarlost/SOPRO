@@ -20,7 +20,10 @@ namespace SOPRO.Application.Services.Programacion
     // ║    PUs actuales del catálogo y el motor.                                ║
     // ║                                                                         ║
     // ║  [N5-16] Motor migrado a SoproCalculationEngine con las tres precisiones ║
-    // ║          del proyecto. Sin cambios de API ni de comportamiento.         ║
+    // ║          del proyecto en Build y 4 helpers (ExplotarCanonicoRecursivo,  ║
+    // ║          ExplotarImportesCanonicosPorInsumo, ExplotarMatrizEnPeriodo,   ║
+    // ║          CalcularImportesUnitarios): Multiply ×8, RoundAmount ×11,      ║
+    // ║          RoundQuantity ×5 (24 operaciones). Sin cambios de API.         ║
     // ║                                                                         ║
     // ║  Para insumos normales:                                                 ║
     // ║    Importe = fuente de verdad                                           ║
