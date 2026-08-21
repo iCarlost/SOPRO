@@ -577,6 +577,13 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 - Tres operaciones `Multiplicar` → `Multiply` (Importe del componente importado de Material/Maquinaria/Auxiliar) con la precisión del proyecto destino (o `2/2/4` sin proyecto). El auxiliar reutiliza `ImportMatrixTree` (N5-12) para obtener el CostoDirecto redondeado del básico; `Rendimiento` conserva `Math.Round 5`.
 - Tests (`SOPRO.Tests/Services/Importacion/ExternalInsumoImportServiceParityTests.cs`, 2 nuevos; O1 preexistente 20.02 ya cubría Material/Maquinaria): batería de 35 iteraciones × 3 insumos con decimales importe del destino 0-4, oráculo independiente `Math.Round(RoundAmount(precio) × cantidad)` sin engine ni fachada (material `puMat`, maquinaria `costoMaq`, auxiliar `puMat` → `CD 10.01` → `20.02`); dorado 10.005 × 2 = **20.02** (básico importado 10.01 y auxiliar 2 × 10.01 = 20.02).
 - Verificación: 317/317 (315 + 2 nuevos), Release 0 errores, `git diff --check` limpio.
+- Hallazgos del dictamen N5-13 (corregidos en `a5d3aa6`): headers `[N5-12]` → `[N5-13]`, batería con cantidades fraccionarias `0.0001–9.9999` y renombres `ImportSelected_BateriaMultiplicar` / `Dorado_MaterialYAuxiliar`.
+
+### PR N5-14 (`ProgramacionCurvaSService` — decimocuarto consumidor migrado al motor)
+
+- Diez redondeos en `BuildInternal` (`RoundAmount` ×3, `RoundQuantity` ×3, `RoundPercentage` ×4) más las dos construcciones del motor en `BuildFinancialCurve` (con proyecto y fallback `2/2/4`) migrados a `SoproCalculationEngine` con las tres precisiones del proyecto. Sin cambios de API ni de comportamiento observable.
+- Tests (`SOPRO.Tests/Services/Programacion/ProgramacionCurvaSServiceParityTests.cs`, 3 nuevos; el dorado existente `333.34/3.333` ya cubría 3/2/4): batería de 50 escenarios con decimales cantidad/importe 0-4 y porcentaje 0-6, oráculo diferencial que replica `BuildInternal` con `MotorCalculoSopro` en contexto gemelo; dorado de paridad y valores conocidos `333.34/333.34/3.333/33.3340` y `1000.01/10.000`; sobrecargas con proyecto existente coinciden (`333.34` y `3.33` con `2/2/4`).
+- Verificación: 320/320 (317 + 3 nuevos), Release 0 errores, `git diff --check` limpio.
 
 ## 15. Fase N6: Empaquetado y validación privada
 
