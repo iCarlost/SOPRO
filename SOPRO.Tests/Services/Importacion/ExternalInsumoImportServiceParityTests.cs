@@ -9,7 +9,7 @@ using SOPRO.Tests.TestInfrastructure;
 
 namespace SOPRO.Tests.Services.Importacion;
 
-// [N5-12] (Imports externos, parte 2) Paridad de ExternalInsumoImportService:
+// [N5-13] (Imports externos, parte 2) Paridad de ExternalInsumoImportService:
 // las 3 operaciones Multiplicar → Multiply (Importe del componente importado de
 // Material/Maquinaria/Auxiliar) con la precisión del proyecto destino. El oráculo
 // de la batería es independiente: Math.Round(RoundAmount(precio) × cantidad) sobre
@@ -23,7 +23,7 @@ public class ExternalInsumoImportServiceParityTests
         => Math.Round(Math.Round(precio, decImp, MidpointRounding.AwayFromZero) * cantidad, decImp, MidpointRounding.AwayFromZero);
 
     [TestMethod]
-    public void ImportSelected_BateriaMultiplicarConFachada_SemillaFija()
+    public void ImportSelected_BateriaMultiplicar_SemillaFija()
     {
         var rnd = new Random(20260822);
 
@@ -37,7 +37,7 @@ public class ExternalInsumoImportServiceParityTests
 
             var puMat = rnd.Next(1, 1_000_000) / 1000m;
             var costoMaq = rnd.Next(1, 1_000_000) / 1000m;
-            var cantidad = rnd.Next(1, 11) / 1m;
+            var cantidad = rnd.Next(1, 100000) / 10000m; // 0.0001–9.9999: estresa que Multiply no redondea cantidad
 
             var dbPath = Path.Combine(Path.GetTempPath(), $"sopro_ins_{Guid.NewGuid():N}.db");
             try
@@ -165,7 +165,7 @@ public class ExternalInsumoImportServiceParityTests
     }
 
     [TestMethod]
-    public void ImportSelected_Dorado_MaterialMaquinariaYAuxiliar()
+    public void ImportSelected_Dorado_MaterialYAuxiliar()
     {
         using var current = TestDbFactory.CreateContext();
         var proyecto = CrearProyecto("Destino 2 deci", 2);
