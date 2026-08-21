@@ -592,6 +592,12 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 - Tests (`SOPRO.Tests/Services/Programacion/ProgramacionDistributionServiceParityTests.cs`, 4 nuevos): baterías de 30 escenarios para `DistributeUniform`, `DistributeUniformBatch` y `DistributeByPercentages` con decimales cantidad/importe 0-4 y porcentaje 0-6, oráculo diferencial que replica el flujo completo con `MotorCalculoSopro` en contexto gemelo; dorado uniforme `5.00/500.00/50.00` con paridad y valores conocidos.
 - Verificación: 324/324 (320 + 4 nuevos), Release 0 errores, `git diff --check` limpio.
 
+### PR N5-16 (`ProgramacionInsumosService` — decimosexto consumidor migrado al motor)
+
+- Motor con las tres precisiones del proyecto migrado a `SoproCalculationEngine` en el punto de entrada `Build` y en los **cuatro** helpers `ExplotarCanonicoRecursivo`, `ExplotarImportesCanonicosPorInsumo`, `ExplotarMatrizEnPeriodo` y `CalcularImportesUnitarios` (parámetros `SoproCalculationEngine` en lugar de `MotorCalculoSopro`). Operaciones `Multiply` ×8, `RoundAmount` ×11 y `RoundQuantity` ×5 = **24 operaciones** con las tres precisiones del proyecto. Sin cambios de API ni de comportamiento observable.
+- Tests (`SOPRO.Tests/Services/Programacion/ProgramacionInsumosServiceParityTests.cs`, 2 métodos + oráculo literal `ProgramacionInsumosServiceLegacyOracle.cs` copiado de `c26cdb9` con `MotorCalculoSopro`): batería de 20 escenarios con precisiones independientes (cantidad/importe/porcentaje 0-4/0-4/0-6) y escenario completo de 8 componentes (MO normal/%MO, herramienta normal/%MO, maquinaria, auxiliar básico recursivo, cuadrilla) ejecutados para los **cuatro** `ProgramaInsumoTipo` (Materiales, ManoDeObra, Maquinaria, Herramienta) en contextos gemelos; oráculo legacy literal que replica el flujo completo (IDs por `MaterialId/ManoDeObraId/MaquinariaId/HerramientaId`, explosión recursiva de auxiliares, reconciliación por concepto/insumo, cantidades físicas y rendimiento ponderado) y valida `ProgramaInsumosResultDto` completo con igualdad exacta de conjuntos; dorado `10×10=100` distribuido `50/50` con paridad y valores conocidos (`Total 10`, `ImporteTotal 100`, `PU 10`).
+- Verificación: 326/326, Debug y Release 0 errores, `git diff --check` limpio, sin warnings nuevos (CS0649 eliminado al remover `InsumoAcumLegacy`).
+
 ## 15. Fase N6: Empaquetado y validación privada
 
 ### Metadatos obligatorios
