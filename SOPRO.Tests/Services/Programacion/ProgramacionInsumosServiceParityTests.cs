@@ -43,11 +43,20 @@ public class ProgramacionInsumosServiceParityTests
             CrearEscenarioCompleto(ctx, proyecto, puMat, cantMat, cantConcepto, rnd, iter);
             CrearEscenarioCompleto(ctxRef, proyectoRef, puMat, cantMat, cantConcepto, rnd, iter);
 
-            var service = new ProgramacionInsumosService();
-            var result = service.Build(ctx, proyecto, ProgramaInsumoTipo.Materiales);
-            var resultRef = BuildConFachada(ctxRef, proyectoRef, ProgramaInsumoTipo.Materiales);
+            foreach (var tipo in new[]
+            {
+                ProgramaInsumoTipo.Materiales,
+                ProgramaInsumoTipo.ManoDeObra,
+                ProgramaInsumoTipo.Maquinaria,
+                ProgramaInsumoTipo.Herramienta
+            })
+            {
+                var service = new ProgramacionInsumosService();
+                var result = service.Build(ctx, proyecto, tipo);
+                var resultRef = BuildConFachada(ctxRef, proyectoRef, tipo);
 
-            CompararResultados(result, resultRef, iter);
+                CompararResultados(result, resultRef, iter);
+            }
         }
     }
 
@@ -334,20 +343,12 @@ public class ProgramacionInsumosServiceParityTests
             Assert.AreEqual(esperado.Periodos[i].Orden, actual.Periodos[i].Orden, $"iter={iter} periodo {i} Orden");
             Assert.AreEqual(esperado.Periodos[i].Etiqueta, actual.Periodos[i].Etiqueta, $"iter={iter} periodo {i} Etiqueta");
         }
-        // Validar que ambos resultados tengan insumos; si no, saltar validación de counts
-        if (esperado.Rows.Count == 0 || actual.Rows.Count == 0)
-        {
-            // Si uno de los dos no tiene insumos, validar que ambos estén vacíos
-            Assert.AreEqual(esperado.Rows.Count, actual.Rows.Count, $"iter={iter} insumos (ambos vacíos)");
-            return;
-        }
-        // Validar cantidad de insumos: solo los que aparecen en AMBOS resultados
-        var insumosSuperpuestos = esperado.Rows.Where(r => actual.Rows.Any(a => a.InsumoId == r.InsumoId));
-        Assert.AreEqual(insumosSuperpuestos.Count(), Math.Min(esperado.Rows.Count, actual.Rows.Count()), $"iter={iter} insumos superpuestos");
-        foreach (var exp in insumosSuperpuestos)
+        // Igualdad exacta de conjuntos de insumos (no solo intersección)
+        Assert.AreEqual(esperado.Rows.Count, actual.Rows.Count, $"iter={iter} insumos (conjuntos iguales)");
+        foreach (var exp in esperado.Rows)
         {
             var act = actual.Rows.FirstOrDefault(r => r.InsumoId == exp.InsumoId);
-            Assert.IsNotNull(act, $"iter={iter} insumo {exp.Clave} ({exp.InsumoId}) no encontrado");
+            Assert.IsNotNull(act, $"iter={iter} insumo {exp.Clave} ({exp.InsumoId}) no encontrado en actual");
             Assert.AreEqual(exp.InsumoId, act.InsumoId, $"iter={iter} {exp.Clave} InsumoId");
             Assert.AreEqual(exp.Clave, act.Clave, $"iter={iter} {exp.Clave} Clave");
             Assert.AreEqual(exp.Descripcion, act.Descripcion, $"iter={iter} {exp.Clave} Descripcion");
@@ -379,173 +380,12 @@ public class ProgramacionInsumosServiceParityTests
 
     // ── Oráculo legacy con MotorCalculoSopro (sin llamar al servicio migrado) ─────
     // Replica el flujo completo de Build con Motor para paridad real, cubriendo
-    // material, MO normal/%MO, herramienta normal/%MO, maquinaria, auxiliar y cuadrilla.
+    // â”€â”€ OrÃ¡culo legacy: copia literal de ProgramacionInsumosService en c26cdb9 â”€â”€â”€â”€â”€
+    // (usa MotorCalculoSopro). Se invoca directamente sin pasar por el servicio
+    // migrado, para validar paridad real contra SoproCalculationEngine.
     private static SOPRO.Application.DTOs.Programacion.Insumos.ProgramaInsumosResultDto BuildConFachada(SOPROContext context, Proyecto proyecto, ProgramaInsumoTipo tipo)
     {
-        var motor = new SOPRO.Application.Services.MotorCalculoSopro(proyecto);
-        var programa = context.ProgramasObra.AsNoTracking().FirstOrDefault(p => p.ProyectoId == proyecto.Id && p.Activo);
-        var result = new SOPRO.Application.DTOs.Programacion.Insumos.ProgramaInsumosResultDto { Tipo = tipo, NombrePrograma = programa?.Nombre ?? string.Empty };
-        if (programa == null) return result;
-        var periodos = context.PeriodosPrograma.AsNoTracking().Where(p => p.ProgramaObraId == programa.Id).OrderBy(p => p.NumeroPeriodo).Select(p => new ProgramaInsumoPeriodoDto { PeriodoId = p.Id, Orden = p.NumeroPeriodo, Etiqueta = string.IsNullOrWhiteSpace(p.Etiqueta) ? $"P{p.NumeroPeriodo:00}" : p.Etiqueta }).ToList();
-        result.Periodos = periodos;
-        if (periodos.Count == 0) return result;
-        var actividades = context.ActividadesProgramadas.AsNoTracking().Where(a => a.ProgramaObraId == programa.Id && !a.EsResumen && a.ConceptoPresupuestoId != null).Select(a => new { a.Id, a.ConceptoPresupuestoId, a.FechaInicioProgramada, a.FechaFinProgramada }).ToList();
-        if (actividades.Count == 0) return result;
-        var actividadIds = actividades.Select(a => a.Id).ToList();
-        var conceptoIds = actividades.Where(a => a.ConceptoPresupuestoId.HasValue).Select(a => a.ConceptoPresupuestoId!.Value).Distinct().ToList();
-        var conceptosInfo = context.ConceptosPresupuesto.AsNoTracking().Where(c => conceptoIds.Contains(c.Id) && c.MatrizId != null).Select(c => new { c.Id, MatrizId = c.MatrizId!.Value, c.Cantidad, c.CostoDirectoUnitario, c.CostoDirectoTotal }).ToDictionary(x => x.Id, x => x);
-        var matrizIds = conceptosInfo.Values.Select(x => x.MatrizId).Distinct().ToList();
-        if (matrizIds.Count == 0) return result;
-        var matrices = context.Matrices.Include(m => m.Componentes).ThenInclude(c => c.Material).Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra).Include(m => m.Componentes).ThenInclude(c => c.Maquinaria).Include(m => m.Componentes).ThenInclude(c => c.Herramienta).Include(m => m.Componentes).ThenInclude(c => c.Auxiliar).Where(m => matrizIds.Contains(m.Id)).ToList();
-        var matrizPorId = matrices.GroupBy(m => m.Id).Select(g => g.First()).ToDictionary(m => m.Id);
-        foreach (var mat in matrizPorId.Values)
-            foreach (var comp in mat.Componentes.Where(c => c.AuxiliarId.HasValue))
-                if (matrizPorId.TryGetValue(comp.AuxiliarId!.Value, out var aux))
-                    comp.Auxiliar = aux;
-        var actividadConcepto = actividades.ToDictionary(a => a.Id, a => a.ConceptoPresupuestoId!.Value);
-        var distribuciones = context.DistribucionesPeriodo.AsNoTracking().Where(d => actividadIds.Contains(d.ActividadProgramadaId)).Select(d => new { d.ActividadProgramadaId, d.PeriodoProgramaId, d.CantidadProgramada, d.ImporteProgramado }).ToList();
-        var acums = new Dictionary<int, InsumoAcumLegacy>();
-        var distsPorConcepto = new Dictionary<int, List<(int periodoId, decimal cantProgramada)>>();
-        // NOTA: El filtro por tipo se aplica abajo en el loop de componentes,
-        // igual que ObtenerInsumoIds del servicio (filtra Materiales, MO, Maquinaria, Herramienta)
-        // e incluye auxiliar recursivo.
-        foreach (var dist in distribuciones)
-        {
-            if (!actividadConcepto.TryGetValue(dist.ActividadProgramadaId, out var cid)) continue;
-            if (!distsPorConcepto.ContainsKey(cid)) distsPorConcepto[cid] = new List<(int, decimal)>();
-            distsPorConcepto[cid].Add((dist.PeriodoProgramaId, dist.CantidadProgramada));
-        }
-        foreach (var (conceptoId, dists) in distsPorConcepto)
-        {
-            if (!conceptosInfo.TryGetValue(conceptoId, out var conceptoInfo)) continue;
-            if (!matrizPorId.TryGetValue(conceptoInfo.MatrizId, out var matriz)) continue;
-            decimal cantConcepto = conceptoInfo.Cantidad;
-            if (cantConcepto <= 0m) continue;
-            decimal cdUnit = conceptoInfo.CostoDirectoUnitario;
-            if (cdUnit <= 0m && conceptoInfo.CostoDirectoTotal > 0m) cdUnit = conceptoInfo.CostoDirectoTotal / cantConcepto;
-            decimal importeConceptoTotal = motor.Multiplicar(cantConcepto, cdUnit);
-            var importesUnitarios = CalcularImportesUnitariosConFachada(motor, matriz.Componentes);
-            decimal cdUnitMatriz = importesUnitarios.Values.Sum();
-            if (cdUnitMatriz == 0m) continue;
-            var canonicoPorComp = new Dictionary<int, decimal>();
-            decimal sumaCanonico = 0m;
-            foreach (var comp in matriz.Componentes.Where(c => importesUnitarios.ContainsKey(c.Id)))
-            {
-                decimal imp = motor.RedondearImporte(importeConceptoTotal * importesUnitarios[comp.Id] / cdUnitMatriz);
-                canonicoPorComp[comp.Id] = imp;
-                sumaCanonico += imp;
-            }
-            decimal residuoCanonico = motor.RedondearImporte(importeConceptoTotal - sumaCanonico);
-            if (residuoCanonico != 0m && canonicoPorComp.Count > 0)
-            {
-                var lastId = matriz.Componentes.Where(c => importesUnitarios.ContainsKey(c.Id)).Last().Id;
-                canonicoPorComp[lastId] += residuoCanonico;
-            }
-foreach (var (periodoId, cantProg) in dists)
-                {
-                    decimal importePeriodo = motor.Multiplicar(cantProg, cdUnit);
-                    foreach (var comp in matriz.Componentes.Where(c => importesUnitarios.ContainsKey(c.Id)))
-                    {
-                        decimal impUnit = importesUnitarios[comp.Id];
-                    decimal impComp = motor.RedondearImporte(importePeriodo * impUnit / cdUnitMatriz);
-                    int insumoId = comp.Id;
-                    if (!acums.TryGetValue(insumoId, out var acum))
-                    {
-                        var pu = comp.Material?.PrecioUnitario ?? comp.ManoDeObra?.SalarioReal ?? comp.Maquinaria?.CostoHorario ?? comp.Herramienta?.PrecioUnitario ?? comp.Auxiliar?.CostoDirecto ?? 0m;
-                        var esPct = (comp.ManoDeObra?.EsPorcentajeMO ?? false) || (comp.Herramienta?.EsPorcentajeMO ?? false);
-                        acum = new InsumoAcumLegacy { Clave = comp.Material?.Clave ?? comp.ManoDeObra?.Clave ?? comp.Maquinaria?.Clave ?? comp.Herramienta?.Clave ?? comp.Auxiliar?.Clave ?? $"INS-{insumoId}", Descripcion = comp.Material?.Descripcion ?? comp.ManoDeObra?.Descripcion ?? "", Unidad = comp.Material?.Unidad ?? comp.ManoDeObra?.Unidad ?? "", PuFijo = pu, EsPorcentual = esPct };
-                        acums[insumoId] = acum;
-                    }
-                    acum.ImportesPorPeriodo.TryGetValue(periodoId, out var prev);
-                    acum.ImportesPorPeriodo[periodoId] = prev + impComp;
-                    acum.ImporteGlobalAcum += impComp;
-                }
-            }
-        }
-        var salida = new Dictionary<int, ProgramaInsumoRowDto>();
-        foreach (var kvp in acums)
-        {
-            var src = kvp.Value;
-            var row = new ProgramaInsumoRowDto { InsumoId = kvp.Key, Clave = src.Clave, Descripcion = src.Descripcion, Unidad = src.Unidad, PrecioUnitario = src.PuFijo };
-            decimal importeGlobalObjetivo = motor.RedondearImporte(src.ImporteGlobalAcum);
-            var periodosOrdenados = periodos.OrderBy(p => p.Orden).ToList();
-            decimal runningImporte = 0m, runningCantidad = 0m;
-            int idxUltimo = -1;
-            for (int pi = periodosOrdenados.Count - 1; pi >= 0; pi--)
-            {
-                src.ImportesPorPeriodo.TryGetValue(periodosOrdenados[pi].PeriodoId, out decimal chk);
-                if (chk > 0m) { idxUltimo = pi; break; }
-            }
-            for (int pi = 0; pi < periodosOrdenados.Count; pi++)
-            {
-                var per = periodosOrdenados[pi];
-                src.ImportesPorPeriodo.TryGetValue(per.PeriodoId, out decimal importeRaw);
-                decimal importePer = motor.RedondearImporte(importeRaw);
-                if (pi == idxUltimo && importePer > 0m)
-                {
-                    decimal residuo = importeGlobalObjetivo - (runningImporte + importePer);
-                    if (residuo != 0m && Math.Abs(residuo) < 0.05m) importePer = motor.RedondearImporte(importeGlobalObjetivo - runningImporte);
-                }
-                row.ImportesPorPeriodo[per.PeriodoId] = importePer;
-                runningImporte += importePer;
-                row.ImportesAcumuladosPorPeriodo[per.PeriodoId] = motor.RedondearImporte(runningImporte);
-                decimal cantPer = src.PuFijo > 0m ? motor.RedondearCantidad(importePer / src.PuFijo) : 0m;
-                if (src.EsPorcentual) { cantPer = motor.RedondearCantidad(1m); }
-                row.CantidadesPorPeriodo[per.PeriodoId] = cantPer;
-                runningCantidad = motor.RedondearCantidad(runningCantidad + cantPer);
-                row.AcumuladosPorPeriodo[per.PeriodoId] = runningCantidad;
-            }
-            row.ImporteTotal = importeGlobalObjetivo;
-            row.Total = motor.RedondearCantidad(src.ImporteGlobalAcum / (src.PuFijo > 0m ? src.PuFijo : 1m));
-            // FechaInicio/FechaFin: mismo comportamiento que ConstruirRangosPorInsumo del servicio
-            var fechaIni = actividades.Min(a => a.FechaInicioProgramada) ?? DateTime.MinValue;
-            var fechaFin = actividades.Max(a => a.FechaFinProgramada) ?? fechaIni;
-            row.FechaInicio = fechaIni;
-            row.FechaFin = fechaFin;
-// DondeSeUsa: mismo comportamiento que ConstruirDondeSeUsaPorInsumo del servicio
-            var matrizClave = matrizPorId.Values.FirstOrDefault()?.Clave ?? string.Empty;
-            if (!string.IsNullOrWhiteSpace(matrizClave) && !row.DondeSeUsa.Contains(matrizClave)) row.DondeSeUsa += matrizClave + ";";
-            if (row.DondeSeUsa.EndsWith(";")) row.DondeSeUsa = row.DondeSeUsa.Substring(0, row.DondeSeUsa.Length - 1);
-            salida[kvp.Key] = row;
-        }
-        result.Rows = salida.Values.OrderBy(r => r.Clave).ThenBy(r => r.Descripcion).ToList();
-        return result;
-    }
-
-    private sealed class InsumoAcumLegacy
-    {
-        public string Clave = string.Empty;
-        public string Descripcion = string.Empty;
-        public string Unidad = string.Empty;
-        public decimal PuFijo;
-        public bool EsPorcentual;
-        public Dictionary<int, decimal> ImportesPorPeriodo = new();
-        public Dictionary<int, decimal> CantFisicaPorPeriodo = new();
-        public decimal ImporteGlobalAcum;
-        public decimal CantFisicaGlobalAcum;
-    }
-
-    private static Dictionary<int, decimal> CalcularImportesUnitariosConFachada(SOPRO.Application.Services.MotorCalculoSopro motor, ICollection<ComponenteMatriz> componentes)
-    {
-        var dict = new Dictionary<int, decimal>();
-        decimal baseMo = 0m;
-        foreach (var comp in componentes)
-        {
-            decimal imp = 0m;
-            switch (comp.TipoComponente)
-            {
-                case TipoComponenteMatriz.Material: if (comp.Material != null) imp = motor.Multiplicar(comp.Cantidad, comp.Material.PrecioUnitario); break;
-                case TipoComponenteMatriz.ManoDeObra: if (comp.ManoDeObra != null && !comp.ManoDeObra.EsPorcentajeMO) { imp = motor.Multiplicar(comp.Cantidad, comp.ManoDeObra.SalarioReal); baseMo += imp; } break;
-                case TipoComponenteMatriz.Maquinaria: if (comp.Maquinaria != null) imp = motor.Multiplicar(comp.Cantidad, comp.Maquinaria.CostoHorario); break;
-                case TipoComponenteMatriz.Herramienta: if (comp.Herramienta != null && !comp.Herramienta.EsPorcentajeMO) imp = motor.Multiplicar(comp.Cantidad, comp.Herramienta.PrecioUnitario); break;
-                case TipoComponenteMatriz.Auxiliar: if (comp.Auxiliar != null) imp = motor.Multiplicar(comp.Cantidad, comp.Auxiliar.CostoDirecto); break;
-            }
-            if (imp != 0m) dict[comp.Id] = imp;
-        }
-        foreach (var comp in componentes.Where(c => c.TipoComponente == TipoComponenteMatriz.ManoDeObra && c.ManoDeObra != null && c.ManoDeObra.EsPorcentajeMO))
-            dict[comp.Id] = motor.RedondearImporte(baseMo * comp.Cantidad);
-        foreach (var comp in componentes.Where(c => c.TipoComponente == TipoComponenteMatriz.Herramienta && c.Herramienta != null && c.Herramienta.EsPorcentajeMO))
-            dict[comp.Id] = motor.RedondearImporte(baseMo * comp.Cantidad);
-        return dict;
+        var oracle = new ProgramacionInsumosServiceLegacyOracle();
+        return oracle.Build(context, proyecto, tipo);
     }
 }
