@@ -584,6 +584,13 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 - Diez redondeos en `BuildInternal` (`RoundAmount` ×3, `RoundQuantity` ×3, `RoundPercentage` ×4) más las dos construcciones del motor en `BuildFinancialCurve` (con proyecto y fallback `2/2/4`) migrados a `SoproCalculationEngine` con las tres precisiones del proyecto. Sin cambios de API ni de comportamiento observable.
 - Tests (`SOPRO.Tests/Services/Programacion/ProgramacionCurvaSServiceParityTests.cs`, 3 nuevos; el dorado existente `333.34/3.333` ya cubría 3/2/4): batería de 50 escenarios con decimales cantidad/importe 0-4 y porcentaje 0-6, oráculo diferencial que replica `BuildInternal` con `MotorCalculoSopro` en contexto gemelo; dorado de paridad y valores conocidos `333.34/333.34/3.333/33.3340` y `1000.01/10.000`; sobrecargas con proyecto existente coinciden (`333.34` y `3.33` con `2/2/4`).
 - Verificación: 320/320 (317 + 3 nuevos), Release 0 errores, `git diff --check` limpio.
+- Hallazgos del dictamen N5-14 (corregidos en `6d372e8`): conteo `RoundAmount ×3`/`RoundQuantity ×3`/`RoundPercentage ×4` y tercer test usa `BuildFinancialCurveFallbackConFachada` para paridad de la sobrecarga.
+
+### PR N5-15 (`ProgramacionDistributionService` — decimoquinto consumidor migrado al motor)
+
+- Tres construcciones (`DistributeUniform`, `DistributeUniformBatch`, `DistributeByPercentages`) y 24 operaciones (`Multiply` ×6, `RoundAmount` ×3, `RoundQuantity` ×6, `RoundPercentage` ×9) migradas a `SoproCalculationEngine` con las tres precisiones del proyecto (fallback `4/2/4`). Sin cambios de API ni de comportamiento observable.
+- Tests (`SOPRO.Tests/Services/Programacion/ProgramacionDistributionServiceParityTests.cs`, 4 nuevos): baterías de 30 escenarios para `DistributeUniform`, `DistributeUniformBatch` y `DistributeByPercentages` con decimales cantidad/importe 0-4 y porcentaje 0-6, oráculo diferencial que replica el flujo completo con `MotorCalculoSopro` en contexto gemelo; dorado uniforme `5.00/500.00/50.00` con paridad y valores conocidos.
+- Verificación: 324/324 (320 + 4 nuevos), Release 0 errores, `git diff --check` limpio.
 
 ## 15. Fase N6: Empaquetado y validación privada
 
