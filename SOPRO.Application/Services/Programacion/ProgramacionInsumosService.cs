@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
+using Sopro.Calculation;
 using SOPRO.Application.DTOs.Programacion.Insumos;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
@@ -17,6 +18,9 @@ namespace SOPRO.Application.Services.Programacion
     // ║    el importe del periodo en proporción al peso de cada componente      ║
     // ║    dentro del CD unitario de la matriz, recalculado al vuelo con los    ║
     // ║    PUs actuales del catálogo y el motor.                                ║
+    // ║                                                                         ║
+    // ║  [N5-16] Motor migrado a SoproCalculationEngine con las tres precisiones ║
+    // ║          del proyecto. Sin cambios de API ni de comportamiento.         ║
     // ║                                                                         ║
     // ║  Para insumos normales:                                                 ║
     // ║    Importe = fuente de verdad                                           ║
@@ -76,7 +80,7 @@ namespace SOPRO.Application.Services.Programacion
         public ProgramaInsumosResultDto Build(SOPROContext context, Proyecto proyecto,
             ProgramaInsumoTipo tipo)
         {
-            var motor = new MotorCalculoSopro(proyecto);
+            var engine = new SoproCalculationEngine(proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
 
             var programa = context.ProgramasObra
                 .AsNoTracking()
@@ -206,9 +210,9 @@ namespace SOPRO.Application.Services.Programacion
                     cdUnit = conceptoInfo.CostoDirectoTotal / cantConcepto;
 
                 // ── Paso 1: importe canónico por insumo (igual que Explosión) ─────
-                decimal importeConceptoTotal = motor.Multiplicar(cantConcepto, cdUnit);
+                decimal importeConceptoTotal = engine.Multiply(cantConcepto, cdUnit);
                 var canonicoPorInsumo = ExplotarImportesCanonicosPorInsumo(
-                    motor, matriz, importeConceptoTotal, cantConcepto, tipo);
+                    engine, matriz, importeConceptoTotal, cantConcepto, tipo);
 
                 if (canonicoPorInsumo.Count == 0) continue;
 
@@ -224,7 +228,7 @@ namespace SOPRO.Application.Services.Programacion
                     var (periodoId, cantProgramada) = dists[di];
                     bool esUltimoPeriodo = (di == dists.Count - 1);
 
-                    decimal importePeriodo = motor.Multiplicar(cantProgramada, cdUnit);
+                    decimal importePeriodo = engine.Multiply(cantProgramada, cdUnit);
                     if (importePeriodo == 0m) continue;
 
                     importePeriodosAcum += importePeriodo;
@@ -237,7 +241,7 @@ namespace SOPRO.Application.Services.Programacion
                             importePeriodo += residuoConcepto;
                     }
 
-                    ExplotarMatrizEnPeriodo(motor, matriz, importePeriodo,
+                    ExplotarMatrizEnPeriodo(engine, matriz, importePeriodo,
                         cantProgramada, periodoId, tipo, temporal);
 
                     // Rastrear último periodo con importe por insumo
@@ -325,7 +329,7 @@ namespace SOPRO.Application.Services.Programacion
                 decimal runningCantidad = 0m;
 
                 // Importe objetivo = valor que produce la explosión para este insumo
-                decimal importeGlobalObjetivo = motor.RedondearImporte(src.ImporteGlobalAcum);
+                decimal importeGlobalObjetivo = engine.RoundAmount(src.ImporteGlobalAcum);
 
                 // Último periodo con importe — ahí se absorbe el residuo
                 var periodosOrdenados = periodos.OrderBy(p => p.Orden).ToList();
@@ -341,21 +345,21 @@ namespace SOPRO.Application.Services.Programacion
                     var per = periodosOrdenados[pi];
                     // ── Importe del periodo ───────────────────────────────────────
                     src.ImportesPorPeriodo.TryGetValue(per.PeriodoId, out decimal importeRaw);
-                    decimal importePer = motor.RedondearImporte(importeRaw);
+                    decimal importePer = engine.RoundAmount(importeRaw);
 
                     // Reconciliar en el último periodo si el residuo es centavo de redondeo
                     if (pi == idxUltimo && importePer > 0m)
                     {
                         decimal residuo = importeGlobalObjetivo - (runningImporte + importePer);
                         if (residuo != 0m && Math.Abs(residuo) < 0.05m)
-                            importePer = motor.RedondearImporte(importeGlobalObjetivo - runningImporte);
+                            importePer = engine.RoundAmount(importeGlobalObjetivo - runningImporte);
                     }
 
                     row.ImportesPorPeriodo[per.PeriodoId] = importePer;
 
                     runningImporte += importePer;
                     row.ImportesAcumuladosPorPeriodo[per.PeriodoId] =
-                        motor.RedondearImporte(runningImporte);
+                        engine.RoundAmount(runningImporte);
 
                     // ── Cantidad del periodo ───────────────────────────────────────
                     decimal cantPer;
@@ -363,22 +367,22 @@ namespace SOPRO.Application.Services.Programacion
                     {
                         // %MO: cantidad física acumulada
                         src.CantFisicaPorPeriodo.TryGetValue(per.PeriodoId, out decimal cantFis);
-                        cantPer = motor.RedondearCantidad(cantFis);
+                        cantPer = engine.RoundQuantity(cantFis);
                     }
                     else if (src.PuFijo > 0m)
                     {
                         // Normal: cantidad INFERIDA = importePeriodo / PU_catálogo
-                        cantPer = motor.RedondearCantidad(importePer / src.PuFijo);
+                        cantPer = engine.RoundQuantity(importePer / src.PuFijo);
                     }
                     else
                     {
                         // Fallback: física acumulada si PU = 0
                         src.CantFisicaPorPeriodo.TryGetValue(per.PeriodoId, out decimal cantFis);
-                        cantPer = motor.RedondearCantidad(cantFis);
+                        cantPer = engine.RoundQuantity(cantFis);
                     }
 
                     row.CantidadesPorPeriodo[per.PeriodoId] = cantPer;
-                    runningCantidad = motor.RedondearCantidad(runningCantidad + cantPer);
+                    runningCantidad = engine.RoundQuantity(runningCantidad + cantPer);
                     row.AcumuladosPorPeriodo[per.PeriodoId] = runningCantidad;
                 }
 
@@ -392,9 +396,9 @@ namespace SOPRO.Application.Services.Programacion
                     //   ExplosionInsumosService: ImporteAcumulado / CantidadFisicaAcumulada
                     //   ProgramacionInsumos:     ImporteGlobalAcum / CantFisicaGlobalAcum
                     decimal cantGlobal = src.CantFisicaGlobalAcum;
-                    row.Total = motor.RedondearCantidad(cantGlobal);
+                    row.Total = engine.RoundQuantity(cantGlobal);
                     if (cantGlobal > 0m)
-                        row.PrecioUnitario = motor.RedondearImporte(src.ImporteGlobalAcum / cantGlobal);
+                        row.PrecioUnitario = engine.RoundAmount(src.ImporteGlobalAcum / cantGlobal);
                 }
                 else
                 {
@@ -420,7 +424,7 @@ namespace SOPRO.Application.Services.Programacion
         // ════════════════════════════════════════════════════════════════════════
 
         private static void ExplotarMatrizEnPeriodo(
-            MotorCalculoSopro motor, Matriz matriz,
+            SoproCalculationEngine engine, Matriz matriz,
             decimal importeBase,    // importe del periodo a distribuir
             decimal cantidadBase,   // cantidad del concepto en el periodo (para física %MO)
             int periodoId, ProgramaInsumoTipo tipo,
@@ -428,8 +432,8 @@ namespace SOPRO.Application.Services.Programacion
         {
             if (matriz?.Componentes == null || matriz.Componentes.Count == 0) return;
 
-            // Recalcular importes unitarios frescos con PUs actuales y el motor
-            var importesUnitarios = CalcularImportesUnitarios(motor, matriz.Componentes);
+            // Recalcular importes unitarios frescos con PUs actuales y el engine
+            var importesUnitarios = CalcularImportesUnitarios(engine, matriz.Componentes);
             decimal cdUnitMatriz  = importesUnitarios.Values.Sum();
             if (cdUnitMatriz == 0m) return;
 
@@ -441,14 +445,14 @@ namespace SOPRO.Application.Services.Programacion
             {
                 if (!importesUnitarios.TryGetValue(comp.Id, out decimal impUnit)) continue;
                 if (impUnit == 0m) continue;
-                decimal impComp = motor.RedondearImporte(importeBase * impUnit / cdUnitMatriz);
+                decimal impComp = engine.RoundAmount(importeBase * impUnit / cdUnitMatriz);
                 if (impComp == 0m) continue;
                 distribComp.Add((comp, impComp));
                 sumaDistribuida += impComp;
             }
 
             // Absorber residuo en el último componente no-auxiliar elegible
-            decimal residuoComp = motor.RedondearImporte(importeBase - sumaDistribuida);
+            decimal residuoComp = engine.RoundAmount(importeBase - sumaDistribuida);
             if (residuoComp != 0m && distribComp.Count > 0)
             {
                 int idxAjuste = distribComp.FindLastIndex(
@@ -512,7 +516,7 @@ namespace SOPRO.Application.Services.Programacion
                         break;
 
                     case TipoComponenteMatriz.Auxiliar when comp.Auxiliar != null:
-                        ExplotarMatrizEnPeriodo(motor, comp.Auxiliar, impComp, cantFis,
+                        ExplotarMatrizEnPeriodo(engine, comp.Auxiliar, impComp, cantFis,
                                                periodoId, tipo, acums);
                         break;
                 }
@@ -525,24 +529,24 @@ namespace SOPRO.Application.Services.Programacion
         // ════════════════════════════════════════════════════════════════════════
 
         private static Dictionary<int, decimal> ExplotarImportesCanonicosPorInsumo(
-            MotorCalculoSopro motor, Matriz matriz,
+            SoproCalculationEngine engine, Matriz matriz,
             decimal importeBase, decimal cantidadBase,
             ProgramaInsumoTipo tipo)
         {
             var resultado = new Dictionary<int, decimal>();
-            ExplotarCanonicoRecursivo(motor, matriz, importeBase, cantidadBase, tipo, resultado);
+            ExplotarCanonicoRecursivo(engine, matriz, importeBase, cantidadBase, tipo, resultado);
             return resultado;
         }
 
         private static void ExplotarCanonicoRecursivo(
-            MotorCalculoSopro motor, Matriz matriz,
+            SoproCalculationEngine engine, Matriz matriz,
             decimal importeBase, decimal cantidadBase,
             ProgramaInsumoTipo tipo,
             Dictionary<int, decimal> resultado)
         {
             if (matriz?.Componentes == null || matriz.Componentes.Count == 0) return;
 
-            var importesUnitarios = CalcularImportesUnitarios(motor, matriz.Componentes);
+            var importesUnitarios = CalcularImportesUnitarios(engine, matriz.Componentes);
             decimal cdUnitMatriz  = importesUnitarios.Values.Sum();
             if (cdUnitMatriz == 0m) return;
 
@@ -553,13 +557,13 @@ namespace SOPRO.Application.Services.Programacion
             {
                 if (!importesUnitarios.TryGetValue(comp.Id, out decimal impUnit)) continue;
                 if (impUnit == 0m) continue;
-                decimal impComp = motor.RedondearImporte(importeBase * impUnit / cdUnitMatriz);
+                decimal impComp = engine.RoundAmount(importeBase * impUnit / cdUnitMatriz);
                 if (impComp == 0m) continue;
                 distribComp.Add((comp, impComp));
                 sumaDistribuida += impComp;
             }
 
-            decimal residuo = motor.RedondearImporte(importeBase - sumaDistribuida);
+            decimal residuo = engine.RoundAmount(importeBase - sumaDistribuida);
             if (residuo != 0m && distribComp.Count > 0)
             {
                 int idx = distribComp.FindLastIndex(
@@ -602,7 +606,7 @@ namespace SOPRO.Application.Services.Programacion
                         break;
 
                     case TipoComponenteMatriz.Auxiliar when comp.Auxiliar != null:
-                        ExplotarCanonicoRecursivo(motor, comp.Auxiliar, impComp,
+                        ExplotarCanonicoRecursivo(engine, comp.Auxiliar, impComp,
                             cantidadBase * comp.Cantidad, tipo, resultado);
                         break;
                 }
@@ -615,7 +619,7 @@ namespace SOPRO.Application.Services.Programacion
         // ════════════════════════════════════════════════════════════════════════
 
         private static Dictionary<int, decimal> CalcularImportesUnitarios(
-            MotorCalculoSopro motor, ICollection<ComponenteMatriz> componentes)
+            SoproCalculationEngine engine, ICollection<ComponenteMatriz> componentes)
         {
             var resultado = new Dictionary<int, decimal>();
 
@@ -627,14 +631,14 @@ namespace SOPRO.Application.Services.Programacion
                 if (comp.TipoComponente == TipoComponenteMatriz.ManoDeObra
                     && comp.ManoDeObra != null && !comp.ManoDeObra.EsPorcentajeMO)
                 {
-                    imp = motor.Multiplicar(comp.Cantidad, comp.ManoDeObra.SalarioReal);
+                    imp = engine.Multiply(comp.Cantidad, comp.ManoDeObra.SalarioReal);
                     baseMO += imp;
                 }
                 else if (comp.TipoComponente == TipoComponenteMatriz.Auxiliar
                          && comp.Auxiliar?.Tipo == TipoMatriz.Cuadrilla
                          && comp.Auxiliar != null)
                 {
-                    imp = motor.Multiplicar(comp.Cantidad, comp.Auxiliar.CostoDirecto);
+                    imp = engine.Multiply(comp.Cantidad, comp.Auxiliar.CostoDirecto);
                     baseMO += imp;
                 }
                 if (imp > 0m) resultado[comp.Id] = imp;
@@ -648,22 +652,22 @@ namespace SOPRO.Application.Services.Programacion
                 decimal imp = comp.TipoComponente switch
                 {
                     TipoComponenteMatriz.Material when comp.Material != null =>
-                        motor.Multiplicar(comp.Cantidad, comp.Material.PrecioUnitario),
+                        engine.Multiply(comp.Cantidad, comp.Material.PrecioUnitario),
 
                     TipoComponenteMatriz.Maquinaria when comp.Maquinaria != null =>
-                        motor.Multiplicar(comp.Cantidad, comp.Maquinaria.CostoHorario),
+                        engine.Multiply(comp.Cantidad, comp.Maquinaria.CostoHorario),
 
                     TipoComponenteMatriz.ManoDeObra when comp.ManoDeObra?.EsPorcentajeMO == true =>
-                        motor.RedondearImporte(comp.Cantidad * baseMO),
+                        engine.RoundAmount(comp.Cantidad * baseMO),
 
                     TipoComponenteMatriz.Herramienta when comp.Herramienta != null =>
                         comp.Herramienta.EsPorcentajeMO
-                            ? motor.RedondearImporte(comp.Cantidad * baseMO)
-                            : motor.Multiplicar(comp.Cantidad, comp.Herramienta.PrecioUnitario),
+                            ? engine.RoundAmount(comp.Cantidad * baseMO)
+                            : engine.Multiply(comp.Cantidad, comp.Herramienta.PrecioUnitario),
 
                     TipoComponenteMatriz.Auxiliar when comp.Auxiliar != null
                         && comp.Auxiliar.Tipo != TipoMatriz.Cuadrilla =>
-                        motor.Multiplicar(comp.Cantidad, comp.Auxiliar.CostoDirecto),
+                        engine.Multiply(comp.Cantidad, comp.Auxiliar.CostoDirecto),
 
                     _ => 0m
                 };

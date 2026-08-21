@@ -592,6 +592,12 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 - Tests (`SOPRO.Tests/Services/Programacion/ProgramacionDistributionServiceParityTests.cs`, 4 nuevos): baterías de 30 escenarios para `DistributeUniform`, `DistributeUniformBatch` y `DistributeByPercentages` con decimales cantidad/importe 0-4 y porcentaje 0-6, oráculo diferencial que replica el flujo completo con `MotorCalculoSopro` en contexto gemelo; dorado uniforme `5.00/500.00/50.00` con paridad y valores conocidos.
 - Verificación: 324/324 (320 + 4 nuevos), Release 0 errores, `git diff --check` limpio.
 
+### PR N5-16 (`ProgramacionInsumosService` — decimosexto consumidor migrado al motor)
+
+- Motor con las tres precisiones del proyecto migrado a `SoproCalculationEngine` en el punto de entrada `Build` y en los tres helpers `ExplotarImportesCanonicosPorInsumo`, `ExplotarMatrizEnPeriodo` y `CalcularImportesUnitarios` (parámetros `SoproCalculationEngine` en lugar de `MotorCalculoSopro`). Operaciones `Multiply` ×2, `RoundAmount` ×7 y `RoundQuantity` ×5 con las tres precisiones del proyecto. Sin cambios de API ni de comportamiento observable.
+- Tests (`SOPRO.Tests/Services/Programacion/ProgramacionInsumosServiceParityTests.cs`, 2 nuevos): batería de 20 escenarios con decimales importe 0-4 y 1 material (PU y cantidad aleatorias) en contextos gemelos, oráculo diferencial que replica el flujo completo con `MotorCalculoSopro` y valida `ProgramaInsumosResultDto` (periodos, filas, importes y cantidades); dorado `10×10=100` distribuido `50/50` con paridad y valores conocidos (`Total 10`, `ImporteTotal 100`, `PU 10`).
+- Verificación: 326/326 (324 + 2 nuevos), Release 0 errores, `git diff --check` limpio.
+
 ## 15. Fase N6: Empaquetado y validación privada
 
 ### Metadatos obligatorios
