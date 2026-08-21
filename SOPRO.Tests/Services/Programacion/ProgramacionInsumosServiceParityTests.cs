@@ -380,12 +380,4 @@ public class ProgramacionInsumosServiceParityTests
 
     // ── Oráculo legacy con MotorCalculoSopro (sin llamar al servicio migrado) ─────
     // Replica el flujo completo de Build con Motor para paridad real, cubriendo
-    // â”€â”€ OrÃ¡culo legacy: copia literal de ProgramacionInsumosService en c26cdb9 â”€â”€â”€â”€â”€
-    // (usa MotorCalculoSopro). Se invoca directamente sin pasar por el servicio
-    // migrado, para validar paridad real contra SoproCalculationEngine.
-    private static SOPRO.Application.DTOs.Programacion.Insumos.ProgramaInsumosResultDto BuildConFachada(SOPROContext context, Proyecto proyecto, ProgramaInsumoTipo tipo)
-    {
-        var oracle = new ProgramacionInsumosServiceLegacyOracle();
-        return oracle.Build(context, proyecto, tipo);
-    }
-}
+    // ── Oráculo legacy: copia literal de ProgramacionInsumosService en c26cdb9 ─────
