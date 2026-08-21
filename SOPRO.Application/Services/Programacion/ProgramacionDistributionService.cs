@@ -3,6 +3,7 @@ using SOPRO.Application.Services.Programacion;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
+using Sopro.Calculation;
 using SOPRO.Application.DTOs.Programacion;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -17,8 +18,13 @@ namespace SOPRO.Application.Services
     // ║           Ajuste de Residuo (importeTotal - importesAcumulados)         ║
     // ║           en lugar de recalcularse independientemente.                  ║
     // ║  [FIX-2] DistributeByPercentages: mismo ajuste de residuo en importe.  ║
-    // ║  [FIX-3] Toda aritmética de importe delegada a MotorCalculoSopro.      ║
+    // ║  [FIX-3] Toda aritmética de importe delegada a SoproCalculationEngine. ║
     // ║  [FIX-4] Fallback hardcoded "2" eliminado — usa proyecto.Decimales*.   ║
+    // ║                                                                         ║
+    // ║  [N5-15] Motor migrado a SoproCalculationEngine: las 3 construcciones   ║
+    // ║          (DistributeUniform, DistributeUniformBatch,                    ║
+    // ║          DistributeByPercentages) y los 18 redondeos/multiplicaciones   ║
+    // ║          usan engine con las tres precisiones del proyecto.             ║
     // ╚══════════════════════════════════════════════════════════════════════════╝
 
     public sealed class ProgramacionDistributionService
@@ -53,9 +59,9 @@ namespace SOPRO.Application.Services
             var calendario  = actividad.ProgramaObra?.CalendarioLaboral;
 
             // ── Motor con la configuración real del proyecto (sin fallbacks mágicos) ─
-            var motor = proyecto != null
-                ? new MotorCalculoSopro(proyecto)
-                : new MotorCalculoSopro(4, 2, 4); // solo si proyecto es null (no debería ocurrir)
+            var engine = proyecto != null
+                ? new SoproCalculationEngine(proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje)
+                : new SoproCalculationEngine(4, 2, 4); // solo si proyecto es null (no debería ocurrir)
 
             var fechaInicio = actividad.FechaInicioProgramada?.Date;
             var fechaFin    = actividad.FechaFinProgramada?.Date ?? fechaInicio;
@@ -95,7 +101,7 @@ namespace SOPRO.Application.Services
                 totalDias = tramos.Count;
 
             // ── Calcular importe total de la actividad con precisión de pantalla ──
-            decimal importeTotal = motor.Multiplicar(actividad.CantidadTotal, actividad.PrecioUnitario);
+            decimal importeTotal = engine.Multiply(actividad.CantidadTotal, actividad.PrecioUnitario);
 
             decimal cantidadAcumulada  = 0m;
             decimal porcentajeAcumulado = 0m;
@@ -109,34 +115,34 @@ namespace SOPRO.Application.Services
                 // ── Cantidad (ya tenía ajuste de residuo ✅) ──────────────────────
                 decimal cantidad;
                 if (esUltimo)
-                    cantidad = motor.RedondearCantidad(actividad.CantidadTotal - cantidadAcumulada);
+                    cantidad = engine.RoundQuantity(actividad.CantidadTotal - cantidadAcumulada);
                 else
                 {
                     var proporcion = totalDias == 0 ? 0m : (decimal)tramo.WorkingDays / totalDias;
-                    cantidad = motor.RedondearCantidad(actividad.CantidadTotal * proporcion);
+                    cantidad = engine.RoundQuantity(actividad.CantidadTotal * proporcion);
                 }
                 cantidadAcumulada += cantidad;
 
                 // ── Porcentaje (ya tenía ajuste de residuo ✅) ────────────────────
                 decimal porcentaje;
                 if (esUltimo)
-                    porcentaje = motor.RedondearPorcentaje(100m - porcentajeAcumulado);
+                    porcentaje = engine.RoundPercentage(100m - porcentajeAcumulado);
                 else if (actividad.CantidadTotal == 0m)
                 {
                     var proporcion = totalDias == 0 ? 0m : (decimal)tramo.WorkingDays / totalDias;
-                    porcentaje = motor.RedondearPorcentaje(proporcion * 100m);
+                    porcentaje = engine.RoundPercentage(proporcion * 100m);
                 }
                 else
-                    porcentaje = motor.RedondearPorcentaje((cantidad / actividad.CantidadTotal) * 100m);
+                    porcentaje = engine.RoundPercentage((cantidad / actividad.CantidadTotal) * 100m);
                 porcentajeAcumulado += porcentaje;
 
                 // ── Importe [FIX-1]: Ajuste de Residuo en el último periodo ───────
                 decimal importe;
                 if (esUltimo)
                     // Absorbe el centavo pendiente para que SUM == importeTotal exactamente
-                    importe = motor.RedondearImporte(importeTotal - importeAcumulado);
+                    importe = engine.RoundAmount(importeTotal - importeAcumulado);
                 else
-                    importe = motor.Multiplicar(cantidad, actividad.PrecioUnitario);
+                    importe = engine.Multiply(cantidad, actividad.PrecioUnitario);
                 importeAcumulado += importe;
 
                 context.DistribucionesPeriodo.Add(new DistribucionPeriodo
@@ -207,9 +213,7 @@ namespace SOPRO.Application.Services
             foreach (var actividad in actividades)
             {
                 var proyecto   = actividad.ProgramaObra?.Proyecto;
-                var motor = proyecto != null
-                    ? new MotorCalculoSopro(proyecto)
-                    : new MotorCalculoSopro(4, 2, 4);
+                var engine = proyecto != null ? new SoproCalculationEngine(proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje) : new SoproCalculationEngine(4, 2, 4);
 
                 var fechaInicio = actividad.FechaInicioProgramada?.Date;
                 var fechaFin    = actividad.FechaFinProgramada?.Date ?? fechaInicio;
@@ -247,7 +251,7 @@ namespace SOPRO.Application.Services
                 var totalDias = tramos.Sum(x => x.WorkingDays);
                 if (totalDias <= 0) totalDias = tramos.Count;
 
-                decimal importeTotal        = motor.Multiplicar(actividad.CantidadTotal, actividad.PrecioUnitario);
+                decimal importeTotal        = engine.Multiply(actividad.CantidadTotal, actividad.PrecioUnitario);
                 decimal cantidadAcumulada   = 0m;
                 decimal porcentajeAcumulado = 0m;
                 decimal importeAcumulado    = 0m;
@@ -259,31 +263,31 @@ namespace SOPRO.Application.Services
 
                     decimal cantidad;
                     if (esUltimo)
-                        cantidad = motor.RedondearCantidad(actividad.CantidadTotal - cantidadAcumulada);
+                        cantidad = engine.RoundQuantity(actividad.CantidadTotal - cantidadAcumulada);
                     else
                     {
                         var proporcion = totalDias == 0 ? 0m : (decimal)tramo.WorkingDays / totalDias;
-                        cantidad = motor.RedondearCantidad(actividad.CantidadTotal * proporcion);
+                        cantidad = engine.RoundQuantity(actividad.CantidadTotal * proporcion);
                     }
                     cantidadAcumulada += cantidad;
 
                     decimal porcentaje;
                     if (esUltimo)
-                        porcentaje = motor.RedondearPorcentaje(100m - porcentajeAcumulado);
+                        porcentaje = engine.RoundPercentage(100m - porcentajeAcumulado);
                     else if (actividad.CantidadTotal == 0m)
                     {
                         var proporcion = totalDias == 0 ? 0m : (decimal)tramo.WorkingDays / totalDias;
-                        porcentaje = motor.RedondearPorcentaje(proporcion * 100m);
+                        porcentaje = engine.RoundPercentage(proporcion * 100m);
                     }
                     else
-                        porcentaje = motor.RedondearPorcentaje((cantidad / actividad.CantidadTotal) * 100m);
+                        porcentaje = engine.RoundPercentage((cantidad / actividad.CantidadTotal) * 100m);
                     porcentajeAcumulado += porcentaje;
 
                     decimal importe;
                     if (esUltimo)
-                        importe = motor.RedondearImporte(importeTotal - importeAcumulado);
+                        importe = engine.RoundAmount(importeTotal - importeAcumulado);
                     else
-                        importe = motor.Multiplicar(cantidad, actividad.PrecioUnitario);
+                        importe = engine.Multiply(cantidad, actividad.PrecioUnitario);
                     importeAcumulado += importe;
 
                     context.DistribucionesPeriodo.Add(new DistribucionPeriodo
@@ -326,9 +330,7 @@ namespace SOPRO.Application.Services
             context.DistribucionesPeriodo.RemoveRange(actividad.Distribuciones);
 
             var proyecto = actividad.ProgramaObra?.Proyecto;
-            var motor    = proyecto != null
-                ? new MotorCalculoSopro(proyecto)
-                : new MotorCalculoSopro(4, 2, 4);
+            var engine = proyecto != null ? new SoproCalculationEngine(proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje) : new SoproCalculationEngine(4, 2, 4);
 
             var validInputs = inputs
                 .Where(x => x.PorcentajeProgramado != 0 || x.CantidadProgramada != 0)
@@ -345,7 +347,7 @@ namespace SOPRO.Application.Services
                 return;
             }
 
-            decimal importeTotal = motor.Multiplicar(actividad.CantidadTotal, actividad.PrecioUnitario);
+            decimal importeTotal = engine.Multiply(actividad.CantidadTotal, actividad.PrecioUnitario);
 
             decimal totalCantidad       = 0m;
             decimal totalImporte        = 0m;
@@ -361,8 +363,8 @@ namespace SOPRO.Application.Services
                 if (cantidad == 0m && actividad.CantidadTotal > 0m)
                 {
                     cantidad = esUltimo
-                        ? motor.RedondearCantidad(actividad.CantidadTotal - totalCantidad)
-                        : motor.RedondearCantidad(
+                        ? engine.RoundQuantity(actividad.CantidadTotal - totalCantidad)
+                        : engine.RoundQuantity(
                             actividad.CantidadTotal * (input.PorcentajeProgramado / 100m));
                 }
 
@@ -370,17 +372,17 @@ namespace SOPRO.Application.Services
                 if (actividad.CantidadTotal > 0m)
                 {
                     porcentaje = esUltimo
-                        ? motor.RedondearPorcentaje(100m - porcentajeAcumulado)
-                        : motor.RedondearPorcentaje(
+                        ? engine.RoundPercentage(100m - porcentajeAcumulado)
+                        : engine.RoundPercentage(
                             (cantidad / actividad.CantidadTotal) * 100m);
                 }
 
                 // [FIX-2]: Ajuste de Residuo en importe del último periodo
                 decimal importe;
                 if (esUltimo)
-                    importe = motor.RedondearImporte(importeTotal - importeAcumulado);
+                    importe = engine.RoundAmount(importeTotal - importeAcumulado);
                 else
-                    importe = motor.Multiplicar(cantidad, actividad.PrecioUnitario);
+                    importe = engine.Multiply(cantidad, actividad.PrecioUnitario);
 
                 totalCantidad       += cantidad;
                 totalImporte        += importe;
@@ -403,7 +405,7 @@ namespace SOPRO.Application.Services
             actividad.ImporteProgramado             = importeTotal; // [FIX-2] usa el total exacto
             actividad.AvanceProgramadoPorcentaje    = actividad.CantidadTotal == 0
                 ? 0m
-                : motor.RedondearPorcentaje(
+                : engine.RoundPercentage(
                     (actividad.CantidadProgramada / actividad.CantidadTotal) * 100m);
             actividad.FechaModificacion             = DateTime.Now;
             context.SaveChanges();
