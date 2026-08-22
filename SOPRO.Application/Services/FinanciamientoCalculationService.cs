@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
 using System.Linq;
+using Sopro.Calculation;
 
 namespace SOPRO.Application.Services
 {
@@ -204,6 +205,11 @@ namespace SOPRO.Application.Services
             if (periodos.Count == 0)
                 return 0m;
 
+            var engine = new SoproCalculationEngine(
+                proyecto.DecimalesCantidad,
+                proyecto.DecimalesImporte,
+                proyecto.DecimalesPorcentaje);
+
             // Traer distribuciones y su concepto de presupuesto para obtener el CD unitario real.
             var distribuciones = context.DistribucionesPeriodo
                 .AsNoTracking()
@@ -221,7 +227,8 @@ namespace SOPRO.Application.Services
                 distribuciones,
                 proyecto.PorcentajeIndirectosCentral,
                 proyecto.PorcentajeIndirectosCampo,
-                config.DesfaseCobro);
+                config.DesfaseCobro,
+                engine);
             if (periodosCalc.Count == 0)
                 return 0m;
 
@@ -354,7 +361,8 @@ namespace SOPRO.Application.Services
             List<DistribucionPeriodo> distribuciones,
             decimal porcentajeIndirectosCentral,
             decimal porcentajeIndirectosCampo,
-            int desfaseCobro)
+            int desfaseCobro,
+            SoproCalculationEngine engine)
         {
             var periodOrder = periodos.ToDictionary(p => p.Id, p => p.NumeroPeriodo);
             var acumulados = periodos.ToDictionary(
@@ -389,13 +397,13 @@ namespace SOPRO.Application.Services
                 if (cdUnit <= 0m && concepto.CostoDirectoTotal > 0m)
                     cdUnit = concepto.CostoDirectoTotal / cantidadConcepto;
 
-                decimal totalCdConcepto = new MotorCalculoSopro(proyecto).Multiplicar(cantidadConcepto, cdUnit);
+                decimal totalCdConcepto = engine.Multiply(cantidadConcepto, cdUnit);
 
                 var distribucionesConcepto = grupo
                     .OrderBy(d => periodOrder.TryGetValue(d.PeriodoProgramaId, out var orden) ? orden : int.MaxValue)
                     .ToList();
 
-                AplicarAcumuladoPorDistribucion(proyecto, distribucionesConcepto, cdUnit, totalCdConcepto, acumulados, true);
+                AplicarAcumuladoPorDistribucion(proyecto, distribucionesConcepto, cdUnit, totalCdConcepto, acumulados, true, engine);
             }
 
             foreach (var distribucion in distribuciones.Where(d => d.ActividadProgramada?.ConceptoPresupuesto != null
@@ -544,7 +552,8 @@ namespace SOPRO.Application.Services
             decimal precioUnitario,
             decimal totalEsperado,
             Dictionary<int, PeriodoFinanciamientoCalc> acumulados,
-            bool esCostoDirecto)
+            bool esCostoDirecto,
+            SoproCalculationEngine engine)
         {
             if (distribucionesConcepto.Count == 0 || totalEsperado == 0m)
                 return;
@@ -556,7 +565,7 @@ namespace SOPRO.Application.Services
             for (int i = 0; i < distribucionesConcepto.Count; i++)
             {
                 var distribucion = distribucionesConcepto[i];
-                decimal importe = new MotorCalculoSopro(proyecto).Multiplicar(distribucion.CantidadProgramada, precioUnitario);
+                decimal importe = engine.Multiply(distribucion.CantidadProgramada, precioUnitario);
                 importes[i] = importe;
                 suma += importe;
                 if (distribucion.CantidadProgramada != 0m || importe != 0m)
