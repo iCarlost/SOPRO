@@ -94,41 +94,41 @@ namespace SOPRO.WinForms.Helpers
         // TRUNCAR VALORES SEGÚN CONFIGURACIÓN
         // ══════════════════════════════════════════════════════════════
         // MÉTODOS NUMÉRICOS — ELIMINADOS DEL HELPER DE FORMATO
-        // Usar MotorCalculoSopro para toda operación aritmética contable.
+        // Usar BudgetPricingService para toda operación aritmética contable.
         // ══════════════════════════════════════════════════════════════
 
         /// <summary>
         /// ELIMINADO: dependía de estado global _proyectoActual.
-        /// Usar: new MotorCalculoSopro(proyecto).RedondearCantidad(valor)
+        /// Usar: BudgetPricingService.RoundQuantity(proyecto, valor)
         /// </summary>
-        [Obsolete("Usar new MotorCalculoSopro(proyecto).RedondearCantidad(valor). " +
+        [Obsolete("Usar BudgetPricingService.RoundQuantity(proyecto, valor). " +
                   "Este método depende de _proyectoActual (estado global mutable).", error: false)]
         public static decimal RedondearCantidad(this decimal valor)
             => throw new NotSupportedException(
                 "FormatoHelper.RedondearCantidad está deshabilitado. " +
-                "Usar: new MotorCalculoSopro(proyecto).RedondearCantidad(valor)");
+                "Usar: BudgetPricingService.RoundQuantity(proyecto, valor)");
 
         /// <summary>
         /// ELIMINADO: dependía de estado global _proyectoActual.
-        /// Usar: new MotorCalculoSopro(proyecto).RedondearImporte(valor)
+        /// Usar: BudgetPricingService.RoundImporte(proyecto, valor)
         /// </summary>
-        [Obsolete("Usar new MotorCalculoSopro(proyecto).RedondearImporte(valor). " +
+        [Obsolete("Usar BudgetPricingService.RoundImporte(proyecto, valor). " +
                   "Este método depende de _proyectoActual (estado global mutable).", error: false)]
         public static decimal RedondearImporte(this decimal valor)
             => throw new NotSupportedException(
                 "FormatoHelper.RedondearImporte está deshabilitado. " +
-                "Usar: new MotorCalculoSopro(proyecto).RedondearImporte(valor)");
+                "Usar: BudgetPricingService.RoundImporte(proyecto, valor)");
 
         /// <summary>
         /// ELIMINADO: dependía de estado global.
-        /// Usar: new MotorCalculoSopro(proyecto).Multiplicar(cantidad, precioUnitario)
+        /// Usar: BudgetPricingService.MultiplyUsingDisplayPrecision(proyecto, cantidad, precioUnitario)
         /// </summary>
-        [Obsolete("Usar new MotorCalculoSopro(proyecto).Multiplicar(cantidad, precioUnitario). " +
+        [Obsolete("Usar BudgetPricingService.MultiplyUsingDisplayPrecision(proyecto, cantidad, precioUnitario). " +
                   "Este método depende del estado global _proyectoActual.", error: false)]
         public static decimal MultiplicarCantidadPorPU(decimal cantidad, decimal precioUnitario)
             => throw new NotSupportedException(
                 "FormatoHelper.MultiplicarCantidadPorPU está deshabilitado. " +
-                "Usar: new MotorCalculoSopro(proyecto).Multiplicar(cantidad, precioUnitario)");
+                "Usar: BudgetPricingService.MultiplyUsingDisplayPrecision(proyecto, cantidad, precioUnitario)");
 
 
         public static DataGridViewContentAlignment ConvertirAlineacionDgv(AlineacionColumna alineacion, int alineacionVertical = 1)
@@ -212,6 +212,6 @@ namespace SOPRO.WinForms.Helpers
         }
 
         // CalcularCostoDirectoConPrecision() fue eliminado de FormatoHelper.
-        // Usar: new MotorCalculoSopro(proyecto).SumarCostoDirecto(conceptos)
+        // Usar: BudgetPricingService.SumDirectCost(proyecto, conceptos)
     }
 }

@@ -554,22 +554,12 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             if (proyecto == null)
                 return;
 
-            var motor = new MotorCalculoSopro(proyecto);
             var totals = MatrixComponentCalculationService.Recalculate(
                 matrizTracked.Componentes.ToList(), proyecto.DecimalesImporte);
-            matrizTracked.CostoDirecto = motor.RedondearImporte(totals.CostoDirectoTotal);
+            matrizTracked.CostoDirecto = BudgetPricingService.RoundImporte(proyecto, totals.CostoDirectoTotal);
             matrizTracked.FechaModificacion = DateTime.Now;
 
-            var pctInput = new SOPRO.Application.Models.Presupuesto.BudgetPercentageInput
-            {
-                IndirectosCentral = proyecto.PorcentajeIndirectosCentral,
-                IndirectosCampo = proyecto.PorcentajeIndirectosCampo,
-                Financiamiento = proyecto.PorcentajeFinanciamiento,
-                Utilidad = proyecto.PorcentajeUtilidad,
-                CargosAdicionales = proyecto.PorcentajeCargosAdicionales,
-                ModoCalculoPorcentajes = proyecto.ModoCalculoPorcentajes ?? "Acumulables"
-            };
-            decimal nuevoPrecioUnitario = motor.CalcularPrecioUnitario(matrizTracked.CostoDirecto, pctInput).PrecioUnitario;
+            decimal nuevoPrecioUnitario = BudgetPricingService.CalculateUnitPrice(proyecto, matrizTracked.CostoDirecto);
 
             foreach (var row in _dgvPresupuesto?.Rows.Cast<DataGridViewRow>() ?? Enumerable.Empty<DataGridViewRow>())
             {
@@ -577,9 +567,9 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                     continue;
 
                 c.CostoDirectoUnitario = matrizTracked.CostoDirecto;
-                c.CostoDirectoTotal = motor.Multiplicar(c.Cantidad, matrizTracked.CostoDirecto);
+                c.CostoDirectoTotal = BudgetPricingService.MultiplyUsingDisplayPrecision(proyecto, c.Cantidad, matrizTracked.CostoDirecto);
                 c.PrecioUnitario = nuevoPrecioUnitario;
-                c.ImporteTotal = motor.Multiplicar(c.Cantidad, nuevoPrecioUnitario);
+                c.ImporteTotal = BudgetPricingService.MultiplyUsingDisplayPrecision(proyecto, c.Cantidad, nuevoPrecioUnitario);
 
                 foreach (DataGridViewColumn col in _dgvPresupuesto.Columns)
                 {
@@ -746,33 +736,23 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 var _proyectoPME = _context.Proyectos.Find(_proyectoId);
                 if (_proyectoPME == null) return; // Sin proyecto no podemos calcular correctamente
 
-                var motor = new SOPRO.Application.Services.MotorCalculoSopro(_proyectoPME);
                 var totals = SOPRO.Application.Services.MatrixComponentCalculationService.Recalculate(
                     matrizTracked.Componentes.ToList(), _proyectoPME.DecimalesImporte);
-                matrizTracked.CostoDirecto = motor.RedondearImporte(totals.CostoDirectoTotal);
+                matrizTracked.CostoDirecto = BudgetPricingService.RoundImporte(_proyectoPME, totals.CostoDirectoTotal);
 
                 decimal nuevoCostoDirecto = matrizTracked.CostoDirecto;
 
-                // Calcular PrecioUnitario usando el motor (redondeo por paso en cascada de porcentajes)
-                var pctInput = new SOPRO.Application.Models.Presupuesto.BudgetPercentageInput
-                {
-                    IndirectosCentral      = _proyectoPME.PorcentajeIndirectosCentral,
-                    IndirectosCampo        = _proyectoPME.PorcentajeIndirectosCampo,
-                    Financiamiento         = _proyectoPME.PorcentajeFinanciamiento,
-                    Utilidad               = _proyectoPME.PorcentajeUtilidad,
-                    CargosAdicionales      = _proyectoPME.PorcentajeCargosAdicionales,
-                    ModoCalculoPorcentajes = _proyectoPME.ModoCalculoPorcentajes ?? "Acumulables"
-                };
-                decimal nuevoPrecioUnitario = motor.CalcularPrecioUnitario(nuevoCostoDirecto, pctInput).PrecioUnitario;
+                // Calcular PrecioUnitario usando la precisión configurada del proyecto.
+                decimal nuevoPrecioUnitario = BudgetPricingService.CalculateUnitPrice(_proyectoPME, nuevoCostoDirecto);
 
                 // Actualizar el concepto en la fila del presupuesto usando el motor
                 var concepto = _dgvPresupuesto.Rows[_filaActual].Tag as ConceptoPresupuesto;
                 if (concepto != null)
                 {
                     concepto.CostoDirectoUnitario = nuevoCostoDirecto;
-                    concepto.CostoDirectoTotal    = motor.Multiplicar(concepto.Cantidad, nuevoCostoDirecto);
+                    concepto.CostoDirectoTotal    = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyectoPME, concepto.Cantidad, nuevoCostoDirecto);
                     concepto.PrecioUnitario        = nuevoPrecioUnitario;
-                    concepto.ImporteTotal          = motor.Multiplicar(concepto.Cantidad, nuevoPrecioUnitario);
+                    concepto.ImporteTotal          = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyectoPME, concepto.Cantidad, nuevoPrecioUnitario);
                 }
 
                 _context.SaveChanges();
@@ -787,9 +767,9 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                         if (c == null || c.MatrizId != _matrizActual.Id) continue;
 
                         c.CostoDirectoUnitario = nuevoCostoDirecto;
-                        c.CostoDirectoTotal    = motor.Multiplicar(c.Cantidad, nuevoCostoDirecto);
+                        c.CostoDirectoTotal    = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyectoPME, c.Cantidad, nuevoCostoDirecto);
                         c.PrecioUnitario       = nuevoPrecioUnitario;
-                        c.ImporteTotal         = motor.Multiplicar(c.Cantidad, nuevoPrecioUnitario);
+                        c.ImporteTotal         = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyectoPME, c.Cantidad, nuevoPrecioUnitario);
 
                         foreach (DataGridViewColumn col in _dgvPresupuesto.Columns)
                         {

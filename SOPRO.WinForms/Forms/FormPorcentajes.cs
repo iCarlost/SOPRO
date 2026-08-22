@@ -31,7 +31,7 @@ namespace SOPRO.WinForms.Forms
         {
             RecargarDesdeProyecto();
 
-            var cdActual = new SOPRO.Application.Services.MotorCalculoSopro(_proyecto).SumarCostoDirecto(
+            var cdActual = BudgetPricingService.SumDirectCost(_proyecto,
                 _context.ConceptosPresupuesto
                     .Where(c => c.ProyectoId == _proyecto.Id)
                     .AsNoTracking()

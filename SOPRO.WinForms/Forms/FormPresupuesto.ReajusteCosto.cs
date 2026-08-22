@@ -95,11 +95,10 @@ namespace SOPRO.WinForms.Forms
                     MessageBox.Show("No se pudo cargar la matriz asignada al concepto.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
-                var motorAjuste = new MotorCalculoSopro(_proyecto);
                 decimal cantidadConceptoOriginal = concepto.Cantidad;
                 decimal factorPu = CalcularFactorPU();
                 decimal actualMostrado = ajustarPorImporte
-                    ? motorAjuste.Multiplicar(cantidadConceptoOriginal, CalcularPU(matriz.CostoDirecto))
+                    ? BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto, cantidadConceptoOriginal, CalcularPU(matriz.CostoDirecto))
                     : CalcularPU(matriz.CostoDirecto);
                 string contexto = ajustarPorImporte
                     ? $"Concepto: {concepto.Descripcion} \n"+
@@ -135,10 +134,10 @@ namespace SOPRO.WinForms.Forms
                 dgvPresupuesto.Refresh();
 
                 decimal actualCoherente = ajustarPorImporte
-                    ? motorAjuste.Multiplicar(cantidadConceptoOriginal, CalcularPU(result.CurrentCost))
+                    ? BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto, cantidadConceptoOriginal, CalcularPU(result.CurrentCost))
                     : CalcularPU(result.CurrentCost);
                 decimal logradoMostrado = ajustarPorImporte
-                    ? motorAjuste.Multiplicar(cantidadConceptoOriginal, CalcularPU(result.AchievedCost))
+                    ? BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto, cantidadConceptoOriginal, CalcularPU(result.AchievedCost))
                     : CalcularPU(result.AchievedCost);
 
                 MessageBox.Show(

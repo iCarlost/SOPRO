@@ -98,9 +98,25 @@ namespace SOPRO.Application.Services
         public static decimal MultiplyUsingDisplayPrecision(Proyecto proyecto, decimal cantidad, decimal precioUnitario)
             => BuildEngine(proyecto).Multiply(cantidad, precioUnitario);
 
+        /// <summary>Delega a SoproCalculationEngine.RoundQuantity().</summary>
+        public static decimal RoundQuantity(Proyecto proyecto, decimal valor)
+            => BuildEngine(proyecto).RoundQuantity(valor);
+
         /// <summary>Delega a SoproCalculationEngine.RoundAmount().</summary>
         public static decimal RoundImporte(Proyecto proyecto, decimal valor)
             => BuildEngine(proyecto).RoundAmount(valor);
+
+        /// <summary>Delega a SoproCalculationEngine.SumDirectCost().</summary>
+        public static decimal SumDirectCost(Proyecto proyecto, IEnumerable<ConceptoPresupuesto> conceptos)
+        {
+            if (conceptos == null) return 0m;
+
+            return BuildEngine(proyecto).SumDirectCost(conceptos.Select(c => new DirectCostLine(
+                c.Cantidad,
+                c.CostoDirectoUnitario,
+                c.EsAgrupador,
+                c.MatrizId.HasValue)));
+        }
 
         // ── Utilidades puras (sin cálculo numérico de precisión) ────────────────
 

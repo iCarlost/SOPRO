@@ -147,7 +147,7 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         private void btnAutoCD_Click(object sender, EventArgs e)
         {
-            var cd = new SOPRO.Application.Services.MotorCalculoSopro(_proyecto).SumarCostoDirecto(
+            var cd = BudgetPricingService.SumDirectCost(_proyecto,
                 _context.ConceptosPresupuesto
                     .Where(c => c.ProyectoId == _proyecto.Id)
                     .AsNoTracking()
