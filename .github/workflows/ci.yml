@@ -1,26 +1,139 @@
-name: CI
+name: SOPRO CI
 
 on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: sopro-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  solution-build:
+    name: Solution build and tests
     runs-on: windows-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.400
 
-      - name: Restore
-        run: dotnet restore SOPRO.sln
+      - name: Restore solution
+        run: dotnet restore SOPRO.sln --nologo
 
-      - name: Build
-        run: dotnet build SOPRO.sln -c Release --no-restore
+      - name: Build solution
+        run: dotnet build SOPRO.sln --configuration Release --no-restore --nologo
 
-      - name: Test
-        run: dotnet test SOPRO.sln -c Release --no-build
+      - name: Run solution tests
+        run: dotnet test SOPRO.sln --configuration Release --no-build --no-restore --nologo
+
+  calculation-tests:
+    name: Calculation tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Restore tests
+        run: dotnet restore SOPRO.Tests/SOPRO.Tests.csproj --nologo
+
+      - name: Build tests
+        run: dotnet build SOPRO.Tests/SOPRO.Tests.csproj --configuration Release --no-restore --nologo
+
+      - name: Run tests
+        run: dotnet test SOPRO.Tests/SOPRO.Tests.csproj --configuration Release --no-build --no-restore --nologo
+
+  calculation-package:
+    name: Package and validate nuspec
+    needs:
+      - solution-build
+      - calculation-tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Restore package
+        run: dotnet restore SOPRO.Calculation/SOPRO.Calculation.csproj --nologo
+
+      - name: Build package
+        run: dotnet build SOPRO.Calculation/SOPRO.Calculation.csproj --configuration Release --no-restore --nologo
+
+      - name: Pack without rebuilding
+        run: dotnet pack SOPRO.Calculation/SOPRO.Calculation.csproj --configuration Release --no-build --no-restore --output "$RUNNER_TEMP/packages" --nologo
+
+      - name: Validate package metadata and contents
+        shell: pwsh
+        run: |
+          $packageDirectory = Join-Path $env:RUNNER_TEMP "packages"
+          $package = Get-ChildItem -LiteralPath $packageDirectory -Filter "SOPRO.Calculation.0.1.0.nupkg"
+          $symbols = Join-Path $packageDirectory "SOPRO.Calculation.0.1.0.snupkg"
+
+          if ($null -eq $package) { throw "The NuGet package was not created." }
+          if (-not (Test-Path -LiteralPath $symbols)) { throw "The symbol package was not created." }
+
+          $extractDirectory = Join-Path $env:RUNNER_TEMP "package-check"
+          $archivePath = Join-Path $env:RUNNER_TEMP "SOPRO.Calculation.0.1.0.zip"
+          Copy-Item -LiteralPath $package.FullName -Destination $archivePath -Force
+          Expand-Archive -LiteralPath $archivePath -DestinationPath $extractDirectory -Force
+
+          $requiredFiles = @(
+            "README.md",
+            "CHANGELOG.md",
+            "lib/net8.0/Sopro.Calculation.dll",
+            "lib/net8.0/Sopro.Calculation.xml"
+          )
+          foreach ($requiredFile in $requiredFiles) {
+            if (-not (Test-Path -LiteralPath (Join-Path $extractDirectory $requiredFile))) {
+              throw "Missing package file: $requiredFile"
+            }
+          }
+
+          [xml]$nuspec = Get-Content -LiteralPath (Join-Path $extractDirectory "SOPRO.Calculation.nuspec") -Raw
+          $namespace = New-Object -TypeName System.Xml.XmlNamespaceManager -ArgumentList @($nuspec.NameTable)
+          $namespace.AddNamespace("n", "http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd")
+          $metadata = $nuspec.SelectSingleNode("/n:package/n:metadata", $namespace)
+
+          if ($metadata.id -ne "SOPRO.Calculation") { throw "Unexpected package id." }
+          if ($metadata.version -ne "0.1.0") { throw "Unexpected package version." }
+          if ($metadata.license.type -ne "expression" -or $metadata.license.'#text' -ne "MIT") {
+            throw "MIT license metadata is missing."
+          }
+
+          $dependencies = @($metadata.SelectNodes("n:dependencies/n:group/n:dependency | n:dependencies/n:dependency", $namespace))
+          if ($dependencies.Count -ne 0) { throw "Runtime dependencies are not allowed." }
+
+      - name: Upload validated private artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOPRO.Calculation-0.1.0
+          path: |
+            ${{ runner.temp }}/packages/SOPRO.Calculation.0.1.0.nupkg
+            ${{ runner.temp }}/packages/SOPRO.Calculation.0.1.0.snupkg
+          if-no-files-found: error
