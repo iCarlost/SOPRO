@@ -1,6 +1,6 @@
 # Plan 01: Desacoplamiento del Núcleo y la Aplicación
 
-**Estado:** N0 cerrado (PR #2, `508188a`); N1 cerrado (PR #3, `b9a4576`+`eaa2f67`); N2 cerrado; N3 (slice inicial de Application) cerrado; N4 cerrado (PRs N4-1..N4-5 integrados, Gate N4 operativo cerrado); N5 cerrado (PRs N5-20..N5-25 integrados, Gate N5 cerrado); N6 en curso (metadatos y SDK fijado en N6-1; CI multiplataforma en N6-2; falta consumidor externo permanente y baseline API); N7 no iniciado.
+**Estado:** N0 cerrado (PR #2, `508188a`); N1 cerrado (PR #3, `b9a4576`+`eaa2f67`); N2 cerrado; N3 (slice inicial de Application) cerrado; N4 cerrado (PRs N4-1..N4-5 integrados, Gate N4 operativo cerrado); N5 cerrado (PRs N5-20..N5-25 integrados, Gate N5 cerrado); N6 en curso (metadatos y SDK fijado en N6-1; CI multiplataforma en N6-2; consumidor externo permanente en N6-3; falta baseline API); N7 no iniciado.
 **Decisión arquitectónica:** [ADR-001](ADR-001-ARQUITECTURA-OBJETIVO.md)  
 **Plan dependiente:** [Plan 02: Migración WinForms a WPF](PLAN-02-MIGRACION-WINFORMS-WPF.md)  
 **Distribución actual:** repositorio y paquete privados; sin publicación en NuGet.org
