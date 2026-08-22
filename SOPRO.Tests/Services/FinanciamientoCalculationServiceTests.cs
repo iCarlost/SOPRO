@@ -163,5 +163,23 @@ public class FinanciamientoCalculationServiceTests
 
         Assert.AreEqual(5.7534m, config.FinanciamientoNeto);
         Assert.AreEqual(0.26152m, porcentaje);
+
+        // El PU visible (13.39) debe ser el que se multiplica, no el valor oculto 13.3875.
+        concepto.CostoDirectoUnitario = 13.3875m;
+        context.SaveChanges();
+
+        service.Calcular(context, config, proyecto);
+
+        var filasConPrecioOculto = context.FilasFlujoCajaFinanciamiento
+            .AsNoTracking()
+            .Where(f => f.ConfiguracionFinanciamientoId == config.Id)
+            .OrderBy(f => f.NumeroPeriodo)
+            .ToList();
+        var esperadoConMotorLegacy = new MotorCalculoSopro(proyecto).Multiplicar(20m, 13.3875m);
+        var esperadoEgreso = BudgetPricingService.RoundImporte(proyecto, esperadoConMotorLegacy * 1.1m);
+
+        Assert.AreEqual(esperadoEgreso,
+            filasConPrecioOculto.Sum(f => f.Egresos),
+            "El CD distribuido debe conservar la precisión visible del PU.");
     }
 }
