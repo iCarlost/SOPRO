@@ -11,7 +11,6 @@ using DrawingColor = System.Drawing.Color;
 using MColor = MigraDoc.DocumentObjectModel.Color;
 using MOrientation = MigraDoc.DocumentObjectModel.Orientation;
 using MParagraphAlignment = MigraDoc.DocumentObjectModel.ParagraphAlignment;
-using Sopro.Calculation;
 
 namespace SOPRO.WinForms.Services
 {
@@ -352,10 +351,6 @@ namespace SOPRO.WinForms.Services
             header.Cells[0].Borders.Bottom.Visible = false;
 
             var baseRowsMap = baseRows.ToDictionary(x => x.NumeroPeriodo, x => x);
-            var engine = new SoproCalculationEngine(
-                proyecto.DecimalesCantidad,
-                proyecto.DecimalesImporte,
-                proyecto.DecimalesPorcentaje);
             decimal totalBase = baseRows.Sum(x => x.CostoDirecto + x.CostoIndirecto);
             decimal[] avanceProgramado = filas.Select(x =>
             {
@@ -371,8 +366,8 @@ namespace SOPRO.WinForms.Services
             {
                 ingresoAcum += f.AnticipoRecibido + f.EstimacionCobrada - f.AmortizacionAnticipo;
                 egresoAcum += f.Egresos;
-                ingresosAcum.Add(engine.RoundAmount(ingresoAcum));
-                egresosAcum.Add(engine.RoundAmount(egresoAcum));
+                ingresosAcum.Add(BudgetPricingService.RoundImporte(proyecto, ingresoAcum));
+                egresosAcum.Add(BudgetPricingService.RoundImporte(proyecto, egresoAcum));
             }
 
             AgregarFilaValores(table, "AVANCE PROGRAMADO", filas, x => avanceProgramado[x], cols, "colPeriodo", "colEgresos", "0.0000%");

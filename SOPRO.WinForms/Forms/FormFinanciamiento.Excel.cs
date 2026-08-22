@@ -6,7 +6,6 @@ using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
-using Sopro.Calculation;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -50,11 +49,6 @@ namespace SOPRO.WinForms.Forms
                 .ToDictionary(c => c.NombreInterno, StringComparer.OrdinalIgnoreCase);
 
             var baseRows = BuildDisplayRows();
-            var engine = new SoproCalculationEngine(
-                _proyecto.DecimalesCantidad,
-                _proyecto.DecimalesImporte,
-                _proyecto.DecimalesPorcentaje);
-
             using var wb = new XLWorkbook();
             var ws = wb.Worksheets.Add("Financiamiento");
 
@@ -108,8 +102,8 @@ namespace SOPRO.WinForms.Forms
             {
                 ingresoAcum += f.AnticipoRecibido + f.EstimacionCobrada - f.AmortizacionAnticipo;
                 egresoAcum += f.Egresos;
-                ingresosAcumulados.Add(engine.RoundAmount(ingresoAcum));
-                egresosAcumulados.Add(engine.RoundAmount(egresoAcum));
+                ingresosAcumulados.Add(BudgetPricingService.RoundImporte(_proyecto, ingresoAcum));
+                egresosAcumulados.Add(BudgetPricingService.RoundImporte(_proyecto, egresoAcum));
             }
 
             decimal[] avanceProgramado = totalBase > 0m
