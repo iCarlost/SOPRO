@@ -537,12 +537,11 @@ namespace SOPRO.WinForms.Forms
                         .FirstOrDefault(m => m.Id == concepto.MatrizId.Value);
                     if (matriz == null) continue;
 
-                    var _motorSync = new MotorCalculoSopro(_proyecto);
-                    decimal cdUnit = _motorSync.RedondearImporte(matriz.CostoDirecto);
+                    decimal cdUnit = BudgetPricingService.RoundImporte(_proyecto, matriz.CostoDirecto);
                     decimal nuevoPU = CalcularPU(cdUnit);
-                    decimal nuevoImp = _motorSync.Multiplicar(concepto.Cantidad, nuevoPU);
+                    decimal nuevoImp = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto, concepto.Cantidad, nuevoPU);
                     concepto.CostoDirectoUnitario = cdUnit;
-                    concepto.CostoDirectoTotal = _motorSync.Multiplicar(concepto.Cantidad, cdUnit);
+                    concepto.CostoDirectoTotal = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto, concepto.Cantidad, cdUnit);
                     concepto.PrecioUnitario = nuevoPU;   // persistir
                     concepto.ImporteTotal = nuevoImp;  // persistir
 
@@ -608,8 +607,6 @@ namespace SOPRO.WinForms.Forms
                 }
             }
 
-            var motorCfg = new MotorCalculoSopro(_proyecto);
-
             // Reformatear TODAS las celdas del grid con los nuevos decimales
             foreach (DataGridViewRow row in dgvPresupuesto.Rows)
             {
@@ -620,7 +617,7 @@ namespace SOPRO.WinForms.Forms
                 if (!concepto.EsAgrupador && concepto.MatrizId.HasValue)
                 {
                     decimal pu = CalcularPU(concepto.CostoDirectoUnitario);
-                    decimal importe = motorCfg.Multiplicar(concepto.Cantidad, pu);
+                    decimal importe = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto!, concepto.Cantidad, pu);
 
                     // Actualizar cada celda con el nuevo formato
                     foreach (DataGridViewColumn col in dgvPresupuesto.Columns)
@@ -631,7 +628,7 @@ namespace SOPRO.WinForms.Forms
                             {
                                 case "Cantidad":
                                     // Re-formatear con los nuevos decimales de cantidad
-                                    row.Cells[col.Index].Value = motorCfg.RedondearCantidad(concepto.Cantidad);
+                                    row.Cells[col.Index].Value = BudgetPricingService.RoundQuantity(_proyecto, concepto.Cantidad);
                                     break;
                                 case "PrecioUnitario":
                                     row.Cells[col.Index].Value = pu.ToStringImporte();
@@ -693,7 +690,6 @@ namespace SOPRO.WinForms.Forms
         {
             try
             {
-                var _motorRecalc = new MotorCalculoSopro(_proyecto);
                 bool huboCambios = false;
 
                 for (int i = 0; i < dgvPresupuesto.Rows.Count; i++)
@@ -702,7 +698,7 @@ namespace SOPRO.WinForms.Forms
                     if (concepto == null || concepto.EsAgrupador) continue;
 
                     decimal pu = CalcularPU(concepto.CostoDirectoUnitario);
-                    decimal imp = _motorRecalc.Multiplicar(concepto.Cantidad, pu);
+                    decimal imp = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto, concepto.Cantidad, pu);
 
                     // Actualizar grid
                     foreach (DataGridViewColumn col in dgvPresupuesto.Columns)
@@ -984,7 +980,6 @@ namespace SOPRO.WinForms.Forms
             }
 
             // Re-formatear celdas de Cantidad con el nuevo número de decimales
-            var motorRecalc = new MotorCalculoSopro(_proyecto);
             for (int i = 0; i < dgvPresupuesto.Rows.Count; i++)
             {
                 var concepto = dgvPresupuesto.Rows[i].Tag as ConceptoPresupuesto;
@@ -997,7 +992,7 @@ namespace SOPRO.WinForms.Forms
                     {
                         // Re-formatear con los nuevos decimales
                         dgvPresupuesto.Rows[i].Cells[col.Index].Value =
-                            motorRecalc.RedondearCantidad(concepto.Cantidad);
+                            BudgetPricingService.RoundQuantity(_proyecto, concepto.Cantidad);
                     }
                 }
             }

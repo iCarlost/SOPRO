@@ -224,11 +224,10 @@ namespace SOPRO.WinForms.Forms
                     ModoCalculoPorcentajes = _proyecto.ModoCalculoPorcentajes
                 });
 
-                var _motorUtil = new MotorCalculoSopro(_proyecto);
-                decimal costoDirecto = _motorUtil.RedondearImporte(preview.CostoDirecto);
-                decimal costoIndirecto = _motorUtil.RedondearImporte(preview.Subtotal1 - preview.CostoDirecto);
-                decimal financiamiento = _motorUtil.RedondearImporte(preview.MontoFinanciamiento);
-                decimal subtotal = _motorUtil.RedondearImporte(_resultado.BaseUtilidad);
+                decimal costoDirecto = BudgetPricingService.RoundImporte(_proyecto, preview.CostoDirecto);
+                decimal costoIndirecto = BudgetPricingService.RoundImporte(_proyecto, preview.Subtotal1 - preview.CostoDirecto);
+                decimal financiamiento = BudgetPricingService.RoundImporte(_proyecto, preview.MontoFinanciamiento);
+                decimal subtotal = BudgetPricingService.RoundImporte(_proyecto, _resultado.BaseUtilidad);
 
                 using var dlg = new SaveFileDialog
                 {

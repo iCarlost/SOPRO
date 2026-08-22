@@ -216,11 +216,10 @@ namespace SOPRO.WinForms.Services
 
         private void ConstruirCuerpo(Section section, Proyecto proyecto, BudgetPercentagePreviewResult preview, UtilidadCalculationResult resultado, ColumnaPersonalizada? estiloBase, ConfiguracionTituloReporte? tituloCfg)
         {
-            var motor = new MotorCalculoSopro(proyecto);
-            decimal costoDirecto   = motor.RedondearImporte(preview.CostoDirecto);
-            decimal costoIndirecto = motor.RedondearImporte(preview.Subtotal1 - preview.CostoDirecto);
-            decimal financiamiento = motor.RedondearImporte(preview.MontoFinanciamiento);
-            decimal subtotal       = motor.RedondearImporte(resultado.BaseUtilidad);
+            decimal costoDirecto   = BudgetPricingService.RoundImporte(proyecto, preview.CostoDirecto);
+            decimal costoIndirecto = BudgetPricingService.RoundImporte(proyecto, preview.Subtotal1 - preview.CostoDirecto);
+            decimal financiamiento = BudgetPricingService.RoundImporte(proyecto, preview.MontoFinanciamiento);
+            decimal subtotal       = BudgetPricingService.RoundImporte(proyecto, resultado.BaseUtilidad);
 
             var titulo = section.AddTable();
             titulo.Borders.Visible = false;
