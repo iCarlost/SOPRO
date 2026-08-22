@@ -21,7 +21,7 @@ Check("RoundAmount", engine.RoundAmount(1.005m), 1.01m);
 Check("RoundQuantity", engine.RoundQuantity(2.345m), 2.35m);
 
 // Percentage cascade (accumulative): CD 1000, Ind 100, Fin 66, Util 93.28,
-// Cargos ~110.78 -> PU 1297.06; the sum invariant is verified below.
+// Cargos 37.78 -> PU 1297.06; the sum invariant is verified below.
 var breakdown = engine.CalculateUnitPrice(1000m, new PricePercentageInput
 {
     CentralIndirectsPercentage = 5m,
