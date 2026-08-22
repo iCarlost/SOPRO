@@ -132,7 +132,7 @@ namespace SOPRO.WinForms.Forms
                 if (cdUnit <= 0m && concepto.CostoDirectoTotal > 0m)
                     cdUnit = concepto.CostoDirectoTotal / cantidadConcepto;
 
-                decimal totalCdConcepto = new MotorCalculoSopro(_proyecto).Multiplicar(cantidadConcepto, cdUnit);
+                decimal totalCdConcepto = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto, cantidadConcepto, cdUnit);
 
                 var distribucionesConcepto = grupo
                     .OrderBy(d => periodOrder.TryGetValue(d.PeriodoProgramaId, out var orden) ? orden : int.MaxValue)
@@ -301,7 +301,7 @@ namespace SOPRO.WinForms.Forms
             for (int i = 0; i < distribucionesConcepto.Count; i++)
             {
                 var distribucion = distribucionesConcepto[i];
-                decimal importe = new MotorCalculoSopro(_proyecto).Multiplicar(distribucion.CantidadProgramada, precioUnitario);
+                decimal importe = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto, distribucion.CantidadProgramada, precioUnitario);
                 importes[i] = importe;
                 suma += importe;
                 if (distribucion.CantidadProgramada != 0m || importe != 0m)

@@ -49,7 +49,6 @@ namespace SOPRO.WinForms.Forms
                 .ToDictionary(c => c.NombreInterno, StringComparer.OrdinalIgnoreCase);
 
             var baseRows = BuildDisplayRows();
-
             using var wb = new XLWorkbook();
             var ws = wb.Worksheets.Add("Financiamiento");
 
@@ -103,8 +102,8 @@ namespace SOPRO.WinForms.Forms
             {
                 ingresoAcum += f.AnticipoRecibido + f.EstimacionCobrada - f.AmortizacionAnticipo;
                 egresoAcum += f.Egresos;
-                ingresosAcumulados.Add(new MotorCalculoSopro(_proyecto).RedondearImporte(ingresoAcum));
-                egresosAcumulados.Add(new MotorCalculoSopro(_proyecto).RedondearImporte(egresoAcum));
+                ingresosAcumulados.Add(BudgetPricingService.RoundImporte(_proyecto, ingresoAcum));
+                egresosAcumulados.Add(BudgetPricingService.RoundImporte(_proyecto, egresoAcum));
             }
 
             decimal[] avanceProgramado = totalBase > 0m

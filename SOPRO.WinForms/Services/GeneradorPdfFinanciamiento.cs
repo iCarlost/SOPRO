@@ -362,13 +362,12 @@ namespace SOPRO.WinForms.Services
             var egresosAcum = new List<decimal>();
             decimal ingresoAcum = 0m;
             decimal egresoAcum = 0m;
-            var _motorFin = new MotorCalculoSopro(proyecto);
             foreach (var f in filas)
             {
                 ingresoAcum += f.AnticipoRecibido + f.EstimacionCobrada - f.AmortizacionAnticipo;
                 egresoAcum += f.Egresos;
-                ingresosAcum.Add(_motorFin.RedondearImporte(ingresoAcum));
-                egresosAcum.Add(_motorFin.RedondearImporte(egresoAcum));
+                ingresosAcum.Add(BudgetPricingService.RoundImporte(proyecto, ingresoAcum));
+                egresosAcum.Add(BudgetPricingService.RoundImporte(proyecto, egresoAcum));
             }
 
             AgregarFilaValores(table, "AVANCE PROGRAMADO", filas, x => avanceProgramado[x], cols, "colPeriodo", "colEgresos", "0.0000%");
