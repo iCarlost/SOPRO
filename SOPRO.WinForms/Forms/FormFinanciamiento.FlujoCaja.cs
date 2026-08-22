@@ -6,6 +6,7 @@ using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
+using Sopro.Calculation;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -104,6 +105,11 @@ namespace SOPRO.WinForms.Forms
                 .Where(d => d.PeriodoPrograma.ProgramaObraId == programa.Id)
                 .ToList();
 
+            var engine = new SoproCalculationEngine(
+                _proyecto.DecimalesCantidad,
+                _proyecto.DecimalesImporte,
+                _proyecto.DecimalesPorcentaje);
+
             foreach (var periodo in periodos)
             {
                 result[periodo.NumeroPeriodo] = new DisplayFlowBaseRow
@@ -132,13 +138,13 @@ namespace SOPRO.WinForms.Forms
                 if (cdUnit <= 0m && concepto.CostoDirectoTotal > 0m)
                     cdUnit = concepto.CostoDirectoTotal / cantidadConcepto;
 
-                decimal totalCdConcepto = new MotorCalculoSopro(_proyecto).Multiplicar(cantidadConcepto, cdUnit);
+                decimal totalCdConcepto = engine.Multiply(cantidadConcepto, cdUnit);
 
                 var distribucionesConcepto = grupo
                     .OrderBy(d => periodOrder.TryGetValue(d.PeriodoProgramaId, out var orden) ? orden : int.MaxValue)
                     .ToList();
 
-                DistribuirImportePorConcepto(distribucionesConcepto, cdUnit, totalCdConcepto, result, periodOrder, true);
+                DistribuirImportePorConcepto(distribucionesConcepto, cdUnit, totalCdConcepto, result, periodOrder, true, engine);
             }
 
             foreach (var periodo in periodos)
@@ -289,7 +295,8 @@ namespace SOPRO.WinForms.Forms
             decimal totalEsperado,
             Dictionary<int, DisplayFlowBaseRow> result,
             Dictionary<int, int> periodOrder,
-            bool esCostoDirecto)
+            bool esCostoDirecto,
+            SoproCalculationEngine engine)
         {
             if (distribucionesConcepto.Count == 0 || totalEsperado == 0m)
                 return;
@@ -301,7 +308,7 @@ namespace SOPRO.WinForms.Forms
             for (int i = 0; i < distribucionesConcepto.Count; i++)
             {
                 var distribucion = distribucionesConcepto[i];
-                decimal importe = new MotorCalculoSopro(_proyecto).Multiplicar(distribucion.CantidadProgramada, precioUnitario);
+                decimal importe = engine.Multiply(distribucion.CantidadProgramada, precioUnitario);
                 importes[i] = importe;
                 suma += importe;
                 if (distribucion.CantidadProgramada != 0m || importe != 0m)
