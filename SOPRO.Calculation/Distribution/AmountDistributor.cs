@@ -38,7 +38,7 @@ internal static class AmountDistributor
     }
 
     /// <summary>
-    /// Same as <see cref="DistributeAmount"/> using <c>precision.QuantityDecimals</c>.
+    /// Same as <c>DistributeAmount</c> using <c>precision.QuantityDecimals</c>.
     /// </summary>
     public static IReadOnlyList<decimal> DistributeQuantity(
         decimal total,

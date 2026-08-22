@@ -11,12 +11,19 @@ namespace Sopro.Calculation;
 /// </remarks>
 public sealed record CalculationPrecision
 {
+    /// <summary>Number of decimals used for quantities.</summary>
     public int QuantityDecimals { get; }
 
+    /// <summary>Number of decimals used for monetary amounts.</summary>
     public int AmountDecimals { get; }
 
+    /// <summary>Number of decimals used for percentages.</summary>
     public int PercentageDecimals { get; }
 
+    /// <summary>Creates a precision configuration, normalizing negative values to zero.</summary>
+    /// <param name="quantityDecimals">Decimals used for quantities.</param>
+    /// <param name="amountDecimals">Decimals used for amounts.</param>
+    /// <param name="percentageDecimals">Decimals used for percentages.</param>
     public CalculationPrecision(int quantityDecimals, int amountDecimals, int percentageDecimals)
     {
         QuantityDecimals = Math.Max(0, quantityDecimals);
