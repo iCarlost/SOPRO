@@ -42,4 +42,39 @@ public class ExplosionInsumosServiceTests
         Assert.AreEqual(300.00m, cabo.PrecioUnitario);
         Assert.AreEqual(30.00m, cabo.Cantidad);
     }
+
+    [TestMethod]
+    public void Calculate_CostoDirectoConProductoNoVisible_ConservaParidadConFachada()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+
+        scenario.Concepto.Cantidad = 3m;
+        scenario.Concepto.CostoDirectoUnitario = 0.005m;
+        context.SaveChanges();
+
+        var esperado = new MotorCalculoSopro(scenario.Proyecto).SumarCostoDirecto(
+            context.ConceptosPresupuesto
+                .Where(c => c.ProyectoId == scenario.Proyecto.Id)
+                .ToList());
+        var result = new ExplosionInsumosService().Calculate(context, scenario.Proyecto.Id, "Todos");
+
+        Assert.AreEqual(0.03m, esperado);
+        Assert.AreEqual(esperado, result.CostoDirectoPresupuesto);
+    }
+
+    [TestMethod]
+    public void Calculate_FilasConservanFormatoLegacy()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+        var result = new ExplosionInsumosService().Calculate(context, scenario.Proyecto.Id, "Todos");
+        var formatter = new MotorCalculoSopro(scenario.Proyecto);
+
+        var total = result.Rows.Single(r => r.Descripcion == "TOTAL DEL REPORTE");
+        var referencia = result.Rows.Single(r => r.Descripcion == "Costo Directo (Presupuesto)");
+
+        Assert.AreEqual(formatter.FormatImporte(result.CostoDirectoTotal), total.ImporteTexto);
+        Assert.AreEqual(formatter.FormatImporte(result.CostoDirectoPresupuesto), referencia.ImporteTexto);
+    }
 }

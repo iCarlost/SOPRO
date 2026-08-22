@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.Models.Explosion;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using Sopro.Calculation;
 
 namespace SOPRO.Application.Services
 {
@@ -47,7 +48,11 @@ namespace SOPRO.Application.Services
             if (proyecto == null)
                 return new ExplosionCalculationResult();
 
-            var motor = new MotorCalculoSopro(proyecto);
+            var engine = new SoproCalculationEngine(
+                proyecto.DecimalesCantidad,
+                proyecto.DecimalesImporte,
+                proyecto.DecimalesPorcentaje);
+            var formatter = new MotorCalculoSopro(proyecto);
 
             var conceptos = context.ConceptosPresupuesto
                 .Where(c => c.ProyectoId == proyectoId && !c.EsAgrupador && c.MatrizId != null)
@@ -101,12 +106,12 @@ namespace SOPRO.Application.Services
                 if (concepto.Matriz == null) continue;
 
                 // Importe del concepto con precisión de pantalla
-                decimal importeConcepto = motor.Multiplicar(
+                decimal importeConcepto = engine.Multiply(
                     concepto.Cantidad, concepto.CostoDirectoUnitario);
 
                 if (importeConcepto == 0m) continue;
 
-                ExplotarMatriz(motor, concepto.Matriz, importeConcepto, concepto.Cantidad,
+                ExplotarMatriz(engine, concepto.Matriz, importeConcepto, concepto.Cantidad,
                                materiales, manoObra, maquinaria, herramientas);
             }
 
@@ -122,15 +127,24 @@ namespace SOPRO.Application.Services
 
             // Total explosión = suma de todos los importes acumulados
             result.CostoDirectoTotal =
-                motor.SumarImportes(result.Materiales.Values.Select(i => i.Cantidad))
-              + motor.SumarImportes(result.ManoObra.Values.Select(i => i.Cantidad))
-              + motor.SumarImportes(result.Maquinaria.Values.Select(i => i.Cantidad))
-              + motor.SumarImportes(result.Herramientas.Values.Select(i => i.Cantidad));
+                engine.SumAmounts(result.Materiales.Values.Select(i => i.Cantidad))
+              + engine.SumAmounts(result.ManoObra.Values.Select(i => i.Cantidad))
+              + engine.SumAmounts(result.Maquinaria.Values.Select(i => i.Cantidad))
+              + engine.SumAmounts(result.Herramientas.Values.Select(i => i.Cantidad));
 
             // CD del presupuesto (para mostrar diferencia residual)
-            result.CostoDirectoPresupuesto = motor.SumarCostoDirecto(conceptos);
+            result.CostoDirectoPresupuesto = engine.SumDirectCost(conceptos.Select(c => new DirectCostLine(
+                c.Cantidad,
+                c.CostoDirectoUnitario,
+                c.EsAgrupador,
+                c.MatrizId.HasValue)));
 
-            result.Rows = BuildRows(result, filtro ?? "Todos", motor);
+            result.Rows = BuildRows(
+                result,
+                filtro ?? "Todos",
+                engine,
+                formatter.FormatCantidad,
+                formatter.FormatImporte);
             return result;
         }
 
@@ -139,7 +153,7 @@ namespace SOPRO.Application.Services
         // ════════════════════════════════════════════════════════════════════════
 
         private static void ExplotarMatriz(
-            MotorCalculoSopro motor,
+            SoproCalculationEngine engine,
             Matriz matriz,
             decimal importeBase,       // importe del concepto (o auxiliar padre) a distribuir
             decimal cantidadBase,      // cantidad del concepto (para acumular cantidad física)
@@ -152,7 +166,7 @@ namespace SOPRO.Application.Services
 
             // ── Paso 1: recalcular los importes unitarios de cada componente
             //           con el motor y los PUs actuales del catálogo ────────────
-            var importesUnitarios = CalcularImportesUnitarios(motor, matriz.Componentes);
+            var importesUnitarios = CalcularImportesUnitarios(engine, matriz.Componentes);
 
             decimal cdUnitarioMatriz = importesUnitarios.Values.Sum();
             if (cdUnitarioMatriz == 0m) return;  // matriz vacía o sin PUs
@@ -166,7 +180,7 @@ namespace SOPRO.Application.Services
             {
                 if (!importesUnitarios.TryGetValue(comp.Id, out decimal importeUnitComp)) continue;
                 if (importeUnitComp == 0m) continue;
-                decimal importeComp = motor.RedondearImporte(
+                decimal importeComp = engine.RoundAmount(
                     importeBase * importeUnitComp / cdUnitarioMatriz);
                 if (importeComp == 0m) continue;
                 distribComp.Add((comp, importeComp));
@@ -174,7 +188,7 @@ namespace SOPRO.Application.Services
             }
 
             // Residuo = importeBase - sumaDistribuida (puede ser +0.01 o -0.01)
-            decimal residuo = motor.RedondearImporte(importeBase - sumaDistribuida);
+            decimal residuo = engine.RoundAmount(importeBase - sumaDistribuida);
             if (residuo != 0m && distribComp.Count > 0)
             {
                 // Absorber en el último componente no-auxiliar elegible
@@ -235,7 +249,7 @@ namespace SOPRO.Application.Services
                     case TipoComponenteMatriz.Auxiliar when comp.Auxiliar != null:
                         // Recursión: el auxiliar recibe su porción del importe
                         // cantidadFisica pasa como cantidadBase para el nivel siguiente
-                        ExplotarMatriz(motor, comp.Auxiliar, importeComp, cantidadFisica,
+                        ExplotarMatriz(engine, comp.Auxiliar, importeComp, cantidadFisica,
                                        materiales, manoObra, maquinaria, herramientas);
                         break;
                 }
@@ -253,7 +267,7 @@ namespace SOPRO.Application.Services
         /// Devuelve un dict ComponenteId → importeUnitario.
         /// </summary>
         private static Dictionary<int, decimal> CalcularImportesUnitarios(
-            MotorCalculoSopro motor, ICollection<ComponenteMatriz> componentes)
+            SoproCalculationEngine engine, ICollection<ComponenteMatriz> componentes)
         {
             var resultado = new Dictionary<int, decimal>();
 
@@ -267,14 +281,14 @@ namespace SOPRO.Application.Services
                 if (comp.TipoComponente == TipoComponenteMatriz.ManoDeObra
                     && comp.ManoDeObra != null && !comp.ManoDeObra.EsPorcentajeMO)
                 {
-                    imp = motor.Multiplicar(comp.Cantidad, comp.ManoDeObra.SalarioReal);
+                    imp = engine.Multiply(comp.Cantidad, comp.ManoDeObra.SalarioReal);
                     baseMO += imp;
                 }
                 else if (comp.TipoComponente == TipoComponenteMatriz.Auxiliar
                          && comp.Auxiliar?.Tipo == TipoMatriz.Cuadrilla
                          && comp.Auxiliar != null)
                 {
-                    imp = motor.Multiplicar(comp.Cantidad, comp.Auxiliar.CostoDirecto);
+                    imp = engine.Multiply(comp.Cantidad, comp.Auxiliar.CostoDirecto);
                     baseMO += imp;
                 }
 
@@ -290,22 +304,22 @@ namespace SOPRO.Application.Services
                 decimal imp = comp.TipoComponente switch
                 {
                     TipoComponenteMatriz.Material when comp.Material != null =>
-                        motor.Multiplicar(comp.Cantidad, comp.Material.PrecioUnitario),
+                        engine.Multiply(comp.Cantidad, comp.Material.PrecioUnitario),
 
                     TipoComponenteMatriz.Maquinaria when comp.Maquinaria != null =>
-                        motor.Multiplicar(comp.Cantidad, comp.Maquinaria.CostoHorario),
+                        engine.Multiply(comp.Cantidad, comp.Maquinaria.CostoHorario),
 
                     TipoComponenteMatriz.ManoDeObra when comp.ManoDeObra?.EsPorcentajeMO == true =>
-                        motor.RedondearImporte(comp.Cantidad * baseMO),
+                        engine.RoundAmount(comp.Cantidad * baseMO),
 
                     TipoComponenteMatriz.Herramienta when comp.Herramienta != null =>
                         comp.Herramienta.EsPorcentajeMO
-                            ? motor.RedondearImporte(comp.Cantidad * baseMO)
-                            : motor.Multiplicar(comp.Cantidad, comp.Herramienta.PrecioUnitario),
+                            ? engine.RoundAmount(comp.Cantidad * baseMO)
+                            : engine.Multiply(comp.Cantidad, comp.Herramienta.PrecioUnitario),
 
                     TipoComponenteMatriz.Auxiliar when comp.Auxiliar != null
                         && comp.Auxiliar.Tipo != TipoMatriz.Cuadrilla =>
-                        motor.Multiplicar(comp.Cantidad, comp.Auxiliar.CostoDirecto),
+                        engine.Multiply(comp.Cantidad, comp.Auxiliar.CostoDirecto),
 
                     _ => 0m
                 };
@@ -407,18 +421,22 @@ namespace SOPRO.Application.Services
         // ════════════════════════════════════════════════════════════════════════
 
         private static List<ExplosionRowDisplay> BuildRows(
-            ExplosionCalculationResult data, string filtro, MotorCalculoSopro motor)
+            ExplosionCalculationResult data,
+            string filtro,
+            SoproCalculationEngine engine,
+            Func<decimal, string> formatCantidad,
+            Func<decimal, string> formatImporte)
         {
             var rows = new List<ExplosionRowDisplay>();
 
             if (filtro == "Todos" || filtro == "Materiales")
-                AddSection(rows, "MATERIALES",   data.Materiales,   data.CostoDirectoTotal, motor);
+                AddSection(rows, "MATERIALES",   data.Materiales,   data.CostoDirectoTotal, engine, formatCantidad, formatImporte);
             if (filtro == "Todos" || filtro == "Mano de Obra")
-                AddSection(rows, "MANO DE OBRA", data.ManoObra,     data.CostoDirectoTotal, motor);
+                AddSection(rows, "MANO DE OBRA", data.ManoObra,     data.CostoDirectoTotal, engine, formatCantidad, formatImporte);
             if (filtro == "Todos" || filtro == "Herramientas")
-                AddSection(rows, "HERRAMIENTAS", data.Herramientas, data.CostoDirectoTotal, motor);
+                AddSection(rows, "HERRAMIENTAS", data.Herramientas, data.CostoDirectoTotal, engine, formatCantidad, formatImporte);
             if (filtro == "Todos" || filtro == "Maquinaria")
-                AddSection(rows, "MAQUINARIA",   data.Maquinaria,   data.CostoDirectoTotal, motor);
+                AddSection(rows, "MAQUINARIA",   data.Maquinaria,   data.CostoDirectoTotal, engine, formatCantidad, formatImporte);
 
             if (filtro == "Todos")
             {
@@ -427,7 +445,7 @@ namespace SOPRO.Application.Services
                 {
                     Kind         = ExplosionRowKind.TotalGeneral,
                     Descripcion  = "TOTAL DEL REPORTE",
-                    ImporteTexto = motor.FormatImporte(data.CostoDirectoTotal),
+                    ImporteTexto = formatImporte(data.CostoDirectoTotal),
                     Porcentaje   = 1.0m
                 });
 
@@ -440,14 +458,14 @@ namespace SOPRO.Application.Services
                 {
                     Kind         = ExplosionRowKind.Referencia,
                     Descripcion  = "Costo Directo (Presupuesto)",
-                    ImporteTexto = motor.FormatImporte(data.CostoDirectoPresupuesto),
+                    ImporteTexto = formatImporte(data.CostoDirectoPresupuesto),
                     Porcentaje   = 0m
                 });
                 rows.Add(new ExplosionRowDisplay
                 {
                     Kind         = ExplosionRowKind.Referencia,
                     Descripcion  = "Diferencia por redondeo",
-                    ImporteTexto = motor.FormatImporte(diferencia),
+                    ImporteTexto = formatImporte(diferencia),
                     Porcentaje   = pctDif
                 });
             }
@@ -460,7 +478,9 @@ namespace SOPRO.Application.Services
             string titulo,
             Dictionary<int, ExplosionInsumoAccumulated> dic,
             decimal costoDirectoTotal,
-            MotorCalculoSopro motor)
+            SoproCalculationEngine engine,
+            Func<decimal, string> formatCantidad,
+            Func<decimal, string> formatImporte)
         {
             if (dic.Count == 0) return;
 
@@ -482,10 +502,10 @@ namespace SOPRO.Application.Services
 
                 // Normal:     CantidadFisica = inferida, PrecioUnitario = fijo del catálogo
                 // Porcentual: CantidadFisica = física acumulada, PrecioUnitario = inferido
-                string cantTexto = esPct ? "—" : motor.FormatCantidad(ins.CantidadFisica);
+                string cantTexto = esPct ? "—" : formatCantidad(ins.CantidadFisica);
                 string puTexto   = esPct
-                    ? (ins.PrecioUnitario > 0m ? motor.FormatImporte(ins.PrecioUnitario) : "—")
-                    : motor.FormatImporte(ins.PrecioUnitario);
+                    ? (ins.PrecioUnitario > 0m ? formatImporte(ins.PrecioUnitario) : "—")
+                    : formatImporte(ins.PrecioUnitario);
 
                 rows.Add(new ExplosionRowDisplay
                 {
@@ -495,17 +515,17 @@ namespace SOPRO.Application.Services
                     Unidad              = ins.Unidad,
                     CantidadTexto       = cantTexto,
                     PrecioUnitarioTexto = puTexto,
-                    ImporteTexto        = motor.FormatImporte(importe),
+                    ImporteTexto        = formatImporte(importe),
                     Porcentaje          = pct
                 });
             }
 
-            decimal totalSeccion = motor.SumarImportes(dic.Values.Select(i => i.Cantidad));
+            decimal totalSeccion = engine.SumAmounts(dic.Values.Select(i => i.Cantidad));
             rows.Add(new ExplosionRowDisplay
             {
                 Kind         = ExplosionRowKind.Total,
                 Descripcion  = $"TOTAL {titulo}",
-                ImporteTexto = motor.FormatImporte(totalSeccion),
+                ImporteTexto = formatImporte(totalSeccion),
                 Porcentaje   = costoDirectoTotal > 0m ? totalSeccion / costoDirectoTotal : 0m
             });
             rows.Add(new ExplosionRowDisplay { Kind = ExplosionRowKind.Vacia });
