@@ -36,7 +36,7 @@ namespace SOPRO.WinForms.Forms
             {
                 if (concepto.Matriz == null) continue;
                 // Calcular con el mismo redondeo que usa el presupuesto en pantalla
-                decimal importeConcepto = new MotorCalculoSopro(_proyecto).Multiplicar(
+                decimal importeConcepto = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto,
                     concepto.Cantidad, concepto.CostoDirectoUnitario);
                 ExplotarMatriz(concepto.Matriz, importeConcepto, concepto.Cantidad,
                     materiales, manoObra, maquinaria, herramientas);
