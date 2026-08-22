@@ -3,6 +3,7 @@ using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SOPRO.Application.Services;
+using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.Tests.TestInfrastructure;
@@ -30,6 +31,56 @@ public class RecalculoGlobalServiceTests
         Assert.AreEqual(100.00m, scenario.MatrizApu.CostoDirecto, "El C.D. de la matriz no debe cambiar con porcentajes 0.");
         Assert.AreEqual(100.00m, scenario.Concepto.CostoDirectoUnitario);
         Assert.AreEqual(1000.00m, scenario.Concepto.CostoDirectoTotal);
+    }
+
+    [TestMethod]
+    public void Ejecutar_ConPorcentajes_ConservaLaCascadaLegacyEnAmbosModos()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+        var service = new RecalculoGlobalService();
+
+        scenario.Proyecto.PorcentajeIndirectosCentral = 10m;
+        scenario.Proyecto.PorcentajeIndirectosCampo = 5m;
+        scenario.Proyecto.PorcentajeFinanciamiento = 2m;
+        scenario.Proyecto.PorcentajeUtilidad = 3m;
+        scenario.Proyecto.PorcentajeCargosAdicionales = 1m;
+        scenario.Proyecto.ModoCalculoPorcentajes = "Acumulables";
+        context.SaveChanges();
+
+        var fachada = new MotorCalculoSopro(scenario.Proyecto);
+        var esperadoAcumulable = fachada.CalcularPrecioUnitario(100m, new BudgetPercentageInput
+        {
+            IndirectosCentral = 10m,
+            IndirectosCampo = 5m,
+            Financiamiento = 2m,
+            Utilidad = 3m,
+            CargosAdicionales = 1m,
+            ModoCalculoPorcentajes = "Acumulables"
+        });
+
+        service.Ejecutar(context, scenario.Proyecto.Id);
+
+        Assert.AreEqual(esperadoAcumulable.PrecioUnitario, scenario.Concepto.PrecioUnitario);
+        Assert.AreEqual(fachada.Multiplicar(10m, esperadoAcumulable.PrecioUnitario), scenario.Concepto.ImporteTotal);
+
+        scenario.Proyecto.ModoCalculoPorcentajes = "SobreCD";
+        context.SaveChanges();
+
+        var esperadoSobreCd = fachada.CalcularPrecioUnitario(100m, new BudgetPercentageInput
+        {
+            IndirectosCentral = 10m,
+            IndirectosCampo = 5m,
+            Financiamiento = 2m,
+            Utilidad = 3m,
+            CargosAdicionales = 1m,
+            ModoCalculoPorcentajes = "SobreCD"
+        });
+
+        service.Ejecutar(context, scenario.Proyecto.Id);
+
+        Assert.AreEqual(esperadoSobreCd.PrecioUnitario, scenario.Concepto.PrecioUnitario);
+        Assert.AreEqual(fachada.Multiplicar(10m, esperadoSobreCd.PrecioUnitario), scenario.Concepto.ImporteTotal);
     }
 
     [TestMethod]
