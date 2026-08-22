@@ -1,6 +1,6 @@
 # Plan 01: Desacoplamiento del Núcleo y la Aplicación
 
-**Estado:** N0 cerrado (PR #2, `508188a`); N1 cerrado (PR #3, `b9a4576`+`eaa2f67`); N2 cerrado; N3 (slice inicial de Application) cerrado; N4 cerrado (PRs N4-1..N4-5 integrados, Gate N4 operativo cerrado); N5 en curso (14/17 grupos completos, 0 parciales, 3 pendientes; rama `feat/application-n5-18-explosioninsumos` en revisión); N6 scaffold parcial (PackageId/versión 0.1.0/README presentes; falta CI, doc XML, changelog, global.json, consumidor externo, baseline API); N7 no iniciado.
+**Estado:** N0 cerrado (PR #2, `508188a`); N1 cerrado (PR #3, `b9a4576`+`eaa2f67`); N2 cerrado; N3 (slice inicial de Application) cerrado; N4 cerrado (PRs N4-1..N4-5 integrados, Gate N4 operativo cerrado); N5 en curso (15/17 grupos completos, 0 parciales, 2 pendientes; rama `feat/application-n5-19-recalculoglobal` en revisión); N6 scaffold parcial (PackageId/versión 0.1.0/README presentes; falta CI, doc XML, changelog, global.json, consumidor externo, baseline API); N7 no iniciado.
 **Decisión arquitectónica:** [ADR-001](ADR-001-ARQUITECTURA-OBJETIVO.md)  
 **Plan dependiente:** [Plan 02: Migración WinForms a WPF](PLAN-02-MIGRACION-WINFORMS-WPF.md)  
 **Distribución actual:** repositorio y paquete privados; sin publicación en NuGet.org
@@ -449,7 +449,7 @@ No se sustituirá `IRepository<T>` por otro repositorio genérico. Los nuevos pu
 
 ### Estado ejecutivo de N5 (17 grupos del Orden recomendado)
 
-La numeración `N5-1`…`N5-18` corresponde a PRs integrados o en revisión; algunos grupos originales se dividieron en varios PR, por lo que el conteo de PRs no equivale al de grupos. Estado actual de la rama `feat/application-n5-18-explosioninsumos`: **14 completos, 0 parciales, 3 pendientes** (Programación y Curva S y Explosión de insumos completas; restan recálculo global, financiamiento y WinForms/reporting).
+La numeración `N5-1`…`N5-19` corresponde a PRs integrados o en revisión; algunos grupos originales se dividieron en varios PR, por lo que el conteo de PRs no equivale al de grupos. Estado actual de la rama `feat/application-n5-19-recalculoglobal`: **15 completos, 0 parciales, 2 pendientes** (Programación y Curva S, Explosión de insumos y Recálculo global completas; restan financiamiento y WinForms/reporting).
 
 | # | Grupo (Orden N5) | Consumidor(es) | Estado | PRs |
 |---|---|---|---|---|
@@ -467,11 +467,11 @@ La numeración `N5-1`…`N5-18` corresponde a PRs integrados o en revisión; alg
 | 12 | Imports externos | `ExternalMatrixImportService`, `ExternalInsumoImportService` | Completo | N5-12, N5-13 |
 | 13 | Programación y Curva S | `ProgramacionCurvaSService`, `ProgramacionDistributionService`, `ProgramacionCalculationService` | Completo | N5-14, N5-15, N5-17 completos |
 | 14 | Explosión y programa de insumos | `ProgramacionInsumosService`, `ExplosionInsumosService` | Completo | N5-16, N5-18 completos |
-| 15 | Recálculo global | `RecalculoGlobalService` | Pendiente | N5-19 |
+| 15 | Recálculo global | `RecalculoGlobalService` | Completo | N5-19 |
 | 16 | Financiamiento | `FinanciamientoCalculationService` | Pendiente | — |
 | 17 | WinForms y reporting | UI + PDF/Excel | Pendiente | — |
 
-`BudgetLoadService` (N5-6) conserva `MotorCalculoSopro` **solo para `Format*`** (contrato N0 fila 9); no contiene cálculos pendientes. Los grupos pendientes aún reciben la fachada como parámetro privado de tipo motor (5 en `RecalculoGlobalService`) o construyen `MotorCalculoSopro` directamente en WinForms (~20 ocurrencias). `ExplosionInsumosService` conserva la fachada únicamente como formateador local, sin exponerla en parámetros privados.
+`BudgetLoadService` (N5-6) conserva `MotorCalculoSopro` **solo para `Format*`** (contrato N0 fila 9); no contiene cálculos pendientes. Los únicos consumidores N5 pendientes son Financiamiento y WinForms/reporting; WinForms aún construye `MotorCalculoSopro` directamente (~20 ocurrencias). `ExplosionInsumosService` conserva la fachada únicamente como formateador local, sin exponerla en parámetros privados.
 
 ### Verificación por consumidor
 

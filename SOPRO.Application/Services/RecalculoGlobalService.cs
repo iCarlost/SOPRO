@@ -6,12 +6,13 @@ using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using Sopro.Calculation;
 
 namespace SOPRO.Application.Services
 {
     // ╔══════════════════════════════════════════════════════════════════════════╗
     // ║     RECÁLCULO GLOBAL — v1.0                                             ║
-    // ║     Invoca el MotorCalculoSopro en el orden correcto para actualizar    ║
+    // ║     Invoca el motor de cálculo en el orden correcto para actualizar      ║
     // ║     todo el presupuesto cuando el usuario cambia los decimales           ║
     // ╚══════════════════════════════════════════════════════════════════════════╝
 
@@ -56,27 +57,30 @@ namespace SOPRO.Application.Services
             var proyecto = ctx.Proyectos.Find(proyectoId)
                 ?? throw new InvalidOperationException($"Proyecto {proyectoId} no encontrado.");
 
-            var motor = new MotorCalculoSopro(proyecto);
-            var pct   = BuildPercentageInput(proyecto);
+            var engine = new SoproCalculationEngine(
+                proyecto.DecimalesCantidad,
+                proyecto.DecimalesImporte,
+                proyecto.DecimalesPorcentaje);
+            var pct = BuildPercentageInput(proyecto);
 
             // Fase 1: Componentes de matrices
-            resultado.ComponentesActualizados = RecalcularComponentesMatrices(ctx, proyectoId, motor);
+            resultado.ComponentesActualizados = RecalcularComponentesMatrices(ctx, proyectoId, engine);
             ctx.SaveChanges();
 
             // Fase 2: CostoDirecto de matrices (suma de componentes ya corregidos)
-            resultado.MatricesActualizadas = RecalcularCostoDirectoMatrices(ctx, proyectoId, motor);
+            resultado.MatricesActualizadas = RecalcularCostoDirectoMatrices(ctx, proyectoId, engine);
             ctx.SaveChanges();
 
             // Fase 3: Conceptos hoja del presupuesto
-            resultado.ConceptosActualizados = RecalcularConceptosHoja(ctx, proyecto, motor, pct);
+            resultado.ConceptosActualizados = RecalcularConceptosHoja(ctx, proyecto, engine, pct);
             ctx.SaveChanges();
 
             // Fase 4: Agrupadores bottom-up
-            resultado.AgrupadoresTotalesRecalculados = RecalcularAgrupadores(ctx, proyectoId, motor);
+            resultado.AgrupadoresTotalesRecalculados = RecalcularAgrupadores(ctx, proyectoId, engine);
             ctx.SaveChanges();
 
             // Fase 5: Distribuciones del programa de obra
-            resultado.DistribucionesActualizadas = RecalcularDistribuciones(ctx, proyecto, motor);
+            resultado.DistribucionesActualizadas = RecalcularDistribuciones(ctx, proyecto, engine);
             ctx.SaveChanges();
 
             // Fase 6: Programa de obra — recalcular fechas, ruta crítica y redistribuir
@@ -90,7 +94,7 @@ namespace SOPRO.Application.Services
         // FASE 1: COMPONENTES DE MATRICES
         // ════════════════════════════════════════════════════════════════════════
 
-        private static int RecalcularComponentesMatrices(SOPROContext ctx, int proyectoId, MotorCalculoSopro motor)
+        private static int RecalcularComponentesMatrices(SOPROContext ctx, int proyectoId, SoproCalculationEngine engine)
         {
             // Cargamos todos los componentes de todas las matrices del proyecto,
             // incluyendo las relaciones necesarias para saber el P.U. del insumo.
@@ -128,9 +132,9 @@ namespace SOPRO.Application.Services
             {
                 // Usamos el servicio existente — ya recibe decimalesImporte como parámetro ✅
                 var totals = MatrixComponentCalculationService.Recalculate(
-                    matriz.Componentes.ToList(), motor.DecimalesImporte);
+                    matriz.Componentes.ToList(), engine.AmountDecimals);
 
-                matriz.CostoDirecto = motor.RedondearImporte(totals.CostoDirectoTotal);
+                matriz.CostoDirecto = engine.RoundAmount(totals.CostoDirectoTotal);
                 total += matriz.Componentes.Count;
             }
 
@@ -141,7 +145,7 @@ namespace SOPRO.Application.Services
         // FASE 2: COSTODIRECTO DE MATRICES
         // ════════════════════════════════════════════════════════════════════════
 
-        private static int RecalcularCostoDirectoMatrices(SOPROContext ctx, int proyectoId, MotorCalculoSopro motor)
+        private static int RecalcularCostoDirectoMatrices(SOPROContext ctx, int proyectoId, SoproCalculationEngine engine)
         {
             // Después del SaveChanges de fase 1, los componentes ya tienen Importe correcto.
             // Recalculamos el CostoDirecto de cada matriz como suma de sus componentes.
@@ -151,7 +155,7 @@ namespace SOPRO.Application.Services
                 .ToList();
 
             foreach (var m in matrices)
-                m.CostoDirecto = motor.SumarImportes(m.Componentes.Select(c => c.Importe));
+                m.CostoDirecto = engine.SumAmounts(m.Componentes.Select(c => c.Importe));
 
             return matrices.Count;
         }
@@ -161,7 +165,7 @@ namespace SOPRO.Application.Services
         // ════════════════════════════════════════════════════════════════════════
 
         private static int RecalcularConceptosHoja(SOPROContext ctx, Proyecto proyecto,
-            MotorCalculoSopro motor, BudgetPercentageInput pct)
+            SoproCalculationEngine engine, PricePercentageInput pct)
         {
             var conceptos = ctx.ConceptosPresupuesto
                 .Include(c => c.Matriz)
@@ -173,13 +177,13 @@ namespace SOPRO.Application.Services
                 if (c.Matriz == null) continue;
 
                 // CD unitario = CostoDirecto de la matriz (ya recalculado en Fase 2)
-                c.CostoDirectoUnitario = motor.RedondearImporte(c.Matriz.CostoDirecto);
-                c.CostoDirectoTotal    = motor.Multiplicar(c.Cantidad, c.CostoDirectoUnitario);
+                c.CostoDirectoUnitario = engine.RoundAmount(c.Matriz.CostoDirecto);
+                c.CostoDirectoTotal    = engine.Multiply(c.Cantidad, c.CostoDirectoUnitario);
 
                 // Precio Unitario con cascada de porcentajes redondeada
-                var desglose   = motor.CalcularPrecioUnitario(c.CostoDirectoUnitario, pct);
-                c.PrecioUnitario = desglose.PrecioUnitario;
-                c.ImporteTotal   = motor.Multiplicar(c.Cantidad, c.PrecioUnitario);
+                var desglose = engine.CalculateUnitPrice(c.CostoDirectoUnitario, pct);
+                c.PrecioUnitario = desglose.UnitPrice;
+                c.ImporteTotal   = engine.Multiply(c.Cantidad, c.PrecioUnitario);
 
                 c.FechaModificacion = DateTime.Now;
             }
@@ -191,7 +195,7 @@ namespace SOPRO.Application.Services
         // FASE 4: AGRUPADORES (bottom-up)
         // ════════════════════════════════════════════════════════════════════════
 
-        private static int RecalcularAgrupadores(SOPROContext ctx, int proyectoId, MotorCalculoSopro motor)
+        private static int RecalcularAgrupadores(SOPROContext ctx, int proyectoId, SoproCalculationEngine engine)
         {
             // Cargar toda la jerarquía del presupuesto
             var todos = ctx.ConceptosPresupuesto
@@ -210,8 +214,8 @@ namespace SOPRO.Application.Services
                 // Sumar los CostoDirectoTotal de los hijos directos
                 var hijos = todos.Where(c => c.PadreId == agrupador.Id).ToList();
 
-                decimal totalCD     = motor.SumarImportes(hijos.Select(h => h.CostoDirectoTotal));
-                decimal totalImporte = motor.SumarImportes(hijos.Select(h => h.ImporteTotal));
+                decimal totalCD     = engine.SumAmounts(hijos.Select(h => h.CostoDirectoTotal));
+                decimal totalImporte = engine.SumAmounts(hijos.Select(h => h.ImporteTotal));
 
                 agrupador.CostoDirectoTotal = totalCD;
                 agrupador.ImporteTotal       = totalImporte;
@@ -226,7 +230,7 @@ namespace SOPRO.Application.Services
         // FASE 5: DISTRIBUCIONES DEL PROGRAMA DE OBRA
         // ════════════════════════════════════════════════════════════════════════
 
-        private static int RecalcularDistribuciones(SOPROContext ctx, Proyecto proyecto, MotorCalculoSopro motor)
+        private static int RecalcularDistribuciones(SOPROContext ctx, Proyecto proyecto, SoproCalculationEngine engine)
         {
             var actividades = ctx.ActividadesProgramadas
                 .Include(a => a.Distribuciones)
@@ -240,7 +244,7 @@ namespace SOPRO.Application.Services
                 if (act.Distribuciones == null || act.Distribuciones.Count == 0) continue;
 
                 // Recalcular importe total de la actividad con la nueva precisión
-                act.ImporteProgramado = motor.Multiplicar(act.CantidadTotal, act.PrecioUnitario);
+                act.ImporteProgramado = engine.Multiply(act.CantidadTotal, act.PrecioUnitario);
 
                 // Usar los porcentajes existentes como pesos para redistribuir el importe total
                 var distribsOrdenadas = act.Distribuciones
@@ -248,8 +252,8 @@ namespace SOPRO.Application.Services
                     .ToList();
 
                 var pesos    = distribsOrdenadas.Select(d => d.PorcentajeProgramado).ToList();
-                var importes = motor.DistribuirImporte(act.ImporteProgramado, pesos);
-                var cantidades = motor.DistribuirCantidad(act.CantidadTotal,
+                var importes = engine.DistributeAmount(act.ImporteProgramado, pesos);
+                var cantidades = engine.DistributeQuantity(act.CantidadTotal,
                     distribsOrdenadas.Select(d => d.PorcentajeProgramado).ToList());
 
                 for (int i = 0; i < distribsOrdenadas.Count; i++)
@@ -291,15 +295,17 @@ namespace SOPRO.Application.Services
         // HELPERS
         // ════════════════════════════════════════════════════════════════════════
 
-        private static BudgetPercentageInput BuildPercentageInput(Proyecto proyecto)
-            => new BudgetPercentageInput
+        private static PricePercentageInput BuildPercentageInput(Proyecto proyecto)
+            => new PricePercentageInput
             {
-                IndirectosCentral    = proyecto.PorcentajeIndirectosCentral,
-                IndirectosCampo      = proyecto.PorcentajeIndirectosCampo,
-                Financiamiento       = proyecto.PorcentajeFinanciamiento,
-                Utilidad             = proyecto.PorcentajeUtilidad,
-                CargosAdicionales    = proyecto.PorcentajeCargosAdicionales,
-                ModoCalculoPorcentajes = proyecto.ModoCalculoPorcentajes ?? "Acumulables"
+                CentralIndirectsPercentage  = proyecto.PorcentajeIndirectosCentral,
+                FieldIndirectsPercentage    = proyecto.PorcentajeIndirectosCampo,
+                FinancingPercentage         = proyecto.PorcentajeFinanciamiento,
+                ProfitPercentage             = proyecto.PorcentajeUtilidad,
+                AdditionalChargesPercentage = proyecto.PorcentajeCargosAdicionales,
+                Mode = string.Equals(proyecto.ModoCalculoPorcentajes, "SobreCD", StringComparison.OrdinalIgnoreCase)
+                    ? PercentageCalculationMode.OverDirectCost
+                    : PercentageCalculationMode.Accumulative
             };
     }
 
