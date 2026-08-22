@@ -245,7 +245,7 @@ namespace SOPRO.WinForms.Forms
                     concepto.Cantidad = quantityResult.Cantidad;
                     concepto.PrecioUnitario = quantityResult.PrecioUnitario;
                     concepto.ImporteTotal = quantityResult.Importe;
-                    concepto.CostoDirectoTotal = new MotorCalculoSopro(_proyecto).Multiplicar(
+                    concepto.CostoDirectoTotal = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto,
                         quantityResult.Cantidad, concepto.CostoDirectoUnitario);
 
                     // Actualizar totales de padres
