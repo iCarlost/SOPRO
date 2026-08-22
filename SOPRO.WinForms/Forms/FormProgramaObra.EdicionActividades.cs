@@ -334,7 +334,7 @@ namespace SOPRO.WinForms.Forms
 
             // Auditoría: _proyecto es no-nullable por constructor (línea 123 usa _proyecto.Id);
             // el fallback previo a 2 decimales era inalcanzable y rompía precisión de pantalla.
-            dto.ImporteTotal = new MotorCalculoSopro(_proyecto).Multiplicar(dto.CantidadTotal, dto.PrecioUnitario);
+            dto.ImporteTotal = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto, dto.CantidadTotal, dto.PrecioUnitario);
         }
     }
 }
