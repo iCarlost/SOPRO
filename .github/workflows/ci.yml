@@ -137,3 +137,29 @@ jobs:
             ${{ runner.temp }}/packages/SOPRO.Calculation.0.1.0.nupkg
             ${{ runner.temp }}/packages/SOPRO.Calculation.0.1.0.snupkg
           if-no-files-found: error
+
+  external-consumer:
+    name: External consumer validation
+    needs: calculation-package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Pack package into local feed
+        run: dotnet pack SOPRO.Calculation/SOPRO.Calculation.csproj --configuration Release --output .artifacts/packages --nologo
+
+      - name: Restore consumer from local feed only
+        run: dotnet restore consumers/Sopro.Calculation.Consumer/Sopro.Calculation.Consumer.csproj --nologo
+
+      - name: Build consumer without project reference
+        run: dotnet build consumers/Sopro.Calculation.Consumer/Sopro.Calculation.Consumer.csproj --configuration Release --no-restore --nologo
+
+      - name: Run consumer assertions
+        run: dotnet run --project consumers/Sopro.Calculation.Consumer/Sopro.Calculation.Consumer.csproj --configuration Release --no-build
