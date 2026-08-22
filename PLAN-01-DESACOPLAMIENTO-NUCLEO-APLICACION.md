@@ -1,6 +1,6 @@
 # Plan 01: Desacoplamiento del Núcleo y la Aplicación
 
-**Estado:** N0 cerrado (PR #2, `508188a`); N1 cerrado (PR #3, `b9a4576`+`eaa2f67`); N2 cerrado; N3 (slice inicial de Application) cerrado; N4 cerrado (PRs N4-1..N4-5 integrados, Gate N4 operativo cerrado); N5 en curso (16/17 grupos completos, 0 parciales, 1 pendiente; rama `feat/application-n5-20-financiamiento` en validación); N6 scaffold parcial (PackageId/versión 0.1.0/README presentes; falta CI, doc XML, changelog, global.json, consumidor externo, baseline API); N7 no iniciado.
+**Estado:** N0 cerrado (PR #2, `508188a`); N1 cerrado (PR #3, `b9a4576`+`eaa2f67`); N2 cerrado; N3 (slice inicial de Application) cerrado; N4 cerrado (PRs N4-1..N4-5 integrados, Gate N4 operativo cerrado); N5 cerrado (PRs N5-20..N5-25 integrados, Gate N5 cerrado); N6 en curso (metadatos, README, changelog y SDK fijado en N6-1; falta CI, consumidor externo y baseline API); N7 no iniciado.
 **Decisión arquitectónica:** [ADR-001](ADR-001-ARQUITECTURA-OBJETIVO.md)  
 **Plan dependiente:** [Plan 02: Migración WinForms a WPF](PLAN-02-MIGRACION-WINFORMS-WPF.md)  
 **Distribución actual:** repositorio y paquete privados; sin publicación en NuGet.org
@@ -469,7 +469,7 @@ La numeración `N5-1`…`N5-20` corresponde a PRs integrados o en revisión; alg
 | 14 | Explosión y programa de insumos | `ProgramacionInsumosService`, `ExplosionInsumosService` | Completo | N5-16, N5-18 completos |
 | 15 | Recálculo global | `RecalculoGlobalService` | Completo | N5-19 |
 | 16 | Financiamiento | `FinanciamientoCalculationService` | Completo | N5-20 |
-| 17 | WinForms y reporting | UI + PDF/Excel | Pendiente | — |
+| 17 | WinForms y reporting | UI + PDF/Excel | Completo | N5-20..N5-25 |
 
 `BudgetLoadService` (N5-6) conserva `MotorCalculoSopro` **solo para `Format*`** (contrato N0 fila 9); no contiene cálculos pendientes. El único consumidor N5 pendiente es WinForms/reporting, que aún construye `MotorCalculoSopro` directamente (~20 ocurrencias). `ExplosionInsumosService` conserva la fachada únicamente como formateador local, sin exponerla en parámetros privados.
 

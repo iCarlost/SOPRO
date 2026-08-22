@@ -8,6 +8,7 @@ procesa.
 - **Cero dependencias runtime** (solo BCL).
 - **Cero tipos SOPRO en la API publica** (nada de `SOPRO.Core`, `SOPRO.Application`,
   EF ni SQLite).
+- **Distribucion:** paquete privado de preview, version `0.1.0`.
 - Superficie publica minima (hallazgo 2): `CalculationPrecision`,
   `SoproCalculationEngine`, `DirectCostLine`, `PricePercentageInput`,
   `PriceBreakdown` y el enum `PercentageCalculationMode`. Los ayudantes
@@ -83,3 +84,17 @@ IReadOnlyList<decimal> partes = motor.DistributeAmount(1000m, new[] { 33m, 33m, 
 - Cobertura del nucleo: 95% lineas / 90% ramas (medida con coverlet XPlat).
 - Consumidor fuera de la solucion: `dotnet pack` a un feed local + app de consola
   externa que restaura desde ese feed.
+
+## Empaquetado privado (Gate N6)
+
+Desde la raiz del repositorio:
+
+```powershell
+dotnet restore SOPRO.Calculation/SOPRO.Calculation.csproj
+dotnet build SOPRO.Calculation/SOPRO.Calculation.csproj -c Release --no-restore
+dotnet pack SOPRO.Calculation/SOPRO.Calculation.csproj -c Release --no-build --output .artifacts/packages
+```
+
+El paquete contiene este README, el changelog, la licencia MIT declarada en sus
+metadatos, documentacion XML y simbolos portables. La publicacion en feeds publicos
+queda fuera de alcance de N6.

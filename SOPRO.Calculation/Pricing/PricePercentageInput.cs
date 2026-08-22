@@ -10,17 +10,24 @@ namespace Sopro.Calculation;
 /// </remarks>
 public sealed record PricePercentageInput
 {
+    /// <summary>Reference direct cost retained for legacy mapping parity.</summary>
     public decimal ReferenceDirectCost { get; init; }
 
+    /// <summary>Central office indirects percentage.</summary>
     public decimal CentralIndirectsPercentage { get; init; }
 
+    /// <summary>Field indirects percentage.</summary>
     public decimal FieldIndirectsPercentage { get; init; }
 
+    /// <summary>Financing percentage.</summary>
     public decimal FinancingPercentage { get; init; }
 
+    /// <summary>Profit percentage.</summary>
     public decimal ProfitPercentage { get; init; }
 
+    /// <summary>Additional charges percentage.</summary>
     public decimal AdditionalChargesPercentage { get; init; }
 
+    /// <summary>Percentage cascade mode.</summary>
     public PercentageCalculationMode Mode { get; init; } = PercentageCalculationMode.Accumulative;
 }

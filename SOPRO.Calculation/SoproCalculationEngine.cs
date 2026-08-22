@@ -8,33 +8,46 @@ namespace Sopro.Calculation;
 /// </summary>
 public sealed class SoproCalculationEngine
 {
+    /// <summary>Precision configuration used by this engine.</summary>
     public CalculationPrecision Precision { get; }
 
+    /// <summary>Creates an engine from an explicit precision configuration.</summary>
+    /// <param name="precision">Precision used for all calculations.</param>
     public SoproCalculationEngine(CalculationPrecision precision)
     {
         ArgumentNullException.ThrowIfNull(precision);
         Precision = precision;
     }
 
+    /// <summary>Creates an engine from quantity, amount and percentage decimals.</summary>
+    /// <param name="quantityDecimals">Decimals used for quantities.</param>
+    /// <param name="amountDecimals">Decimals used for amounts.</param>
+    /// <param name="percentageDecimals">Decimals used for percentages.</param>
     public SoproCalculationEngine(int quantityDecimals, int amountDecimals, int percentageDecimals)
         : this(new CalculationPrecision(quantityDecimals, amountDecimals, percentageDecimals))
     {
     }
 
+    /// <summary>Number of decimals used for quantities.</summary>
     public int QuantityDecimals => Precision.QuantityDecimals;
 
+    /// <summary>Number of decimals used for amounts.</summary>
     public int AmountDecimals => Precision.AmountDecimals;
 
+    /// <summary>Number of decimals used for percentages.</summary>
     public int PercentageDecimals => Precision.PercentageDecimals;
 
     // ═══ Rounding ═══
 
+    /// <summary>Rounds a quantity using the configured quantity precision.</summary>
     public decimal RoundQuantity(decimal value)
         => Math.Round(value, Precision.QuantityDecimals, MidpointRounding.AwayFromZero);
 
+    /// <summary>Rounds an amount using the configured amount precision.</summary>
     public decimal RoundAmount(decimal value)
         => Math.Round(value, Precision.AmountDecimals, MidpointRounding.AwayFromZero);
 
+    /// <summary>Rounds a percentage using the configured percentage precision.</summary>
     public decimal RoundPercentage(decimal value)
         => Math.Round(value, Precision.PercentageDecimals, MidpointRounding.AwayFromZero);
 
@@ -51,11 +64,13 @@ public sealed class SoproCalculationEngine
         return RoundAmount(quantity * visibleUnitPrice);
     }
 
+    /// <summary>Calculates an amount over a base using screen precision.</summary>
     public decimal CalculateAmountOverBase(decimal factor, decimal baseAmount)
         => Multiply(factor, baseAmount);
 
     // ═══ Percentage cascade ═══
 
+    /// <summary>Calculates the complete unit-price percentage cascade.</summary>
     public PriceBreakdown CalculateUnitPrice(decimal directCost, PricePercentageInput percentages)
         => UnitPriceCalculator.Calculate(directCost, percentages, Precision);
 
