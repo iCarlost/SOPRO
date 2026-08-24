@@ -11,17 +11,16 @@ namespace SOPRO.Tests.Calculation;
 /// <summary>
 /// Gate N6: inventario exhaustivo de la API pública de Sopro.Calculation contra un baseline.
 ///
-/// Captura (y por tanto detecta cambios en) los siguientes aspectos de superficie:
-///  - Tipos públicos (incluidos anidados) y sus modificadores (sealed/abstract/static).
-///  - Constructores, métodos, propiedades (get/set/init), campos (incl. const/static), eventos.
-///  - Nulabilidad de referencia (?).
+/// Cubre los siguientes aspectos de superficie (cualquier alteración hace fallir el test
+/// hasta regenerar el baseline de forma intencional y documentada):
+///  - Tipos públicos, incluidos los anidados, con sus modificadores (sealed/abstract/static) y visibilidad.
+///  - Constructores, métodos (incl. operadores op_*) y su visibilidad/static.
+///  - Propiedades con getter/setter por separado, su visibilidad, static e init vs set.
+///  - Campos (incl. const/static) y eventos con visibilidad/static.
+///  - Nulabilidad de referencia (?), incluyendo tipos genéricos (p.ej. IEnumerable&lt;Decimal&gt;?).
 ///  - Valores por defecto de parámetros (p.ej. = 0m).
-///  - Diferencia entre setter init y set.
+///  - RefKind de parámetros: ref / out / in.
 ///  - Valores numéricos de los miembros de enumeración.
-///  - Tipos de parámetros y retorno (incl. Nullable&lt;T&gt; y genéricos).
-///
-/// Cualquier adición, remoción o alteración de cualquiera de esos aspectos hace fallir el
-/// test hasta que el baseline se regenere de forma intencional (cambio documentado).
 ///
 /// Para regenerar el baseline tras un cambio aprobado:
 ///   set SOPRO_UPDATE_API_BASELINE=1  (Windows)
@@ -64,33 +63,38 @@ public class PublicApiBaselineTests
     {
         var lines = new SortedSet<string>(StringComparer.Ordinal);
         var types = ApiAssembly.GetTypes()
-            .Where(t => t.IsPublic && t.IsVisible)
+            .Where(t => t.IsVisible)
             .OrderBy(t => t.FullName, StringComparer.Ordinal);
 
         foreach (var type in types)
         {
-            var modifiers = TypeModifiers(type);
-            lines.Add($"type {modifiers}{type.FullName}");
+            var nested = type.IsNested ? "nested " : string.Empty;
+            lines.Add($"type {TypeModifiers(type)}{nested}{type.FullName}");
 
             foreach (var ctor in type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-                         .OrderBy(c => c.Name + "(" + FormatParams(c.GetParameters()) + ")", StringComparer.Ordinal))
-                lines.Add($"ctor {type.FullName}({FormatParams(ctor.GetParameters())})");
+                         .OrderBy(c => c.Name + "(" + FormatParams(c.GetParameters(), c) + ")", StringComparer.Ordinal))
+            {
+                var vis = ctor.IsPublic ? string.Empty : "internal ";
+                lines.Add($"ctor {vis}{type.FullName}({FormatParams(ctor.GetParameters(), ctor)})");
+            }
 
             foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
-                         .Where(m => !m.IsSpecialName)
+                         .Where(m => !m.IsSpecialName || m.Name.StartsWith("op_", StringComparison.Ordinal))
                          .OrderBy(m => m.Name, StringComparer.Ordinal))
-                lines.Add($"method {FormatType(method.ReturnType, method, method.DeclaringType)} {type.FullName}.{method.Name}({FormatParams(method.GetParameters())})");
+                lines.Add($"method {MemberVisibility(method)}{(method.IsStatic ? "static " : string.Empty)}{FormatType(method.ReturnType, method, method.DeclaringType)} {type.FullName}.{method.Name}({FormatParams(method.GetParameters(), method)})");
 
             foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
                          .OrderBy(p => p.Name, StringComparer.Ordinal))
             {
-                lines.Add($"prop {FormatType(property.PropertyType, property, property.DeclaringType)} {type.FullName}.{property.Name}");
-                var setMethod = property.SetMethod;
-                if (setMethod != null)
+                var getter = property.GetMethod;
+                var setter = property.SetMethod;
+                if (getter != null)
+                    lines.Add($"prop-get {MemberVisibility(getter)}{(getter.IsStatic ? "static " : string.Empty)}{FormatType(property.PropertyType, property, property.DeclaringType)} {type.FullName}.{property.Name}");
+                if (setter != null)
                 {
-                    var isInit = setMethod.ReturnParameter.GetRequiredCustomModifiers()
-                        .Any(m => m == typeof(System.Runtime.CompilerServices.IsExternalInit));
-                    lines.Add($"prop-set {(isInit ? "init" : "set")} {FormatType(property.PropertyType, property, property.DeclaringType)} {type.FullName}.{property.Name}");
+                    var isInit = setter.ReturnParameter.GetRequiredCustomModifiers()
+                        .Any(m => m == typeof(IsExternalInit));
+                    lines.Add($"prop-set {MemberVisibility(setter)}{(setter.IsStatic ? "static " : string.Empty)}{(isInit ? "init" : "set")} {FormatType(property.PropertyType, property, property.DeclaringType)} {type.FullName}.{property.Name}");
                 }
             }
 
@@ -99,13 +103,19 @@ public class PublicApiBaselineTests
                          .OrderBy(f => f.Name, StringComparer.Ordinal))
             {
                 var kind = field.IsLiteral ? "const" : (field.IsStatic ? "static-field" : "field");
+                var vis = field.IsLiteral ? string.Empty : (field.IsPublic ? string.Empty : "non-public ");
                 var suffix = field.IsLiteral ? $" = {FormatDefault(field.GetRawConstantValue())}" : string.Empty;
-                lines.Add($"{kind} {FormatType(field.FieldType, field, type)} {type.FullName}.{field.Name}{suffix}");
+                lines.Add($"{kind} {vis}{FormatType(field.FieldType, field, type)} {type.FullName}.{field.Name}{suffix}");
             }
 
             foreach (var evt in type.GetEvents(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
                          .OrderBy(e => e.Name, StringComparer.Ordinal))
-                lines.Add($"event {FormatType(evt.EventHandlerType!, evt, type)} {type.FullName}.{evt.Name}");
+            {
+                var add = evt.AddMethod;
+                var vis = add != null ? MemberVisibility(add) : string.Empty;
+                var stat = add != null && add.IsStatic ? "static " : string.Empty;
+                lines.Add($"event {vis}{stat}{FormatType(evt.EventHandlerType!, evt, type)} {type.FullName}.{evt.Name}");
+            }
 
             if (type.IsEnum)
             {
@@ -121,20 +131,30 @@ public class PublicApiBaselineTests
         return lines.ToList();
     }
 
-    private static string FormatParams(ParameterInfo[] parameters)
+    private static string FormatParams(ParameterInfo[] parameters, MethodBase? method)
         => parameters.Length == 0
             ? string.Empty
             : string.Join(", ", parameters.Select(p =>
             {
-                var type = FormatType(p.ParameterType, p, null);
+                var kind = RefKind(p);
+                var element = p.ParameterType.IsByRef ? p.ParameterType.GetElementType()! : p.ParameterType;
+                var type = FormatType(element, p, method);
                 var def = p.HasDefaultValue ? $" = {FormatDefault(p.DefaultValue)}" : string.Empty;
-                return $"{type} {p.Name}{def}";
+                return $"{kind}{type} {p.Name}{def}";
             }));
+
+    private static string RefKind(ParameterInfo p)
+    {
+        if (!p.ParameterType.IsByRef) return string.Empty;
+        if (p.IsOut) return "out ";
+        if (p.GetRequiredCustomModifiers().Any(m => m.Name == "IsReadOnlyAttribute")) return "in ";
+        return "ref ";
+    }
 
     private static string FormatType(Type type, ICustomAttributeProvider? primary, ICustomAttributeProvider? context)
     {
         if (type.IsByRef || type.IsPointer)
-            return FormatType(type.GetElementType()!, primary, context) + (type.IsByRef ? " ref" : string.Empty);
+            return FormatType(type.GetElementType()!, primary, context) + (type.IsByRef ? " ref" : " ptr");
 
         var underlying = Nullable.GetUnderlyingType(type);
         if (underlying != null)
@@ -144,7 +164,8 @@ public class PublicApiBaselineTests
         {
             var args = string.Join(", ", type.GetGenericArguments().Select(a => FormatType(a, null, context)));
             var name = type.Name[..type.Name.IndexOf('`')];
-            return $"{name}<{args}>";
+            var nullable = (!type.IsValueType && IsNullableReference(primary, context)) ? "?" : string.Empty;
+            return $"{name}<{args}>{nullable}";
         }
 
         if (!type.IsValueType && IsNullableReference(primary, context))
@@ -188,6 +209,16 @@ public class PublicApiBaselineTests
             bool b => b ? "true" : "false",
             _ => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty
         };
+    }
+
+    private static string MemberVisibility(MethodInfo m)
+    {
+        if (m.IsPublic) return string.Empty;
+        if (m.IsFamily) return "protected ";
+        if (m.IsAssembly) return "internal ";
+        if (m.IsFamilyOrAssembly) return "protected internal ";
+        if (m.IsFamilyAndAssembly) return "private protected ";
+        return "private ";
     }
 
     private static string TypeModifiers(Type type)
