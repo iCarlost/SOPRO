@@ -31,6 +31,7 @@ namespace SOPRO.Tests.Calculation;
 public class PublicApiBaselineTests
 {
     private static readonly Assembly ApiAssembly = typeof(Sopro.Calculation.SoproCalculationEngine).Assembly;
+    private static readonly NullabilityInfoContext Nullability = new();
 
     private static readonly string BaselinePath = Path.Combine(
         FindRepoRoot()?.FullName ?? throw new InvalidOperationException("No se encontró la raíz del repositorio."),
@@ -59,6 +60,42 @@ public class PublicApiBaselineTests
             "Si el cambio es intencional y documentado, regenera el baseline con SOPRO_UPDATE_API_BASELINE=1.");
     }
 
+    [TestMethod]
+    public void RefKindDistinguishesInFromRef()
+    {
+        var inParameter = typeof(PublicApiBaselineTests).GetMethod(
+            nameof(InFixture), BindingFlags.NonPublic | BindingFlags.Static)!.GetParameters()[0];
+        var refParameter = typeof(PublicApiBaselineTests).GetMethod(
+            nameof(RefFixture), BindingFlags.NonPublic | BindingFlags.Static)!.GetParameters()[0];
+
+        Assert.AreEqual("in ", RefKind(inParameter));
+        Assert.AreEqual("ref ", RefKind(refParameter));
+    }
+
+    [TestMethod]
+    public void NullableGenericArgumentsAndReturnsAreCaptured()
+    {
+        var method = typeof(PublicApiBaselineTests).GetMethod(
+            nameof(NullableGenericFixture), BindingFlags.NonPublic | BindingFlags.Static)!;
+        var parameter = method.GetParameters()[0];
+
+        Assert.AreEqual("IEnumerable<String?>?", FormatType(parameter.ParameterType, Nullability.Create(parameter)));
+        Assert.AreEqual("IEnumerable<String?>?", FormatType(method.ReturnType, Nullability.Create(method.ReturnParameter)));
+
+        var nonNullableMethod = typeof(PublicApiBaselineTests).GetMethod(
+            nameof(NonNullableGenericFixture), BindingFlags.NonPublic | BindingFlags.Static)!;
+        var nonNullableParameter = nonNullableMethod.GetParameters()[0];
+        Assert.AreEqual("IEnumerable<String>", FormatType(nonNullableParameter.ParameterType, Nullability.Create(nonNullableParameter)));
+    }
+
+    private static void InFixture(in int value) { }
+
+    private static void RefFixture(ref int value) { }
+
+    private static IEnumerable<string?>? NullableGenericFixture(IEnumerable<string?>? values) => values;
+
+    private static IEnumerable<string> NonNullableGenericFixture(IEnumerable<string> values) => values;
+
     private static List<string> InventoryPublicApi()
     {
         var lines = new SortedSet<string>(StringComparer.Ordinal);
@@ -72,16 +109,16 @@ public class PublicApiBaselineTests
             lines.Add($"type {TypeModifiers(type)}{nested}{type.FullName}");
 
             foreach (var ctor in type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-                         .OrderBy(c => c.Name + "(" + FormatParams(c.GetParameters(), c) + ")", StringComparer.Ordinal))
+                         .OrderBy(c => c.Name + "(" + FormatParams(c.GetParameters()) + ")", StringComparer.Ordinal))
             {
                 var vis = ctor.IsPublic ? string.Empty : "internal ";
-                lines.Add($"ctor {vis}{type.FullName}({FormatParams(ctor.GetParameters(), ctor)})");
+                lines.Add($"ctor {vis}{type.FullName}({FormatParams(ctor.GetParameters())})");
             }
 
             foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
                          .Where(m => !m.IsSpecialName || m.Name.StartsWith("op_", StringComparison.Ordinal))
                          .OrderBy(m => m.Name, StringComparer.Ordinal))
-                lines.Add($"method {MemberVisibility(method)}{(method.IsStatic ? "static " : string.Empty)}{FormatType(method.ReturnType, method, method.DeclaringType)} {type.FullName}.{method.Name}({FormatParams(method.GetParameters(), method)})");
+                lines.Add($"method {MemberVisibility(method)}{(method.IsStatic ? "static " : string.Empty)}{FormatType(method.ReturnType, Nullability.Create(method.ReturnParameter))} {type.FullName}.{method.Name}({FormatParams(method.GetParameters())})");
 
             foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
                          .OrderBy(p => p.Name, StringComparer.Ordinal))
@@ -89,12 +126,12 @@ public class PublicApiBaselineTests
                 var getter = property.GetMethod;
                 var setter = property.SetMethod;
                 if (getter != null)
-                    lines.Add($"prop-get {MemberVisibility(getter)}{(getter.IsStatic ? "static " : string.Empty)}{FormatType(property.PropertyType, property, property.DeclaringType)} {type.FullName}.{property.Name}");
+                    lines.Add($"prop-get {MemberVisibility(getter)}{(getter.IsStatic ? "static " : string.Empty)}{FormatType(property.PropertyType, Nullability.Create(property))} {type.FullName}.{property.Name}");
                 if (setter != null)
                 {
                     var isInit = setter.ReturnParameter.GetRequiredCustomModifiers()
                         .Any(m => m == typeof(IsExternalInit));
-                    lines.Add($"prop-set {MemberVisibility(setter)}{(setter.IsStatic ? "static " : string.Empty)}{(isInit ? "init" : "set")} {FormatType(property.PropertyType, property, property.DeclaringType)} {type.FullName}.{property.Name}");
+                    lines.Add($"prop-set {MemberVisibility(setter)}{(setter.IsStatic ? "static " : string.Empty)}{(isInit ? "init" : "set")} {FormatType(property.PropertyType, Nullability.Create(property))} {type.FullName}.{property.Name}");
                 }
             }
 
@@ -105,7 +142,7 @@ public class PublicApiBaselineTests
                 var kind = field.IsLiteral ? "const" : (field.IsStatic ? "static-field" : "field");
                 var vis = field.IsLiteral ? string.Empty : (field.IsPublic ? string.Empty : "non-public ");
                 var suffix = field.IsLiteral ? $" = {FormatDefault(field.GetRawConstantValue())}" : string.Empty;
-                lines.Add($"{kind} {vis}{FormatType(field.FieldType, field, type)} {type.FullName}.{field.Name}{suffix}");
+                lines.Add($"{kind} {vis}{FormatType(field.FieldType, Nullability.Create(field))} {type.FullName}.{field.Name}{suffix}");
             }
 
             foreach (var evt in type.GetEvents(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
@@ -114,12 +151,13 @@ public class PublicApiBaselineTests
                 var add = evt.AddMethod;
                 var vis = add != null ? MemberVisibility(add) : string.Empty;
                 var stat = add != null && add.IsStatic ? "static " : string.Empty;
-                lines.Add($"event {vis}{stat}{FormatType(evt.EventHandlerType!, evt, type)} {type.FullName}.{evt.Name}");
+                lines.Add($"event {vis}{stat}{FormatType(evt.EventHandlerType!, Nullability.Create(evt))} {type.FullName}.{evt.Name}");
             }
 
             if (type.IsEnum)
             {
                 var underlying = Enum.GetUnderlyingType(type);
+                lines.Add($"enum-underlying {type.FullName} = {FormatType(underlying, null)}");
                 foreach (var name in Enum.GetNames(type).OrderBy(n => n, StringComparer.Ordinal))
                 {
                     var value = Convert.ChangeType(Enum.Parse(type, name), underlying);
@@ -131,14 +169,14 @@ public class PublicApiBaselineTests
         return lines.ToList();
     }
 
-    private static string FormatParams(ParameterInfo[] parameters, MethodBase? method)
+    private static string FormatParams(ParameterInfo[] parameters)
         => parameters.Length == 0
             ? string.Empty
             : string.Join(", ", parameters.Select(p =>
             {
                 var kind = RefKind(p);
                 var element = p.ParameterType.IsByRef ? p.ParameterType.GetElementType()! : p.ParameterType;
-                var type = FormatType(element, p, method);
+                var type = FormatType(element, Nullability.Create(p));
                 var def = p.HasDefaultValue ? $" = {FormatDefault(p.DefaultValue)}" : string.Empty;
                 return $"{kind}{type} {p.Name}{def}";
             }));
@@ -147,53 +185,34 @@ public class PublicApiBaselineTests
     {
         if (!p.ParameterType.IsByRef) return string.Empty;
         if (p.IsOut) return "out ";
-        if (p.GetRequiredCustomModifiers().Any(m => m.Name == "IsReadOnlyAttribute")) return "in ";
+        if (p.IsIn) return "in ";
         return "ref ";
     }
 
-    private static string FormatType(Type type, ICustomAttributeProvider? primary, ICustomAttributeProvider? context)
+    private static string FormatType(Type type, NullabilityInfo? nullability)
     {
         if (type.IsByRef || type.IsPointer)
-            return FormatType(type.GetElementType()!, primary, context) + (type.IsByRef ? " ref" : " ptr");
+            return FormatType(type.GetElementType()!, nullability) + (type.IsByRef ? " ref" : " ptr");
 
         var underlying = Nullable.GetUnderlyingType(type);
         if (underlying != null)
-            return FormatType(underlying, primary, context) + "?";
+            return FormatType(underlying, nullability) + "?";
 
         if (type.IsGenericType)
         {
-            var args = string.Join(", ", type.GetGenericArguments().Select(a => FormatType(a, null, context)));
+            var typeArguments = type.GetGenericArguments();
+            var nullabilityArguments = nullability?.GenericTypeArguments ?? Array.Empty<NullabilityInfo>();
+            var args = string.Join(", ", typeArguments.Select((a, i) =>
+                FormatType(a, i < nullabilityArguments.Length ? nullabilityArguments[i] : null)));
             var name = type.Name[..type.Name.IndexOf('`')];
-            var nullable = (!type.IsValueType && IsNullableReference(primary, context)) ? "?" : string.Empty;
+            var nullable = (!type.IsValueType && nullability?.ReadState == NullabilityState.Nullable) ? "?" : string.Empty;
             return $"{name}<{args}>{nullable}";
         }
 
-        if (!type.IsValueType && IsNullableReference(primary, context))
+        if (!type.IsValueType && nullability?.ReadState == NullabilityState.Nullable)
             return type.Name + "?";
 
         return type.Name;
-    }
-
-    private static bool IsNullableReference(ICustomAttributeProvider? primary, ICustomAttributeProvider? context)
-    {
-        var flag = GetNullableFlag(primary) ?? GetNullableFlag(context) ?? GetNullableContextFlag(context) ?? GetNullableContextFlag(ApiAssembly);
-        return flag == 2;
-    }
-
-    private static byte? GetNullableFlag(ICustomAttributeProvider? provider)
-    {
-        if (provider == null) return null;
-        var attr = provider.GetCustomAttributes(typeof(NullableAttribute), false)
-            .Cast<NullableAttribute>().FirstOrDefault();
-        return attr?.NullableFlags[0];
-    }
-
-    private static byte? GetNullableContextFlag(ICustomAttributeProvider? provider)
-    {
-        if (provider == null) return null;
-        var attr = provider.GetCustomAttributes(typeof(NullableContextAttribute), false)
-            .Cast<NullableContextAttribute>().FirstOrDefault();
-        return attr?.Flag;
     }
 
     private static string FormatDefault(object? value)

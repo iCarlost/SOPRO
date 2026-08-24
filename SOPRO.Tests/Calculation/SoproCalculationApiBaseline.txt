@@ -6,6 +6,7 @@ ctor Sopro.Calculation.SoproCalculationEngine(CalculationPrecision precision)
 ctor Sopro.Calculation.SoproCalculationEngine(Int32 quantityDecimals, Int32 amountDecimals, Int32 percentageDecimals)
 enum-member Sopro.Calculation.PercentageCalculationMode.Accumulative = 0
 enum-member Sopro.Calculation.PercentageCalculationMode.OverDirectCost = 1
+enum-underlying Sopro.Calculation.PercentageCalculationMode = Int32
 method Boolean Sopro.Calculation.CalculationPrecision.Equals(CalculationPrecision? other)
 method Boolean Sopro.Calculation.CalculationPrecision.Equals(Object? obj)
 method Boolean Sopro.Calculation.DirectCostLine.Equals(DirectCostLine? other)
