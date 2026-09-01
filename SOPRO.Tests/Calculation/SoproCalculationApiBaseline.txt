@@ -1,0 +1,106 @@
+ctor Sopro.Calculation.CalculationPrecision(Int32 quantityDecimals, Int32 amountDecimals, Int32 percentageDecimals)
+ctor Sopro.Calculation.DirectCostLine(Decimal Quantity, Decimal UnitDirectCost, Boolean IsGrouping, Boolean HasMatrix)
+ctor Sopro.Calculation.PriceBreakdown(Decimal DirectCost, Decimal IndirectCosts, Decimal Financing, Decimal Profit, Decimal AdditionalCharges, Decimal UnitPrice, Decimal CentralIndirectsPercentage = 0m, Decimal FieldIndirectsPercentage = 0m)
+ctor Sopro.Calculation.PricePercentageInput()
+ctor Sopro.Calculation.SoproCalculationEngine(CalculationPrecision precision)
+ctor Sopro.Calculation.SoproCalculationEngine(Int32 quantityDecimals, Int32 amountDecimals, Int32 percentageDecimals)
+enum-member Sopro.Calculation.PercentageCalculationMode.Accumulative = 0
+enum-member Sopro.Calculation.PercentageCalculationMode.OverDirectCost = 1
+enum-underlying Sopro.Calculation.PercentageCalculationMode = Int32
+method Boolean Sopro.Calculation.CalculationPrecision.Equals(CalculationPrecision? other)
+method Boolean Sopro.Calculation.CalculationPrecision.Equals(Object? obj)
+method Boolean Sopro.Calculation.DirectCostLine.Equals(DirectCostLine? other)
+method Boolean Sopro.Calculation.DirectCostLine.Equals(Object? obj)
+method Boolean Sopro.Calculation.PriceBreakdown.Equals(Object? obj)
+method Boolean Sopro.Calculation.PriceBreakdown.Equals(PriceBreakdown? other)
+method Boolean Sopro.Calculation.PricePercentageInput.Equals(Object? obj)
+method Boolean Sopro.Calculation.PricePercentageInput.Equals(PricePercentageInput? other)
+method CalculationPrecision Sopro.Calculation.CalculationPrecision.<Clone>$()
+method Decimal Sopro.Calculation.SoproCalculationEngine.CalculateAmountOverBase(Decimal factor, Decimal baseAmount)
+method Decimal Sopro.Calculation.SoproCalculationEngine.Multiply(Decimal quantity, Decimal unitPrice)
+method Decimal Sopro.Calculation.SoproCalculationEngine.RoundAmount(Decimal value)
+method Decimal Sopro.Calculation.SoproCalculationEngine.RoundPercentage(Decimal value)
+method Decimal Sopro.Calculation.SoproCalculationEngine.RoundQuantity(Decimal value)
+method Decimal Sopro.Calculation.SoproCalculationEngine.SumAmounts(IEnumerable<Decimal>? values)
+method Decimal Sopro.Calculation.SoproCalculationEngine.SumDirectCost(IEnumerable<DirectCostLine>? lines)
+method Decimal Sopro.Calculation.SoproCalculationEngine.SumQuantities(IEnumerable<Decimal>? values)
+method DirectCostLine Sopro.Calculation.DirectCostLine.<Clone>$()
+method IReadOnlyList<Decimal> Sopro.Calculation.SoproCalculationEngine.DistributeAmount(Decimal total, IReadOnlyList<Decimal>? weights)
+method IReadOnlyList<Decimal> Sopro.Calculation.SoproCalculationEngine.DistributeQuantity(Decimal total, IReadOnlyList<Decimal>? weights)
+method Int32 Sopro.Calculation.CalculationPrecision.GetHashCode()
+method Int32 Sopro.Calculation.DirectCostLine.GetHashCode()
+method Int32 Sopro.Calculation.PriceBreakdown.GetHashCode()
+method Int32 Sopro.Calculation.PricePercentageInput.GetHashCode()
+method PriceBreakdown Sopro.Calculation.PriceBreakdown.<Clone>$()
+method PriceBreakdown Sopro.Calculation.SoproCalculationEngine.CalculateUnitPrice(Decimal directCost, PricePercentageInput percentages)
+method PricePercentageInput Sopro.Calculation.PricePercentageInput.<Clone>$()
+method String Sopro.Calculation.CalculationPrecision.ToString()
+method String Sopro.Calculation.DirectCostLine.ToString()
+method String Sopro.Calculation.PriceBreakdown.ToString()
+method String Sopro.Calculation.PricePercentageInput.ToString()
+method Void Sopro.Calculation.DirectCostLine.Deconstruct(out Decimal Quantity, out Decimal UnitDirectCost, out Boolean IsGrouping, out Boolean HasMatrix)
+method Void Sopro.Calculation.PriceBreakdown.Deconstruct(out Decimal DirectCost, out Decimal IndirectCosts, out Decimal Financing, out Decimal Profit, out Decimal AdditionalCharges, out Decimal UnitPrice, out Decimal CentralIndirectsPercentage, out Decimal FieldIndirectsPercentage)
+method static Boolean Sopro.Calculation.CalculationPrecision.op_Equality(CalculationPrecision? left, CalculationPrecision? right)
+method static Boolean Sopro.Calculation.CalculationPrecision.op_Inequality(CalculationPrecision? left, CalculationPrecision? right)
+method static Boolean Sopro.Calculation.DirectCostLine.op_Equality(DirectCostLine? left, DirectCostLine? right)
+method static Boolean Sopro.Calculation.DirectCostLine.op_Inequality(DirectCostLine? left, DirectCostLine? right)
+method static Boolean Sopro.Calculation.PriceBreakdown.op_Equality(PriceBreakdown? left, PriceBreakdown? right)
+method static Boolean Sopro.Calculation.PriceBreakdown.op_Inequality(PriceBreakdown? left, PriceBreakdown? right)
+method static Boolean Sopro.Calculation.PricePercentageInput.op_Equality(PricePercentageInput? left, PricePercentageInput? right)
+method static Boolean Sopro.Calculation.PricePercentageInput.op_Inequality(PricePercentageInput? left, PricePercentageInput? right)
+prop-get Boolean Sopro.Calculation.DirectCostLine.HasMatrix
+prop-get Boolean Sopro.Calculation.DirectCostLine.IsGrouping
+prop-get CalculationPrecision Sopro.Calculation.SoproCalculationEngine.Precision
+prop-get Decimal Sopro.Calculation.DirectCostLine.Quantity
+prop-get Decimal Sopro.Calculation.DirectCostLine.UnitDirectCost
+prop-get Decimal Sopro.Calculation.PriceBreakdown.AdditionalCharges
+prop-get Decimal Sopro.Calculation.PriceBreakdown.CentralIndirectCosts
+prop-get Decimal Sopro.Calculation.PriceBreakdown.CentralIndirectsPercentage
+prop-get Decimal Sopro.Calculation.PriceBreakdown.DirectCost
+prop-get Decimal Sopro.Calculation.PriceBreakdown.FieldIndirectCosts
+prop-get Decimal Sopro.Calculation.PriceBreakdown.FieldIndirectsPercentage
+prop-get Decimal Sopro.Calculation.PriceBreakdown.Financing
+prop-get Decimal Sopro.Calculation.PriceBreakdown.IndirectCosts
+prop-get Decimal Sopro.Calculation.PriceBreakdown.Profit
+prop-get Decimal Sopro.Calculation.PriceBreakdown.Subtotal1
+prop-get Decimal Sopro.Calculation.PriceBreakdown.Subtotal2
+prop-get Decimal Sopro.Calculation.PriceBreakdown.Subtotal3
+prop-get Decimal Sopro.Calculation.PriceBreakdown.UnitPrice
+prop-get Decimal Sopro.Calculation.PricePercentageInput.AdditionalChargesPercentage
+prop-get Decimal Sopro.Calculation.PricePercentageInput.CentralIndirectsPercentage
+prop-get Decimal Sopro.Calculation.PricePercentageInput.FieldIndirectsPercentage
+prop-get Decimal Sopro.Calculation.PricePercentageInput.FinancingPercentage
+prop-get Decimal Sopro.Calculation.PricePercentageInput.ProfitPercentage
+prop-get Decimal Sopro.Calculation.PricePercentageInput.ReferenceDirectCost
+prop-get Int32 Sopro.Calculation.CalculationPrecision.AmountDecimals
+prop-get Int32 Sopro.Calculation.CalculationPrecision.PercentageDecimals
+prop-get Int32 Sopro.Calculation.CalculationPrecision.QuantityDecimals
+prop-get Int32 Sopro.Calculation.SoproCalculationEngine.AmountDecimals
+prop-get Int32 Sopro.Calculation.SoproCalculationEngine.PercentageDecimals
+prop-get Int32 Sopro.Calculation.SoproCalculationEngine.QuantityDecimals
+prop-get PercentageCalculationMode Sopro.Calculation.PricePercentageInput.Mode
+prop-set init Boolean Sopro.Calculation.DirectCostLine.HasMatrix
+prop-set init Boolean Sopro.Calculation.DirectCostLine.IsGrouping
+prop-set init Decimal Sopro.Calculation.DirectCostLine.Quantity
+prop-set init Decimal Sopro.Calculation.DirectCostLine.UnitDirectCost
+prop-set init Decimal Sopro.Calculation.PriceBreakdown.AdditionalCharges
+prop-set init Decimal Sopro.Calculation.PriceBreakdown.CentralIndirectsPercentage
+prop-set init Decimal Sopro.Calculation.PriceBreakdown.DirectCost
+prop-set init Decimal Sopro.Calculation.PriceBreakdown.FieldIndirectsPercentage
+prop-set init Decimal Sopro.Calculation.PriceBreakdown.Financing
+prop-set init Decimal Sopro.Calculation.PriceBreakdown.IndirectCosts
+prop-set init Decimal Sopro.Calculation.PriceBreakdown.Profit
+prop-set init Decimal Sopro.Calculation.PriceBreakdown.UnitPrice
+prop-set init Decimal Sopro.Calculation.PricePercentageInput.AdditionalChargesPercentage
+prop-set init Decimal Sopro.Calculation.PricePercentageInput.CentralIndirectsPercentage
+prop-set init Decimal Sopro.Calculation.PricePercentageInput.FieldIndirectsPercentage
+prop-set init Decimal Sopro.Calculation.PricePercentageInput.FinancingPercentage
+prop-set init Decimal Sopro.Calculation.PricePercentageInput.ProfitPercentage
+prop-set init Decimal Sopro.Calculation.PricePercentageInput.ReferenceDirectCost
+prop-set init PercentageCalculationMode Sopro.Calculation.PricePercentageInput.Mode
+type Sopro.Calculation.PercentageCalculationMode
+type sealed Sopro.Calculation.CalculationPrecision
+type sealed Sopro.Calculation.DirectCostLine
+type sealed Sopro.Calculation.PriceBreakdown
+type sealed Sopro.Calculation.PricePercentageInput
+type sealed Sopro.Calculation.SoproCalculationEngine
