@@ -91,17 +91,11 @@ prop-get Decimal Sopro.Calculation.Matrices.MatrixComponentInput.Quantity
 prop-get Decimal Sopro.Calculation.Matrices.MatrixComponentInput.ResolvedUnitPrice
 prop-get Decimal Sopro.Calculation.Matrices.MatrixComponentResult.Amount
 prop-get Decimal Sopro.Calculation.Matrices.MatrixGraphResult.BaseLabor
-prop-get Decimal Sopro.Calculation.Matrices.MatrixGraphResult.BaseManoObra
-prop-get Decimal Sopro.Calculation.Matrices.MatrixGraphResult.CostoDirectoTotal
 prop-get Decimal Sopro.Calculation.Matrices.MatrixGraphResult.DirectCostTotal
-prop-get Decimal Sopro.Calculation.Matrices.MatrixGraphResult.TotalBasicos
 prop-get Decimal Sopro.Calculation.Matrices.MatrixGraphResult.TotalBasics
-prop-get Decimal Sopro.Calculation.Matrices.MatrixGraphResult.TotalHerramientas
 prop-get Decimal Sopro.Calculation.Matrices.MatrixGraphResult.TotalLabor
 prop-get Decimal Sopro.Calculation.Matrices.MatrixGraphResult.TotalLaborSummary
 prop-get Decimal Sopro.Calculation.Matrices.MatrixGraphResult.TotalMachinery
-prop-get Decimal Sopro.Calculation.Matrices.MatrixGraphResult.TotalManoObra
-prop-get Decimal Sopro.Calculation.Matrices.MatrixGraphResult.TotalManoObraResumen
 prop-get Decimal Sopro.Calculation.Matrices.MatrixGraphResult.TotalMaterial
 prop-get Decimal Sopro.Calculation.Matrices.MatrixGraphResult.TotalTools
 prop-get Decimal Sopro.Calculation.Matrices.MatrixNodeResult.BaseLabor

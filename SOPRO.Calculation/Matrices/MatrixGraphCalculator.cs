@@ -36,6 +36,7 @@ public sealed class MatrixGraphCalculator
         var componentIds = new HashSet<int>();
         foreach (var node in nodes.Values)
         {
+            ValidateNode(node);
             foreach (var component in node.Components)
             {
                 if (!componentIds.Add(component.Id))
@@ -75,15 +76,13 @@ public sealed class MatrixGraphCalculator
                     decimal amount;
                     if (component.Type == MatrixComponentType.Auxiliary)
                     {
-                        if (!component.ReferencedMatrixId.HasValue ||
-                            !nodes.ContainsKey(component.ReferencedMatrixId.Value))
+                        if (!component.ReferencedMatrixId.HasValue)
+                            throw NullAuxiliaryReference(node.Id, component.Id, stack.Append(node.Id));
+
+                        if (!nodes.ContainsKey(component.ReferencedMatrixId.Value))
                         {
-                            var referenceId = component.ReferencedMatrixId;
-                            throw MissingNode(
-                                referenceId ?? 0,
-                                node.Id,
-                                component.Id,
-                                stack.Append(referenceId ?? 0));
+                            var referenceId = component.ReferencedMatrixId.Value;
+                            throw MissingNode(referenceId, node.Id, component.Id, stack.Append(referenceId));
                         }
 
                         var child = Evaluate(component.ReferencedMatrixId.Value);
@@ -190,6 +189,46 @@ public sealed class MatrixGraphCalculator
     private static bool IsPercentageComponent(MatrixComponentInput component)
         => (component.Type == MatrixComponentType.Labor || component.Type == MatrixComponentType.Tool) &&
            component.IsPercentageOfLabor;
+
+    private static void ValidateNode(MatrixNodeInput node)
+    {
+        if (!Enum.IsDefined(node.Type))
+            throw new InvalidOperationException(
+                $"Tipo de matriz no definido: {(int)node.Type} (matriz {node.Id}).");
+
+        foreach (var component in node.Components)
+            ValidateComponent(node, component);
+    }
+
+    private static void ValidateComponent(MatrixNodeInput node, MatrixComponentInput component)
+    {
+        if (!Enum.IsDefined(component.Type))
+            throw new InvalidOperationException(
+                $"Tipo de componente no definido: {(int)component.Type} (matriz {node.Id}, componente {component.Id}).");
+
+        if (component.Type == MatrixComponentType.Auxiliary)
+        {
+            if (component.IsPercentageOfLabor)
+                throw new InvalidOperationException(
+                    "Combinación inválida: un componente auxiliar no puede marcarse como porcentaje de mano de obra " +
+                    $"(matriz {node.Id}, componente {component.Id}).");
+            return;
+        }
+
+        if (component.IsPercentageOfLabor &&
+            component.Type is not (MatrixComponentType.Labor or MatrixComponentType.Tool))
+            throw new InvalidOperationException(
+                "Combinación inválida: solo mano de obra y herramienta pueden ser porcentaje de mano de obra " +
+                $"(matriz {node.Id}, componente {component.Id}, tipo {component.Type}).");
+    }
+
+    private static InvalidOperationException NullAuxiliaryReference(
+        int ownerNodeId,
+        int componentId,
+        IEnumerable<int> route)
+        => new InvalidOperationException(
+            $"Referencia auxiliar nula en matriz {ownerNodeId}, componente {componentId}. " +
+            "Ruta: " + string.Join(" -> ", route));
 
     private static InvalidOperationException Cycle(IReadOnlyList<int> stack, int repeatedNodeId)
     {

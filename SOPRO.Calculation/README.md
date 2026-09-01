@@ -15,6 +15,11 @@ procesa.
   agrega `MatrixGraphInput`, `MatrixNodeInput`, `MatrixComponentInput`,
   `MatrixGraphCalculator` y sus resultados inmutables. Los ayudantes
   (`UnitPriceCalculator`, `AmountDistributor`) son internos.
+- Invariante del grafo de matrices: los IDs de componente son unicos en todo el
+  grafo (incluidos nodos no alcanzados desde la raiz); los IDs temporales de
+  componentes sin guardar los asigna el adaptador de Application. Tipos de
+  matriz/componente no definidos y combinaciones invalidas (auxiliar o
+  material/maquinaria como `%MO`) se rechazan con excepcion.
 
 ## API publica
 

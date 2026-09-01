@@ -43,6 +43,20 @@ public sealed class MatrixNodeInput
 /// <summary>
 /// Immutable materialized graph and the node whose totals are requested.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Invariant: component identifiers (<see cref="MatrixComponentInput.Id"/>) must be unique
+/// across the whole graph — including nodes not reachable from <see cref="RootMatrixId"/> —
+/// because <see cref="MatrixGraphResult.ComponentAmounts"/> is keyed by component id. The
+/// value 0 is a valid identifier as long as it stays unique.
+/// </para>
+/// <para>
+/// The Application adapter must assign temporary stable identifiers to unsaved components
+/// before materializing the graph (for example negative ids mapped back after persistence).
+/// Every node in <see cref="Nodes"/> is validated on evaluation, even when it is not
+/// reachable from the root.
+/// </para>
+/// </remarks>
 public sealed class MatrixGraphInput
 {
     /// <summary>Identifier of the node to evaluate.</summary>

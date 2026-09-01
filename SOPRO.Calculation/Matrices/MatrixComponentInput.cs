@@ -28,8 +28,12 @@ public enum MatrixComponentType
 /// </param>
 /// <param name="IsPercentageOfLabor">
 /// Explicitly identifies labor and tool percentage components; no unit text is parsed.
+/// Only Labor and Tool may set it; Auxiliary, Material and Machinery reject it.
 /// </param>
-/// <param name="ReferencedMatrixId">Referenced node for an auxiliary component.</param>
+/// <param name="ReferencedMatrixId">
+/// Referenced node for an auxiliary component. Required (non-null) for Auxiliary and
+/// ignored for every other kind.
+/// </param>
 public sealed record MatrixComponentInput(
     int Id,
     int Order,

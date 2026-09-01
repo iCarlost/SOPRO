@@ -103,19 +103,4 @@ public sealed class MatrixGraphResult
     public decimal TotalLaborSummary => _root.TotalLaborSummary;
     /// <summary>Root direct cost total.</summary>
     public decimal DirectCostTotal => _root.DirectCostTotal;
-
-    // Spanish aliases keep the result directly mappable to MatrixComponentTotals
-    // while the calculation package's canonical API remains English.
-    /// <summary>Alias of <see cref="BaseLabor"/> for the existing matrix model.</summary>
-    public decimal BaseManoObra => BaseLabor;
-    /// <summary>Alias of <see cref="TotalLabor"/> for the existing matrix model.</summary>
-    public decimal TotalManoObra => TotalLabor;
-    /// <summary>Alias of <see cref="TotalLaborSummary"/> for the existing matrix model.</summary>
-    public decimal TotalManoObraResumen => TotalLaborSummary;
-    /// <summary>Alias of <see cref="TotalBasics"/> for the existing matrix model.</summary>
-    public decimal TotalBasicos => TotalBasics;
-    /// <summary>Alias of <see cref="TotalTools"/> for the existing matrix model.</summary>
-    public decimal TotalHerramientas => TotalTools;
-    /// <summary>Alias of <see cref="DirectCostTotal"/> for the existing matrix model.</summary>
-    public decimal CostoDirectoTotal => DirectCostTotal;
 }
