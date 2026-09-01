@@ -1,6 +1,6 @@
 # Plan 01: Desacoplamiento del Núcleo y la Aplicación
 
-**Estado:** N0 cerrado (PR #2, `508188a`); N1 cerrado (PR #3, `b9a4576`+`eaa2f67`); N2 cerrado; N3 (slice inicial de Application) cerrado; N4 cerrado (PRs N4-1..N4-5 integrados, Gate N4 operativo cerrado); N5 cerrado (PRs N5-20..N5-25 integrados, Gate N5 cerrado); N6 en curso (metadatos y SDK fijado en N6-1; CI multiplataforma en N6-2; consumidor externo permanente en N6-3; falta baseline API); N7 no iniciado.
+**Estado:** N0 cerrado (PR #2, `508188a`); N1 cerrado (PR #3, `b9a4576`+`eaa2f67`); N2 cerrado; N3 (slice inicial de Application) cerrado; N4 cerrado (PRs N4-1..N4-5 integrados, Gate N4 operativo cerrado); N5 cerrado (PRs N5-20..N5-25 integrados, Gate N5 cerrado); N6 cerrado (PRs N6-1..N6-5 integrados, Gate N6 operativo cerrado); N7 no iniciado.
 **Decisión arquitectónica:** [ADR-001](ADR-001-ARQUITECTURA-OBJETIVO.md)  
 **Plan dependiente:** [Plan 02: Migración WinForms a WPF](PLAN-02-MIGRACION-WINFORMS-WPF.md)  
 **Distribución actual:** repositorio y paquete privados; sin publicación en NuGet.org
@@ -658,6 +658,12 @@ La numeración `N5-1`…`N5-20` corresponde a PRs integrados o en revisión; alg
 - Ejemplos compilados como tests.
 - Versión, commit y artefacto privado coinciden.
 - `1.0.0` se reserva hasta estabilizar API y resultados.
+
+### Cierre N6
+
+- N6-1..N6-5 integrados en `main`.
+- El CI valida build, tests multiplataforma, paquete privado, consumidor externo y baseline completo de API pública.
+- El siguiente frente del plan es N7, comenzando por grafo de matrices y `%MO`.
 
 ### Publicación futura fuera de alcance
 
