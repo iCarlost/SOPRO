@@ -11,7 +11,9 @@ procesa.
 - **Distribucion:** paquete privado de preview, version `0.1.0`.
 - Superficie publica minima (hallazgo 2): `CalculationPrecision`,
   `SoproCalculationEngine`, `DirectCostLine`, `PricePercentageInput`,
-  `PriceBreakdown` y el enum `PercentageCalculationMode`. Los ayudantes
+  `PriceBreakdown` y el enum `PercentageCalculationMode`. El slice de matrices
+  agrega `MatrixGraphInput`, `MatrixNodeInput`, `MatrixComponentInput`,
+  `MatrixGraphCalculator` y sus resultados inmutables. Los ayudantes
   (`UnitPriceCalculator`, `AmountDistributor`) son internos.
 
 ## API publica
