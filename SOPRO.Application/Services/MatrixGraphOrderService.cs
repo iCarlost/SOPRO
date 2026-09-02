@@ -19,18 +19,23 @@ namespace SOPRO.Application.Services
     /// </summary>
     /// <remarks>
     /// Invariantes:
-    ///  - Las aristas provienen de <see cref="ComponenteMatriz.AuxiliarId"/>.
+    ///  - Las aristas provienen de componentes con <see cref="TipoComponenteMatriz.Auxiliar"/>
+    ///    y su <see cref="ComponenteMatriz.AuxiliarId"/>; un AuxiliarId en un componente de
+    ///    otro tipo es dato malformado y no crea aristas.
     ///  - Una referencia a un Id ausente del conjunto (auxiliar externa o sin guardar)
     ///    se trata como hoja: su costo directo es fijo y lo aporta el almacenado.
     ///  - Las matrices sin persistir (Id 0) se tratan como hojas.
     ///  - Un ciclo dentro del conjunto lanza <see cref="InvalidOperationException"/>
     ///    con la ruta del ciclo.
+    ///  - El orden es el topológico lexicográficamente mínimo respecto al índice de
+    ///    entrada: entre los nodos ya liberados siempre se saca el de índice original
+    ///    menor.
     /// </remarks>
     public static class MatrixGraphOrderService
     {
         /// <summary>
-        /// Devuelve las matrices en orden topológico estable por dependencias de
-        /// auxiliares internas; lanza si el conjunto contiene un ciclo.
+        /// Devuelve las matrices en orden topológico lexicográficamente mínimo por
+        /// dependencias de auxiliares internas; lanza si el conjunto contiene un ciclo.
         /// </summary>
         public static List<Matriz> OrdenTopologico(IEnumerable<Matriz> matrices)
         {
@@ -39,14 +44,17 @@ namespace SOPRO.Application.Services
             var lista = matrices.ToList();
             var vistas = new HashSet<Matriz>();
             var porId = new Dictionary<int, Matriz>();
+            var indice = new Dictionary<Matriz, int>();
 
-            foreach (var matriz in lista)
+            for (var i = 0; i < lista.Count; i++)
             {
+                var matriz = lista[i];
                 if (matriz == null)
                     throw new InvalidOperationException("El conjunto de matrices contiene una matriz nula.");
                 if (!vistas.Add(matriz))
                     throw new InvalidOperationException(
                         $"La misma instancia de matriz aparece duplicada en el conjunto (Id {matriz.Id}).");
+                indice[matriz] = i;
                 if (matriz.Id == 0) continue;
                 if (porId.TryGetValue(matriz.Id, out _))
                     throw new InvalidOperationException($"Matriz duplicada en el conjunto: Id {matriz.Id}.");
@@ -61,6 +69,7 @@ namespace SOPRO.Application.Services
                 var grado = 0;
                 foreach (var comp in matriz.Componentes ?? (IEnumerable<ComponenteMatriz>)Array.Empty<ComponenteMatriz>())
                 {
+                    if (comp.TipoComponente != TipoComponenteMatriz.Auxiliar) continue;
                     if (!comp.AuxiliarId.HasValue) continue;
                     if (!porId.TryGetValue(comp.AuxiliarId.Value, out var auxiliar)) continue;
                     grado++;
@@ -75,16 +84,17 @@ namespace SOPRO.Application.Services
             }
 
             var orden = new List<Matriz>(lista.Count);
-            var listas = new Queue<Matriz>(lista.Where(m => grados[m] == 0));
-            while (listas.Count > 0)
+            var disponibles = new PriorityQueue<Matriz, int>(
+                lista.Where(m => grados[m] == 0).Select(m => (m, indice[m])));
+            while (disponibles.Count > 0)
             {
-                var actual = listas.Dequeue();
+                var actual = disponibles.Dequeue();
                 orden.Add(actual);
-                if (!dependientes.TryGetValue(actual.Id, out var hijos)) continue;
+                if (actual.Id == 0 || !dependientes.TryGetValue(actual.Id, out var hijos)) continue;
                 foreach (var hijo in hijos)
                 {
                     if (--grados[hijo] == 0)
-                        listas.Enqueue(hijo);
+                        disponibles.Enqueue(hijo, indice[hijo]);
                 }
             }
 
@@ -124,6 +134,7 @@ namespace SOPRO.Application.Services
         {
             foreach (var comp in matriz.Componentes ?? (IEnumerable<ComponenteMatriz>)Array.Empty<ComponenteMatriz>())
             {
+                if (comp.TipoComponente != TipoComponenteMatriz.Auxiliar) continue;
                 if (!comp.AuxiliarId.HasValue) continue;
                 if (restantesPorId.TryGetValue(comp.AuxiliarId.Value, out var auxiliar))
                     return auxiliar;

@@ -235,46 +235,9 @@ namespace SOPRO.Application.Services
             }
         }
 
-        private static void PropagarAuxiliares(SOPROContext ctx, List<int> matrizIdsOrigen, List<Matriz> todasMatrices, int? proyectoId = null)
-        {
-            IQueryable<ComponenteMatriz> query = ctx.ComponentesMatriz
-                .Where(c => c.AuxiliarId.HasValue && matrizIdsOrigen.Contains(c.AuxiliarId.Value));
-
-            // Los auxiliares también se restringen al proyecto de la sesión.
-            if (proyectoId.HasValue)
-                query = query.Where(c => c.Matriz.ProyectoId == proyectoId.Value);
-
-            var idsConAuxiliar = query
-                .Select(c => c.MatrizId)
-                .Distinct()
-                .ToList();
-
-            if (!idsConAuxiliar.Any()) return;
-
-            var idsNuevos = idsConAuxiliar.Except(todasMatrices.Select(m => m.Id)).ToList();
-            if (!idsNuevos.Any()) return;
-
-            var matricesPadre = CargarMatricesConNavegaciones(ctx, idsNuevos);
-            RecalcularConMotor(ctx, matricesPadre);
-            todasMatrices.AddRange(matricesPadre);
-            PropagarAuxiliares(ctx, idsNuevos, todasMatrices, proyectoId);
-        }
-
-        private static List<Matriz> CargarMatricesConNavegaciones(SOPROContext ctx, List<int> ids)
-        {
-            return ctx.Matrices
-                .Include(m => m.Componentes).ThenInclude(c => c.Material)
-                .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
-                .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
-                .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
-                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
-                .Where(m => ids.Contains(m.Id))
-                .ToList();
-        }
-
         /// <summary>
-        /// N7-1c: detecta ciclos de referencias AuxiliarId alcanzables desde las matrices
-        /// origen subiendo por padres, dentro del proyecto de la sesión. Un ciclo haría
+        /// Detecta ciclos de referencias AuxiliarId alcanzables desde las matrices origen
+        /// subiendo por padres, dentro del proyecto de la sesión. Un ciclo haría
         /// que la propagación por niveles converja a costos obsoletos en silencio.
         /// Las referencias externas al proyecto no participan (la propagación nunca
         /// cruza proyectos).
@@ -284,29 +247,37 @@ namespace SOPRO.Application.Services
             var origen = idsOrigen.Where(id => id > 0).Distinct().ToList();
             if (origen.Count == 0) return;
 
-            IQueryable<ComponenteMatriz> aristasQuery = ctx.ComponentesMatriz
-                .Where(c => c.AuxiliarId != null);
-            if (proyectoId.HasValue)
-                aristasQuery = aristasQuery.Where(c => c.Matriz.ProyectoId == proyectoId.Value);
-
-            var aristas = aristasQuery
-                .Select(c => new { c.MatrizId, c.AuxiliarId })
-                .ToList();
-
-            var padresPorMatriz = aristas
-                .GroupBy(a => a.MatrizId)
-                .ToDictionary(g => g.Key, g => g.Select(a => a.AuxiliarId!.Value).Distinct().ToList());
+            var aristas = CargarAristasAuxiliar(ctx, proyectoId);
 
             var estado = new Dictionary<int, int>();
             var ruta = new List<int>();
 
             foreach (var id in origen)
-                VisitarAscendente(id, padresPorMatriz, estado, ruta);
+                VisitarAscendente(id, aristas, estado, ruta);
+        }
+
+        /// <summary>
+        /// Aristas ascendentes del proyecto: auxiliar referenciado → matrices padre que
+        /// lo consumen, solo para componentes de tipo Auxiliar (un AuxiliarId en otro
+        /// tipo es dato malformado y no genera dependencias).
+        /// </summary>
+        private static Dictionary<int, List<int>> CargarAristasAuxiliar(SOPROContext ctx, int? proyectoId)
+        {
+            IQueryable<ComponenteMatriz> aristasQuery = ctx.ComponentesMatriz
+                .Where(c => c.TipoComponente == TipoComponenteMatriz.Auxiliar && c.AuxiliarId != null);
+            if (proyectoId.HasValue)
+                aristasQuery = aristasQuery.Where(c => c.Matriz.ProyectoId == proyectoId.Value);
+
+            return aristasQuery
+                .Select(c => new { c.MatrizId, c.AuxiliarId })
+                .ToList()
+                .GroupBy(a => a.AuxiliarId!.Value)
+                .ToDictionary(g => g.Key, g => g.Select(a => a.MatrizId).Distinct().ToList());
         }
 
         private static void VisitarAscendente(
             int id,
-            Dictionary<int, List<int>> padresPorMatriz,
+            Dictionary<int, List<int>> padresPorAuxiliar,
             Dictionary<int, int> estado,
             List<int> ruta)
         {
@@ -324,11 +295,67 @@ namespace SOPRO.Application.Services
 
             estado[id] = 1;
             ruta.Add(id);
-            if (padresPorMatriz.TryGetValue(id, out var padres))
+            if (padresPorAuxiliar.TryGetValue(id, out var padres))
                 foreach (var padre in padres)
-                    VisitarAscendente(padre, padresPorMatriz, estado, ruta);
+                    VisitarAscendente(padre, padresPorAuxiliar, estado, ruta);
             ruta.RemoveAt(ruta.Count - 1);
             estado[id] = 2;
+        }
+
+        /// <summary>
+        /// Cierre ascendente (todas las matrices que dependen transitivamente de los
+        /// orígenes, solo dentro del proyecto de la sesión) recalculado en orden
+        /// topológico: cada padre consume los costos de sus auxiliares ya frescos,
+        /// incluidos los DAG convergentes donde un nodo depende de varios niveles a la
+        /// vez. Los orígenes ya fueron recalculados por el llamador.
+        /// </summary>
+        private static void PropagarAuxiliares(SOPROContext ctx, List<int> matrizIdsOrigen, List<Matriz> todasMatrices, int? proyectoId = null)
+        {
+            var origen = matrizIdsOrigen.Where(id => id > 0).Distinct().ToHashSet();
+            if (origen.Count == 0) return;
+
+            var padresPorAuxiliar = CargarAristasAuxiliar(ctx, proyectoId);
+
+            var closure = new HashSet<int>(origen);
+            var frente = new Queue<int>(origen);
+            while (frente.Count > 0)
+            {
+                if (!padresPorAuxiliar.TryGetValue(frente.Dequeue(), out var padres)) continue;
+                foreach (var padre in padres)
+                    if (closure.Add(padre))
+                        frente.Enqueue(padre);
+            }
+
+            var idsNuevos = closure.Except(origen).ToList();
+            if (idsNuevos.Count == 0) return;
+
+            var matricesPadre = CargarMatricesConNavegaciones(ctx, idsNuevos);
+
+            // Resolver navegaciones de auxiliares desde el propio closure: las hojas
+            // externas conservan el costo almacenado por Include(c => c.Auxiliar).
+            var porId = matricesPadre.ToDictionary(m => m.Id);
+            foreach (var mat in matricesPadre)
+                foreach (var comp in mat.Componentes.Where(c =>
+                             c.TipoComponente == TipoComponenteMatriz.Auxiliar && c.AuxiliarId.HasValue))
+                    if (porId.TryGetValue(comp.AuxiliarId!.Value, out var aux))
+                        comp.Auxiliar = aux;
+
+            var ordenadas = MatrixGraphOrderService.OrdenTopologico(matricesPadre);
+            RecalcularConMotor(ctx, ordenadas);
+
+            todasMatrices.AddRange(matricesPadre);
+        }
+
+        private static List<Matriz> CargarMatricesConNavegaciones(SOPROContext ctx, List<int> ids)
+        {
+            return ctx.Matrices
+                .Include(m => m.Componentes).ThenInclude(c => c.Material)
+                .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
+                .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
+                .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
+                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
+                .Where(m => ids.Contains(m.Id))
+                .ToList();
         }
     }
 }

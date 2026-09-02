@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
+using SOPRO.Data.Context;
 using SOPRO.Tests.TestInfrastructure;
 
 namespace SOPRO.Tests.Services.Precios;
@@ -117,5 +118,74 @@ public class PricePropagationServiceTests
 
         StringAssert.Contains(exception.Message, "Ciclo de matrices detectado");
         StringAssert.Contains(exception.Message, $"{scenario.MatrizApu.Id} -> {basicoCiclico.Id} -> {scenario.MatrizApu.Id}");
+    }
+
+    [TestMethod]
+    public void PropagarManoDeObra_ConCicloAguasArribaDelOrigen_LanzaDiagnostico()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+
+        // B depende del origen A; C depende de B; y B depende de C: el ciclo está aguas
+        // arriba del origen sin incluirlo. La propagación lo alcanzaría al subir niveles.
+        var b = AgregarBasico(context, scenario, "B-CIC2");
+        var c = AgregarBasico(context, scenario, "C-CIC2");
+        context.ComponentesMatriz.AddRange(
+            new ComponenteMatriz { MatrizId = b.Id, TipoComponente = TipoComponenteMatriz.Auxiliar, AuxiliarId = scenario.MatrizApu.Id, Cantidad = 1m },
+            new ComponenteMatriz { MatrizId = c.Id, TipoComponente = TipoComponenteMatriz.Auxiliar, AuxiliarId = b.Id, Cantidad = 1m },
+            new ComponenteMatriz { MatrizId = b.Id, TipoComponente = TipoComponenteMatriz.Auxiliar, AuxiliarId = c.Id, Cantidad = 1m });
+        context.SaveChanges();
+
+        var exception = Assert.ThrowsException<InvalidOperationException>(
+            () => PricePropagationService.PropagarManoDeObra(context, scenario.Oficial.Id, scenario.Proyecto.Id));
+
+        StringAssert.Contains(exception.Message, "Ciclo de matrices detectado");
+        StringAssert.Contains(exception.Message, $"{b.Id} -> {c.Id} -> {b.Id}");
+    }
+
+    [TestMethod]
+    public void PropagarManoDeObra_ConDagConvergente_ElPadreConsumeAuxiliaresFrescos()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+
+        // B depende de A; C depende de B; D depende de A y de C. Por niveles, D se
+        // recalculaba con el C obsoleto; el orden topológico exige B → C → D.
+        var b = AgregarBasico(context, scenario, "B-DAG");
+        var c = AgregarBasico(context, scenario, "C-DAG");
+        var d = AgregarBasico(context, scenario, "D-DAG");
+        context.ComponentesMatriz.AddRange(
+            new ComponenteMatriz { MatrizId = b.Id, TipoComponente = TipoComponenteMatriz.Auxiliar, AuxiliarId = scenario.MatrizApu.Id, Cantidad = 2m },
+            new ComponenteMatriz { MatrizId = c.Id, TipoComponente = TipoComponenteMatriz.Auxiliar, AuxiliarId = b.Id, Cantidad = 2m },
+            new ComponenteMatriz { MatrizId = d.Id, TipoComponente = TipoComponenteMatriz.Auxiliar, AuxiliarId = scenario.MatrizApu.Id, Cantidad = 1m },
+            new ComponenteMatriz { MatrizId = d.Id, TipoComponente = TipoComponenteMatriz.Auxiliar, AuxiliarId = c.Id, Cantidad = 2m });
+        c.CostoDirecto = 999m;
+        context.SaveChanges();
+
+        scenario.Oficial.SalarioReal = 40m;
+        context.SaveChanges();
+
+        PricePropagationService.PropagarManoDeObra(context, scenario.Oficial.Id, scenario.Proyecto.Id);
+
+        Assert.AreEqual(112.00m, scenario.MatrizApu.CostoDirecto, "A con el nuevo salario (60+40+4+4+4).");
+        Assert.AreEqual(224.00m, context.Matrices.Single(m => m.Id == b.Id).CostoDirecto, "B = 2 × A.");
+        Assert.AreEqual(448.00m, context.Matrices.Single(m => m.Id == c.Id).CostoDirecto, "C = 2 × B.");
+        Assert.AreEqual(1008.00m, context.Matrices.Single(m => m.Id == d.Id).CostoDirecto,
+            "D = 1 × A + 2 × C frescos; con propagación por niveles habría consumido el C obsoleto (999).");
+    }
+
+    private static Matriz AgregarBasico(SOPROContext context, SoproCalculationScenario scenario, string clave)
+    {
+        var matriz = new Matriz
+        {
+            Clave = clave,
+            Descripcion = $"Básico {clave}",
+            Unidad = "m",
+            Tipo = TipoMatriz.Basico,
+            ProyectoId = scenario.Proyecto.Id
+        };
+        context.Matrices.Add(matriz);
+        context.SaveChanges();
+        return matriz;
     }
 }
