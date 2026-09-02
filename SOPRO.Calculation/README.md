@@ -20,6 +20,10 @@ procesa.
   componentes sin guardar los asigna el adaptador de Application. Tipos de
   matriz/componente no definidos y combinaciones invalidas (auxiliar o
   material/maquinaria como `%MO`) se rechazan con excepcion.
+- Hojas precalculadas: un `MatrixNodeInput` sin componentes puede traer un total de
+  costo directo (`precomputedDirectCostTotal`, solo Basic o Crew, no negativo) para
+  consumir el costo almacenado de una auxiliar sin expandir su subarbol; el
+  adaptador de Application las usa para preservar el contrato del calculador canonico.
 
 ## API publica
 

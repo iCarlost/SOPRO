@@ -59,6 +59,24 @@ public sealed class MatrixGraphCalculator
                 throw new InvalidOperationException(
                     $"Nodo de matriz {nodeId} no existe en el grafo materializado.");
 
+            if (node.PrecomputedDirectCostTotal.HasValue)
+            {
+                var leaf = new MatrixNodeResult(
+                    node.Id,
+                    node.Type,
+                    Array.Empty<MatrixComponentResult>(),
+                    0m,
+                    0m,
+                    0m,
+                    0m,
+                    0m,
+                    0m,
+                    0m,
+                    node.PrecomputedDirectCostTotal.Value);
+                calculated.Add(node.Id, leaf);
+                return leaf;
+            }
+
             if (states.TryGetValue(nodeId, out var state) && state == VisitState.Active)
                 throw Cycle(stack, nodeId);
 
@@ -188,6 +206,22 @@ public sealed class MatrixGraphCalculator
         if (!Enum.IsDefined(node.Type))
             throw new InvalidOperationException(
                 $"Tipo de matriz no definido: {(int)node.Type} (matriz {node.Id}).");
+
+        if (node.PrecomputedDirectCostTotal.HasValue)
+        {
+            if (node.Components.Count > 0)
+                throw new InvalidOperationException(
+                    $"Combinación inválida: la matriz {node.Id} no puede tener componentes y un total precalculado a la vez.");
+
+            if (node.Type == MatrixType.Apu)
+                throw new InvalidOperationException(
+                    $"Combinación inválida: una matriz APU (nodo {node.Id}) no puede materializarse como hoja precalculada.");
+
+            if (node.PrecomputedDirectCostTotal.Value < 0m)
+                throw new InvalidOperationException(
+                    $"El total precalculado de la matriz {node.Id} no puede ser negativo: {node.PrecomputedDirectCostTotal.Value}.");
+            return;
+        }
 
         foreach (var component in node.Components)
             ValidateComponent(node, component, nodes);

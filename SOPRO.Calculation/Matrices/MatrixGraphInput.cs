@@ -22,21 +22,33 @@ public sealed class MatrixNodeInput
     public MatrixType Type { get; }
     /// <summary>Immutable component list.</summary>
     public IReadOnlyList<MatrixComponentInput> Components { get; }
+    /// <summary>
+    /// Precomputed direct-cost total for a leaf node whose components are not expanded
+    /// in the graph (for example a stored auxiliary cost). Null for computed nodes.
+    /// </summary>
+    public decimal? PrecomputedDirectCostTotal { get; }
 
-    /// <summary>Creates a node and defensively copies its components.</summary>
+    /// <summary>
+    /// Creates a node and defensively copies its components. A non-null
+    /// <paramref name="precomputedDirectCostTotal"/> marks the node as a leaf: it must
+    /// have no components, must be Basic or Crew, and its total must be non-negative.
+    /// </summary>
     /// <param name="id">Stable node identifier.</param>
     /// <param name="type">Node kind.</param>
     /// <param name="components">Components belonging to the node.</param>
+    /// <param name="precomputedDirectCostTotal">Direct-cost total of a leaf node, if any.</param>
     public MatrixNodeInput(
         int id,
         MatrixType type,
-        IEnumerable<MatrixComponentInput> components)
+        IEnumerable<MatrixComponentInput> components,
+        decimal? precomputedDirectCostTotal = null)
     {
         ArgumentNullException.ThrowIfNull(components);
 
         Id = id;
         Type = type;
         Components = new ReadOnlyCollection<MatrixComponentInput>(components.ToList());
+        PrecomputedDirectCostTotal = precomputedDirectCostTotal;
     }
 }
 
