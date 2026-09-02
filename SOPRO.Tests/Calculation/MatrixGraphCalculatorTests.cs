@@ -123,15 +123,39 @@ public class MatrixGraphCalculatorTests
     }
 
     [TestMethod]
-    public void NodoFaltante_IdentificaReferenciaComponenteYRuta()
+    public void NodoFaltante_IdentificaMatrizComponenteReferido()
     {
         var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
             Node(1, MatrixType.Apu,
                 Component(10, 1, MatrixComponentType.Auxiliary, 1m, referencedMatrixId: 99))));
 
-        StringAssert.Contains(exception.Message, "99");
-        StringAssert.Contains(exception.Message, "componente 10");
-        StringAssert.Contains(exception.Message, "1 -> 99");
+        StringAssert.Contains(exception.Message, "Nodo de matriz faltante: 99");
+        StringAssert.Contains(exception.Message, "matriz 1, componente 10");
+    }
+
+    [TestMethod]
+    public void NodoDesconectado_ConReferenciaNula_SeRechaza()
+    {
+        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+            Node(1, MatrixType.Apu,
+                Component(10, 1, MatrixComponentType.Material, 1m, 10m)),
+            Node(2, MatrixType.Basic,
+                Component(20, 1, MatrixComponentType.Auxiliary, 1m))));
+
+        StringAssert.Contains(exception.Message, "Referencia auxiliar nula en matriz 2, componente 20");
+    }
+
+    [TestMethod]
+    public void NodoDesconectado_ConReferenciaInexistente_SeRechaza()
+    {
+        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+            Node(1, MatrixType.Apu,
+                Component(10, 1, MatrixComponentType.Material, 1m, 10m)),
+            Node(2, MatrixType.Basic,
+                Component(20, 1, MatrixComponentType.Auxiliary, 1m, referencedMatrixId: 77))));
+
+        StringAssert.Contains(exception.Message, "Nodo de matriz faltante: 77");
+        StringAssert.Contains(exception.Message, "matriz 2, componente 20");
     }
 
     [DataTestMethod]

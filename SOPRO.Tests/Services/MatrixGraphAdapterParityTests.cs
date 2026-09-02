@@ -19,18 +19,17 @@ public class MatrixGraphAdapterParityTests
     [DataRow(2)]
     [DataRow(3)]
     [DataRow(4)]
-    public void RecalculateYGraphCalculator_ProducenMismosTotales(int decimals)
+    public void RecalculateYGraphCalculator_ProducenMismosTotalesYComponentes(int decimals)
     {
-        var componentes = new List<ComponenteMatriz>
-        {
-            Component(TipoComponenteMatriz.Material, 3m, material: new Material { PrecioUnitario = 11.115m }),
-            Component(TipoComponenteMatriz.ManoDeObra, 2m, manoDeObra: new ManoDeObra { Unidad = "jor", SalarioReal = 25.5m }),
-            Component(TipoComponenteMatriz.ManoDeObra, .10m, manoDeObra: new ManoDeObra { Unidad = "%MO", SalarioReal = 0m }),
-            Component(TipoComponenteMatriz.Maquinaria, 1.5m, maquinaria: new Maquinaria { CostoHorario = 45.555m }),
-            Component(TipoComponenteMatriz.Herramienta, 2m, herramienta: new Herramienta { Unidad = "pza", PrecioUnitario = 7.777m }),
-            Component(TipoComponenteMatriz.Herramienta, .03m, herramienta: new Herramienta { Unidad = "%MO", PrecioUnitario = 0m }),
-            Component(TipoComponenteMatriz.Auxiliar, 1m, auxiliar: new Matriz { Tipo = TipoMatriz.Cuadrilla, CostoDirecto = 40.005m })
-        };
+        var material = Component(TipoComponenteMatriz.Material, 3m, material: new Material { PrecioUnitario = 11.115m });
+        var manoObra = Component(TipoComponenteMatriz.ManoDeObra, 2m, manoDeObra: new ManoDeObra { Unidad = "jor", SalarioReal = 25.5m });
+        var manoObraPct = Component(TipoComponenteMatriz.ManoDeObra, .10m, manoDeObra: new ManoDeObra { Unidad = "%MO", SalarioReal = 0m });
+        var maquinaria = Component(TipoComponenteMatriz.Maquinaria, 1.5m, maquinaria: new Maquinaria { CostoHorario = 45.555m });
+        var herramienta = Component(TipoComponenteMatriz.Herramienta, 2m, herramienta: new Herramienta { Unidad = "pza", PrecioUnitario = 7.777m });
+        var herramientaPct = Component(TipoComponenteMatriz.Herramienta, .03m, herramienta: new Herramienta { Unidad = "%MO", PrecioUnitario = 0m });
+        var cuadrilla = Component(TipoComponenteMatriz.Auxiliar, 1m, auxiliar: new Matriz { Tipo = TipoMatriz.Cuadrilla, CostoDirecto = 40.005m });
+        var basico = Component(TipoComponenteMatriz.Auxiliar, 2m, auxiliar: new Matriz { Tipo = TipoMatriz.Basico, CostoDirecto = 17.777m });
+        var componentes = new List<ComponenteMatriz> { material, manoObra, manoObraPct, maquinaria, herramienta, herramientaPct, cuadrilla, basico };
 
         var legacy = MatrixComponentCalculationService.Recalculate(componentes, decimals);
 
@@ -45,13 +44,26 @@ public class MatrixGraphAdapterParityTests
                     Component(104, 4, MatrixComponentType.Machinery, 1.5m, 45.555m),
                     Component(105, 5, MatrixComponentType.Tool, 2m, 7.777m),
                     Component(106, 6, MatrixComponentType.Tool, .03m, isPercentage: true),
-                    Component(107, 7, MatrixComponentType.Auxiliary, 1m, referencedMatrixId: 20)
+                    Component(107, 7, MatrixComponentType.Auxiliary, 1m, referencedMatrixId: 20),
+                    Component(108, 8, MatrixComponentType.Auxiliary, 2m, referencedMatrixId: 30)
                 }),
                 new MatrixNodeInput(20, MatrixType.Crew, new[]
                 {
                     Component(200, 1, MatrixComponentType.Labor, 1m, 40.005m)
+                }),
+                new MatrixNodeInput(30, MatrixType.Basic, new[]
+                {
+                    Component(300, 1, MatrixComponentType.Material, 1m, 17.777m)
                 })
             }));
+
+        var expectedByComponent = new[]
+        {
+            (101, material), (102, manoObra), (103, manoObraPct), (104, maquinaria),
+            (105, herramienta), (106, herramientaPct), (107, cuadrilla), (108, basico)
+        };
+        foreach (var (id, componente) in expectedByComponent)
+            Assert.AreEqual(componente.Importe, graph.ComponentAmounts[id], $"Importe componente {id} ({decimals} decimales)");
 
         Assert.AreEqual(legacy.TotalMaterial, graph.TotalMaterial, $"TotalMaterial ({decimals} decimales)");
         Assert.AreEqual(legacy.BaseManoObra, graph.BaseLabor, $"BaseManoObra ({decimals} decimales)");
@@ -61,6 +73,7 @@ public class MatrixGraphAdapterParityTests
         Assert.AreEqual(legacy.TotalHerramientas, graph.TotalTools, $"TotalHerramientas ({decimals} decimales)");
         Assert.AreEqual(legacy.TotalManoObraResumen, graph.TotalLaborSummary, $"TotalManoObraResumen ({decimals} decimales)");
         Assert.AreEqual(legacy.CostoDirectoTotal, graph.DirectCostTotal, $"CostoDirectoTotal ({decimals} decimales)");
+        Assert.IsTrue(legacy.TotalBasicos > 0m, "El escenario debe ejercer TotalBasicos con valor no nulo.");
     }
 
     private static ComponenteMatriz Component(

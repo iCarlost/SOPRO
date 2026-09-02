@@ -54,7 +54,9 @@ public sealed class MatrixNodeInput
 /// The Application adapter must assign temporary stable identifiers to unsaved components
 /// before materializing the graph (for example negative ids mapped back after persistence).
 /// Every node in <see cref="Nodes"/> is validated on evaluation, even when it is not
-/// reachable from the root.
+/// reachable from the root: undefined enum values, invalid combinations, null auxiliary
+/// references and auxiliary references to nodes missing from the graph all fail before
+/// any amount is produced.
 /// </para>
 /// </remarks>
 public sealed class MatrixGraphInput

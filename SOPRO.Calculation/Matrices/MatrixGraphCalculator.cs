@@ -31,12 +31,13 @@ public sealed class MatrixGraphCalculator
 
         var nodes = input.Nodes.ToDictionary(node => node.Id);
         if (!nodes.ContainsKey(input.RootMatrixId))
-            throw MissingNode(input.RootMatrixId, input.RootMatrixId, null, new[] { input.RootMatrixId });
+            throw new InvalidOperationException(
+                $"La matriz raíz {input.RootMatrixId} no existe en el grafo materializado.");
 
         var componentIds = new HashSet<int>();
         foreach (var node in nodes.Values)
         {
-            ValidateNode(node);
+            ValidateNode(node, nodes);
             foreach (var component in node.Components)
             {
                 if (!componentIds.Add(component.Id))
@@ -55,7 +56,8 @@ public sealed class MatrixGraphCalculator
                 return cached;
 
             if (!nodes.TryGetValue(nodeId, out var node))
-                throw MissingNode(nodeId, stack.Count == 0 ? nodeId : stack[^1], null, stack.Append(nodeId));
+                throw new InvalidOperationException(
+                    $"Nodo de matriz {nodeId} no existe en el grafo materializado.");
 
             if (states.TryGetValue(nodeId, out var state) && state == VisitState.Active)
                 throw Cycle(stack, nodeId);
@@ -76,16 +78,7 @@ public sealed class MatrixGraphCalculator
                     decimal amount;
                     if (component.Type == MatrixComponentType.Auxiliary)
                     {
-                        if (!component.ReferencedMatrixId.HasValue)
-                            throw NullAuxiliaryReference(node.Id, component.Id, stack.Append(node.Id));
-
-                        if (!nodes.ContainsKey(component.ReferencedMatrixId.Value))
-                        {
-                            var referenceId = component.ReferencedMatrixId.Value;
-                            throw MissingNode(referenceId, node.Id, component.Id, stack.Append(referenceId));
-                        }
-
-                        var child = Evaluate(component.ReferencedMatrixId.Value);
+                        var child = Evaluate(component.ReferencedMatrixId!.Value);
                         amount = _engine.Multiply(component.Quantity, child.DirectCostTotal);
                     }
                     else if (IsPercentageComponent(component))
@@ -190,17 +183,20 @@ public sealed class MatrixGraphCalculator
         => (component.Type == MatrixComponentType.Labor || component.Type == MatrixComponentType.Tool) &&
            component.IsPercentageOfLabor;
 
-    private static void ValidateNode(MatrixNodeInput node)
+    private static void ValidateNode(MatrixNodeInput node, IReadOnlyDictionary<int, MatrixNodeInput> nodes)
     {
         if (!Enum.IsDefined(node.Type))
             throw new InvalidOperationException(
                 $"Tipo de matriz no definido: {(int)node.Type} (matriz {node.Id}).");
 
         foreach (var component in node.Components)
-            ValidateComponent(node, component);
+            ValidateComponent(node, component, nodes);
     }
 
-    private static void ValidateComponent(MatrixNodeInput node, MatrixComponentInput component)
+    private static void ValidateComponent(
+        MatrixNodeInput node,
+        MatrixComponentInput component,
+        IReadOnlyDictionary<int, MatrixNodeInput> nodes)
     {
         if (!Enum.IsDefined(component.Type))
             throw new InvalidOperationException(
@@ -212,6 +208,15 @@ public sealed class MatrixGraphCalculator
                 throw new InvalidOperationException(
                     "Combinación inválida: un componente auxiliar no puede marcarse como porcentaje de mano de obra " +
                     $"(matriz {node.Id}, componente {component.Id}).");
+
+            if (!component.ReferencedMatrixId.HasValue)
+                throw new InvalidOperationException(
+                    $"Referencia auxiliar nula en matriz {node.Id}, componente {component.Id}.");
+
+            if (!nodes.ContainsKey(component.ReferencedMatrixId.Value))
+                throw new InvalidOperationException(
+                    $"Nodo de matriz faltante: {component.ReferencedMatrixId.Value} " +
+                    $"(referido desde matriz {node.Id}, componente {component.Id}).");
             return;
         }
 
@@ -222,32 +227,12 @@ public sealed class MatrixGraphCalculator
                 $"(matriz {node.Id}, componente {component.Id}, tipo {component.Type}).");
     }
 
-    private static InvalidOperationException NullAuxiliaryReference(
-        int ownerNodeId,
-        int componentId,
-        IEnumerable<int> route)
-        => new InvalidOperationException(
-            $"Referencia auxiliar nula en matriz {ownerNodeId}, componente {componentId}. " +
-            "Ruta: " + string.Join(" -> ", route));
-
     private static InvalidOperationException Cycle(IReadOnlyList<int> stack, int repeatedNodeId)
     {
         var start = stack.ToList().IndexOf(repeatedNodeId);
         var route = stack.Skip(start < 0 ? 0 : start).Append(repeatedNodeId);
         return new InvalidOperationException(
             "Ciclo de matrices detectado. Ruta: " + string.Join(" -> ", route));
-    }
-
-    private static InvalidOperationException MissingNode(
-        int missingNodeId,
-        int ownerNodeId,
-        int? componentId,
-        IEnumerable<int> route)
-    {
-        var component = componentId.HasValue ? $", componente {componentId.Value}" : string.Empty;
-        return new InvalidOperationException(
-            $"Nodo de matriz faltante: {missingNodeId} (referido desde matriz {ownerNodeId}{component}). " +
-            "Ruta: " + string.Join(" -> ", route));
     }
 
     private enum VisitState
