@@ -83,6 +83,12 @@ namespace SOPRO.Application.Services
             SchemaManager.EnsureCurrentSchema(externalContext);
             var graph = LoadGraph(externalContext, externalMatrixId);
 
+            // [N7-1e] El grafo fuente debe ser un DAG: se diagnostica aquí, con ruta,
+            // antes de calcular el preview (y, en importación, antes de abrir
+            // transacción o escribir nada). Antes un ciclo fallaba genéricamente en la
+            // copia de componentes al perder la referencia aun-no-mapeada.
+            ValidarAciclicidadDelGrafoFuente(graph);
+
             var matrixKeys = new HashSet<string>(graph.OrderedMatrices.Select(m => NormalizeKey(m.Clave)));
             var materialKeys = new HashSet<string>(graph.Materials.Values.Select(m => NormalizeKey(m.Clave)));
             var manoKeys = new HashSet<string>(graph.ManoDeObra.Values.Select(m => NormalizeKey(m.Clave)));
@@ -163,6 +169,9 @@ namespace SOPRO.Application.Services
             using var externalContext = _dbContextFactory.Create(projectPath);
             SchemaManager.EnsureCurrentSchema(externalContext);
             var graph = LoadGraph(externalContext, externalMatrixId);
+
+            // [N7-1e] Ciclo en el grafo fuente: diagnóstico con ruta antes de tocar BD.
+            ValidarAciclicidadDelGrafoFuente(graph);
 
             var currentProject = currentContext.Proyectos.FirstOrDefault(p => p.Id == currentProjectId)
                 ?? throw new InvalidOperationException("No se encontró el proyecto actual.");
@@ -381,6 +390,26 @@ namespace SOPRO.Application.Services
                     currentContext, MatrixGraphOrderService.OrdenTopologico(matricesImportadas));
             else
                 PricePropagationService.RecalcularConMotor(currentContext, matricesImportadas);
+        }
+
+        /// <summary>
+        /// [N7-1e] El orden topológico canónico es también el verificador de aciclicidad:
+        /// si el grafo fuente (alcanzable desde la raíz) tiene un ciclo de referencias
+        /// entre matrices, lanza <see cref="InvalidOperationException"/> con la ruta en
+        /// lugar de dejar que la copia de componentes pierda la referencia o falle con
+        /// un diagnóstico genérico de clave.
+        /// </summary>
+        private static void ValidarAciclicidadDelGrafoFuente(MatrixGraph graph)
+        {
+            try
+            {
+                MatrixGraphOrderService.OrdenTopologico(graph.OrderedMatrices);
+            }
+            catch (InvalidOperationException ex) when (ex.Message.StartsWith("Ciclo de matrices detectado", StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "El grafo externo contiene un ciclo de referencias entre matrices. " + ex.Message, ex);
+            }
         }
 
         private static MatrixGraph LoadGraph(SOPROContext externalContext, int externalMatrixId)
