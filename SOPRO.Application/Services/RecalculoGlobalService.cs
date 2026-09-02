@@ -112,12 +112,9 @@ namespace SOPRO.Application.Services
                 .Where(m => m.ProyectoId == proyectoId)
                 .ToList();
 
-            // Resolver referencias a auxiliares (básicos/cuadrillas)
-            var matrizPorId = matrices.ToDictionary(m => m.Id);
-            foreach (var mat in matrices)
-                foreach (var comp in mat.Componentes.Where(c => c.AuxiliarId.HasValue))
-                    if (matrizPorId.TryGetValue(comp.AuxiliarId!.Value, out var aux))
-                        comp.Auxiliar = aux;
+            // Resolver referencias a auxiliares internas desde el propio conjunto
+            // (hojas externas conservan su costo almacenado).
+            MatrixGraphOrderService.ResolverAuxiliaresInternos(matrices);
 
             int total = 0;
 

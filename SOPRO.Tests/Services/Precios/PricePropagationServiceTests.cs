@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SOPRO.Application.Services;
@@ -217,6 +219,67 @@ public class PricePropagationServiceTests
         var concepto = context.ConceptosPresupuesto.Single(c => c.Id == scenario.Concepto.Id);
         Assert.AreEqual(810.00m, concepto.CostoDirectoUnitario);
         Assert.AreEqual(8100.00m, concepto.CostoDirectoTotal);
+    }
+
+    [TestMethod]
+    public void PropagarEliminacion_OrigenExternoConPadreLocal_RecalculaPadreSinTocarOrigen()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+
+        var otroProyecto = new Proyecto
+        {
+            Nombre = "Otro proyecto",
+            Descripcion = string.Empty,
+            Ubicacion = string.Empty,
+            Convocante = string.Empty,
+            Contratista = string.Empty,
+            ApoderadoLegal = string.Empty,
+            FechaInicio = new DateTime(2026, 1, 1),
+            FechaTermino = new DateTime(2026, 1, 31),
+            PlazoEjecucion = 31,
+            DecimalesCantidad = 2,
+            DecimalesImporte = 2,
+            DecimalesPorcentaje = 4
+        };
+        context.Proyectos.Add(otroProyecto);
+        context.SaveChanges();
+
+        // X: matriz del OTRO proyecto, costo almacenado 555. Si alguien la recalculara
+        // con el motor subiría a 600 (10 × 60); debe permanecer intacta.
+        var externa = new Matriz
+        {
+            Clave = "X-EXT", Descripcion = "Externa", Unidad = "m",
+            Tipo = TipoMatriz.Basico, ProyectoId = otroProyecto.Id, CostoDirecto = 555m
+        };
+        context.Matrices.Add(externa);
+        context.SaveChanges();
+        context.ComponentesMatriz.Add(new ComponenteMatriz
+        {
+            MatrizId = externa.Id,
+            TipoComponente = TipoComponenteMatriz.Material,
+            MaterialId = scenario.Cemento.Id,
+            Cantidad = 10m,
+            Orden = 1
+        });
+
+        var padre = AgregarBasico(context, scenario, "P-EXT");
+        context.ComponentesMatriz.Add(new ComponenteMatriz
+        {
+            MatrizId = padre.Id,
+            TipoComponente = TipoComponenteMatriz.Auxiliar,
+            AuxiliarId = externa.Id,
+            Cantidad = 1m,
+            Orden = 1
+        });
+        context.SaveChanges();
+
+        PricePropagationService.PropagarEliminacion(context, new List<int> { externa.Id, padre.Id }, scenario.Proyecto.Id);
+
+        Assert.AreEqual(555.00m, context.Matrices.Single(m => m.Id == externa.Id).CostoDirecto,
+            "la auxiliar externa al proyecto de la sesión nunca se recalcula");
+        Assert.AreEqual(555.00m, context.Matrices.Single(m => m.Id == padre.Id).CostoDirecto,
+            "el padre local se recalcula consumiendo el costo almacenado de la externa (1 × 555)");
     }
 
     private static Matriz AgregarBasico(SOPROContext context, SoproCalculationScenario scenario, string clave)

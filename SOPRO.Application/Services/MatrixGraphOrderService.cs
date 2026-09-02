@@ -34,6 +34,37 @@ namespace SOPRO.Application.Services
     public static class MatrixGraphOrderService
     {
         /// <summary>
+        /// Resuelve las navegaciones <see cref="ComponenteMatriz.Auxiliar"/> de los
+        /// componentes de tipo Auxiliar cuyo <see cref="ComponenteMatriz.AuxiliarId"/>
+        /// pertenece al conjunto, garantizando que padre e hijo consumen la misma
+        /// instancia rastreada (el costo recién recalculado). Las referencias externas
+        /// conservan la navegación ya cargada (hoja con costo almacenado).
+        /// </summary>
+        public static void ResolverAuxiliaresInternos(IEnumerable<Matriz> matrices)
+        {
+            if (matrices == null) throw new ArgumentNullException(nameof(matrices));
+
+            var lista = matrices as IReadOnlyList<Matriz> ?? matrices.ToList();
+            var porId = new Dictionary<int, Matriz>();
+            foreach (var matriz in lista)
+            {
+                if (matriz == null)
+                    throw new InvalidOperationException("El conjunto de matrices contiene una matriz nula.");
+                if (matriz.Id != 0 && !porId.ContainsKey(matriz.Id))
+                    porId[matriz.Id] = matriz;
+            }
+
+            foreach (var matriz in lista)
+                foreach (var comp in matriz.Componentes ?? (IEnumerable<ComponenteMatriz>)Array.Empty<ComponenteMatriz>())
+                {
+                    if (comp.TipoComponente != TipoComponenteMatriz.Auxiliar) continue;
+                    if (!comp.AuxiliarId.HasValue) continue;
+                    if (porId.TryGetValue(comp.AuxiliarId.Value, out var auxiliar))
+                        comp.Auxiliar = auxiliar;
+                }
+        }
+
+        /// <summary>
         /// Devuelve las matrices en orden topológico lexicográficamente mínimo por
         /// dependencias de auxiliares internas; lanza si el conjunto contiene un ciclo.
         /// </summary>
