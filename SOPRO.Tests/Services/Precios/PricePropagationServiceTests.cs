@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SOPRO.Application.Services;
+using SOPRO.Core.Entities;
 using SOPRO.Tests.TestInfrastructure;
 
 namespace SOPRO.Tests.Services.Precios;
@@ -76,5 +77,45 @@ public class PricePropagationServiceTests
 
         Assert.AreEqual(100.00m, scenario.MatrizApu.CostoDirecto);
         Assert.AreEqual(1000.00m, scenario.Concepto.CostoDirectoTotal);
+    }
+
+    [TestMethod]
+    public void PropagarMaterial_ConCicloDeAuxiliares_LanzaDiagnostico()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+
+        var basicoCiclico = new Matriz
+        {
+            Clave = "B-CIC",
+            Descripcion = "Básico cíclico",
+            Unidad = "m",
+            Tipo = TipoMatriz.Basico,
+            ProyectoId = scenario.Proyecto.Id
+        };
+        context.Matrices.Add(basicoCiclico);
+        context.SaveChanges();
+
+        context.ComponentesMatriz.Add(new ComponenteMatriz
+        {
+            MatrizId = scenario.MatrizApu.Id,
+            TipoComponente = TipoComponenteMatriz.Auxiliar,
+            AuxiliarId = basicoCiclico.Id,
+            Cantidad = 1m
+        });
+        context.ComponentesMatriz.Add(new ComponenteMatriz
+        {
+            MatrizId = basicoCiclico.Id,
+            TipoComponente = TipoComponenteMatriz.Auxiliar,
+            AuxiliarId = scenario.MatrizApu.Id,
+            Cantidad = 1m
+        });
+        context.SaveChanges();
+
+        var exception = Assert.ThrowsException<InvalidOperationException>(
+            () => PricePropagationService.PropagarMaterial(context, scenario.Cemento.Id, scenario.Proyecto.Id));
+
+        StringAssert.Contains(exception.Message, "Ciclo de matrices detectado");
+        StringAssert.Contains(exception.Message, $"{scenario.MatrizApu.Id} -> {basicoCiclico.Id} -> {scenario.MatrizApu.Id}");
     }
 }

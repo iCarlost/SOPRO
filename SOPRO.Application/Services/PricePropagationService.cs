@@ -33,6 +33,8 @@ namespace SOPRO.Application.Services
         {
             if (!matrizIdsAfectadas.Any()) return;
 
+            LanzarSiHayCicloAscendente(ctx, matrizIdsAfectadas, proyectoId);
+
             var matrices = CargarMatricesConNavegaciones(ctx, matrizIdsAfectadas);
 
             // La propagación nunca cruza proyectos: una matriz de otro proyecto
@@ -71,6 +73,11 @@ namespace SOPRO.Application.Services
             if (!componentes.Any()) return;
 
             var matrizIds = componentes.Select(c => c.MatrizId).Distinct().ToList();
+
+            // N7-1c: un ciclo de auxiliares alcanzable convergería silenciosamente a
+            // costos obsoletos; se diagnostica antes de tocar nada.
+            LanzarSiHayCicloAscendente(ctx, matrizIds, proyectoId);
+
             var matrices  = CargarMatricesConNavegaciones(ctx, matrizIds);
 
             // Obtener proyectos para usar decimalesImporte correcto
@@ -263,6 +270,65 @@ namespace SOPRO.Application.Services
                 .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
                 .Where(m => ids.Contains(m.Id))
                 .ToList();
+        }
+
+        /// <summary>
+        /// N7-1c: detecta ciclos de referencias AuxiliarId alcanzables desde las matrices
+        /// origen subiendo por padres, dentro del proyecto de la sesión. Un ciclo haría
+        /// que la propagación por niveles converja a costos obsoletos en silencio.
+        /// Las referencias externas al proyecto no participan (la propagación nunca
+        /// cruza proyectos).
+        /// </summary>
+        private static void LanzarSiHayCicloAscendente(SOPROContext ctx, List<int> idsOrigen, int? proyectoId)
+        {
+            var origen = idsOrigen.Where(id => id > 0).Distinct().ToList();
+            if (origen.Count == 0) return;
+
+            IQueryable<ComponenteMatriz> aristasQuery = ctx.ComponentesMatriz
+                .Where(c => c.AuxiliarId != null);
+            if (proyectoId.HasValue)
+                aristasQuery = aristasQuery.Where(c => c.Matriz.ProyectoId == proyectoId.Value);
+
+            var aristas = aristasQuery
+                .Select(c => new { c.MatrizId, c.AuxiliarId })
+                .ToList();
+
+            var padresPorMatriz = aristas
+                .GroupBy(a => a.MatrizId)
+                .ToDictionary(g => g.Key, g => g.Select(a => a.AuxiliarId!.Value).Distinct().ToList());
+
+            var estado = new Dictionary<int, int>();
+            var ruta = new List<int>();
+
+            foreach (var id in origen)
+                VisitarAscendente(id, padresPorMatriz, estado, ruta);
+        }
+
+        private static void VisitarAscendente(
+            int id,
+            Dictionary<int, List<int>> padresPorMatriz,
+            Dictionary<int, int> estado,
+            List<int> ruta)
+        {
+            if (estado.TryGetValue(id, out var marca))
+            {
+                if (marca == 1)
+                {
+                    var inicio = ruta.IndexOf(id);
+                    throw new InvalidOperationException(
+                        "Ciclo de matrices detectado en la propagación de precios. Ruta: " +
+                        string.Join(" -> ", ruta.Skip(inicio).Append(id)));
+                }
+                return;
+            }
+
+            estado[id] = 1;
+            ruta.Add(id);
+            if (padresPorMatriz.TryGetValue(id, out var padres))
+                foreach (var padre in padres)
+                    VisitarAscendente(padre, padresPorMatriz, estado, ruta);
+            ruta.RemoveAt(ruta.Count - 1);
+            estado[id] = 2;
         }
     }
 }

@@ -121,12 +121,11 @@ namespace SOPRO.Application.Services
 
             int total = 0;
 
-            // Procesar APUs y Básicos primero (las cuadrillas no tienen componentes de tipo APU)
-            // Orden: Cuadrillas → Básicos → APUs para que los auxiliares ya tengan CostoDirecto correcto
-            var ordenadas = matrices
-                .OrderBy(m => m.Tipo == TipoMatriz.Cuadrilla ? 0 :
-                              m.Tipo == TipoMatriz.Basico    ? 1 : 2)
-                .ToList();
+            // Orden topológico real por dependencias de auxiliares internas (N7-1c):
+            // cada auxiliar referenciada dentro del proyecto se recalcula antes que sus
+            // padres, incluidos los básicos anidados. Un ciclo lanza diagnóstico con
+            // ruta en lugar de converger silenciosamente a costos obsoletos.
+            var ordenadas = MatrixGraphOrderService.OrdenTopologico(matrices);
 
             foreach (var matriz in ordenadas)
             {

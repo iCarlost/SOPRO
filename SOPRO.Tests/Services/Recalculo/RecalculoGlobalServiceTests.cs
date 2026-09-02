@@ -372,6 +372,67 @@ public class RecalculoGlobalServiceTests
             .Single(a => a.ProgramaObra.ProyectoId == scenario.Proyecto.Id).ImporteTotal);
     }
 
+    [TestMethod]
+    public void Ejecutar_ConBasicosAnidados_RecalculaEnOrdenTopologico()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+
+        // Cadena: cuadrilla (CD 30 = 1 × salario Oficial) ← básico externo (×2 = 60) ← básico anidado (×3 = 180).
+        // El básico anidado se crea PRIMERO (Id menor) para que el orden natural de la
+        // consulta lo coloque antes que su dependencia: el orden por tipo legacy
+        // (Cuadrilla→Básico→APU) lo habría recalculado con el costo obsoleto.
+        var cuadrilla = new Matriz
+        {
+            Clave = "Q-TOP", Descripcion = "Cuadrilla topo", Unidad = "m",
+            Tipo = TipoMatriz.Cuadrilla, ProyectoId = scenario.Proyecto.Id
+        };
+        var basicoAnidado = new Matriz
+        {
+            Clave = "B2-TOP", Descripcion = "Básico anidado topo", Unidad = "m",
+            Tipo = TipoMatriz.Basico, ProyectoId = scenario.Proyecto.Id
+        };
+        context.Matrices.AddRange(cuadrilla, basicoAnidado);
+        context.SaveChanges();
+
+        var basicoExterno = new Matriz
+        {
+            Clave = "B1-TOP", Descripcion = "Básico externo topo", Unidad = "m",
+            Tipo = TipoMatriz.Basico, ProyectoId = scenario.Proyecto.Id
+        };
+        context.Matrices.Add(basicoExterno);
+        context.SaveChanges();
+
+        context.ComponentesMatriz.AddRange(
+            new ComponenteMatriz
+            {
+                MatrizId = cuadrilla.Id, TipoComponente = TipoComponenteMatriz.ManoDeObra,
+                ManoDeObraId = scenario.Oficial.Id, Cantidad = 1m, Orden = 1
+            },
+            new ComponenteMatriz
+            {
+                MatrizId = basicoExterno.Id, TipoComponente = TipoComponenteMatriz.Auxiliar,
+                AuxiliarId = cuadrilla.Id, Cantidad = 2m, Orden = 1
+            },
+            new ComponenteMatriz
+            {
+                MatrizId = basicoAnidado.Id, TipoComponente = TipoComponenteMatriz.Auxiliar,
+                AuxiliarId = basicoExterno.Id, Cantidad = 3m, Orden = 1
+            });
+
+        // Costos obsoletos sembrados: solo el orden topológico garantiza el resultado correcto.
+        cuadrilla.CostoDirecto = 999m;
+        basicoExterno.CostoDirecto = 999m;
+        basicoAnidado.CostoDirecto = 999m;
+        context.SaveChanges();
+
+        new RecalculoGlobalService().Ejecutar(context, scenario.Proyecto.Id);
+
+        Assert.AreEqual(30.00m, cuadrilla.CostoDirecto, "La cuadrilla se recalcula desde su MO (1 × 30).");
+        Assert.AreEqual(60.00m, basicoExterno.CostoDirecto, "El básico externo consume la cuadrilla ya recalculada (2 × 30).");
+        Assert.AreEqual(180.00m, basicoAnidado.CostoDirecto, "El básico anidado consume el básico ya recalculado (3 × 60).");
+    }
+
     private static void AddThreePeriodProgram(SOPROContext context, SoproCalculationScenario scenario)
     {
         var programa = new ProgramaObra
