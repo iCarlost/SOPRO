@@ -43,8 +43,9 @@ namespace SOPRO.Application.Services
                 matrices = matrices.Where(m => m.ProyectoId == proyectoId.Value).ToList();
             if (!matrices.Any()) return;
 
-            RecalcularConMotor(ctx, matrices);
-
+            // El recálculo del cierre completo (orígenes incluidos) se hace en orden
+            // topológico dentro de PropagarAuxiliares; hacerlo aquí en el orden de
+            // carga dejaría obsoletos a los orígenes que dependen entre sí.
             PropagarAuxiliares(ctx, matrizIdsAfectadas, matrices, proyectoId);
 
             var todasIds = matrices.Select(m => m.Id).ToList();
@@ -101,8 +102,9 @@ namespace SOPRO.Application.Services
                 comp.Importe = new SoproCalculationEngine(dec, dec, 4).Multiply(comp.Cantidad, pu);
             }
 
-            // [FIX] Usar motor con decimales del proyecto en lugar de CalcularCostoDirecto()
-            RecalcularConMotor(ctx, matrices);
+            // [FIX] Motor con decimales del proyecto: el recálculo del cierre completo
+            // (orígenes incluidos) se hace en orden topológico dentro de
+            // PropagarAuxiliares, nunca en el orden de carga.
             PropagarAuxiliares(ctx, matrizIds, matrices, proyectoId);
 
             var todasIds = matrices.Select(m => m.Id).ToList();
@@ -305,15 +307,17 @@ namespace SOPRO.Application.Services
         /// <summary>
         /// Cierre ascendente (todas las matrices que dependen transitivamente de los
         /// orígenes, solo dentro del proyecto de la sesión) recalculado en orden
-        /// topológico: cada padre consume los costos de sus auxiliares ya frescos,
-        /// incluidos los DAG convergentes donde un nodo depende de varios niveles a la
-        /// vez. Los orígenes ya fueron recalculados por el llamador.
+        /// topológico, ORÍGENES INCLUIDOS: dos matrices que contienen ambas el insumo
+        /// modificado y se referencian entre sí deben resolverse auxiliar antes que
+        /// padre; cada padre consume los costos de sus auxiliares ya frescos, incluidos
+        /// los DAG convergentes donde un nodo depende de varios niveles a la vez.
         /// </summary>
         private static void PropagarAuxiliares(SOPROContext ctx, List<int> matrizIdsOrigen, List<Matriz> todasMatrices, int? proyectoId = null)
         {
             var origen = matrizIdsOrigen.Where(id => id > 0).Distinct().ToHashSet();
             if (origen.Count == 0) return;
 
+            var cargados = todasMatrices.Select(m => m.Id).ToHashSet();
             var padresPorAuxiliar = CargarAristasAuxiliar(ctx, proyectoId);
 
             var closure = new HashSet<int>(origen);
@@ -326,24 +330,32 @@ namespace SOPRO.Application.Services
                         frente.Enqueue(padre);
             }
 
-            var idsNuevos = closure.Except(origen).ToList();
-            if (idsNuevos.Count == 0) return;
+            // Los padres descubiertos son siempre del proyecto de la sesión (aristas
+            // filtradas); un origen de otro proyecto no se recalcula nunca (hoja
+            // externa), pero sus padres locales sí.
+            var idsRecalcular = closure
+                .Where(id => !origen.Contains(id) || cargados.Contains(id))
+                .ToList();
+            if (idsRecalcular.Count == 0) return;
 
-            var matricesPadre = CargarMatricesConNavegaciones(ctx, idsNuevos);
+            // Resolución de identidad de EF: las matrices origen ya cargadas por el
+            // llamador retornan como las mismas instancias rastreadas.
+            var matrices = CargarMatricesConNavegaciones(ctx, idsRecalcular);
 
-            // Resolver navegaciones de auxiliares desde el propio closure: las hojas
+            // Resolver navegaciones de auxiliares desde el cierre completo: las hojas
             // externas conservan el costo almacenado por Include(c => c.Auxiliar).
-            var porId = matricesPadre.ToDictionary(m => m.Id);
-            foreach (var mat in matricesPadre)
+            var porId = matrices.ToDictionary(m => m.Id);
+            foreach (var mat in matrices)
                 foreach (var comp in mat.Componentes.Where(c =>
                              c.TipoComponente == TipoComponenteMatriz.Auxiliar && c.AuxiliarId.HasValue))
                     if (porId.TryGetValue(comp.AuxiliarId!.Value, out var aux))
                         comp.Auxiliar = aux;
 
-            var ordenadas = MatrixGraphOrderService.OrdenTopologico(matricesPadre);
+            var ordenadas = MatrixGraphOrderService.OrdenTopologico(matrices);
             RecalcularConMotor(ctx, ordenadas);
 
-            todasMatrices.AddRange(matricesPadre);
+            var existentes = todasMatrices.Select(m => m.Id).ToHashSet();
+            todasMatrices.AddRange(matrices.Where(m => !existentes.Contains(m.Id)));
         }
 
         private static List<Matriz> CargarMatricesConNavegaciones(SOPROContext ctx, List<int> ids)

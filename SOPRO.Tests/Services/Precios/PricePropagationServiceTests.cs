@@ -174,6 +174,51 @@ public class PricePropagationServiceTests
             "D = 1 × A + 2 × C frescos; con propagación por niveles habría consumido el C obsoleto (999).");
     }
 
+    [TestMethod]
+    public void PropagarMaterial_ConOrigenesMutuamenteDependientes_PadreConsumeHijoFresco()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+
+        // A = MatrizApu (contiene cemento y referenciará a B como auxiliar).
+        // B = básico nuevo (contiene cemento). Ambos son orígenes de la propagación
+        // y A depende de B: si los orígenes se recalculan en orden de carga (A antes
+        // que B, por Id) y quedan excluidos del pase topológico, A consume el costo
+        // obsoleto de B (600) en lugar del fresco (700).
+        var b = AgregarBasico(context, scenario, "B-MULTI");
+        context.ComponentesMatriz.AddRange(
+            new ComponenteMatriz
+            {
+                MatrizId = b.Id,
+                TipoComponente = TipoComponenteMatriz.Material,
+                MaterialId = scenario.Cemento.Id,
+                Cantidad = 10m,
+                Orden = 1
+            },
+            new ComponenteMatriz
+            {
+                MatrizId = scenario.MatrizApu.Id,
+                TipoComponente = TipoComponenteMatriz.Auxiliar,
+                AuxiliarId = b.Id,
+                Cantidad = 1m,
+                Orden = 6
+            });
+        b.CostoDirecto = 600m;
+        context.SaveChanges();
+
+        scenario.Cemento.PrecioUnitario = 70m;
+        context.SaveChanges();
+
+        PricePropagationService.PropagarMaterial(context, scenario.Cemento.Id, scenario.Proyecto.Id);
+
+        Assert.AreEqual(700.00m, context.Matrices.Single(m => m.Id == b.Id).CostoDirecto, "B = 10 × 70.");
+        Assert.AreEqual(810.00m, scenario.MatrizApu.CostoDirecto,
+            "A = 70 + 40 + 1 × B_fresco(700); con orígenes excluidos del orden topológico habría quedado en 710.");
+        var concepto = context.ConceptosPresupuesto.Single(c => c.Id == scenario.Concepto.Id);
+        Assert.AreEqual(810.00m, concepto.CostoDirectoUnitario);
+        Assert.AreEqual(8100.00m, concepto.CostoDirectoTotal);
+    }
+
     private static Matriz AgregarBasico(SOPROContext context, SoproCalculationScenario scenario, string clave)
     {
         var matriz = new Matriz
