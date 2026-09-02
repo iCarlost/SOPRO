@@ -330,14 +330,17 @@ public class MatrixGraphCalculatorTests
     }
 
     [TestMethod]
-    public void HojaNegativa_SeRechaza()
+    public void HojaNegativa_SeEvaluaComoCostoAlmacenado()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+        var result = Calculate(
             Node(1, MatrixType.Apu,
-                Component(10, 1, MatrixComponentType.Auxiliary, 1m, referencedMatrixId: 20)),
-            new MatrixNodeInput(20, MatrixType.Basic, Array.Empty<MatrixComponentInput>(), -1m)));
+                Component(10, 1, MatrixComponentType.Labor, 1m, 100m),
+                Component(11, 2, MatrixComponentType.Auxiliary, 1m, referencedMatrixId: 20)),
+            new MatrixNodeInput(20, MatrixType.Basic, Array.Empty<MatrixComponentInput>(), -15.5m));
 
-        StringAssert.Contains(exception.Message, "no puede ser negativo");
+        Assert.AreEqual(-15.50m, result.ComponentAmounts[11]);
+        Assert.AreEqual(-15.50m, result.TotalBasics);
+        Assert.AreEqual(84.50m, result.DirectCostTotal);
     }
 
     [TestMethod]

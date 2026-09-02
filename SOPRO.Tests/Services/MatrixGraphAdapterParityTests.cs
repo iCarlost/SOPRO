@@ -123,6 +123,41 @@ public class MatrixGraphAdapterParityTests
             Assert.AreEqual(referencia[i].Importe, servicio[i].Importe, $"Importe posición {i} ({decimals})");
     }
 
+    [DataTestMethod]
+    [DataRow(0)]
+    [DataRow(2)]
+    [DataRow(3)]
+    public void CostosAuxiliaresNegativos_MantienenParidadLegacy(int decimals)
+    {
+        var referencia = new List<ComponenteMatriz>
+        {
+            Component(TipoComponenteMatriz.Material, 2m, material: new Material { PrecioUnitario = 10m }),
+            Component(TipoComponenteMatriz.ManoDeObra, 1m, manoDeObra: new ManoDeObra { Unidad = "jor", SalarioReal = 50m }),
+            Component(TipoComponenteMatriz.Auxiliar, 1.5m, auxiliar: new Matriz { Tipo = TipoMatriz.Basico, CostoDirecto = -15.555m }),
+            Component(TipoComponenteMatriz.Auxiliar, 1m, auxiliar: new Matriz { Tipo = TipoMatriz.Cuadrilla, CostoDirecto = -4.444m })
+        };
+        var servicio = new List<ComponenteMatriz>
+        {
+            Component(TipoComponenteMatriz.Material, 2m, material: new Material { PrecioUnitario = 10m }),
+            Component(TipoComponenteMatriz.ManoDeObra, 1m, manoDeObra: new ManoDeObra { Unidad = "jor", SalarioReal = 50m }),
+            Component(TipoComponenteMatriz.Auxiliar, 1.5m, auxiliar: new Matriz { Tipo = TipoMatriz.Basico, CostoDirecto = -15.555m }),
+            Component(TipoComponenteMatriz.Auxiliar, 1m, auxiliar: new Matriz { Tipo = TipoMatriz.Cuadrilla, CostoDirecto = -4.444m })
+        };
+
+        var legacy = MatrixComponentCalculationLegacyOracle.Recalculate(referencia, decimals);
+        var nuevo = MatrixComponentCalculationService.Recalculate(servicio, decimals);
+
+        Assert.AreEqual(legacy.TotalMaterial, nuevo.TotalMaterial, $"TotalMaterial ({decimals})");
+        Assert.AreEqual(legacy.BaseManoObra, nuevo.BaseManoObra, $"BaseManoObra ({decimals})");
+        Assert.AreEqual(legacy.TotalManoObra, nuevo.TotalManoObra, $"TotalManoObra ({decimals})");
+        Assert.AreEqual(legacy.TotalBasicos, nuevo.TotalBasicos, $"TotalBasicos ({decimals})");
+        Assert.AreEqual(legacy.CostoDirectoTotal, nuevo.CostoDirectoTotal, $"CostoDirectoTotal ({decimals})");
+        Assert.IsTrue(legacy.TotalBasicos < 0m, "El escenario debe ejercer TotalBasicos negativo.");
+
+        for (var i = 0; i < referencia.Count; i++)
+            Assert.AreEqual(referencia[i].Importe, servicio[i].Importe, $"Importe posición {i} ({decimals})");
+    }
+
     private static ComponenteMatriz Component(
         TipoComponenteMatriz tipo,
         decimal cantidad,

@@ -117,12 +117,23 @@ public class MatrixGraphSnapshotAdapterTests
     }
 
     [TestMethod]
-    public void ComponenteRepetidoEnLista_SeRechaza()
+    public void ComponenteRepetidoEnLista_SeRechazaConPosiciones()
     {
         var mismo = Component(TipoComponenteMatriz.Material, 1m, material: new Material { PrecioUnitario = 2m });
 
-        Assert.ThrowsException<ArgumentException>(() =>
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
             MatrixGraphSnapshotAdapter.BuildRootSnapshot(0, new List<ComponenteMatriz> { mismo, mismo }));
+
+        StringAssert.Contains(exception.Message, "duplicado");
+        StringAssert.Contains(exception.Message, "posiciones 0 y 1");
+        StringAssert.Contains(exception.Message, "Material");
+    }
+
+    [TestMethod]
+    public void RaizNegativa_SeRechaza()
+    {
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+            MatrixGraphSnapshotAdapter.BuildRootSnapshot(-1, new List<ComponenteMatriz>()));
     }
 
     [TestMethod]

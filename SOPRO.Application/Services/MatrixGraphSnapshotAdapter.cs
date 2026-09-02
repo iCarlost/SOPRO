@@ -51,9 +51,18 @@ namespace SOPRO.Application.Services
         /// lanza <see cref="InvalidOperationException"/> en lugar de propagar importes
         /// obsoletos en silencio.
         /// </summary>
+        /// <remarks>
+        /// El grafo reserva los identificadores negativos para las hojas sintéticas de
+        /// auxiliares; <paramref name="rootMatrixId"/> debe ser no negativo para evitar
+        /// colisiones.
+        /// </remarks>
         public static Snapshot BuildRootSnapshot(int rootMatrixId, IList<ComponenteMatriz> componentes)
         {
             if (componentes == null) throw new ArgumentNullException(nameof(componentes));
+            if (rootMatrixId < 0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(rootMatrixId),
+                    "El identificador de raíz debe ser no negativo: los identificadores negativos están reservados a las hojas sintéticas de auxiliares.");
 
             var componentIds = new Dictionary<ComponenteMatriz, int>();
             var inputs = new List<MatrixComponentInput>(componentes.Count);
@@ -66,6 +75,10 @@ namespace SOPRO.Application.Services
                 var comp = componentes[index];
                 if (comp == null)
                     throw new InvalidOperationException($"El componente en la posicion {index} es nulo.");
+                if (componentIds.TryGetValue(comp, out var existingId))
+                    throw new InvalidOperationException(
+                        $"El mismo componente {comp.TipoComponente} aparece duplicado en la lista " +
+                        $"(posiciones {existingId - 1} y {index}).");
                 componentIds.Add(comp, index + 1);
 
                 var id = index + 1;

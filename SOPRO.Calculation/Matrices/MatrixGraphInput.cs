@@ -28,10 +28,24 @@ public sealed class MatrixNodeInput
     /// </summary>
     public decimal? PrecomputedDirectCostTotal { get; }
 
+    /// <summary>Creates a computed node and defensively copies its components.</summary>
+    /// <param name="id">Stable node identifier.</param>
+    /// <param name="type">Node kind.</param>
+    /// <param name="components">Components belonging to the node.</param>
+    public MatrixNodeInput(
+        int id,
+        MatrixType type,
+        IEnumerable<MatrixComponentInput> components)
+        : this(id, type, components, null)
+    {
+    }
+
     /// <summary>
     /// Creates a node and defensively copies its components. A non-null
     /// <paramref name="precomputedDirectCostTotal"/> marks the node as a leaf: it must
-    /// have no components, must be Basic or Crew, and its total must be non-negative.
+    /// have no components and must be Basic or Crew. The total is stored as given
+    /// (including negative values), mirroring the auxiliary costs the canonical
+    /// single-matrix calculator consumed.
     /// </summary>
     /// <param name="id">Stable node identifier.</param>
     /// <param name="type">Node kind.</param>
@@ -41,7 +55,7 @@ public sealed class MatrixNodeInput
         int id,
         MatrixType type,
         IEnumerable<MatrixComponentInput> components,
-        decimal? precomputedDirectCostTotal = null)
+        decimal? precomputedDirectCostTotal)
     {
         ArgumentNullException.ThrowIfNull(components);
 

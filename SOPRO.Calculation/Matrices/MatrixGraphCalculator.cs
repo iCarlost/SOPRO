@@ -216,10 +216,6 @@ public sealed class MatrixGraphCalculator
             if (node.Type == MatrixType.Apu)
                 throw new InvalidOperationException(
                     $"Combinación inválida: una matriz APU (nodo {node.Id}) no puede materializarse como hoja precalculada.");
-
-            if (node.PrecomputedDirectCostTotal.Value < 0m)
-                throw new InvalidOperationException(
-                    $"El total precalculado de la matriz {node.Id} no puede ser negativo: {node.PrecomputedDirectCostTotal.Value}.");
             return;
         }
 
