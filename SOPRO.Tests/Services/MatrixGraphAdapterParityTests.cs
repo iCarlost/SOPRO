@@ -4,12 +4,13 @@ using Sopro.Calculation;
 using Sopro.Calculation.Matrices;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
+using SOPRO.Tests.TestInfrastructure;
 
 namespace SOPRO.Tests.Services;
 
 /// <summary>
-/// Diferencial N7-1a: el evaluador puro del paquete debe producir los mismos
-/// totales que MatrixComponentCalculationService para un APU mixto equivalente.
+/// Diferencial N7-1b: el servicio delegado al evaluador puro del grafo debe producir
+/// los mismos totales y componentes que el oráculo legacy literal.
 /// </summary>
 [TestClass]
 public class MatrixGraphAdapterParityTests
@@ -31,7 +32,7 @@ public class MatrixGraphAdapterParityTests
         var basico = Component(TipoComponenteMatriz.Auxiliar, 2m, auxiliar: new Matriz { Tipo = TipoMatriz.Basico, CostoDirecto = 17.777m });
         var componentes = new List<ComponenteMatriz> { material, manoObra, manoObraPct, maquinaria, herramienta, herramientaPct, cuadrilla, basico };
 
-        var legacy = MatrixComponentCalculationService.Recalculate(componentes, decimals);
+        var legacy = MatrixComponentCalculationLegacyOracle.Recalculate(componentes, decimals);
 
         var graph = new MatrixGraphCalculator(new CalculationPrecision(decimals, decimals, 4))
             .Calculate(new MatrixGraphInput(1, new[]
@@ -74,6 +75,87 @@ public class MatrixGraphAdapterParityTests
         Assert.AreEqual(legacy.TotalManoObraResumen, graph.TotalLaborSummary, $"TotalManoObraResumen ({decimals} decimales)");
         Assert.AreEqual(legacy.CostoDirectoTotal, graph.DirectCostTotal, $"CostoDirectoTotal ({decimals} decimales)");
         Assert.IsTrue(legacy.TotalBasicos > 0m, "El escenario debe ejercer TotalBasicos con valor no nulo.");
+    }
+
+    [DataTestMethod]
+    [DataRow(0)]
+    [DataRow(2)]
+    [DataRow(3)]
+    [DataRow(4)]
+    public void ServicioDelegadoYOraculo_ProducenMismosResultados(int decimals)
+    {
+        var referencia = new List<ComponenteMatriz>
+        {
+            Component(TipoComponenteMatriz.Material, 3m, material: new Material { PrecioUnitario = 11.115m }),
+            Component(TipoComponenteMatriz.ManoDeObra, 2m, manoDeObra: new ManoDeObra { Unidad = "jor", SalarioReal = 25.5m }),
+            Component(TipoComponenteMatriz.ManoDeObra, .10m, manoDeObra: new ManoDeObra { Unidad = "%MO", SalarioReal = 0m }),
+            Component(TipoComponenteMatriz.Maquinaria, 1.5m, maquinaria: new Maquinaria { CostoHorario = 45.555m }),
+            Component(TipoComponenteMatriz.Herramienta, 2m, herramienta: new Herramienta { Unidad = "pza", PrecioUnitario = 7.777m }),
+            Component(TipoComponenteMatriz.Herramienta, .03m, herramienta: new Herramienta { Unidad = "%MO", PrecioUnitario = 0m }),
+            Component(TipoComponenteMatriz.Auxiliar, 1m, auxiliar: new Matriz { Tipo = TipoMatriz.Cuadrilla, CostoDirecto = 40.005m }),
+            Component(TipoComponenteMatriz.Auxiliar, 2m, auxiliar: new Matriz { Tipo = TipoMatriz.APU, CostoDirecto = 17.777m })
+        };
+        var servicio = new List<ComponenteMatriz>
+        {
+            Component(TipoComponenteMatriz.Material, 3m, material: new Material { PrecioUnitario = 11.115m }),
+            Component(TipoComponenteMatriz.ManoDeObra, 2m, manoDeObra: new ManoDeObra { Unidad = "jor", SalarioReal = 25.5m }),
+            Component(TipoComponenteMatriz.ManoDeObra, .10m, manoDeObra: new ManoDeObra { Unidad = "%MO", SalarioReal = 0m }),
+            Component(TipoComponenteMatriz.Maquinaria, 1.5m, maquinaria: new Maquinaria { CostoHorario = 45.555m }),
+            Component(TipoComponenteMatriz.Herramienta, 2m, herramienta: new Herramienta { Unidad = "pza", PrecioUnitario = 7.777m }),
+            Component(TipoComponenteMatriz.Herramienta, .03m, herramienta: new Herramienta { Unidad = "%MO", PrecioUnitario = 0m }),
+            Component(TipoComponenteMatriz.Auxiliar, 1m, auxiliar: new Matriz { Tipo = TipoMatriz.Cuadrilla, CostoDirecto = 40.005m }),
+            Component(TipoComponenteMatriz.Auxiliar, 2m, auxiliar: new Matriz { Tipo = TipoMatriz.APU, CostoDirecto = 17.777m })
+        };
+
+        var legacy = MatrixComponentCalculationLegacyOracle.Recalculate(referencia, decimals);
+        var nuevo = MatrixComponentCalculationService.Recalculate(servicio, decimals);
+
+        Assert.AreEqual(legacy.TotalMaterial, nuevo.TotalMaterial, $"TotalMaterial ({decimals})");
+        Assert.AreEqual(legacy.BaseManoObra, nuevo.BaseManoObra, $"BaseManoObra ({decimals})");
+        Assert.AreEqual(legacy.TotalManoObra, nuevo.TotalManoObra, $"TotalManoObra ({decimals})");
+        Assert.AreEqual(legacy.TotalMaquinaria, nuevo.TotalMaquinaria, $"TotalMaquinaria ({decimals})");
+        Assert.AreEqual(legacy.TotalBasicos, nuevo.TotalBasicos, $"TotalBasicos ({decimals})");
+        Assert.AreEqual(legacy.TotalHerramientas, nuevo.TotalHerramientas, $"TotalHerramientas ({decimals})");
+        Assert.AreEqual(legacy.TotalManoObraResumen, nuevo.TotalManoObraResumen, $"TotalManoObraResumen ({decimals})");
+        Assert.AreEqual(legacy.CostoDirectoTotal, nuevo.CostoDirectoTotal, $"CostoDirectoTotal ({decimals})");
+
+        for (var i = 0; i < referencia.Count; i++)
+            Assert.AreEqual(referencia[i].Importe, servicio[i].Importe, $"Importe posición {i} ({decimals})");
+    }
+
+    [DataTestMethod]
+    [DataRow(0)]
+    [DataRow(2)]
+    [DataRow(3)]
+    public void CostosAuxiliaresNegativos_MantienenParidadLegacy(int decimals)
+    {
+        var referencia = new List<ComponenteMatriz>
+        {
+            Component(TipoComponenteMatriz.Material, 2m, material: new Material { PrecioUnitario = 10m }),
+            Component(TipoComponenteMatriz.ManoDeObra, 1m, manoDeObra: new ManoDeObra { Unidad = "jor", SalarioReal = 50m }),
+            Component(TipoComponenteMatriz.Auxiliar, 1.5m, auxiliar: new Matriz { Tipo = TipoMatriz.Basico, CostoDirecto = -15.555m }),
+            Component(TipoComponenteMatriz.Auxiliar, 1m, auxiliar: new Matriz { Tipo = TipoMatriz.Cuadrilla, CostoDirecto = -4.444m })
+        };
+        var servicio = new List<ComponenteMatriz>
+        {
+            Component(TipoComponenteMatriz.Material, 2m, material: new Material { PrecioUnitario = 10m }),
+            Component(TipoComponenteMatriz.ManoDeObra, 1m, manoDeObra: new ManoDeObra { Unidad = "jor", SalarioReal = 50m }),
+            Component(TipoComponenteMatriz.Auxiliar, 1.5m, auxiliar: new Matriz { Tipo = TipoMatriz.Basico, CostoDirecto = -15.555m }),
+            Component(TipoComponenteMatriz.Auxiliar, 1m, auxiliar: new Matriz { Tipo = TipoMatriz.Cuadrilla, CostoDirecto = -4.444m })
+        };
+
+        var legacy = MatrixComponentCalculationLegacyOracle.Recalculate(referencia, decimals);
+        var nuevo = MatrixComponentCalculationService.Recalculate(servicio, decimals);
+
+        Assert.AreEqual(legacy.TotalMaterial, nuevo.TotalMaterial, $"TotalMaterial ({decimals})");
+        Assert.AreEqual(legacy.BaseManoObra, nuevo.BaseManoObra, $"BaseManoObra ({decimals})");
+        Assert.AreEqual(legacy.TotalManoObra, nuevo.TotalManoObra, $"TotalManoObra ({decimals})");
+        Assert.AreEqual(legacy.TotalBasicos, nuevo.TotalBasicos, $"TotalBasicos ({decimals})");
+        Assert.AreEqual(legacy.CostoDirectoTotal, nuevo.CostoDirectoTotal, $"CostoDirectoTotal ({decimals})");
+        Assert.IsTrue(legacy.TotalBasicos < 0m, "El escenario debe ejercer TotalBasicos negativo.");
+
+        for (var i = 0; i < referencia.Count; i++)
+            Assert.AreEqual(referencia[i].Importe, servicio[i].Importe, $"Importe posición {i} ({decimals})");
     }
 
     private static ComponenteMatriz Component(

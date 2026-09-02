@@ -6,6 +6,7 @@ ctor Sopro.Calculation.Matrices.MatrixGraphCalculator(CalculationPrecision preci
 ctor Sopro.Calculation.Matrices.MatrixGraphCalculator(SoproCalculationEngine engine)
 ctor Sopro.Calculation.Matrices.MatrixGraphInput(Int32 rootMatrixId, IEnumerable<MatrixNodeInput> nodes)
 ctor Sopro.Calculation.Matrices.MatrixNodeInput(Int32 id, MatrixType type, IEnumerable<MatrixComponentInput> components)
+ctor Sopro.Calculation.Matrices.MatrixNodeInput(Int32 id, MatrixType type, IEnumerable<MatrixComponentInput> components, Decimal? precomputedDirectCostTotal)
 ctor Sopro.Calculation.PriceBreakdown(Decimal DirectCost, Decimal IndirectCosts, Decimal Financing, Decimal Profit, Decimal AdditionalCharges, Decimal UnitPrice, Decimal CentralIndirectsPercentage = 0m, Decimal FieldIndirectsPercentage = 0m)
 ctor Sopro.Calculation.PricePercentageInput()
 ctor Sopro.Calculation.SoproCalculationEngine(CalculationPrecision precision)
@@ -125,6 +126,7 @@ prop-get Decimal Sopro.Calculation.PricePercentageInput.FieldIndirectsPercentage
 prop-get Decimal Sopro.Calculation.PricePercentageInput.FinancingPercentage
 prop-get Decimal Sopro.Calculation.PricePercentageInput.ProfitPercentage
 prop-get Decimal Sopro.Calculation.PricePercentageInput.ReferenceDirectCost
+prop-get Decimal? Sopro.Calculation.Matrices.MatrixNodeInput.PrecomputedDirectCostTotal
 prop-get IReadOnlyDictionary<Int32, Decimal> Sopro.Calculation.Matrices.MatrixGraphResult.ComponentAmounts
 prop-get IReadOnlyDictionary<Int32, MatrixNodeResult> Sopro.Calculation.Matrices.MatrixGraphResult.Nodes
 prop-get IReadOnlyList<MatrixComponentInput> Sopro.Calculation.Matrices.MatrixNodeInput.Components

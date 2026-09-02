@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sopro.Calculation;
@@ -296,6 +297,71 @@ public class MatrixGraphCalculatorTests
         Assert.AreEqual(2, input.Nodes[0].Components[0].Order);
         Assert.AreEqual(1, result.Nodes.Count);
         Assert.AreEqual(26.78m, result.ComponentAmounts[10]);
+    }
+
+    [TestMethod]
+    public void HojaCuadrillaPrecalculada_AportaBaseYTotal()
+    {
+        var result = Calculate(
+            Node(1, MatrixType.Apu,
+                Component(10, 1, MatrixComponentType.Labor, 1m, 100m),
+                Component(11, 2, MatrixComponentType.Labor, .10m, isPercentage: true),
+                Component(12, 3, MatrixComponentType.Auxiliary, 1m, referencedMatrixId: 20)),
+            new MatrixNodeInput(20, MatrixType.Crew, Array.Empty<MatrixComponentInput>(), 40.005m));
+
+        Assert.AreEqual(40.01m, result.ComponentAmounts[12]);
+        Assert.AreEqual(140.01m, result.BaseLabor);
+        Assert.AreEqual(14.00m, result.ComponentAmounts[11]);
+        Assert.AreEqual(154.01m, result.TotalLabor);
+        Assert.AreEqual(154.01m, result.DirectCostTotal);
+        Assert.AreEqual(40.005m, result.Nodes[20].DirectCostTotal);
+        Assert.AreEqual(0, result.Nodes[20].Components.Count);
+    }
+
+    [TestMethod]
+    public void HojaConComponentes_SeRechaza()
+    {
+        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+            Node(1, MatrixType.Apu,
+                Component(10, 1, MatrixComponentType.Auxiliary, 1m, referencedMatrixId: 20)),
+            new MatrixNodeInput(20, MatrixType.Basic, new[] { Component(20, 1, MatrixComponentType.Material, 1m, 5m) }, 10m)));
+
+        StringAssert.Contains(exception.Message, "no puede tener componentes y un total precalculado");
+    }
+
+    [TestMethod]
+    public void HojaNegativa_SeEvaluaComoCostoAlmacenado()
+    {
+        var result = Calculate(
+            Node(1, MatrixType.Apu,
+                Component(10, 1, MatrixComponentType.Labor, 1m, 100m),
+                Component(11, 2, MatrixComponentType.Auxiliary, 1m, referencedMatrixId: 20)),
+            new MatrixNodeInput(20, MatrixType.Basic, Array.Empty<MatrixComponentInput>(), -15.5m));
+
+        Assert.AreEqual(-15.50m, result.ComponentAmounts[11]);
+        Assert.AreEqual(-15.50m, result.TotalBasics);
+        Assert.AreEqual(84.50m, result.DirectCostTotal);
+    }
+
+    [TestMethod]
+    public void HojaApu_SeRechaza()
+    {
+        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+            Node(1, MatrixType.Apu,
+                Component(10, 1, MatrixComponentType.Auxiliary, 1m, referencedMatrixId: 20)),
+            new MatrixNodeInput(20, MatrixType.Apu, Array.Empty<MatrixComponentInput>(), 10m)));
+
+        StringAssert.Contains(exception.Message, "no puede materializarse como hoja precalculada");
+    }
+
+    [TestMethod]
+    public void MatrizVacia_SinComponentes_ProduceTotalesEnCero()
+    {
+        var result = Calculate(Node(1, MatrixType.Apu));
+
+        Assert.AreEqual(0m, result.DirectCostTotal);
+        Assert.AreEqual(0m, result.BaseLabor);
+        Assert.AreEqual(0, result.Nodes[1].Components.Count);
     }
 
     private static MatrixGraphResult Calculate(params MatrixNodeInput[] nodes)
