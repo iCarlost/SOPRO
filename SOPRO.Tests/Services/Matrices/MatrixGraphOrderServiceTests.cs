@@ -151,6 +151,25 @@ public class MatrixGraphOrderServiceTests
     }
 
     [TestMethod]
+    public void ResolverAuxiliaresInternos_VinculaInstanciasDelConjunto()
+    {
+        var a = new Matriz { Id = 1, Tipo = TipoMatriz.APU, Clave = "A", ProyectoId = 1 };
+        var b = new Matriz { Id = 2, Tipo = TipoMatriz.Basico, Clave = "B", ProyectoId = 1 };
+        var interna = new ComponenteMatriz { MatrizId = 1, TipoComponente = TipoComponenteMatriz.Auxiliar, AuxiliarId = 2, Cantidad = 1m };
+        var externa = new ComponenteMatriz { MatrizId = 1, TipoComponente = TipoComponenteMatriz.Auxiliar, AuxiliarId = 999, Cantidad = 1m };
+        var malTipada = new ComponenteMatriz { MatrizId = 1, TipoComponente = TipoComponenteMatriz.Material, AuxiliarId = 2, Cantidad = 1m };
+        a.Componentes.Add(interna);
+        a.Componentes.Add(externa);
+        a.Componentes.Add(malTipada);
+
+        MatrixGraphOrderService.ResolverAuxiliaresInternos(new[] { a, b });
+
+        Assert.AreSame(b, interna.Auxiliar, "la auxiliar del conjunto se vincula a la misma instancia");
+        Assert.IsNull(externa.Auxiliar, "la referencia externa no se inventa");
+        Assert.IsNull(malTipada.Auxiliar, "un AuxiliarId en componente de otro tipo no se resuelve");
+    }
+
+    [TestMethod]
     public void ColeccionNula_LanzaArgumentNullException()
     {
         Assert.ThrowsException<ArgumentNullException>(

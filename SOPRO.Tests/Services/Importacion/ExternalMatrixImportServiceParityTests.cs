@@ -10,12 +10,13 @@ using SOPRO.Tests.TestInfrastructure;
 namespace SOPRO.Tests.Services.Importacion;
 
 // [N5-12] Paridad de ExternalMatrixImportService contra la fachada:
-// el único motor del servicio es RedondearImporte → RoundAmount en
-// RecalcularÁrbol (post-orden: auxiliares antes que padres). El oráculo de la
-// batería es independiente: se calcula únicamente con Math.Round sobre el
-// Recalculate compartido (N5-2), sin engine ni fachada, recorriendo el árbol
-// importado en el mismo orden post-orden para validar que el CostoDirecto
-// redondeado del auxiliar es el que consume su matriz padre.
+// el único motor del servicio es RoundAmount con la precisión del proyecto
+// destino, aplicado por la ruta canónica (N7-1d: MatrixGraphOrderService +
+// PricePropagationService.RecalcularConMotor; post-orden: auxiliares antes que
+// padres). El oráculo de la batería es independiente: se calcula únicamente con
+// Math.Round sobre el Recalculate compartido (N5-2), sin engine ni fachada,
+// recorriendo el árbol importado en el mismo orden post-orden para validar que
+// el CostoDirecto redondeado del auxiliar es el que consume su matriz padre.
 
 [TestClass]
 public class ExternalMatrixImportServiceParityTests

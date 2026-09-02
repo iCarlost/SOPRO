@@ -12,11 +12,13 @@ using System.Linq;
 namespace SOPRO.Application.Services
 {
     // ╔══════════════════════════════════════════════════════════════════════════╗
-    // ║  [N5-12] Único motor del servicio: RedondearImporte → RoundAmount en    ║
-    // ║          RecalcularÁrbol, con las tres precisiones del proyecto destino. ║
-    // ║          RecalcularConMotorDelProyecto reutiliza la ruta                 ║
-    // ║          canónica (PricePropagationService.RecalcularConMotor, N5-11) y  ║
-    // ║          el Rendimiento de maquinaria conserva Math.Round 5 por contrato.║
+    // ║  [N5-12] Único motor del servicio: RoundAmount con las tres precisiones  ║
+    // ║          del proyecto destino. [N7-1d] El post-orden propio              ║
+    // ║          (RecalcularÁrbol) se sustituye por la ruta canónica:            ║
+    // ║          MatrixGraphOrderService.OrdenTopologico + PricePropagation       ║
+    // ║          Service.RecalcularConMotor; un ciclo en el grafo importado      ║
+    // ║          revierte la importación con diagnóstico de ruta.                ║
+    // ║          El Rendimiento de maquinaria conserva Math.Round 5 por contrato.║
     // ║          CRUD/copia de importación intactos.                             ║
     // ╚══════════════════════════════════════════════════════════════════════════╝
     public sealed class ExternalMatrixImportService
@@ -369,32 +371,16 @@ namespace SOPRO.Application.Services
                 ? matrixMap.TryGetValue(graph.RootMatrix.Id, out var raiz) ? raiz : 0
                 : 0;
 
-            // Recalcular de abajo hacia arriba (auxiliares/básicos primero)
-            // para que un auxiliar ya tenga CostoDirecto final cuando su
-            // matriz padre lo consuma.
-            var visitados = new HashSet<int>();
+            // [N7-1d] Post-orden canónico: orden topológico por dependencias de
+            // auxiliares (MatrixGraphOrderService) + recálculo por la ruta compartida,
+            // de modo que un auxiliar ya tenga CostoDirecto final cuando su padre lo
+            // consuma. Un grafo importado con ciclo lanza diagnóstico con ruta y la
+            // transacción revierte la importación (antes se parcializaba en silencio).
             if (matrizRaizId != 0)
-                RecalcularÁrbol(currentContext, currentProject, matricesImportadas, matrizRaizId, visitados);
+                PricePropagationService.RecalcularConMotor(
+                    currentContext, MatrixGraphOrderService.OrdenTopologico(matricesImportadas));
             else
                 PricePropagationService.RecalcularConMotor(currentContext, matricesImportadas);
-        }
-
-        private static void RecalcularÁrbol(
-            SOPROContext ctx, Proyecto proyecto, List<Matriz> matrices, int matrizId, HashSet<int> visitados)
-        {
-            if (!visitados.Add(matrizId)) return;
-
-            var matriz = matrices.FirstOrDefault(m => m.Id == matrizId);
-            if (matriz == null) return;
-
-            // Primero los auxiliares (básicos/cuadrillas hijas)
-            foreach (var comp in matriz.Componentes.Where(c => c.AuxiliarId.HasValue))
-                RecalcularÁrbol(ctx, proyecto, matrices, comp.AuxiliarId!.Value, visitados);
-
-            var totals = MatrixComponentCalculationService.Recalculate(matriz.Componentes.ToList(), proyecto.DecimalesImporte);
-            matriz.CostoDirecto = new SoproCalculationEngine(
-                proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje)
-                .RoundAmount(totals.CostoDirectoTotal);
         }
 
         private static MatrixGraph LoadGraph(SOPROContext externalContext, int externalMatrixId)

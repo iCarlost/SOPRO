@@ -341,15 +341,7 @@ namespace SOPRO.Application.Services
             // Resolución de identidad de EF: las matrices origen ya cargadas por el
             // llamador retornan como las mismas instancias rastreadas.
             var matrices = CargarMatricesConNavegaciones(ctx, idsRecalcular);
-
-            // Resolver navegaciones de auxiliares desde el cierre completo: las hojas
-            // externas conservan el costo almacenado por Include(c => c.Auxiliar).
-            var porId = matrices.ToDictionary(m => m.Id);
-            foreach (var mat in matrices)
-                foreach (var comp in mat.Componentes.Where(c =>
-                             c.TipoComponente == TipoComponenteMatriz.Auxiliar && c.AuxiliarId.HasValue))
-                    if (porId.TryGetValue(comp.AuxiliarId!.Value, out var aux))
-                        comp.Auxiliar = aux;
+            MatrixGraphOrderService.ResolverAuxiliaresInternos(matrices);
 
             var ordenadas = MatrixGraphOrderService.OrdenTopologico(matrices);
             RecalcularConMotor(ctx, ordenadas);
