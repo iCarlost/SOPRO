@@ -56,6 +56,59 @@ namespace SOPRO.Application.Services
                 _ => false
             };
 
+        /// <summary>
+        /// [N7-4] Distribución proporcional canónica de un importe base entre los
+        /// componentes de una matriz, compartida por Explosión y Programa de Insumos
+        /// (antes duplicada tres veces). Para cada componente con importe unitario no
+        /// nulo: importe = Round(importeBase × impUnit / cdUnitario); los componentes
+        /// sin importe unitario o con resultado cero se excluyen. El residuo
+        /// residuo = Round(importeBase − Σ asignados) se absorbe en el último
+        /// componente no auxiliar (o en el último si todos son auxiliares), de modo
+        /// que Σ devuelto == importeBase salvo el caso extremo en que la absorción
+        /// anule justo al absorbedor (cada consumidor decide entonces si re-filtra).
+        /// Requiere cdUnitario != 0; el orden de <paramref name="componentes"/> es
+        /// el orden de iteración y de absorción.
+        /// </summary>
+        public static IReadOnlyList<(ComponenteMatriz Componente, decimal Importe)> DistribuirImporteProporcional(
+            SoproCalculationEngine engine,
+            IReadOnlyDictionary<ComponenteMatriz, decimal> importesUnitarios,
+            IEnumerable<ComponenteMatriz> componentes,
+            decimal importeBase,
+            decimal cdUnitario)
+        {
+            ArgumentNullException.ThrowIfNull(engine);
+            ArgumentNullException.ThrowIfNull(importesUnitarios);
+            ArgumentNullException.ThrowIfNull(componentes);
+            if (cdUnitario == 0m)
+                throw new ArgumentException(
+                    "El costo directo unitario no puede ser cero al distribuir proporcionalmente.",
+                    nameof(cdUnitario));
+
+            var distribComp = new List<(ComponenteMatriz Componente, decimal Importe)>();
+            decimal sumaDistribuida = 0m;
+            foreach (var comp in componentes)
+            {
+                if (!importesUnitarios.TryGetValue(comp, out decimal impUnit)) continue;
+                if (impUnit == 0m) continue;
+                decimal impComp = engine.RoundAmount(importeBase * impUnit / cdUnitario);
+                if (impComp == 0m) continue;
+                distribComp.Add((comp, impComp));
+                sumaDistribuida += impComp;
+            }
+
+            decimal residuo = engine.RoundAmount(importeBase - sumaDistribuida);
+            if (residuo != 0m && distribComp.Count > 0)
+            {
+                int idxAjuste = distribComp.FindLastIndex(
+                    t => t.Componente.TipoComponente != TipoComponenteMatriz.Auxiliar);
+                if (idxAjuste < 0) idxAjuste = distribComp.Count - 1;
+                var (compAjuste, impAjuste) = distribComp[idxAjuste];
+                distribComp[idxAjuste] = (compAjuste, impAjuste + residuo);
+            }
+
+            return distribComp;
+        }
+
         public static MatrixComponentTotals Recalculate(IList<ComponenteMatriz> componentes, int decimalesImporte)
         {
             if (componentes == null) throw new ArgumentNullException(nameof(componentes));

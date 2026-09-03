@@ -54,6 +54,12 @@ public class MatrixComponentUnitImportesTests
         Assert.AreEqual(componentes.Count, importes.Count);
         Assert.IsFalse(importes.Keys.Any(c => c == null));
 
+        // [N7-4] Contrato de no mutación afirmado explícitamente: ImportesUnitarios no
+        // escribe Importe en las entidades (Recalculate, que se ejecuta justo después,
+        // es la que sí muta).
+        Assert.IsTrue(componentes.All(c => c.Importe == 0m),
+            "ImportesUnitarios no debe mutar los Importe de los componentes");
+
         // Recalculate muta los mismos importes sobre instancias gemelas equivalentes;
         // se ejecuta sobre esta lista y se compara componente a componente.
         var totals = MatrixComponentCalculationService.Recalculate(componentes, decImp);
@@ -107,6 +113,94 @@ public class MatrixComponentUnitImportesTests
     {
         Assert.ThrowsException<ArgumentNullException>(
             () => MatrixComponentCalculationService.ImportesUnitarios(null!, 2));
+    }
+
+    [TestMethod]
+    public void DistribuirImporteProporcional_AbsorbeResiduoEnUltimoNoAuxiliar()
+    {
+        var engine = new Sopro.Calculation.SoproCalculationEngine(2, 2, 4);
+        var materialA = new Material { PrecioUnitario = 10m };
+        var materialB = new Material { PrecioUnitario = 10m };
+        var auxiliar = new Matriz { Tipo = TipoMatriz.Basico, CostoDirecto = 1m };
+
+        var compA = new ComponenteMatriz { TipoComponente = TipoComponenteMatriz.Material, Material = materialA, Cantidad = 1m };
+        var compB = new ComponenteMatriz { TipoComponente = TipoComponenteMatriz.Material, Material = materialB, Cantidad = 1m };
+        var compAux = new ComponenteMatriz { TipoComponente = TipoComponenteMatriz.Auxiliar, Auxiliar = auxiliar, Cantidad = 1m };
+        var componentes = new List<ComponenteMatriz> { compA, compB, compAux };
+
+        // importes 10, 10, 1 → cd 21. Base 10.00: 4.76 + 4.76 + 0.48 = 10.00 exacto.
+        // Base elegida para forzar residuo: 3.33 → 1.59 + 1.59 + 0.16 = 3.34 → residuo −0.01.
+        var importes = new System.Collections.Generic.Dictionary<ComponenteMatriz, decimal>
+        {
+            [compA] = 10m, [compB] = 10m, [compAux] = 1m
+        };
+
+        var distribucion = MatrixComponentCalculationService
+            .DistribuirImporteProporcional(engine, importes, componentes, 3.33m, 21m);
+
+        Assert.AreEqual(3, distribucion.Count);
+        Assert.AreEqual(3.33m, distribucion.Sum(t => t.Importe));
+        // El residuo debe caer en compB (último no auxiliar), no en el auxiliar.
+        Assert.AreEqual(1.58m, distribucion.Single(t => t.Componente == compB).Importe);
+        Assert.AreEqual(0.16m, distribucion.Single(t => t.Componente == compAux).Importe);
+    }
+
+    [TestMethod]
+    public void DistribuirImporteProporcional_ExcluyeCerosYNulos()
+    {
+        var engine = new Sopro.Calculation.SoproCalculationEngine(2, 2, 4);
+        var material = new Material { PrecioUnitario = 10m };
+        var uno = new ComponenteMatriz { TipoComponente = TipoComponenteMatriz.Material, Material = material, Cantidad = 1m };
+        var cero = new ComponenteMatriz { TipoComponente = TipoComponenteMatriz.Material, Material = material, Cantidad = 0m };
+        var ausente = new ComponenteMatriz { TipoComponente = TipoComponenteMatriz.Material, Material = material, Cantidad = 1m };
+
+        var importes = new System.Collections.Generic.Dictionary<ComponenteMatriz, decimal>
+        {
+            [uno] = 10m, [cero] = 0m
+        };
+
+        var distribucion = MatrixComponentCalculationService
+            .DistribuirImporteProporcional(engine, importes, new[] { uno, cero, ausente }, 5m, 10m);
+
+        Assert.AreEqual(1, distribucion.Count);
+        Assert.AreEqual(5m, distribucion[0].Importe);
+    }
+
+    [TestMethod]
+    public void DistribuirImporteProporcional_TodosAuxiliares_AbsorbeElUltimoAunqueNoSeaNoAuxiliar()
+    {
+        var engine = new Sopro.Calculation.SoproCalculationEngine(2, 2, 4);
+        var baseMatriz = new Matriz { Tipo = TipoMatriz.Basico, CostoDirecto = 1m };
+        var aux1 = new ComponenteMatriz { TipoComponente = TipoComponenteMatriz.Auxiliar, Auxiliar = baseMatriz, Cantidad = 1m };
+        var aux2 = new ComponenteMatriz { TipoComponente = TipoComponenteMatriz.Auxiliar, Auxiliar = baseMatriz, Cantidad = 1m };
+
+        // Cada auxiliar pesa 1 sobre cd 2; base 0.03 → Round(0.015) = 0.02 por ambos,
+        // suma 0.04, residuo −0.01: sin no-auxiliares el absorbedor es el último.
+        var importes = new System.Collections.Generic.Dictionary<ComponenteMatriz, decimal>
+        {
+            [aux1] = 1m, [aux2] = 1m
+        };
+
+        var distribucion = MatrixComponentCalculationService
+            .DistribuirImporteProporcional(engine, importes, new[] { aux1, aux2 }, 0.03m, 2m);
+
+        Assert.AreEqual(2, distribucion.Count);
+        Assert.AreEqual(0.03m, distribucion.Sum(t => t.Importe));
+        Assert.AreEqual(0.02m, distribucion.Single(t => t.Componente == aux1).Importe);
+        Assert.AreEqual(0.01m, distribucion.Single(t => t.Componente == aux2).Importe);
+    }
+
+    [TestMethod]
+    public void DistribuirImporteProporcional_CostoSiero_Lanza()
+    {
+        var engine = new Sopro.Calculation.SoproCalculationEngine(2, 2, 4);
+        Assert.ThrowsException<ArgumentException>(() =>
+            MatrixComponentCalculationService.DistribuirImporteProporcional(
+                engine,
+                new System.Collections.Generic.Dictionary<ComponenteMatriz, decimal>(),
+                new List<ComponenteMatriz>(),
+                1m,
+                0m));
     }
 
     private static ComponenteMatriz Comp(

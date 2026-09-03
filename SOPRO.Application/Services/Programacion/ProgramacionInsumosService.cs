@@ -448,29 +448,10 @@ namespace SOPRO.Application.Services.Programacion
             if (cdUnitMatriz == 0m) return;
 
             // Distribuir con reconciliación — igual que ExplosionInsumosService.ExplotarMatriz
-            // para que Σ impComp == importeBase exactamente (absorbe residuo de redondeo)
-            var distribComp = new List<(ComponenteMatriz comp, decimal impComp)>();
-            decimal sumaDistribuida = 0m;
-            foreach (var comp in matriz.Componentes)
-            {
-                if (!importesUnitarios.TryGetValue(comp, out decimal impUnit)) continue;
-                if (impUnit == 0m) continue;
-                decimal impComp = engine.RoundAmount(importeBase * impUnit / cdUnitMatriz);
-                if (impComp == 0m) continue;
-                distribComp.Add((comp, impComp));
-                sumaDistribuida += impComp;
-            }
-
-            // Absorber residuo en el último componente no-auxiliar elegible
-            decimal residuoComp = engine.RoundAmount(importeBase - sumaDistribuida);
-            if (residuoComp != 0m && distribComp.Count > 0)
-            {
-                int idxAjuste = distribComp.FindLastIndex(
-                    t => t.comp.TipoComponente != TipoComponenteMatriz.Auxiliar);
-                if (idxAjuste < 0) idxAjuste = distribComp.Count - 1;
-                var (compAj, impAj) = distribComp[idxAjuste];
-                distribComp[idxAjuste] = (compAj, impAj + residuoComp);
-            }
+            // para que Σ impComp == importeBase exactamente (absorbe residuo de redondeo).
+            // [N7-4] Bloque extraído a la ruta canónica compartida.
+            var distribComp = MatrixComponentCalculationService.DistribuirImporteProporcional(
+                engine, importesUnitarios, matriz.Componentes, importeBase, cdUnitMatriz);
 
             foreach (var (comp, impComp) in distribComp)
             {
@@ -562,28 +543,10 @@ namespace SOPRO.Application.Services.Programacion
             decimal cdUnitMatriz  = importesUnitarios.Values.Sum();
             if (cdUnitMatriz == 0m) return;
 
-            // Misma distribución con reconciliación que ExplotarMatrizEnPeriodo
-            var distribComp = new List<(ComponenteMatriz comp, decimal impComp)>();
-            decimal sumaDistribuida = 0m;
-            foreach (var comp in matriz.Componentes)
-            {
-                if (!importesUnitarios.TryGetValue(comp, out decimal impUnit)) continue;
-                if (impUnit == 0m) continue;
-                decimal impComp = engine.RoundAmount(importeBase * impUnit / cdUnitMatriz);
-                if (impComp == 0m) continue;
-                distribComp.Add((comp, impComp));
-                sumaDistribuida += impComp;
-            }
-
-            decimal residuo = engine.RoundAmount(importeBase - sumaDistribuida);
-            if (residuo != 0m && distribComp.Count > 0)
-            {
-                int idx = distribComp.FindLastIndex(
-                    t => t.comp.TipoComponente != TipoComponenteMatriz.Auxiliar);
-                if (idx < 0) idx = distribComp.Count - 1;
-                var (cAj, iAj) = distribComp[idx];
-                distribComp[idx] = (cAj, iAj + residuo);
-            }
+            // Misma distribución con reconciliación que ExplotarMatrizEnPeriodo.
+            // [N7-4] Bloque extraído a la ruta canónica compartida.
+            var distribComp = MatrixComponentCalculationService.DistribuirImporteProporcional(
+                engine, importesUnitarios, matriz.Componentes, importeBase, cdUnitMatriz);
 
             foreach (var (comp, impComp) in distribComp)
             {
