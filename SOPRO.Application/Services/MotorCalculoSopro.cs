@@ -28,10 +28,6 @@ namespace SOPRO.Application.Services
     // ║    ✅ N2 — aritmética delegada a SOPRO.Calculation (Gate N1:            ║
     // ║       diferenciales exactos + oráculo dorado independiente)             ║
     // ║                                                                         ║
-    // ║  DEUDA TÉCNICA DOCUMENTADA (no urgente):                                ║
-    // ║    ⚠ Matriz.CalcularCostoDirecto(int) — algoritmo duplicado por        ║
-    // ║      dependencia circular entre SOPRO.Core y SOPRO.Application.         ║
-    // ║      Funciona correctamente; fuente canónica: MatrixComponentCalc...    ║
     // ╚══════════════════════════════════════════════════════════════════════════╝
 
     /// <summary>
