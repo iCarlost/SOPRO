@@ -58,7 +58,7 @@ public class MotorCalculoSoproTests
     [TestMethod]
     public void ToPricePercentage_Null_RetornaAcumulables()
     {
-        var input = new BudgetPercentageInput();
+        var input = new BudgetPercentageInput { ModoCalculoPorcentajes = null! };
         Assert.AreEqual(PercentageCalculationMode.Accumulative, input.ToPricePercentage().Mode);
     }
 
