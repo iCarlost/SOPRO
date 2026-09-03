@@ -191,7 +191,7 @@ public class MatrixComponentUnitImportesTests
     }
 
     [TestMethod]
-    public void DistribuirImporteProporcional_CostoSiero_Lanza()
+    public void DistribuirImporteProporcional_CostoCero_Lanza()
     {
         var engine = new Sopro.Calculation.SoproCalculationEngine(2, 2, 4);
         Assert.ThrowsException<ArgumentException>(() =>

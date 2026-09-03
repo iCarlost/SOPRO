@@ -62,10 +62,14 @@ namespace SOPRO.Application.Services
         /// (antes duplicada tres veces). Para cada componente con importe unitario no
         /// nulo: importe = Round(importeBase × impUnit / cdUnitario); los componentes
         /// sin importe unitario o con resultado cero se excluyen. El residuo
-        /// residuo = Round(importeBase − Σ asignados) se absorbe en el último
-        /// componente no auxiliar (o en el último si todos son auxiliares), de modo
-        /// que Σ devuelto == importeBase salvo el caso extremo en que la absorción
-        /// anule justo al absorbedor (cada consumidor decide entonces si re-filtra).
+        /// Round(importeBase − Σ asignados) se absorbe en el último componente no
+        /// auxiliar (o en el último si todos son auxiliares).
+        /// Comportamiento heredado a documentar: la lista puede quedar vacía cuando
+        /// todas las asignaciones proporcionales redondean a cero (entonces no hay
+        /// absorbedor y Σ devuelto es 0, no importeBase); y la absorción puede anular
+        /// justo al absorbedor, dejando una entrada cero que cada consumidor decide si
+        /// re-filtrar. Σ == importeBase solo se garantiza con lista no vacía y
+        /// absorbedor no anulado.
         /// Requiere cdUnitario != 0; el orden de <paramref name="componentes"/> es
         /// el orden de iteración y de absorción.
         /// </summary>
