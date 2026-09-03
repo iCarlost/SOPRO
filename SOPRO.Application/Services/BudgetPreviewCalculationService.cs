@@ -165,18 +165,6 @@ namespace SOPRO.Application.Services
         // Reemplazados por SoproCalculationEngine.Multiply() y .RoundAmount()
 
         private static PricePercentageInput BuildEnginePercentages(BudgetPercentageInput pct)
-            => new PricePercentageInput
-            {
-                ReferenceDirectCost             = pct.CostoDirectoReferencia,
-                CentralIndirectsPercentage      = pct.IndirectosCentral,
-                FieldIndirectsPercentage        = pct.IndirectosCampo,
-                FinancingPercentage             = pct.Financiamiento,
-                ProfitPercentage                = pct.Utilidad,
-                AdditionalChargesPercentage     = pct.CargosAdicionales,
-                Mode                            = string.Equals(pct.ModoCalculoPorcentajes, "SobreCD",
-                                                                StringComparison.OrdinalIgnoreCase)
-                                                    ? PercentageCalculationMode.OverDirectCost
-                                                    : PercentageCalculationMode.Accumulative
-            };
+            => pct.ToPricePercentage();
     }
 }

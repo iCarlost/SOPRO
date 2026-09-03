@@ -1,4 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Sopro.Calculation;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
@@ -8,6 +9,59 @@ namespace SOPRO.Tests.Services;
 [TestClass]
 public class MotorCalculoSoproTests
 {
+    [TestMethod]
+    public void ToPricePercentage_MapeaLosSieteCamposCorrectamente()
+    {
+        var input = new BudgetPercentageInput
+        {
+            CostoDirectoReferencia = 123.456m,
+            IndirectosCentral      = 10m,
+            IndirectosCampo        = 5m,
+            Financiamiento         = 2m,
+            Utilidad               = 3m,
+            CargosAdicionales      = 1m,
+            ModoCalculoPorcentajes = "SobreCD"
+        };
+
+        var result = input.ToPricePercentage();
+
+        Assert.AreEqual(123.456m, result.ReferenceDirectCost);
+        Assert.AreEqual(10m, result.CentralIndirectsPercentage);
+        Assert.AreEqual(5m, result.FieldIndirectsPercentage);
+        Assert.AreEqual(2m, result.FinancingPercentage);
+        Assert.AreEqual(3m, result.ProfitPercentage);
+        Assert.AreEqual(1m, result.AdditionalChargesPercentage);
+        Assert.AreEqual(PercentageCalculationMode.OverDirectCost, result.Mode);
+    }
+
+    [TestMethod]
+    public void ToPricePercentage_CaseInsensitive_SobreCD()
+    {
+        var input = new BudgetPercentageInput { ModoCalculoPorcentajes = "sobrecd" };
+        Assert.AreEqual(PercentageCalculationMode.OverDirectCost, input.ToPricePercentage().Mode);
+    }
+
+    [TestMethod]
+    public void ToPricePercentage_CaseInsensitive_SOBRECD()
+    {
+        var input = new BudgetPercentageInput { ModoCalculoPorcentajes = "SOBRECD" };
+        Assert.AreEqual(PercentageCalculationMode.OverDirectCost, input.ToPricePercentage().Mode);
+    }
+
+    [TestMethod]
+    public void ToPricePercentage_Acumulables()
+    {
+        var input = new BudgetPercentageInput { ModoCalculoPorcentajes = "Acumulables" };
+        Assert.AreEqual(PercentageCalculationMode.Accumulative, input.ToPricePercentage().Mode);
+    }
+
+    [TestMethod]
+    public void ToPricePercentage_Null_RetornaAcumulables()
+    {
+        var input = new BudgetPercentageInput();
+        Assert.AreEqual(PercentageCalculationMode.Accumulative, input.ToPricePercentage().Mode);
+    }
+
     [TestMethod]
     public void Multiplicar_DebeUsarPrecioUnitarioVisibleAntesDeMultiplicar()
     {
