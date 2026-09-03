@@ -159,19 +159,7 @@ namespace SOPRO.Application.Services
                                           proyecto.DecimalesPorcentaje);
 
         private static PricePercentageInput BuildEnginePercentages(BudgetPercentageInput pct)
-            => new PricePercentageInput
-            {
-                ReferenceDirectCost             = pct.CostoDirectoReferencia,
-                CentralIndirectsPercentage      = pct.IndirectosCentral,
-                FieldIndirectsPercentage        = pct.IndirectosCampo,
-                FinancingPercentage             = pct.Financiamiento,
-                ProfitPercentage                = pct.Utilidad,
-                AdditionalChargesPercentage     = pct.CargosAdicionales,
-                Mode                            = string.Equals(pct.ModoCalculoPorcentajes, "SobreCD",
-                                                                StringComparison.OrdinalIgnoreCase)
-                                                    ? PercentageCalculationMode.OverDirectCost
-                                                    : PercentageCalculationMode.Accumulative
-            };
+            => pct.ToPricePercentage();
 
         private static BudgetPercentageInput BuildPercentageInput(Proyecto proyecto)
             => new BudgetPercentageInput

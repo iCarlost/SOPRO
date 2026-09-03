@@ -148,19 +148,7 @@ namespace SOPRO.Application.Services
         {
             if (pct == null) throw new ArgumentNullException(nameof(pct));
 
-            var desglose = _engine.CalculateUnitPrice(costoDirecto, new PricePercentageInput
-            {
-                ReferenceDirectCost             = pct.CostoDirectoReferencia,
-                CentralIndirectsPercentage      = pct.IndirectosCentral,
-                FieldIndirectsPercentage        = pct.IndirectosCampo,
-                FinancingPercentage             = pct.Financiamiento,
-                ProfitPercentage                = pct.Utilidad,
-                AdditionalChargesPercentage     = pct.CargosAdicionales,
-                Mode                            = string.Equals(pct.ModoCalculoPorcentajes, "SobreCD",
-                                                                 StringComparison.OrdinalIgnoreCase)
-                                                    ? PercentageCalculationMode.OverDirectCost
-                                                    : PercentageCalculationMode.Accumulative,
-            });
+            var desglose = _engine.CalculateUnitPrice(costoDirecto, pct.ToPricePercentage());
 
             return new DesglosePrecios(
                 desglose.DirectCost,
