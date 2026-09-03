@@ -30,6 +30,11 @@ namespace SOPRO.Application.Services
     // ║                                                                         ║
     // ║  Garantía: Σ importes explosión ≈ CD presupuesto                       ║
     // ║  (diferencia residual = solo el redondeo de proporciones)              ║
+    // ║                                                                         ║
+    // ║  [N7-3] Los importes unitarios por componente se calculan con la ruta   ║
+    // ║  canónica compartida MatrixComponentCalculationService.ImportesUnitarios║
+    // ║  (evaluador puro del grafo); la distribución y acumulación permanecen   ║
+    // ║  en este servicio.                                                     ║
     // ╚══════════════════════════════════════════════════════════════════════════╝
 
     public sealed class ExplosionInsumosService
@@ -165,8 +170,9 @@ namespace SOPRO.Application.Services
             if (matriz?.Componentes == null || matriz.Componentes.Count == 0) return;
 
             // ── Paso 1: recalcular los importes unitarios de cada componente
-            //           con el motor y los PUs actuales del catálogo ────────────
-            var importesUnitarios = CalcularImportesUnitarios(engine, matriz.Componentes);
+            //           con la ruta canónica del grafo (N7-3)                    ────
+            var importesUnitarios = MatrixComponentCalculationService
+                .ImportesUnitarios(matriz.Componentes, engine.AmountDecimals);
 
             decimal cdUnitarioMatriz = importesUnitarios.Values.Sum();
             if (cdUnitarioMatriz == 0m) return;  // matriz vacía o sin PUs
@@ -178,7 +184,7 @@ namespace SOPRO.Application.Services
             decimal sumaDistribuida = 0m;
             foreach (var comp in matriz.Componentes)
             {
-                if (!importesUnitarios.TryGetValue(comp.Id, out decimal importeUnitComp)) continue;
+                if (!importesUnitarios.TryGetValue(comp, out decimal importeUnitComp)) continue;
                 if (importeUnitComp == 0m) continue;
                 decimal importeComp = engine.RoundAmount(
                     importeBase * importeUnitComp / cdUnitarioMatriz);
@@ -254,86 +260,6 @@ namespace SOPRO.Application.Services
                         break;
                 }
             }
-        }
-
-        // ════════════════════════════════════════════════════════════════════════
-        // CÁLCULO DE IMPORTES UNITARIOS FRESCOS (PUs actuales + motor)
-        // ════════════════════════════════════════════════════════════════════════
-
-        /// <summary>
-        /// Recalcula el importe unitario de cada componente con los PUs actuales
-        /// del catálogo y el motor de redondeo. No usa comp.Importe de BD.
-        /// Maneja correctamente la base MO para los insumos %MO.
-        /// Devuelve un dict ComponenteId → importeUnitario.
-        /// </summary>
-        private static Dictionary<int, decimal> CalcularImportesUnitarios(
-            SoproCalculationEngine engine, ICollection<ComponenteMatriz> componentes)
-        {
-            var resultado = new Dictionary<int, decimal>();
-
-            // Paso A: calcular baseMO = MO normal + cuadrillas (misma lógica que MatrixComponentCalculationService)
-            decimal baseMO = 0m;
-
-            foreach (var comp in componentes)
-            {
-                decimal imp = 0m;
-
-                if (comp.TipoComponente == TipoComponenteMatriz.ManoDeObra
-                    && comp.ManoDeObra != null && !comp.ManoDeObra.EsPorcentajeMO)
-                {
-                    imp = engine.Multiply(comp.Cantidad, comp.ManoDeObra.SalarioReal);
-                    baseMO += imp;
-                    // [N7-2] Negativos conservados (paridad con la canónica): filtrarlos
-                    // falseaba la normalización (cdUnit) y eliminaba filas de insumo.
-                    // Solo se registran aquí los componentes realmente calculados en
-                    // este paso; el resto lo calcula el paso B (los ceros se descartan
-                    // aguas abajo con importeUnitComp == 0m, sin efecto observable).
-                    resultado[comp.Id] = imp;
-                }
-                else if (comp.TipoComponente == TipoComponenteMatriz.Auxiliar
-                         && comp.Auxiliar?.Tipo == TipoMatriz.Cuadrilla
-                         && comp.Auxiliar != null)
-                {
-                    imp = engine.Multiply(comp.Cantidad, comp.Auxiliar.CostoDirecto);
-                    baseMO += imp;
-                    resultado[comp.Id] = imp;
-                }
-            }
-
-            // Paso B: calcular el resto con baseMO ya conocido
-            foreach (var comp in componentes)
-            {
-                if (resultado.ContainsKey(comp.Id)) continue;  // ya calculado en paso A
-
-                decimal imp = comp.TipoComponente switch
-                {
-                    TipoComponenteMatriz.Material when comp.Material != null =>
-                        engine.Multiply(comp.Cantidad, comp.Material.PrecioUnitario),
-
-                    TipoComponenteMatriz.Maquinaria when comp.Maquinaria != null =>
-                        engine.Multiply(comp.Cantidad, comp.Maquinaria.CostoHorario),
-
-                    TipoComponenteMatriz.ManoDeObra when comp.ManoDeObra?.EsPorcentajeMO == true =>
-                        engine.RoundAmount(comp.Cantidad * baseMO),
-
-                    TipoComponenteMatriz.Herramienta when comp.Herramienta != null =>
-                        comp.Herramienta.EsPorcentajeMO
-                            ? engine.RoundAmount(comp.Cantidad * baseMO)
-                            : engine.Multiply(comp.Cantidad, comp.Herramienta.PrecioUnitario),
-
-                    TipoComponenteMatriz.Auxiliar when comp.Auxiliar != null
-                        && comp.Auxiliar.Tipo != TipoMatriz.Cuadrilla =>
-                        engine.Multiply(comp.Cantidad, comp.Auxiliar.CostoDirecto),
-
-                    _ => 0m
-                };
-
-                // [N7-2] Ver nota del paso A: negativos conservados, ceros sin efecto
-                // observable (se descartan aguas abajo con importeUnitComp == 0m).
-                resultado[comp.Id] = imp;
-            }
-
-            return resultado;
         }
 
         // ════════════════════════════════════════════════════════════════════════
