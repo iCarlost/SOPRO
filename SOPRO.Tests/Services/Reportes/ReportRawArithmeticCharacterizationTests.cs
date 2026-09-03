@@ -4,10 +4,12 @@ using Sopro.Calculation;
 namespace SOPRO.Tests.Services.Reportes;
 
 /// <summary>
-/// [N7-6] Caracterización de la aritmética cruda de reportes WinForms (APU y
+/// [N7-6] Evidencia matemática de la aritmética cruda de reportes WinForms (APU y
 /// catálogos): multiplicaciones Cantidad × precio sin redondeo de pantalla.
-/// Estos tests congelan la divergencia contra el motor canónico; la migración
-/// requiere su propio slice con decisión de redondeo visible (filas 22-24 N0-TABLA).
+/// Estos tests replican las fórmulas de los generadores y las contrastan contra el
+/// motor canónico; NO invocan a los generadores, por lo que un cambio en el código
+/// de reportes no los haría fallar. Los goldens reales de salida quedan pendientes
+/// para el slice de migración.
 /// </summary>
 [TestClass]
 public class ReportRawArithmeticCharacterizationTests
@@ -74,14 +76,57 @@ public class ReportRawArithmeticCharacterizationTests
     {
         var engine = new SoproCalculationEngine(2, 2, 4);
 
-        // Réplica cruda del fallback ImporteTotal == 0 (GeneradorExcelPresupuesto.cs:353
-        // y GeneradorPdfPresupuesto.cs:418): Cantidad × CDU × factorPU sin redondeo.
-        decimal fallbackCrudo = 3m * 33.335m * 1.0m;
-        decimal fallbackCanonico = engine.Multiply(3m, engine.RoundAmount(33.335m * 1.0m));
+        // Réplica cruda del fallback (GeneradorExcelPresupuesto.cs:353 y
+        // GeneradorPdfPresupuesto.cs:418): la condición real es ImporteTotal > 0,
+        // por lo que el fallback sustituye tanto el cero como los negativos.
+        static decimal FallbackCrudo(decimal importeGuardado, decimal cantidad, decimal cdu, decimal factor) =>
+            importeGuardado > 0m ? importeGuardado : cantidad * cdu * factor;
 
-        Assert.AreEqual(100.005m, fallbackCrudo);
+        Assert.AreEqual(100.005m, FallbackCrudo(0m, 3m, 33.335m, 1.0m));
+
+        // Caso contablemente relevante tras N7-2 (negativos conservados en la
+        // canónica): un importe guardado negativo se sustituye por el fallback crudo.
+        Assert.AreEqual(100.005m, FallbackCrudo(-50m, 3m, 33.335m, 1.0m),
+            "ImporteTotal <= 0 dispara el fallback: el reporte sustituye el −50 guardado");
+
+        decimal fallbackCanonico = engine.Multiply(3m, engine.RoundAmount(33.335m * 1.0m));
         Assert.AreEqual(100.02m, fallbackCanonico);
-        Assert.AreNotEqual(fallbackCanonico, fallbackCrudo,
+        Assert.AreNotEqual(fallbackCanonico, FallbackCrudo(0m, 3m, 33.335m, 1.0m),
             "divergencia congelada: el fallback muestra 100.005, el motor calcula 100.02");
+    }
+
+    [TestMethod]
+    public void FallbackPrecioUnitario_Crudo_DifiereDeMultiply()
+    {
+        var engine = new SoproCalculationEngine(2, 2, 4);
+
+        // Réplica cruda del fallback de PrecioUnitario (GeneradorExcelPresupuesto.cs:350
+        // y GeneradorPdfPresupuesto.cs:417): PU > 0 ? guardado : CDU × factor, sin redondeo.
+        static decimal PuFallbackCrudo(decimal puGuardado, decimal cdu, decimal factor) =>
+            puGuardado > 0m ? puGuardado : cdu * factor;
+
+        Assert.AreEqual(33.335m, PuFallbackCrudo(0m, 33.335m, 1.0m));
+        Assert.AreEqual(33.335m, PuFallbackCrudo(-5m, 33.335m, 1.0m),
+            "PU <= 0 dispara el fallback, incluido un PU negativo guardado");
+        Assert.AreEqual(33.34m, engine.Multiply(1m, 33.335m));
+    }
+
+    [TestMethod]
+    public void IvaDeTotales_Crudo_DifiereDeRedondeoExplicito()
+    {
+        var engine = new SoproCalculationEngine(2, 2, 4);
+
+        // Réplica cruda de totales (GeneradorExcelPresupuesto.cs:377-379 y
+        // GeneradorPdfPresupuesto.cs:364-366): subtotal crudo + IVA sin redondeo.
+        decimal subtotalCrudo = 100.005m;
+        decimal ivaCrudo = subtotalCrudo * 16m / 100m;
+
+        decimal subtotalCanonico = engine.RoundAmount(100.005m);
+        decimal ivaCanonico = engine.RoundAmount(subtotalCanonico * 16m / 100m);
+
+        Assert.AreEqual(16.0008m, ivaCrudo);
+        Assert.AreEqual(16.00m, ivaCanonico);
+        Assert.AreNotEqual(ivaCanonico, ivaCrudo,
+            "divergencia congelada: el reporte muestra 16.0008, el motor calcula 16.00");
     }
 }
