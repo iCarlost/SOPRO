@@ -20,10 +20,11 @@ namespace SOPRO.Application.Services.Programacion
     // ║    PUs actuales del catálogo y el motor.                                ║
     // ║                                                                         ║
     // ║  [N5-16] Motor migrado a SoproCalculationEngine con las tres precisiones ║
-    // ║          del proyecto en Build y 4 helpers (ExplotarCanonicoRecursivo,  ║
-    // ║          ExplotarImportesCanonicosPorInsumo, ExplotarMatrizEnPeriodo,   ║
-    // ║          CalcularImportesUnitarios): Multiply ×8, RoundAmount ×11,      ║
-    // ║          RoundQuantity ×5 (24 operaciones). Sin cambios de API.         ║
+    // ║          del proyecto. [N7-3] El cálculo de importes unitarios duplicado  ║
+    // ║          (CalcularImportesUnitarios) se sustituye por la ruta canónica    ║
+    // ║          compartida MatrixComponentCalculationService.ImportesUnitarios   ║
+    // ║          (evaluador puro del grafo); distribución y reconciliación por    ║
+    // ║          periodo permanecen intactas. Sin cambios de API.                ║
     // ║                                                                         ║
     // ║  Para insumos normales:                                                 ║
     // ║    Importe = fuente de verdad                                           ║
@@ -440,8 +441,9 @@ namespace SOPRO.Application.Services.Programacion
         {
             if (matriz?.Componentes == null || matriz.Componentes.Count == 0) return;
 
-            // Recalcular importes unitarios frescos con PUs actuales y el engine
-            var importesUnitarios = CalcularImportesUnitarios(engine, matriz.Componentes);
+            // [N7-3] Importes unitarios por la ruta canónica compartida.
+            var importesUnitarios = MatrixComponentCalculationService
+                .ImportesUnitarios(matriz.Componentes, engine.AmountDecimals);
             decimal cdUnitMatriz  = importesUnitarios.Values.Sum();
             if (cdUnitMatriz == 0m) return;
 
@@ -451,7 +453,7 @@ namespace SOPRO.Application.Services.Programacion
             decimal sumaDistribuida = 0m;
             foreach (var comp in matriz.Componentes)
             {
-                if (!importesUnitarios.TryGetValue(comp.Id, out decimal impUnit)) continue;
+                if (!importesUnitarios.TryGetValue(comp, out decimal impUnit)) continue;
                 if (impUnit == 0m) continue;
                 decimal impComp = engine.RoundAmount(importeBase * impUnit / cdUnitMatriz);
                 if (impComp == 0m) continue;
@@ -554,7 +556,9 @@ namespace SOPRO.Application.Services.Programacion
         {
             if (matriz?.Componentes == null || matriz.Componentes.Count == 0) return;
 
-            var importesUnitarios = CalcularImportesUnitarios(engine, matriz.Componentes);
+            // [N7-3] Importes unitarios por la ruta canónica compartida.
+            var importesUnitarios = MatrixComponentCalculationService
+                .ImportesUnitarios(matriz.Componentes, engine.AmountDecimals);
             decimal cdUnitMatriz  = importesUnitarios.Values.Sum();
             if (cdUnitMatriz == 0m) return;
 
@@ -563,7 +567,7 @@ namespace SOPRO.Application.Services.Programacion
             decimal sumaDistribuida = 0m;
             foreach (var comp in matriz.Componentes)
             {
-                if (!importesUnitarios.TryGetValue(comp.Id, out decimal impUnit)) continue;
+                if (!importesUnitarios.TryGetValue(comp, out decimal impUnit)) continue;
                 if (impUnit == 0m) continue;
                 decimal impComp = engine.RoundAmount(importeBase * impUnit / cdUnitMatriz);
                 if (impComp == 0m) continue;
@@ -619,77 +623,6 @@ namespace SOPRO.Application.Services.Programacion
                         break;
                 }
             }
-        }
-
-        // ════════════════════════════════════════════════════════════════════════
-        // CÁLCULO DE IMPORTES UNITARIOS FRESCOS
-        // (misma lógica que ExplosionInsumosService.CalcularImportesUnitarios)
-        // ════════════════════════════════════════════════════════════════════════
-
-        private static Dictionary<int, decimal> CalcularImportesUnitarios(
-            SoproCalculationEngine engine, ICollection<ComponenteMatriz> componentes)
-        {
-            var resultado = new Dictionary<int, decimal>();
-
-            // Paso A: MO normal + cuadrillas → calcula baseMO
-            decimal baseMO = 0m;
-            foreach (var comp in componentes)
-            {
-                decimal imp = 0m;
-                if (comp.TipoComponente == TipoComponenteMatriz.ManoDeObra
-                    && comp.ManoDeObra != null && !comp.ManoDeObra.EsPorcentajeMO)
-                {
-                    imp = engine.Multiply(comp.Cantidad, comp.ManoDeObra.SalarioReal);
-                    baseMO += imp;
-                    // [N7-2] Negativos conservados (paridad con ExplosionInsumosService
-                    // y con la canónica). Solo se registran los componentes realmente
-                    // calculados en este paso; el resto lo calcula el paso B (los ceros
-                    // se descartan aguas abajo con impUnit == 0m, sin efecto observable).
-                    resultado[comp.Id] = imp;
-                }
-                else if (comp.TipoComponente == TipoComponenteMatriz.Auxiliar
-                         && comp.Auxiliar?.Tipo == TipoMatriz.Cuadrilla
-                         && comp.Auxiliar != null)
-                {
-                    imp = engine.Multiply(comp.Cantidad, comp.Auxiliar.CostoDirecto);
-                    baseMO += imp;
-                    resultado[comp.Id] = imp;
-                }
-            }
-
-            // Paso B: resto de componentes con baseMO conocido
-            foreach (var comp in componentes)
-            {
-                if (resultado.ContainsKey(comp.Id)) continue;
-
-                decimal imp = comp.TipoComponente switch
-                {
-                    TipoComponenteMatriz.Material when comp.Material != null =>
-                        engine.Multiply(comp.Cantidad, comp.Material.PrecioUnitario),
-
-                    TipoComponenteMatriz.Maquinaria when comp.Maquinaria != null =>
-                        engine.Multiply(comp.Cantidad, comp.Maquinaria.CostoHorario),
-
-                    TipoComponenteMatriz.ManoDeObra when comp.ManoDeObra?.EsPorcentajeMO == true =>
-                        engine.RoundAmount(comp.Cantidad * baseMO),
-
-                    TipoComponenteMatriz.Herramienta when comp.Herramienta != null =>
-                        comp.Herramienta.EsPorcentajeMO
-                            ? engine.RoundAmount(comp.Cantidad * baseMO)
-                            : engine.Multiply(comp.Cantidad, comp.Herramienta.PrecioUnitario),
-
-                    TipoComponenteMatriz.Auxiliar when comp.Auxiliar != null
-                        && comp.Auxiliar.Tipo != TipoMatriz.Cuadrilla =>
-                        engine.Multiply(comp.Cantidad, comp.Auxiliar.CostoDirecto),
-
-                    _ => 0m
-                };
-
-                // [N7-2] Ver nota del paso A.
-                resultado[comp.Id] = imp;
-            }
-
-            return resultado;
         }
 
         // ════════════════════════════════════════════════════════════════════════
