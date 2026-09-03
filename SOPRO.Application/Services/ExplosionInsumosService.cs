@@ -178,40 +178,10 @@ namespace SOPRO.Application.Services
             if (cdUnitarioMatriz == 0m) return;  // matriz vacía o sin PUs
 
             // ── Paso 2: distribuir importeBase con reconciliación final ─────────
-            // Primero calculamos todos los importes redondeados para saber cuánto
-            // queda de residuo, y lo absorbemos en el último componente elegible.
-            var distribComp = new List<(ComponenteMatriz comp, decimal importeComp)>();
-            decimal sumaDistribuida = 0m;
-            foreach (var comp in matriz.Componentes)
-            {
-                if (!importesUnitarios.TryGetValue(comp, out decimal importeUnitComp)) continue;
-                if (importeUnitComp == 0m) continue;
-                decimal importeComp = engine.RoundAmount(
-                    importeBase * importeUnitComp / cdUnitarioMatriz);
-                if (importeComp == 0m) continue;
-                distribComp.Add((comp, importeComp));
-                sumaDistribuida += importeComp;
-            }
-
-            // Residuo = importeBase - sumaDistribuida (puede ser +0.01 o -0.01)
-            decimal residuo = engine.RoundAmount(importeBase - sumaDistribuida);
-            if (residuo != 0m && distribComp.Count > 0)
-            {
-                // Absorber en el último componente no-auxiliar elegible
-                int idxAjuste = distribComp.FindLastIndex(
-                    t => t.comp.TipoComponente != TipoComponenteMatriz.Auxiliar);
-                if (idxAjuste >= 0)
-                {
-                    var (compAjuste, impAjuste) = distribComp[idxAjuste];
-                    distribComp[idxAjuste] = (compAjuste, impAjuste + residuo);
-                }
-                else
-                {
-                    // Si todos son auxiliares, ajustar el último
-                    var (compAjuste, impAjuste) = distribComp[distribComp.Count - 1];
-                    distribComp[distribComp.Count - 1] = (compAjuste, impAjuste + residuo);
-                }
-            }
+            // Distribución proporcional canónica compartida (N7-4): residuo absorbido
+            // en el último componente no auxiliar.
+            var distribComp = MatrixComponentCalculationService.DistribuirImporteProporcional(
+                engine, importesUnitarios, matriz.Componentes, importeBase, cdUnitarioMatriz);
 
             foreach (var (comp, importeComp) in distribComp)
             {
