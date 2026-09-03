@@ -251,7 +251,10 @@ namespace SOPRO.Application.Services.Programacion
                     foreach (var insumoId in temporal.Keys)
                     {
                         temporal[insumoId].ImportesPorPeriodo.TryGetValue(periodoId, out decimal impCheck);
-                        if (impCheck > 0m)
+                        // [N7-2] !=0 en lugar de >0: un importe negativo también es "último
+                        // periodo con importe" y debe poder absorber el residuo de
+                        // reconciliación (línea 343/354 siguen el mismo criterio).
+                        if (impCheck != 0m)
                             ultimoPeriodoPorInsumo[insumoId] = periodoId;
                     }
                 }
@@ -334,13 +337,15 @@ namespace SOPRO.Application.Services.Programacion
                 // Importe objetivo = valor que produce la explosión para este insumo
                 decimal importeGlobalObjetivo = engine.RoundAmount(src.ImporteGlobalAcum);
 
-                // Último periodo con importe — ahí se absorbe el residuo
+                // Último periodo con importe — ahí se absorbe el residuo.
+                // [N7-2] !=0: un importe negativo también marca "último periodo con
+                // importe"; con >0 se perdía la absorción del residuo en esa fila.
                 var periodosOrdenados = periodos.OrderBy(p => p.Orden).ToList();
                 int idxUltimo = -1;
                 for (int pi = periodosOrdenados.Count - 1; pi >= 0; pi--)
                 {
                     src.ImportesPorPeriodo.TryGetValue(periodosOrdenados[pi].PeriodoId, out decimal chk);
-                    if (chk > 0m) { idxUltimo = pi; break; }
+                    if (chk != 0m) { idxUltimo = pi; break; }
                 }
 
                 for (int pi = 0; pi < periodosOrdenados.Count; pi++)
@@ -351,7 +356,7 @@ namespace SOPRO.Application.Services.Programacion
                     decimal importePer = engine.RoundAmount(importeRaw);
 
                     // Reconciliar en el último periodo si el residuo es centavo de redondeo
-                    if (pi == idxUltimo && importePer > 0m)
+                    if (pi == idxUltimo && importePer != 0m)
                     {
                         decimal residuo = importeGlobalObjetivo - (runningImporte + importePer);
                         if (residuo != 0m && Math.Abs(residuo) < 0.05m)
@@ -636,6 +641,11 @@ namespace SOPRO.Application.Services.Programacion
                 {
                     imp = engine.Multiply(comp.Cantidad, comp.ManoDeObra.SalarioReal);
                     baseMO += imp;
+                    // [N7-2] Negativos conservados (paridad con ExplosionInsumosService
+                    // y con la canónica). Solo se registran los componentes realmente
+                    // calculados en este paso; el resto lo calcula el paso B (los ceros
+                    // se descartan aguas abajo con impUnit == 0m, sin efecto observable).
+                    resultado[comp.Id] = imp;
                 }
                 else if (comp.TipoComponente == TipoComponenteMatriz.Auxiliar
                          && comp.Auxiliar?.Tipo == TipoMatriz.Cuadrilla
@@ -643,8 +653,8 @@ namespace SOPRO.Application.Services.Programacion
                 {
                     imp = engine.Multiply(comp.Cantidad, comp.Auxiliar.CostoDirecto);
                     baseMO += imp;
+                    resultado[comp.Id] = imp;
                 }
-                if (imp > 0m) resultado[comp.Id] = imp;
             }
 
             // Paso B: resto de componentes con baseMO conocido
@@ -675,7 +685,8 @@ namespace SOPRO.Application.Services.Programacion
                     _ => 0m
                 };
 
-                if (imp > 0m) resultado[comp.Id] = imp;
+                // [N7-2] Ver nota del paso A.
+                resultado[comp.Id] = imp;
             }
 
             return resultado;

@@ -283,6 +283,12 @@ namespace SOPRO.Application.Services
                 {
                     imp = engine.Multiply(comp.Cantidad, comp.ManoDeObra.SalarioReal);
                     baseMO += imp;
+                    // [N7-2] Negativos conservados (paridad con la canónica): filtrarlos
+                    // falseaba la normalización (cdUnit) y eliminaba filas de insumo.
+                    // Solo se registran aquí los componentes realmente calculados en
+                    // este paso; el resto lo calcula el paso B (los ceros se descartan
+                    // aguas abajo con importeUnitComp == 0m, sin efecto observable).
+                    resultado[comp.Id] = imp;
                 }
                 else if (comp.TipoComponente == TipoComponenteMatriz.Auxiliar
                          && comp.Auxiliar?.Tipo == TipoMatriz.Cuadrilla
@@ -290,10 +296,8 @@ namespace SOPRO.Application.Services
                 {
                     imp = engine.Multiply(comp.Cantidad, comp.Auxiliar.CostoDirecto);
                     baseMO += imp;
-                }
-
-                if (imp > 0m)
                     resultado[comp.Id] = imp;
+                }
             }
 
             // Paso B: calcular el resto con baseMO ya conocido
@@ -324,8 +328,9 @@ namespace SOPRO.Application.Services
                     _ => 0m
                 };
 
-                if (imp > 0m)
-                    resultado[comp.Id] = imp;
+                // [N7-2] Ver nota del paso A: negativos conservados, ceros sin efecto
+                // observable (se descartan aguas abajo con importeUnitComp == 0m).
+                resultado[comp.Id] = imp;
             }
 
             return resultado;
