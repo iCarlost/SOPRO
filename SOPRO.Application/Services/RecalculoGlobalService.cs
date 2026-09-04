@@ -292,17 +292,7 @@ namespace SOPRO.Application.Services
         // ════════════════════════════════════════════════════════════════════════
 
         private static PricePercentageInput BuildPercentageInput(Proyecto proyecto)
-            => new PricePercentageInput
-            {
-                CentralIndirectsPercentage  = proyecto.PorcentajeIndirectosCentral,
-                FieldIndirectsPercentage    = proyecto.PorcentajeIndirectosCampo,
-                FinancingPercentage         = proyecto.PorcentajeFinanciamiento,
-                ProfitPercentage             = proyecto.PorcentajeUtilidad,
-                AdditionalChargesPercentage = proyecto.PorcentajeCargosAdicionales,
-                Mode = string.Equals(proyecto.ModoCalculoPorcentajes, "SobreCD", StringComparison.OrdinalIgnoreCase)
-                    ? PercentageCalculationMode.OverDirectCost
-                    : PercentageCalculationMode.Accumulative
-            };
+            => BudgetPercentageInput.FromProyecto(proyecto).ToPricePercentage();
     }
 
     // ════════════════════════════════════════════════════════════════════════════

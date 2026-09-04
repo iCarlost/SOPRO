@@ -157,19 +157,7 @@ namespace SOPRO.Application.Services
             var engine = new SoproCalculationEngine(
                 proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
 
-            var pctInput = new PricePercentageInput
-            {
-                CentralIndirectsPercentage = proyecto.PorcentajeIndirectosCentral,
-                FieldIndirectsPercentage   = proyecto.PorcentajeIndirectosCampo,
-                FinancingPercentage        = proyecto.PorcentajeFinanciamiento,
-                ProfitPercentage           = proyecto.PorcentajeUtilidad,
-                AdditionalChargesPercentage= proyecto.PorcentajeCargosAdicionales,
-                Mode                       = string.Equals(
-                                                proyecto.ModoCalculoPorcentajes, "SobreCD",
-                                                StringComparison.OrdinalIgnoreCase)
-                                                ? PercentageCalculationMode.OverDirectCost
-                                                : PercentageCalculationMode.Accumulative
-            };
+            var pctInput = BudgetPercentageInput.FromProyecto(proyecto).ToPricePercentage();
 
             var values = new Dictionary<string, object?>();
 
