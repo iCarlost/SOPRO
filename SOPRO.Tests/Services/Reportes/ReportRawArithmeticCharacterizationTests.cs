@@ -37,7 +37,7 @@ public class ReportRawArithmeticCharacterizationTests
         Assert.AreEqual(3.001m, porcentajeCrudo);
         Assert.AreEqual(3.00m, porcentajeCanonico);
         Assert.AreNotEqual(porcentajeCanonico, porcentajeCrudo,
-            "divergencia congelada: el reporte muestra 3.001, el motor calcula 3.00");
+            "divergencia documentada: el reporte muestra 3.001, el motor calcula 3.00");
     }
 
     [TestMethod]
@@ -53,7 +53,7 @@ public class ReportRawArithmeticCharacterizationTests
         Assert.AreEqual(30.015m, importeCrudo);
         Assert.AreEqual(30.03m, importeCanonico);
         Assert.AreNotEqual(importeCanonico, importeCrudo,
-            "divergencia congelada: el catálogo muestra 30.015, el motor calcula 30.03");
+            "divergencia documentada: el catálogo muestra 30.015, el motor calcula 30.03");
     }
 
     [TestMethod]
@@ -68,7 +68,7 @@ public class ReportRawArithmeticCharacterizationTests
         Assert.AreEqual(70.035m, totalCrudo);
         Assert.AreEqual(70.07m, totalCanonico);
         Assert.AreNotEqual(totalCanonico, totalCrudo,
-            "divergencia congelada: el encabezado APU muestra 70.035, el motor calcula 70.07");
+            "divergencia documentada: el encabezado APU muestra 70.035, el motor calcula 70.07");
     }
 
     [TestMethod]
@@ -92,7 +92,7 @@ public class ReportRawArithmeticCharacterizationTests
         decimal fallbackCanonico = engine.Multiply(3m, engine.RoundAmount(33.335m * 1.0m));
         Assert.AreEqual(100.02m, fallbackCanonico);
         Assert.AreNotEqual(fallbackCanonico, FallbackCrudo(0m, 3m, 33.335m, 1.0m),
-            "divergencia congelada: el fallback muestra 100.005, el motor calcula 100.02");
+            "divergencia documentada: el fallback muestra 100.005, el motor calcula 100.02");
     }
 
     [TestMethod]
@@ -127,6 +127,6 @@ public class ReportRawArithmeticCharacterizationTests
         Assert.AreEqual(16.0008m, ivaCrudo);
         Assert.AreEqual(16.00m, ivaCanonico);
         Assert.AreNotEqual(ivaCanonico, ivaCrudo,
-            "divergencia congelada: el reporte muestra 16.0008, el motor calcula 16.00");
+            "divergencia documentada: el reporte muestra 16.0008, el motor calcula 16.00");
     }
 }
