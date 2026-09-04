@@ -1,5 +1,7 @@
 ctor Sopro.Calculation.CalculationPrecision(Int32 quantityDecimals, Int32 amountDecimals, Int32 percentageDecimals)
 ctor Sopro.Calculation.DirectCostLine(Decimal Quantity, Decimal UnitDirectCost, Boolean IsGrouping, Boolean HasMatrix)
+ctor Sopro.Calculation.Equipment.HourlyCostBreakdown()
+ctor Sopro.Calculation.Equipment.HourlyCostInput()
 ctor Sopro.Calculation.Matrices.MatrixComponentInput(Int32 Id, Int32 Order, MatrixComponentType Type, Decimal Quantity, Decimal ResolvedUnitPrice, Boolean IsPercentageOfLabor, Int32? ReferencedMatrixId = null)
 ctor Sopro.Calculation.Matrices.MatrixComponentResult(Int32 ComponentId, Int32 Order, Decimal Amount)
 ctor Sopro.Calculation.Matrices.MatrixGraphCalculator(CalculationPrecision precision)
@@ -28,6 +30,10 @@ method Boolean Sopro.Calculation.CalculationPrecision.Equals(CalculationPrecisio
 method Boolean Sopro.Calculation.CalculationPrecision.Equals(Object? obj)
 method Boolean Sopro.Calculation.DirectCostLine.Equals(DirectCostLine? other)
 method Boolean Sopro.Calculation.DirectCostLine.Equals(Object? obj)
+method Boolean Sopro.Calculation.Equipment.HourlyCostBreakdown.Equals(HourlyCostBreakdown? other)
+method Boolean Sopro.Calculation.Equipment.HourlyCostBreakdown.Equals(Object? obj)
+method Boolean Sopro.Calculation.Equipment.HourlyCostInput.Equals(HourlyCostInput? other)
+method Boolean Sopro.Calculation.Equipment.HourlyCostInput.Equals(Object? obj)
 method Boolean Sopro.Calculation.Matrices.MatrixComponentInput.Equals(MatrixComponentInput? other)
 method Boolean Sopro.Calculation.Matrices.MatrixComponentInput.Equals(Object? obj)
 method Boolean Sopro.Calculation.Matrices.MatrixComponentResult.Equals(MatrixComponentResult? other)
@@ -46,10 +52,14 @@ method Decimal Sopro.Calculation.SoproCalculationEngine.SumAmounts(IEnumerable<D
 method Decimal Sopro.Calculation.SoproCalculationEngine.SumDirectCost(IEnumerable<DirectCostLine>? lines)
 method Decimal Sopro.Calculation.SoproCalculationEngine.SumQuantities(IEnumerable<Decimal>? values)
 method DirectCostLine Sopro.Calculation.DirectCostLine.<Clone>$()
+method HourlyCostBreakdown Sopro.Calculation.Equipment.HourlyCostBreakdown.<Clone>$()
+method HourlyCostInput Sopro.Calculation.Equipment.HourlyCostInput.<Clone>$()
 method IReadOnlyList<Decimal> Sopro.Calculation.SoproCalculationEngine.DistributeAmount(Decimal total, IReadOnlyList<Decimal>? weights)
 method IReadOnlyList<Decimal> Sopro.Calculation.SoproCalculationEngine.DistributeQuantity(Decimal total, IReadOnlyList<Decimal>? weights)
 method Int32 Sopro.Calculation.CalculationPrecision.GetHashCode()
 method Int32 Sopro.Calculation.DirectCostLine.GetHashCode()
+method Int32 Sopro.Calculation.Equipment.HourlyCostBreakdown.GetHashCode()
+method Int32 Sopro.Calculation.Equipment.HourlyCostInput.GetHashCode()
 method Int32 Sopro.Calculation.Matrices.MatrixComponentInput.GetHashCode()
 method Int32 Sopro.Calculation.Matrices.MatrixComponentResult.GetHashCode()
 method Int32 Sopro.Calculation.PriceBreakdown.GetHashCode()
@@ -62,6 +72,8 @@ method PriceBreakdown Sopro.Calculation.SoproCalculationEngine.CalculateUnitPric
 method PricePercentageInput Sopro.Calculation.PricePercentageInput.<Clone>$()
 method String Sopro.Calculation.CalculationPrecision.ToString()
 method String Sopro.Calculation.DirectCostLine.ToString()
+method String Sopro.Calculation.Equipment.HourlyCostBreakdown.ToString()
+method String Sopro.Calculation.Equipment.HourlyCostInput.ToString()
 method String Sopro.Calculation.Matrices.MatrixComponentInput.ToString()
 method String Sopro.Calculation.Matrices.MatrixComponentResult.ToString()
 method String Sopro.Calculation.PriceBreakdown.ToString()
@@ -74,6 +86,10 @@ method static Boolean Sopro.Calculation.CalculationPrecision.op_Equality(Calcula
 method static Boolean Sopro.Calculation.CalculationPrecision.op_Inequality(CalculationPrecision? left, CalculationPrecision? right)
 method static Boolean Sopro.Calculation.DirectCostLine.op_Equality(DirectCostLine? left, DirectCostLine? right)
 method static Boolean Sopro.Calculation.DirectCostLine.op_Inequality(DirectCostLine? left, DirectCostLine? right)
+method static Boolean Sopro.Calculation.Equipment.HourlyCostBreakdown.op_Equality(HourlyCostBreakdown? left, HourlyCostBreakdown? right)
+method static Boolean Sopro.Calculation.Equipment.HourlyCostBreakdown.op_Inequality(HourlyCostBreakdown? left, HourlyCostBreakdown? right)
+method static Boolean Sopro.Calculation.Equipment.HourlyCostInput.op_Equality(HourlyCostInput? left, HourlyCostInput? right)
+method static Boolean Sopro.Calculation.Equipment.HourlyCostInput.op_Inequality(HourlyCostInput? left, HourlyCostInput? right)
 method static Boolean Sopro.Calculation.Matrices.MatrixComponentInput.op_Equality(MatrixComponentInput? left, MatrixComponentInput? right)
 method static Boolean Sopro.Calculation.Matrices.MatrixComponentInput.op_Inequality(MatrixComponentInput? left, MatrixComponentInput? right)
 method static Boolean Sopro.Calculation.Matrices.MatrixComponentResult.op_Equality(MatrixComponentResult? left, MatrixComponentResult? right)
@@ -82,12 +98,47 @@ method static Boolean Sopro.Calculation.PriceBreakdown.op_Equality(PriceBreakdow
 method static Boolean Sopro.Calculation.PriceBreakdown.op_Inequality(PriceBreakdown? left, PriceBreakdown? right)
 method static Boolean Sopro.Calculation.PricePercentageInput.op_Equality(PricePercentageInput? left, PricePercentageInput? right)
 method static Boolean Sopro.Calculation.PricePercentageInput.op_Inequality(PricePercentageInput? left, PricePercentageInput? right)
+method static HourlyCostBreakdown Sopro.Calculation.Equipment.HourlyCostCalculator.Calculate(HourlyCostInput input)
 prop-get Boolean Sopro.Calculation.DirectCostLine.HasMatrix
 prop-get Boolean Sopro.Calculation.DirectCostLine.IsGrouping
 prop-get Boolean Sopro.Calculation.Matrices.MatrixComponentInput.IsPercentageOfLabor
 prop-get CalculationPrecision Sopro.Calculation.SoproCalculationEngine.Precision
 prop-get Decimal Sopro.Calculation.DirectCostLine.Quantity
 prop-get Decimal Sopro.Calculation.DirectCostLine.UnitDirectCost
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.AverageValue
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.ConsumptionTotal
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Depreciation
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.FixedChargesTotal
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Fuel
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.HourlyCost
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Insurance
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Investment
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Lubricants
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Maintenance
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.NetValue
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Operation
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.RealSalary
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.SalvageValue
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.SpecialParts
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Tires
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.AcquisitionValue
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.EconomicLifeHours
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.EffectiveHoursPerShift
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.EffectiveHoursPerYear
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.FuelPrice
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.FuelQuantity
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.InsuranceRatePercentage
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.InterestRatePercentage
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.MaintenanceFactor
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.OilPrice
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.OilQuantity
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.OperatorSalary
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.RealSalaryFactor
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.SalvageFactor
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.SpecialPartsLifeHours
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.SpecialPartsValue
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.TireLifeHours
+prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.TireValue
 prop-get Decimal Sopro.Calculation.Matrices.MatrixComponentInput.Quantity
 prop-get Decimal Sopro.Calculation.Matrices.MatrixComponentInput.ResolvedUnitPrice
 prop-get Decimal Sopro.Calculation.Matrices.MatrixComponentResult.Amount
@@ -156,6 +207,40 @@ prop-set init Boolean Sopro.Calculation.DirectCostLine.IsGrouping
 prop-set init Boolean Sopro.Calculation.Matrices.MatrixComponentInput.IsPercentageOfLabor
 prop-set init Decimal Sopro.Calculation.DirectCostLine.Quantity
 prop-set init Decimal Sopro.Calculation.DirectCostLine.UnitDirectCost
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.AverageValue
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.ConsumptionTotal
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Depreciation
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.FixedChargesTotal
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Fuel
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.HourlyCost
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Insurance
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Investment
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Lubricants
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Maintenance
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.NetValue
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Operation
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.RealSalary
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.SalvageValue
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.SpecialParts
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.Tires
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.AcquisitionValue
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.EconomicLifeHours
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.EffectiveHoursPerShift
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.EffectiveHoursPerYear
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.FuelPrice
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.FuelQuantity
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.InsuranceRatePercentage
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.InterestRatePercentage
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.MaintenanceFactor
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.OilPrice
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.OilQuantity
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.OperatorSalary
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.RealSalaryFactor
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.SalvageFactor
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.SpecialPartsLifeHours
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.SpecialPartsValue
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.TireLifeHours
+prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.TireValue
 prop-set init Decimal Sopro.Calculation.Matrices.MatrixComponentInput.Quantity
 prop-set init Decimal Sopro.Calculation.Matrices.MatrixComponentInput.ResolvedUnitPrice
 prop-set init Decimal Sopro.Calculation.Matrices.MatrixComponentResult.Amount
@@ -185,6 +270,8 @@ type Sopro.Calculation.Matrices.MatrixType
 type Sopro.Calculation.PercentageCalculationMode
 type sealed Sopro.Calculation.CalculationPrecision
 type sealed Sopro.Calculation.DirectCostLine
+type sealed Sopro.Calculation.Equipment.HourlyCostBreakdown
+type sealed Sopro.Calculation.Equipment.HourlyCostInput
 type sealed Sopro.Calculation.Matrices.MatrixComponentInput
 type sealed Sopro.Calculation.Matrices.MatrixComponentResult
 type sealed Sopro.Calculation.Matrices.MatrixGraphCalculator
@@ -195,3 +282,4 @@ type sealed Sopro.Calculation.Matrices.MatrixNodeResult
 type sealed Sopro.Calculation.PriceBreakdown
 type sealed Sopro.Calculation.PricePercentageInput
 type sealed Sopro.Calculation.SoproCalculationEngine
+type static Sopro.Calculation.Equipment.HourlyCostCalculator

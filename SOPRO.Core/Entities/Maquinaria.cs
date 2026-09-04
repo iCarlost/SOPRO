@@ -1,5 +1,5 @@
 using System;
-using SOPRO.Core.Services;
+using Sopro.Calculation.Equipment;
 
 namespace SOPRO.Core.Entities
 {
@@ -127,29 +127,29 @@ namespace SOPRO.Core.Entities
         /// </summary>
         public void CalcularCostoHorario()
         {
-            var result = MaquinariaCostoHorarioCalculator.Calcular(new MaquinariaCostoHorarioInput
+            var result = HourlyCostCalculator.Calculate(new HourlyCostInput
             {
-                ValorAdquisicion = ValorAdquisicion,
-                ValorLlantas = ValorLlantas,
-                ValorPiezasEspeciales = ValorPiezasEspeciales,
-                FactorRescate = FactorRescate,
-                VidaEconomica = VidaEconomica,
-                TasaInteres = TasaInteres,
-                HorasEfectivasAnio = HorasEfectivasAnio,
-                PrimaSeguro = PrimaSeguro,
-                FactorMantenimiento = FactorMantenimiento,
-                CantidadCombustible = CantidadCombustible,
-                PrecioCombustible = PrecioCombustible,
-                CantidadAceite = CantidadAceite,
-                PrecioAceite = PrecioAceite,
-                VidaEconomicaLlantas = VidaEconomicaLlantas,
-                VidaPiezasEspeciales = VidaPiezasEspeciales,
-                SalarioOperador = SalarioOperador,
-                FactorSalarioReal = FactorSalarioReal,
-                HorasEfectivasTurno = HorasEfectivasTurno
+                AcquisitionValue = ValorAdquisicion,
+                TireValue = ValorLlantas,
+                SpecialPartsValue = ValorPiezasEspeciales,
+                SalvageFactor = FactorRescate,
+                EconomicLifeHours = VidaEconomica,
+                InterestRatePercentage = TasaInteres,
+                EffectiveHoursPerYear = HorasEfectivasAnio,
+                InsuranceRatePercentage = PrimaSeguro,
+                MaintenanceFactor = FactorMantenimiento,
+                FuelQuantity = CantidadCombustible,
+                FuelPrice = PrecioCombustible,
+                OilQuantity = CantidadAceite,
+                OilPrice = PrecioAceite,
+                TireLifeHours = VidaEconomicaLlantas,
+                SpecialPartsLifeHours = VidaPiezasEspeciales,
+                OperatorSalary = SalarioOperador,
+                RealSalaryFactor = FactorSalarioReal,
+                EffectiveHoursPerShift = HorasEfectivasTurno
             });
 
-            CostoHorario = result.CostoHorario;
+            CostoHorario = result.HourlyCost;
             EsCostoCalculado = true;
             FechaCalculoCosto = DateTime.Now;
         }

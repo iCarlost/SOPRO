@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\SOPRO.Calculation\SOPRO.Calculation.csproj" />
+  </ItemGroup>
+
 </Project>

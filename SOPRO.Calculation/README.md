@@ -13,7 +13,8 @@ procesa.
   `SoproCalculationEngine`, `DirectCostLine`, `PricePercentageInput`,
   `PriceBreakdown` y el enum `PercentageCalculationMode`. El slice de matrices
   agrega `MatrixGraphInput`, `MatrixNodeInput`, `MatrixComponentInput`,
-  `MatrixGraphCalculator` y sus resultados inmutables. Los ayudantes
+  `MatrixGraphCalculator` y sus resultados inmutables. El slice de costo horario
+  agrega `HourlyCostInput`, `HourlyCostBreakdown` y `HourlyCostCalculator`. Los ayudantes
   (`UnitPriceCalculator`, `AmountDistributor`) son internos.
 - Invariante del grafo de matrices: los IDs de componente son unicos en todo el
   grafo (incluidos nodos no alcanzados desde la raiz); los IDs temporales de
@@ -90,6 +91,8 @@ IReadOnlyList<decimal> partes = motor.DistributeAmount(1000m, new[] { 33m, 33m, 
   (filas 12, 14).
 - El formato de cultura NO vive aqui: queda en la fachada legacy (fila 9).
 - El reloj no participa en ninguna aritmetica (fila 0 / manifiesto §4).
+- El costo horario usa `HourlyCostCalculator` con entradas y resultados escalares
+  inmutables; la fecha de calculo y la persistencia quedan fuera del motor.
 
 ## Verificacion (Gate N1)
 

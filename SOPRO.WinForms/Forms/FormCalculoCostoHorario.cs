@@ -1,9 +1,9 @@
 using SOPRO.Core.Entities;
-using SOPRO.Core.Services;
 using SOPRO.Data.Context;
 using SOPRO.Data.Repositories;
 using System;
 using System.Windows.Forms;
+using Sopro.Calculation.Equipment;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -107,44 +107,44 @@ namespace SOPRO.WinForms.Forms
         // ──────────────────────────────────────────────────────────────────────
         private void Recalcular()
         {
-            var result = MaquinariaCostoHorarioCalculator.Calcular(new MaquinariaCostoHorarioInput
+            var result = HourlyCostCalculator.Calculate(new HourlyCostInput
             {
-                ValorAdquisicion = nudValorAdquisicion.Value,
-                ValorLlantas = nudValorLlantas.Value,
-                ValorPiezasEspeciales = nudValorPiezasEsp.Value,
-                FactorRescate = nudFactorRescate.Value,
-                VidaEconomica = nudVidaEconomica.Value,
-                TasaInteres = nudTasaInteres.Value,
-                HorasEfectivasAnio = nudHorasAnio.Value,
-                PrimaSeguro = nudPrimaSeguro.Value,
-                FactorMantenimiento = nudFactorManten.Value,
-                CantidadCombustible = nudCantCombustible.Value,
-                PrecioCombustible = nudPrecioCombustible.Value,
-                CantidadAceite = nudCantAceite.Value,
-                PrecioAceite = nudPrecioAceite.Value,
-                VidaEconomicaLlantas = nudVidaLlantas.Value,
-                VidaPiezasEspeciales = nudVidaPiezasEsp.Value,
-                SalarioOperador = nudSalarioOperador.Value,
-                FactorSalarioReal = nudFSR.Value,
-                HorasEfectivasTurno = nudHorasTurno.Value
+                AcquisitionValue = nudValorAdquisicion.Value,
+                TireValue = nudValorLlantas.Value,
+                SpecialPartsValue = nudValorPiezasEsp.Value,
+                SalvageFactor = nudFactorRescate.Value,
+                EconomicLifeHours = nudVidaEconomica.Value,
+                InterestRatePercentage = nudTasaInteres.Value,
+                EffectiveHoursPerYear = nudHorasAnio.Value,
+                InsuranceRatePercentage = nudPrimaSeguro.Value,
+                MaintenanceFactor = nudFactorManten.Value,
+                FuelQuantity = nudCantCombustible.Value,
+                FuelPrice = nudPrecioCombustible.Value,
+                OilQuantity = nudCantAceite.Value,
+                OilPrice = nudPrecioAceite.Value,
+                TireLifeHours = nudVidaLlantas.Value,
+                SpecialPartsLifeHours = nudVidaPiezasEsp.Value,
+                OperatorSalary = nudSalarioOperador.Value,
+                RealSalaryFactor = nudFSR.Value,
+                EffectiveHoursPerShift = nudHorasTurno.Value
             });
 
-            _vm = result.ValorNeto;
-            _vr = result.ValorRescate;
-            _vmvrMedio = result.ValorNetoMedio;
-            _depreciacion = result.Depreciacion;
-            _inversion = result.Inversion;
-            _seguros = result.Seguros;
-            _mantenimiento = result.Mantenimiento;
-            _totalCargosFijos = result.TotalCargosFijos;
-            _combustible = result.Combustible;
-            _lubricantes = result.Lubricantes;
-            _llantas = result.Llantas;
-            _piezasEspeciales = result.PiezasEspeciales;
-            _totalConsumos = result.TotalConsumos;
-            _salarioReal = result.SalarioReal;
-            _operacion = result.Operacion;
-            _costoHorarioTotal = result.CostoHorario;
+            _vm = result.NetValue;
+            _vr = result.SalvageValue;
+            _vmvrMedio = result.AverageValue;
+            _depreciacion = result.Depreciation;
+            _inversion = result.Investment;
+            _seguros = result.Insurance;
+            _mantenimiento = result.Maintenance;
+            _totalCargosFijos = result.FixedChargesTotal;
+            _combustible = result.Fuel;
+            _lubricantes = result.Lubricants;
+            _llantas = result.Tires;
+            _piezasEspeciales = result.SpecialParts;
+            _totalConsumos = result.ConsumptionTotal;
+            _salarioReal = result.RealSalary;
+            _operacion = result.Operation;
+            _costoHorarioTotal = result.HourlyCost;
             ActualizarUI();
         }
 
