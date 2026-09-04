@@ -58,7 +58,7 @@ namespace SOPRO.Application.Services
                 ?? throw new InvalidOperationException($"Proyecto {proyectoId} no encontrado.");
 
             var engine = CalculationEngineFactory.FromProyecto(proyecto);
-            var pct = BuildPercentageInput(proyecto);
+            var pct = BudgetPercentageInput.FromProyecto(proyecto).ToPricePercentage();
 
             // Fase 1: Componentes de matrices
             resultado.ComponentesActualizados = RecalcularComponentesMatrices(ctx, proyectoId, engine);
@@ -285,11 +285,9 @@ namespace SOPRO.Application.Services
         }
 
         // ════════════════════════════════════════════════════════════════════════
-        // HELPERS
+        // HELPERS ([N7-9] wrapper BuildPercentageInput retirado: el callsite usa
+        // BudgetPercentageInput.FromProyecto(...).ToPricePercentage() directamente)
         // ════════════════════════════════════════════════════════════════════════
-
-        private static PricePercentageInput BuildPercentageInput(Proyecto proyecto)
-            => BudgetPercentageInput.FromProyecto(proyecto).ToPricePercentage();
     }
 
     // ════════════════════════════════════════════════════════════════════════════

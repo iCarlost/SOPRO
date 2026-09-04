@@ -1,4 +1,3 @@
-using Sopro.Calculation;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -179,7 +178,7 @@ namespace SOPRO.Application.Services
         private static BudgetConceptAssignmentDraft BuildDraftFromConcept(
             Proyecto proyecto, string key, ConceptoPresupuesto sourceConcept)
         {
-            var engine         = BuildEngine(proyecto);
+            var engine         = CalculationEngineFactory.FromProyecto(proyecto);
             decimal cdUnit     = engine.RoundAmount(sourceConcept.CostoDirectoUnitario); // [FIX-2]
             decimal pu         = BudgetPricingService.CalculateUnitPrice(proyecto, cdUnit);
             decimal cantidad   = sourceConcept.Cantidad;
@@ -204,7 +203,7 @@ namespace SOPRO.Application.Services
         private static BudgetConceptAssignmentDraft BuildDraftFromMatrix(
             Proyecto proyecto, string key, Matriz matriz, decimal cantidad)
         {
-            var engine      = BuildEngine(proyecto);
+            var engine      = CalculationEngineFactory.FromProyecto(proyecto);
             decimal cdUnit = engine.RoundAmount(matriz.CostoDirecto); // [FIX-2]
             decimal pu     = BudgetPricingService.CalculateUnitPrice(proyecto, cdUnit);
             decimal cdTotal = engine.Multiply(cantidad, cdUnit);         // [FIX-1] con Round
@@ -232,7 +231,7 @@ namespace SOPRO.Application.Services
                 ? cantidad : defaultValue;
         }
 
-        private static SoproCalculationEngine BuildEngine(Proyecto proyecto)
-            => CalculationEngineFactory.FromProyecto(proyecto);
+        // [N7-9] Wrapper BuildEngine retirado: los 2 callsites usan
+        // CalculationEngineFactory.FromProyecto directamente.
     }
 }

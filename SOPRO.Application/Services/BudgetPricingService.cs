@@ -73,9 +73,9 @@ namespace SOPRO.Application.Services
         /// <summary>Delega a SoproCalculationEngine.CalculateUnitPrice().</summary>
         public static decimal CalculateUnitPrice(Proyecto proyecto, decimal costoDirecto)
         {
-            var engine = BuildEngine(proyecto);
-            var pct    = BuildPercentageInput(proyecto);
-            return engine.CalculateUnitPrice(costoDirecto, BuildEnginePercentages(pct)).UnitPrice;
+            var engine = CalculationEngineFactory.FromProyecto(proyecto);
+            var pct    = BudgetPercentageInput.FromProyecto(proyecto);
+            return engine.CalculateUnitPrice(costoDirecto, pct.ToPricePercentage()).UnitPrice;
         }
 
         /// <summary>Delega a SoproCalculationEngine.CalculateUnitPrice().</summary>
@@ -83,27 +83,27 @@ namespace SOPRO.Application.Services
         {
             // Sin proyecto no hay configuración de decimales; usar 2 como fallback seguro
             var engine = new SoproCalculationEngine(2, 2, 4);
-            return engine.CalculateUnitPrice(costoDirecto, BuildEnginePercentages(input)).UnitPrice;
+            return engine.CalculateUnitPrice(costoDirecto, input.ToPricePercentage()).UnitPrice;
         }
 
         /// <summary>Delega a SoproCalculationEngine.Multiply().</summary>
         public static decimal MultiplyUsingDisplayPrecision(Proyecto proyecto, decimal cantidad, decimal precioUnitario)
-            => BuildEngine(proyecto).Multiply(cantidad, precioUnitario);
+            => CalculationEngineFactory.FromProyecto(proyecto).Multiply(cantidad, precioUnitario);
 
         /// <summary>Delega a SoproCalculationEngine.RoundQuantity().</summary>
         public static decimal RoundQuantity(Proyecto proyecto, decimal valor)
-            => BuildEngine(proyecto).RoundQuantity(valor);
+            => CalculationEngineFactory.FromProyecto(proyecto).RoundQuantity(valor);
 
         /// <summary>Delega a SoproCalculationEngine.RoundAmount().</summary>
         public static decimal RoundImporte(Proyecto proyecto, decimal valor)
-            => BuildEngine(proyecto).RoundAmount(valor);
+            => CalculationEngineFactory.FromProyecto(proyecto).RoundAmount(valor);
 
         /// <summary>Delega a SoproCalculationEngine.SumDirectCost().</summary>
         public static decimal SumDirectCost(Proyecto proyecto, IEnumerable<ConceptoPresupuesto> conceptos)
         {
             if (conceptos == null) return 0m;
 
-            return BuildEngine(proyecto).SumDirectCost(conceptos.Select(c => new DirectCostLine(
+            return CalculationEngineFactory.FromProyecto(proyecto).SumDirectCost(conceptos.Select(c => new DirectCostLine(
                 c.Cantidad,
                 c.CostoDirectoUnitario,
                 c.EsAgrupador,
@@ -145,14 +145,9 @@ namespace SOPRO.Application.Services
         }
 
         // ── Helper privado ───────────────────────────────────────────────────────
-        private static SoproCalculationEngine BuildEngine(Proyecto proyecto)
-            => CalculationEngineFactory.FromProyecto(proyecto);
-
-        private static PricePercentageInput BuildEnginePercentages(BudgetPercentageInput pct)
-            => pct.ToPricePercentage();
-
-        private static BudgetPercentageInput BuildPercentageInput(Proyecto proyecto)
-            => BudgetPercentageInput.FromProyecto(proyecto);
+        // [N7-9] Wrappers BuildEngine/BuildEnginePercentages/BuildPercentageInput
+        // retirados: los callsites usan CalculationEngineFactory.FromProyecto,
+        // BudgetPercentageInput.FromProyecto y ToPricePercentage directamente.
 
         private static string ConvertirEnteroALetras(long numero)
         {

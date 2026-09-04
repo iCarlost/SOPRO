@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Sopro.Calculation;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -60,7 +59,7 @@ namespace SOPRO.Application.Services
                 decimal cantidad = concepto.Cantidad;
 
                 // [FIX-3] Desglose con redondeo en cada paso — igual que BudgetLoadService
-                var desglose = engine.CalculateUnitPrice(cdUnit, BuildEnginePercentages(input));
+                var desglose = engine.CalculateUnitPrice(cdUnit, input.ToPricePercentage());
 
                 totalCd     += engine.Multiply(cantidad, cdUnit);
                 totalOc     += engine.Multiply(cantidad, desglose.CentralIndirectCosts);
@@ -159,8 +158,7 @@ namespace SOPRO.Application.Services
         //   private static decimal MultiplyUsingDisplayPrecision(...)
         //   private static decimal RoundImporte(...)
         // Reemplazados por SoproCalculationEngine.Multiply() y .RoundAmount()
-
-        private static PricePercentageInput BuildEnginePercentages(BudgetPercentageInput pct)
-            => pct.ToPricePercentage();
+        // [N7-9] Wrapper BuildEnginePercentages retirado: el callsite usa
+        // input.ToPricePercentage() directamente.
     }
 }
