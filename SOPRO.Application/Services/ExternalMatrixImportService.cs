@@ -201,12 +201,12 @@ namespace SOPRO.Application.Services
                 var existing = currentMateriales.FirstOrDefault(x => NormalizeKey(x.Clave) == NormalizeKey(material.Clave));
                 if (existing != null && conflictPolicy == ExternalMatrixImportConflictPolicy.ReplaceExisting)
                 {
-                    ApplyMaterial(existing, material, currentProjectId, graph.ProjectName);
+                    ExternalImportEntityMapper.ApplyMaterial(existing, material, currentProjectId, graph.ProjectName);
                     materialMap[material.Id] = existing.Id;
                 }
                 else
                 {
-                    var clone = CloneMaterial(material, currentProjectId, graph.ProjectName);
+                    var clone = ExternalImportEntityMapper.CloneMaterial(material, currentProjectId, graph.ProjectName);
                     if (existing != null)
                         clone.Clave = GenerateTempKey(material.Clave, currentMateriales.Select(x => x.Clave));
                     currentContext.Materiales.Add(clone);
@@ -222,12 +222,12 @@ namespace SOPRO.Application.Services
                 var existing = currentMano.FirstOrDefault(x => NormalizeKey(x.Clave) == NormalizeKey(mano.Clave));
                 if (existing != null && conflictPolicy == ExternalMatrixImportConflictPolicy.ReplaceExisting)
                 {
-                    ApplyManoDeObra(existing, mano, currentProjectId, graph.ProjectName);
+                    ExternalImportEntityMapper.ApplyManoDeObra(existing, mano, currentProjectId, graph.ProjectName);
                     manoMap[mano.Id] = existing.Id;
                 }
                 else
                 {
-                    var clone = CloneManoDeObra(mano, currentProjectId, graph.ProjectName);
+                    var clone = ExternalImportEntityMapper.CloneManoDeObra(mano, currentProjectId, graph.ProjectName);
                     if (existing != null)
                         clone.Clave = GenerateTempKey(mano.Clave, currentMano.Select(x => x.Clave));
                     currentContext.ManoDeObra.Add(clone);
@@ -243,12 +243,12 @@ namespace SOPRO.Application.Services
                 var existing = currentMaquinaria.FirstOrDefault(x => NormalizeKey(x.Clave) == NormalizeKey(maquinaria.Clave));
                 if (existing != null && conflictPolicy == ExternalMatrixImportConflictPolicy.ReplaceExisting)
                 {
-                    ApplyMaquinaria(existing, maquinaria, currentProjectId, graph.ProjectName);
+                    ExternalImportEntityMapper.ApplyMaquinaria(existing, maquinaria, currentProjectId, graph.ProjectName);
                     maquinariaMap[maquinaria.Id] = existing.Id;
                 }
                 else
                 {
-                    var clone = CloneMaquinaria(maquinaria, currentProjectId, graph.ProjectName);
+                    var clone = ExternalImportEntityMapper.CloneMaquinaria(maquinaria, currentProjectId, graph.ProjectName);
                     if (existing != null)
                         clone.Clave = GenerateTempKey(maquinaria.Clave, currentMaquinaria.Select(x => x.Clave));
                     currentContext.Maquinaria.Add(clone);
@@ -264,12 +264,12 @@ namespace SOPRO.Application.Services
                 var existing = currentHerramientas.FirstOrDefault(x => NormalizeKey(x.Clave) == NormalizeKey(herramienta.Clave));
                 if (existing != null && conflictPolicy == ExternalMatrixImportConflictPolicy.ReplaceExisting)
                 {
-                    ApplyHerramienta(existing, herramienta, currentProjectId, graph.ProjectName);
+                    ExternalImportEntityMapper.ApplyHerramienta(existing, herramienta, currentProjectId, graph.ProjectName);
                     herramientaMap[herramienta.Id] = existing.Id;
                 }
                 else
                 {
-                    var clone = CloneHerramienta(herramienta, currentProjectId, graph.ProjectName);
+                    var clone = ExternalImportEntityMapper.CloneHerramienta(herramienta, currentProjectId, graph.ProjectName);
                     if (existing != null)
                         clone.Clave = GenerateTempKey(herramienta.Clave, currentHerramientas.Select(x => x.Clave));
                     currentContext.Herramientas.Add(clone);
@@ -562,110 +562,6 @@ namespace SOPRO.Application.Services
                 candidate = candidate.Substring(0, 50);
             return candidate.ToUpperInvariant();
         }
-
-        private static Material CloneMaterial(Material source, int currentProjectId, string projectName)
-        {
-            var clone = new Material();
-            ApplyMaterial(clone, source, currentProjectId, projectName);
-            return clone;
-        }
-
-        private static void ApplyMaterial(Material target, Material source, int currentProjectId, string projectName)
-        {
-            target.Clave = (source.Clave ?? string.Empty).Trim().ToUpperInvariant();
-            target.Descripcion = source.Descripcion;
-            target.Unidad = source.Unidad;
-            target.PrecioUnitario = source.PrecioUnitario;
-            target.ProyectoId = currentProjectId;
-            target.Origen = OrigenInsumo.Proyecto;
-            target.MaterialMaestroId = null;
-            target.Notas = AppendOrigin(source.Notas, projectName);
-            target.FechaModificacion = DateTime.Now;
-        }
-
-        private static ManoDeObra CloneManoDeObra(ManoDeObra source, int currentProjectId, string projectName)
-        {
-            var clone = new ManoDeObra();
-            ApplyManoDeObra(clone, source, currentProjectId, projectName);
-            return clone;
-        }
-
-        private static void ApplyManoDeObra(ManoDeObra target, ManoDeObra source, int currentProjectId, string projectName)
-        {
-            target.Clave = (source.Clave ?? string.Empty).Trim().ToUpperInvariant();
-            target.Descripcion = source.Descripcion;
-            target.Unidad = source.Unidad;
-            target.SalarioBase = source.SalarioBase;
-            target.FactorSalarioReal = source.FactorSalarioReal;
-            target.SalarioReal = source.SalarioReal;
-            target.ProyectoId = currentProjectId;
-            target.Origen = OrigenInsumo.Proyecto;
-            target.ManoDeObraMaestraId = null;
-            target.Notas = AppendOrigin(source.Notas, projectName);
-            target.FechaModificacion = DateTime.Now;
-        }
-
-        private static Maquinaria CloneMaquinaria(Maquinaria source, int currentProjectId, string projectName)
-        {
-            var clone = new Maquinaria();
-            ApplyMaquinaria(clone, source, currentProjectId, projectName);
-            return clone;
-        }
-
-        private static void ApplyMaquinaria(Maquinaria target, Maquinaria source, int currentProjectId, string projectName)
-        {
-            target.Clave = (source.Clave ?? string.Empty).Trim().ToUpperInvariant();
-            target.Descripcion = source.Descripcion;
-            target.PotenciaNominal = source.PotenciaNominal;
-            target.TipoCombustible = source.TipoCombustible;
-            target.ValorAdquisicion = source.ValorAdquisicion;
-            target.ValorLlantas = source.ValorLlantas;
-            target.ValorPiezasEspeciales = source.ValorPiezasEspeciales;
-            target.FactorRescate = source.FactorRescate;
-            target.VidaEconomica = source.VidaEconomica;
-            target.TasaInteres = source.TasaInteres;
-            target.HorasEfectivasAnio = source.HorasEfectivasAnio;
-            target.PrimaSeguro = source.PrimaSeguro;
-            target.FactorMantenimiento = source.FactorMantenimiento;
-            target.CantidadCombustible = source.CantidadCombustible;
-            target.PrecioCombustible = source.PrecioCombustible;
-            target.CantidadAceite = source.CantidadAceite;
-            target.PrecioAceite = source.PrecioAceite;
-            target.NumeroLlantas = source.NumeroLlantas;
-            target.VidaEconomicaLlantas = source.VidaEconomicaLlantas;
-            target.VidaPiezasEspeciales = source.VidaPiezasEspeciales;
-            target.SalarioOperador = source.SalarioOperador;
-            target.FactorSalarioReal = source.FactorSalarioReal;
-            target.HorasEfectivasTurno = source.HorasEfectivasTurno;
-            target.CostoHorario = source.CostoHorario;
-            target.EsCostoCalculado = source.EsCostoCalculado;
-            target.ProyectoId = currentProjectId;
-            target.Origen = OrigenInsumo.Proyecto;
-            target.MaquinariaMaestraId = null;
-            target.Notas = AppendOrigin(source.Notas, projectName);
-            target.FechaModificacion = DateTime.Now;
-            target.FechaCalculoCosto = source.FechaCalculoCosto;
-        }
-
-        private static Herramienta CloneHerramienta(Herramienta source, int currentProjectId, string projectName)
-        {
-            var clone = new Herramienta();
-            ApplyHerramienta(clone, source, currentProjectId, projectName);
-            return clone;
-        }
-
-        private static void ApplyHerramienta(Herramienta target, Herramienta source, int currentProjectId, string projectName)
-        {
-            target.Clave = (source.Clave ?? string.Empty).Trim().ToUpperInvariant();
-            target.Descripcion = source.Descripcion;
-            target.Unidad = source.Unidad;
-            target.PrecioUnitario = source.PrecioUnitario;
-            target.ProyectoId = currentProjectId;
-            target.Origen = OrigenInsumo.Proyecto;
-            target.Notas = AppendOrigin(source.Notas, projectName);
-            target.FechaModificacion = DateTime.Now;
-        }
-
 
         private static void ValidateImportedReference(
             ComponenteMatriz component,
