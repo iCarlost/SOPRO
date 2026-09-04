@@ -146,9 +146,7 @@ namespace SOPRO.Application.Services
 
         // ── Helper privado ───────────────────────────────────────────────────────
         private static SoproCalculationEngine BuildEngine(Proyecto proyecto)
-            => new SoproCalculationEngine(proyecto.DecimalesCantidad,
-                                          proyecto.DecimalesImporte,
-                                          proyecto.DecimalesPorcentaje);
+            => CalculationEngineFactory.FromProyecto(proyecto);
 
         private static PricePercentageInput BuildEnginePercentages(BudgetPercentageInput pct)
             => pct.ToPricePercentage();

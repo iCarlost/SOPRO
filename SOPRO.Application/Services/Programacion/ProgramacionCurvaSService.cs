@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using Sopro.Calculation;
+using SOPRO.Application.Services;
 using SOPRO.Application.DTOs.Programacion;
 using SOPRO.Data.Context;
 
@@ -47,8 +48,7 @@ namespace SOPRO.Application.Services
             SOPRO.Core.Entities.Proyecto proyecto)
         {
             // Motor: respeta la configuración del usuario [FIX-1] [FIX-2] [FIX-3]
-            var engine = new SoproCalculationEngine(
-                proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
+            var engine = CalculationEngineFactory.FromProyecto(proyecto);
 
             return BuildInternal(context, programaObraId, engine);
         }
@@ -69,8 +69,7 @@ namespace SOPRO.Application.Services
 
             // Fallback seguro si el proyecto no existe (2 decimales por defecto)
             var engine = proyecto != null
-                ? new SoproCalculationEngine(
-                    proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje)
+                ? CalculationEngineFactory.FromProyecto(proyecto)
                 : new SoproCalculationEngine(2, 2, 4);
 
             return BuildInternal(context, programaObraId, engine);

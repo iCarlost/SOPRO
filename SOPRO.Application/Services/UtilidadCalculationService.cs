@@ -36,8 +36,7 @@ namespace SOPRO.Application.Services
             if (input == null)    throw new ArgumentNullException(nameof(input));
 
             // [N5-7] Respetar DecimalesImporte del proyecto [FIX-1] [FIX-2]
-            var engine = new SoproCalculationEngine(
-                proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
+            var engine = CalculationEngineFactory.FromProyecto(proyecto);
 
             var preview = BudgetPreviewCalculationService.BuildPreview(context, proyecto,
                 new BudgetPercentageInput

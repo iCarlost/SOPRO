@@ -53,10 +53,7 @@ namespace SOPRO.Application.Services
             if (proyecto == null)
                 return new ExplosionCalculationResult();
 
-            var engine = new SoproCalculationEngine(
-                proyecto.DecimalesCantidad,
-                proyecto.DecimalesImporte,
-                proyecto.DecimalesPorcentaje);
+            var engine = CalculationEngineFactory.FromProyecto(proyecto);
             var formatter = new MotorCalculoSopro(proyecto);
 
             var conceptos = context.ConceptosPresupuesto

@@ -84,7 +84,7 @@ namespace SOPRO.Application.Services.Programacion
         public ProgramaInsumosResultDto Build(SOPROContext context, Proyecto proyecto,
             ProgramaInsumoTipo tipo)
         {
-            var engine = new SoproCalculationEngine(proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
+            var engine = CalculationEngineFactory.FromProyecto(proyecto);
 
             var programa = context.ProgramasObra
                 .AsNoTracking()

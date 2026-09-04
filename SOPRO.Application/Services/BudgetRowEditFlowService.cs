@@ -75,9 +75,7 @@ namespace SOPRO.Application.Services
             if (string.IsNullOrWhiteSpace(cantidadTexto) || !decimal.TryParse(cantidadTexto, out decimal cantidad))
                 return new BudgetQuantityChangeResult();
 
-            var engine = new SoproCalculationEngine(proyecto.DecimalesCantidad,
-                                                   proyecto.DecimalesImporte,
-                                                   proyecto.DecimalesPorcentaje);
+            var engine = CalculationEngineFactory.FromProyecto(proyecto);
             // Normalizar la cantidad inmediatamente a la precisión visible del proyecto
             // para evitar fugas de precisión: lo que el usuario ve = lo que se calcula
             cantidad = engine.RoundQuantity(cantidad);

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SOPRO.Application.Services;
 using SOPRO.Application.Services.Programacion;
 using Sopro.Calculation;
 using SOPRO.Core.Entities;
@@ -46,7 +47,7 @@ namespace SOPRO.Application.Services
             {
                 var proyectoPresente = programa.Proyecto != null;
                 var engine = proyectoPresente
-                    ? new SoproCalculationEngine(programa.Proyecto!.DecimalesCantidad, programa.Proyecto.DecimalesImporte, programa.Proyecto.DecimalesPorcentaje)
+                    ? CalculationEngineFactory.FromProyecto(programa.Proyecto!)
                     : new SoproCalculationEngine(2, 2, 4);
                 RecalculateActivityInternal(actividad, cache, engine, proyectoPresente);
                 fechasBaseSinDependencias[actividad.Id] = actividad.FechaInicioProgramada.HasValue
@@ -131,7 +132,7 @@ namespace SOPRO.Application.Services
             var proyecto = actividad.ProgramaObra?.Proyecto;
             var proyectoPresente = proyecto != null;
             var engine = proyectoPresente
-                ? new SoproCalculationEngine(proyecto!.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje)
+                ? CalculationEngineFactory.FromProyecto(proyecto!)
                 : new SoproCalculationEngine(2, 2, 4);
             RecalculateActivityInternal(actividad, cacheAct, engine, proyectoPresente);
             context.SaveChanges();

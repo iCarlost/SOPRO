@@ -233,8 +233,6 @@ namespace SOPRO.Application.Services
         }
 
         private static SoproCalculationEngine BuildEngine(Proyecto proyecto)
-            => new SoproCalculationEngine(proyecto.DecimalesCantidad,
-                                          proyecto.DecimalesImporte,
-                                          proyecto.DecimalesPorcentaje);
+            => CalculationEngineFactory.FromProyecto(proyecto);
     }
 }

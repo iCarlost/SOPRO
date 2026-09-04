@@ -57,10 +57,7 @@ namespace SOPRO.Application.Services
             var proyecto = ctx.Proyectos.Find(proyectoId)
                 ?? throw new InvalidOperationException($"Proyecto {proyectoId} no encontrado.");
 
-            var engine = new SoproCalculationEngine(
-                proyecto.DecimalesCantidad,
-                proyecto.DecimalesImporte,
-                proyecto.DecimalesPorcentaje);
+            var engine = CalculationEngineFactory.FromProyecto(proyecto);
             var pct = BuildPercentageInput(proyecto);
 
             // Fase 1: Componentes de matrices

@@ -105,6 +105,30 @@ public class MotorCalculoSoproTests
     }
 
     [TestMethod]
+    public void EngineFactory_FromProyecto_MapeaLasTresPrecisiones()
+    {
+        var proyecto = new Proyecto
+        {
+            DecimalesCantidad = 3,
+            DecimalesImporte = 1,
+            DecimalesPorcentaje = 5
+        };
+
+        var engine = CalculationEngineFactory.FromProyecto(proyecto);
+
+        Assert.AreEqual(3, engine.QuantityDecimals);
+        Assert.AreEqual(1, engine.AmountDecimals);
+        Assert.AreEqual(5, engine.PercentageDecimals);
+    }
+
+    [TestMethod]
+    public void EngineFactory_FromProyectoNulo_Lanza()
+    {
+        Assert.ThrowsException<ArgumentNullException>(
+            () => CalculationEngineFactory.FromProyecto(null!));
+    }
+
+    [TestMethod]
     public void Multiplicar_DebeUsarPrecioUnitarioVisibleAntesDeMultiplicar()
     {
         // Arrange

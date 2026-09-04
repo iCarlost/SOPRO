@@ -70,9 +70,7 @@ namespace SOPRO.Application.Services
         public MotorCalculoSopro(Proyecto proyecto)
         {
             if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
-            _engine = new SoproCalculationEngine(proyecto.DecimalesCantidad,
-                                                 proyecto.DecimalesImporte,
-                                                 proyecto.DecimalesPorcentaje);
+            _engine = CalculationEngineFactory.FromProyecto(proyecto);
         }
 
         /// <summary>Constructor de pruebas / sin proyecto EF.</summary>

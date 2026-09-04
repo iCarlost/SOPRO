@@ -205,10 +205,7 @@ namespace SOPRO.Application.Services
             if (periodos.Count == 0)
                 return 0m;
 
-            var engine = new SoproCalculationEngine(
-                proyecto.DecimalesCantidad,
-                proyecto.DecimalesImporte,
-                proyecto.DecimalesPorcentaje);
+            var engine = CalculationEngineFactory.FromProyecto(proyecto);
 
             // Traer distribuciones y su concepto de presupuesto para obtener el CD unitario real.
             var distribuciones = context.DistribucionesPeriodo
