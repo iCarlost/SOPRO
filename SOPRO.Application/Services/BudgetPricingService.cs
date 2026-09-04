@@ -45,15 +45,7 @@ namespace SOPRO.Application.Services
         public static decimal CalculateFactor(Proyecto proyecto)
         {
             if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
-            return CalculateFactor(new BudgetPercentageInput
-            {
-                IndirectosCentral      = proyecto.PorcentajeIndirectosCentral,
-                IndirectosCampo        = proyecto.PorcentajeIndirectosCampo,
-                Financiamiento         = proyecto.PorcentajeFinanciamiento,
-                Utilidad               = proyecto.PorcentajeUtilidad,
-                CargosAdicionales      = proyecto.PorcentajeCargosAdicionales,
-                ModoCalculoPorcentajes = proyecto.ModoCalculoPorcentajes
-            });
+            return CalculateFactor(BudgetPercentageInput.FromProyecto(proyecto));
         }
 
         public static decimal CalculateFactor(BudgetPercentageInput input)
@@ -162,15 +154,7 @@ namespace SOPRO.Application.Services
             => pct.ToPricePercentage();
 
         private static BudgetPercentageInput BuildPercentageInput(Proyecto proyecto)
-            => new BudgetPercentageInput
-            {
-                IndirectosCentral      = proyecto.PorcentajeIndirectosCentral,
-                IndirectosCampo        = proyecto.PorcentajeIndirectosCampo,
-                Financiamiento         = proyecto.PorcentajeFinanciamiento,
-                Utilidad               = proyecto.PorcentajeUtilidad,
-                CargosAdicionales      = proyecto.PorcentajeCargosAdicionales,
-                ModoCalculoPorcentajes = proyecto.ModoCalculoPorcentajes ?? "Acumulables"
-            };
+            => BudgetPercentageInput.FromProyecto(proyecto);
 
         private static string ConvertirEnteroALetras(long numero)
         {

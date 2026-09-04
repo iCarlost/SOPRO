@@ -63,6 +63,48 @@ public class MotorCalculoSoproTests
     }
 
     [TestMethod]
+    public void FromProyecto_MapeaCamposYModoSobreCD()
+    {
+        var proyecto = new Proyecto
+        {
+            PorcentajeIndirectosCentral = 10m,
+            PorcentajeIndirectosCampo = 5m,
+            PorcentajeFinanciamiento = 2m,
+            PorcentajeUtilidad = 3m,
+            PorcentajeCargosAdicionales = 1m,
+            ModoCalculoPorcentajes = "SobreCD"
+        };
+
+        var pct = BudgetPercentageInput.FromProyecto(proyecto);
+
+        Assert.AreEqual(10m, pct.IndirectosCentral);
+        Assert.AreEqual(5m, pct.IndirectosCampo);
+        Assert.AreEqual(2m, pct.Financiamiento);
+        Assert.AreEqual(3m, pct.Utilidad);
+        Assert.AreEqual(1m, pct.CargosAdicionales);
+        Assert.AreEqual("SobreCD", pct.ModoCalculoPorcentajes);
+        Assert.AreEqual(PercentageCalculationMode.OverDirectCost, pct.ToPricePercentage().Mode);
+    }
+
+    [TestMethod]
+    public void FromProyecto_ModoNulo_PreservaDefaultAcumulables()
+    {
+        var proyecto = new Proyecto { ModoCalculoPorcentajes = null! };
+
+        var pct = BudgetPercentageInput.FromProyecto(proyecto);
+
+        Assert.AreEqual("Acumulables", pct.ModoCalculoPorcentajes);
+        Assert.AreEqual(PercentageCalculationMode.Accumulative, pct.ToPricePercentage().Mode);
+    }
+
+    [TestMethod]
+    public void FromProyecto_ProyectoNulo_Lanza()
+    {
+        Assert.ThrowsException<ArgumentNullException>(
+            () => BudgetPercentageInput.FromProyecto(null!));
+    }
+
+    [TestMethod]
     public void Multiplicar_DebeUsarPrecioUnitarioVisibleAntesDeMultiplicar()
     {
         // Arrange
