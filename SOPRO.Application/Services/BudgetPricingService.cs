@@ -45,15 +45,7 @@ namespace SOPRO.Application.Services
         public static decimal CalculateFactor(Proyecto proyecto)
         {
             if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
-            return CalculateFactor(new BudgetPercentageInput
-            {
-                IndirectosCentral      = proyecto.PorcentajeIndirectosCentral,
-                IndirectosCampo        = proyecto.PorcentajeIndirectosCampo,
-                Financiamiento         = proyecto.PorcentajeFinanciamiento,
-                Utilidad               = proyecto.PorcentajeUtilidad,
-                CargosAdicionales      = proyecto.PorcentajeCargosAdicionales,
-                ModoCalculoPorcentajes = proyecto.ModoCalculoPorcentajes
-            });
+            return CalculateFactor(BudgetPercentageInput.FromProyecto(proyecto));
         }
 
         public static decimal CalculateFactor(BudgetPercentageInput input)
