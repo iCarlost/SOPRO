@@ -144,11 +144,6 @@ namespace SOPRO.Application.Services
             };
         }
 
-        // ── Helper privado ───────────────────────────────────────────────────────
-        // [N7-9] Wrappers BuildEngine/BuildEnginePercentages/BuildPercentageInput
-        // retirados: los callsites usan CalculationEngineFactory.FromProyecto,
-        // BudgetPercentageInput.FromProyecto y ToPricePercentage directamente.
-
         private static string ConvertirEnteroALetras(long numero)
         {
             if (numero == 0) return "CERO";

@@ -158,7 +158,5 @@ namespace SOPRO.Application.Services
         //   private static decimal MultiplyUsingDisplayPrecision(...)
         //   private static decimal RoundImporte(...)
         // Reemplazados por SoproCalculationEngine.Multiply() y .RoundAmount()
-        // [N7-9] Wrapper BuildEnginePercentages retirado: el callsite usa
-        // input.ToPricePercentage() directamente.
     }
 }

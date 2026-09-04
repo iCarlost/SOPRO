@@ -230,8 +230,5 @@ namespace SOPRO.Application.Services
             return decimal.TryParse(raw, out decimal cantidad) && cantidad > 0
                 ? cantidad : defaultValue;
         }
-
-        // [N7-9] Wrapper BuildEngine retirado: los 2 callsites usan
-        // CalculationEngineFactory.FromProyecto directamente.
     }
 }

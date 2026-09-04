@@ -283,11 +283,6 @@ namespace SOPRO.Application.Services
 
             return true;
         }
-
-        // ════════════════════════════════════════════════════════════════════════
-        // HELPERS ([N7-9] wrapper BuildPercentageInput retirado: el callsite usa
-        // BudgetPercentageInput.FromProyecto(...).ToPricePercentage() directamente)
-        // ════════════════════════════════════════════════════════════════════════
     }
 
     // ════════════════════════════════════════════════════════════════════════════
