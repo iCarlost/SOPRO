@@ -86,14 +86,71 @@ public class ExternalImportEntityMapperParityTests
             currentA.ManoDeObra.AsNoTracking().Single(m => m.Clave == "MO-MAP"),
             currentB.ManoDeObra.AsNoTracking().Single(m => m.Clave == "MO-MAP"),
             proyectoA.Id, proyectoB.Id);
+
+        // Literales de la ruta A para ManoDeObra: fijan todos los campos trasladados.
+        var manoA = currentA.ManoDeObra.AsNoTracking().Single(m => m.Clave == "MO-MAP");
+        Assert.AreEqual("MO-MAP", manoA.Clave);
+        Assert.AreEqual("MO mapa", manoA.Descripcion);
+        Assert.AreEqual("jor", manoA.Unidad);
+        Assert.AreEqual(20m, manoA.SalarioBase);
+        Assert.AreEqual(1.5m, manoA.FactorSalarioReal);
+        Assert.AreEqual(30m, manoA.SalarioReal);
+        Assert.AreEqual(proyectoA.Id, manoA.ProyectoId);
+        Assert.AreEqual(OrigenInsumo.Proyecto, manoA.Origen);
+        Assert.IsNull(manoA.ManoDeObraMaestraId);
+        Assert.AreEqual("[IMPORTADO DE: Origen] nota mo", manoA.Notas);
         CompararMaquinaria(
             currentA.Maquinaria.AsNoTracking().Single(m => m.Clave == "MAQ-MAP"),
             currentB.Maquinaria.AsNoTracking().Single(m => m.Clave == "MAQ-MAP"),
             proyectoA.Id, proyectoB.Id);
+
+        // Literales de la ruta A para Maquinaria: fijan todos los campos trasladados.
+        var maqA = currentA.Maquinaria.AsNoTracking().Single(m => m.Clave == "MAQ-MAP");
+        Assert.AreEqual("MAQ-MAP", maqA.Clave);
+        Assert.AreEqual("Maq mapa", maqA.Descripcion);
+        Assert.AreEqual(100m, maqA.PotenciaNominal);
+        Assert.AreEqual(TipoCombustible.Diesel, maqA.TipoCombustible);
+        Assert.AreEqual(50000m, maqA.ValorAdquisicion);
+        Assert.AreEqual(2000m, maqA.ValorLlantas);
+        Assert.AreEqual(1000m, maqA.ValorPiezasEspeciales);
+        Assert.AreEqual(0.1m, maqA.FactorRescate);
+        Assert.AreEqual(12000m, maqA.VidaEconomica);
+        Assert.AreEqual(21.24m, maqA.TasaInteres);
+        Assert.AreEqual(1600m, maqA.HorasEfectivasAnio);
+        Assert.AreEqual(3m, maqA.PrimaSeguro);
+        Assert.AreEqual(0.2m, maqA.FactorMantenimiento);
+        Assert.AreEqual(5m, maqA.CantidadCombustible);
+        Assert.AreEqual(22m, maqA.PrecioCombustible);
+        Assert.AreEqual(1m, maqA.CantidadAceite);
+        Assert.AreEqual(90m, maqA.PrecioAceite);
+        Assert.AreEqual(4, maqA.NumeroLlantas);
+        Assert.AreEqual(3000m, maqA.VidaEconomicaLlantas);
+        Assert.AreEqual(4000m, maqA.VidaPiezasEspeciales);
+        Assert.AreEqual(250m, maqA.SalarioOperador);
+        Assert.AreEqual(1.6543m, maqA.FactorSalarioReal);
+        Assert.AreEqual(8m, maqA.HorasEfectivasTurno);
+        Assert.AreEqual(345.67m, maqA.CostoHorario);
+        Assert.AreEqual(true, maqA.EsCostoCalculado);
+        Assert.AreEqual(proyectoA.Id, maqA.ProyectoId);
+        Assert.AreEqual(OrigenInsumo.Proyecto, maqA.Origen);
+        Assert.IsNull(maqA.MaquinariaMaestraId);
+        Assert.AreEqual("[IMPORTADO DE: Origen] nota maq", maqA.Notas);
+        Assert.AreEqual(new DateTime(2026, 1, 2), maqA.FechaCalculoCosto);
         CompararHerramienta(
             currentA.Herramientas.AsNoTracking().Single(m => m.Clave == "HER-MAP"),
             currentB.Herramientas.AsNoTracking().Single(m => m.Clave == "HER-MAP"),
             proyectoA.Id, proyectoB.Id);
+
+        // Literales de la ruta A para Herramienta: fijan todos los campos trasladados,
+        // en particular Notas, cuya omisión motivó este diferencial.
+        var herA = currentA.Herramientas.AsNoTracking().Single(m => m.Clave == "HER-MAP");
+        Assert.AreEqual("HER-MAP", herA.Clave);
+        Assert.AreEqual("Her mapa", herA.Descripcion);
+        Assert.AreEqual("pza", herA.Unidad);
+        Assert.AreEqual(7.77m, herA.PrecioUnitario);
+        Assert.AreEqual(proyectoA.Id, herA.ProyectoId);
+        Assert.AreEqual(OrigenInsumo.Proyecto, herA.Origen);
+        Assert.AreEqual("[IMPORTADO DE: Origen] nota her", herA.Notas);
     }
 
     private static void CompararMaterial(Material a, Material b, int proyectoA, int proyectoB)
