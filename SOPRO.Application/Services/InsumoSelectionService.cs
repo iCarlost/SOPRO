@@ -104,7 +104,7 @@ namespace SOPRO.Application.Services
                         Maquinaria = item,
                         TipoComponente = TipoComponenteMatriz.Maquinaria,
                         Cantidad = cantidad,
-                        Rendimiento = cantidad > 0 ? Math.Round(1m / cantidad, 5, MidpointRounding.AwayFromZero) : 0m,
+                        Rendimiento = Maquinaria.CalcularRendimiento(cantidad),
                         Importe = item.CostoHorario * cantidad
                     }));
                     break;

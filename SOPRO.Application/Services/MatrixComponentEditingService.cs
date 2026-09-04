@@ -81,10 +81,9 @@ namespace SOPRO.Application.Services
         public static void SyncRendimiento(ComponenteMatriz component)
         {
             if (component == null) return;
-            if (component.TipoComponente == TipoComponenteMatriz.Maquinaria && component.Cantidad > 0)
-                component.Rendimiento = Math.Round(1m / component.Cantidad, 5, MidpointRounding.AwayFromZero);
-            else
-                component.Rendimiento = 0m;
+            component.Rendimiento = component.TipoComponente == TipoComponenteMatriz.Maquinaria
+                ? Maquinaria.CalcularRendimiento(component.Cantidad)
+                : 0m;
         }
 
         public static MatrixComponentEditResult UpdateUnitPrice(ComponenteMatriz component, string rawValue, int decimalesImporte)
