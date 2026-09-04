@@ -1,4 +1,5 @@
 using SOPRO.Core.Entities;
+using SOPRO.Core.Services;
 using SOPRO.Data.Context;
 using SOPRO.Data.Repositories;
 using System;
@@ -106,77 +107,45 @@ namespace SOPRO.WinForms.Forms
         // ──────────────────────────────────────────────────────────────────────
         private void Recalcular()
         {
-            CalcularCargosFijos();
-            CalcularConsumos();
-            CalcularOperacion();
-            _costoHorarioTotal = _totalCargosFijos + _totalConsumos + _operacion;
+            var result = MaquinariaCostoHorarioCalculator.Calcular(new MaquinariaCostoHorarioInput
+            {
+                ValorAdquisicion = nudValorAdquisicion.Value,
+                ValorLlantas = nudValorLlantas.Value,
+                ValorPiezasEspeciales = nudValorPiezasEsp.Value,
+                FactorRescate = nudFactorRescate.Value,
+                VidaEconomica = nudVidaEconomica.Value,
+                TasaInteres = nudTasaInteres.Value,
+                HorasEfectivasAnio = nudHorasAnio.Value,
+                PrimaSeguro = nudPrimaSeguro.Value,
+                FactorMantenimiento = nudFactorManten.Value,
+                CantidadCombustible = nudCantCombustible.Value,
+                PrecioCombustible = nudPrecioCombustible.Value,
+                CantidadAceite = nudCantAceite.Value,
+                PrecioAceite = nudPrecioAceite.Value,
+                VidaEconomicaLlantas = nudVidaLlantas.Value,
+                VidaPiezasEspeciales = nudVidaPiezasEsp.Value,
+                SalarioOperador = nudSalarioOperador.Value,
+                FactorSalarioReal = nudFSR.Value,
+                HorasEfectivasTurno = nudHorasTurno.Value
+            });
+
+            _vm = result.ValorNeto;
+            _vr = result.ValorRescate;
+            _vmvrMedio = result.ValorNetoMedio;
+            _depreciacion = result.Depreciacion;
+            _inversion = result.Inversion;
+            _seguros = result.Seguros;
+            _mantenimiento = result.Mantenimiento;
+            _totalCargosFijos = result.TotalCargosFijos;
+            _combustible = result.Combustible;
+            _lubricantes = result.Lubricantes;
+            _llantas = result.Llantas;
+            _piezasEspeciales = result.PiezasEspeciales;
+            _totalConsumos = result.TotalConsumos;
+            _salarioReal = result.SalarioReal;
+            _operacion = result.Operacion;
+            _costoHorarioTotal = result.CostoHorario;
             ActualizarUI();
-        }
-
-        /// <summary>
-        /// Arts. 195–199 RLOPSRM — Depreciación, Inversión, Seguros, Mantenimiento
-        /// </summary>
-        private void CalcularCargosFijos()
-        {
-            // Vm = Pm - Pn - Pa  (Art. 196)
-            _vm         = nudValorAdquisicion.Value - nudValorLlantas.Value - nudValorPiezasEsp.Value;
-            _vr         = _vm * nudFactorRescate.Value;
-            _vmvrMedio  = (_vm + _vr) / 2m;
-
-            // A1. Depreciación  D = (Vm - Vr) / Ve
-            _depreciacion   = nudVidaEconomica.Value > 0
-                ? (_vm - _vr) / nudVidaEconomica.Value
-                : 0;
-
-            // A2. Inversión  Im = [(Vm+Vr)/2] × (i/100) / Hea
-            _inversion      = nudHorasAnio.Value > 0
-                ? _vmvrMedio * (nudTasaInteres.Value / 100m) / nudHorasAnio.Value
-                : 0;
-
-            // A3. Seguros  Sm = [(Vm+Vr)/2] × (s/100) / Hea
-            _seguros        = nudHorasAnio.Value > 0
-                ? _vmvrMedio * (nudPrimaSeguro.Value / 100m) / nudHorasAnio.Value
-                : 0;
-
-            // A4. Mantenimiento  Mn = Ko × D
-            _mantenimiento  = nudFactorManten.Value * _depreciacion;
-
-            _totalCargosFijos = _depreciacion + _inversion + _seguros + _mantenimiento;
-        }
-
-        /// <summary>
-        /// Arts. 200–204 RLOPSRM — Combustible, Lubricantes, Llantas, Piezas
-        /// </summary>
-        private void CalcularConsumos()
-        {
-            // B1. Combustible  Co = Gh × Pac
-            _combustible = nudCantCombustible.Value * nudPrecioCombustible.Value;
-
-            // B2. Lubricantes  Lb = Ah × Precio
-            _lubricantes = nudCantAceite.Value * nudPrecioAceite.Value;
-
-            // B3. Llantas  Nt = ValorLlantas / VidaEconomicaLlantas
-            _llantas = nudVidaLlantas.Value > 0
-                ? nudValorLlantas.Value / nudVidaLlantas.Value
-                : 0;
-
-            // B4. Piezas Especiales  Ae = ValorPiezas / VidaPiezas
-            _piezasEspeciales = nudVidaPiezasEsp.Value > 0
-                ? nudValorPiezasEsp.Value / nudVidaPiezasEsp.Value
-                : 0;
-
-            _totalConsumos = _combustible + _lubricantes + _llantas + _piezasEspeciales;
-        }
-
-        /// <summary>
-        /// Art. 206 RLOPSRM — Operación: Po = (Sn × FSR) / Ht
-        /// </summary>
-        private void CalcularOperacion()
-        {
-            _salarioReal = nudSalarioOperador.Value * nudFSR.Value;
-            _operacion   = nudHorasTurno.Value > 0
-                ? _salarioReal / nudHorasTurno.Value
-                : 0;
         }
 
         // ──────────────────────────────────────────────────────────────────────
