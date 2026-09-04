@@ -14,8 +14,9 @@ namespace SOPRO.Application.Services
     /// Copia entidades de insumos desde un proyecto externo al proyecto actual:
     /// normaliza la clave, reasigna proyecto/origen, anula el vínculo maestro,
     /// sella las notas con el proyecto de origen y refresca la fecha.
+    /// Internal: solo la consumen los dos servicios de importación externa.
     /// </summary>
-    public static class ExternalImportEntityMapper
+    internal static class ExternalImportEntityMapper
     {
         public static Material CloneMaterial(Material source, int currentProjectId, string projectName)
         {

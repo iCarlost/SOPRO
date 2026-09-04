@@ -68,6 +68,20 @@ public class ExternalImportEntityMapperParityTests
             currentA.Materiales.AsNoTracking().Single(m => m.Clave == "MAT-MAP"),
             currentB.Materiales.AsNoTracking().Single(m => m.Clave == "MAT-MAP"),
             proyectoA.Id, proyectoB.Id);
+
+        // Valores literales sobre la ruta A: fijan la salida del mapper compartido
+        // para que una omisión de campo en ExternalImportEntityMapper falle aquí
+        // aunque ambas rutas sigan coincidiendo entre sí.
+        var materialA = currentA.Materiales.AsNoTracking().Single(m => m.Clave == "MAT-MAP");
+        Assert.AreEqual("MAT-MAP", materialA.Clave);
+        Assert.AreEqual("Material mapa", materialA.Descripcion);
+        Assert.AreEqual("kg", materialA.Unidad);
+        Assert.AreEqual(12.345m, materialA.PrecioUnitario);
+        Assert.AreEqual(proyectoA.Id, materialA.ProyectoId);
+        Assert.AreEqual(OrigenInsumo.Proyecto, materialA.Origen);
+        Assert.IsNull(materialA.MaterialMaestroId);
+        Assert.AreEqual("[IMPORTADO DE: Origen] nota mat", materialA.Notas);
+
         CompararManoDeObra(
             currentA.ManoDeObra.AsNoTracking().Single(m => m.Clave == "MO-MAP"),
             currentB.ManoDeObra.AsNoTracking().Single(m => m.Clave == "MO-MAP"),

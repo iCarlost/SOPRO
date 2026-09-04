@@ -318,7 +318,7 @@ namespace SOPRO.Application.Services
             using var cn = new SqliteConnection($"Data Source={projectPath}");
             cn.Open();
             using var cmd = cn.CreateCommand();
-                cmd.CommandText = "SELECT Id, Clave, Descripcion, Unidad, PrecioUnitario, Notas FROM Herramientas WHERE Id = $id LIMIT 1";
+            cmd.CommandText = "SELECT Id, Clave, Descripcion, Unidad, PrecioUnitario, Notas FROM Herramientas WHERE Id = $id LIMIT 1";
             cmd.Parameters.AddWithValue("$id", itemId);
             using var reader = cmd.ExecuteReader();
             if (!reader.Read())
@@ -339,8 +339,6 @@ namespace SOPRO.Application.Services
         }
 
         private static string NormalizeKey(string? key) => (key ?? string.Empty).Trim().ToUpperInvariant();
-        private static string AppendOrigin(string? notes, string projectName)
-            => ImportOriginStampService.AppendStamp(notes, projectName);
         private static string GenerateTempKey(string? originalKey, IEnumerable<string?> existingKeys)
         {
             var existing = new HashSet<string>(existingKeys.Where(x => !string.IsNullOrWhiteSpace(x)).Select(NormalizeKey));
