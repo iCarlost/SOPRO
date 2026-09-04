@@ -178,12 +178,12 @@ namespace SOPRO.Application.Services
                         if (existing != null && policy == ExternalMatrixImportConflictPolicy.ReplaceExisting)
                         {
                             target = existing;
-                            ApplyMaterial(target, source, currentProjectId, sourceProjectName);
+                            ExternalImportEntityMapper.ApplyMaterial(target, source, currentProjectId, sourceProjectName);
                             currentContext.SaveChanges();
                         }
                         else
                         {
-                            target = CloneMaterial(source, currentProjectId, sourceProjectName);
+                            target = ExternalImportEntityMapper.CloneMaterial(source, currentProjectId, sourceProjectName);
                             if (existing != null) target.Clave = GenerateTempKey(source.Clave, currentContext.Materiales.Where(x => x.ProyectoId == currentProjectId).Select(x => x.Clave));
                             currentContext.Materiales.Add(target);
                             currentContext.SaveChanges();
@@ -201,12 +201,12 @@ namespace SOPRO.Application.Services
                         if (existing != null && policy == ExternalMatrixImportConflictPolicy.ReplaceExisting)
                         {
                             target = existing;
-                            ApplyManoDeObra(target, source, currentProjectId, sourceProjectName);
+                            ExternalImportEntityMapper.ApplyManoDeObra(target, source, currentProjectId, sourceProjectName);
                             currentContext.SaveChanges();
                         }
                         else
                         {
-                            target = CloneManoDeObra(source, currentProjectId, sourceProjectName);
+                            target = ExternalImportEntityMapper.CloneManoDeObra(source, currentProjectId, sourceProjectName);
                             if (existing != null) target.Clave = GenerateTempKey(source.Clave, currentContext.ManoDeObra.Where(x => x.ProyectoId == currentProjectId).Select(x => x.Clave));
                             currentContext.ManoDeObra.Add(target);
                             currentContext.SaveChanges();
@@ -224,12 +224,12 @@ namespace SOPRO.Application.Services
                         if (existing != null && policy == ExternalMatrixImportConflictPolicy.ReplaceExisting)
                         {
                             target = existing;
-                            ApplyMaquinaria(target, source, currentProjectId, sourceProjectName);
+                            ExternalImportEntityMapper.ApplyMaquinaria(target, source, currentProjectId, sourceProjectName);
                             currentContext.SaveChanges();
                         }
                         else
                         {
-                            target = CloneMaquinaria(source, currentProjectId, sourceProjectName);
+                            target = ExternalImportEntityMapper.CloneMaquinaria(source, currentProjectId, sourceProjectName);
                             if (existing != null) target.Clave = GenerateTempKey(source.Clave, currentContext.Maquinaria.Where(x => x.ProyectoId == currentProjectId).Select(x => x.Clave));
                             currentContext.Maquinaria.Add(target);
                             currentContext.SaveChanges();
@@ -247,12 +247,12 @@ namespace SOPRO.Application.Services
                         if (existing != null && policy == ExternalMatrixImportConflictPolicy.ReplaceExisting)
                         {
                             target = existing;
-                            ApplyHerramienta(target, source, currentProjectId, sourceProjectName);
+                            ExternalImportEntityMapper.ApplyHerramienta(target, source, currentProjectId, sourceProjectName);
                             currentContext.SaveChanges();
                         }
                         else
                         {
-                            target = CloneHerramienta(source, currentProjectId, sourceProjectName);
+                            target = ExternalImportEntityMapper.CloneHerramienta(source, currentProjectId, sourceProjectName);
                             if (existing != null) target.Clave = GenerateTempKey(source.Clave, currentContext.Herramientas.Where(x => x.ProyectoId == currentProjectId).Select(x => x.Clave));
                             currentContext.Herramientas.Add(target);
                             currentContext.SaveChanges();
@@ -280,7 +280,6 @@ namespace SOPRO.Application.Services
             }
             return result;
         }
-
 
         private sealed class ExternalHerramientaBasic
         {
@@ -319,7 +318,7 @@ namespace SOPRO.Application.Services
             using var cn = new SqliteConnection($"Data Source={projectPath}");
             cn.Open();
             using var cmd = cn.CreateCommand();
-            cmd.CommandText = "SELECT Id, Clave, Descripcion, Unidad, PrecioUnitario FROM Herramientas WHERE Id = $id LIMIT 1";
+                cmd.CommandText = "SELECT Id, Clave, Descripcion, Unidad, PrecioUnitario, Notas FROM Herramientas WHERE Id = $id LIMIT 1";
             cmd.Parameters.AddWithValue("$id", itemId);
             using var reader = cmd.ExecuteReader();
             if (!reader.Read())
@@ -332,7 +331,9 @@ namespace SOPRO.Application.Services
                 Descripcion = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
                 Unidad = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
                 PrecioUnitario = reader.IsDBNull(4) ? 0m : reader.GetDecimal(4),
-                Notas = string.Empty,
+                // [N7-11] Las notas viajan como el resto de campos: la ruta de
+                // matrices ya las conservaba y la paridad campo a campo lo exige.
+                Notas = reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
                 Origen = OrigenInsumo.Proyecto
             };
         }
@@ -351,13 +352,5 @@ namespace SOPRO.Application.Services
             if (candidate.Length > 50) candidate = candidate.Substring(0, 50);
             return candidate.ToUpperInvariant();
         }
-        private static Material CloneMaterial(Material source, int currentProjectId, string projectName) { var t = new Material(); ApplyMaterial(t, source, currentProjectId, projectName); return t; }
-        private static void ApplyMaterial(Material target, Material source, int currentProjectId, string projectName) { target.Clave=(source.Clave??string.Empty).Trim().ToUpperInvariant(); target.Descripcion=source.Descripcion; target.Unidad=source.Unidad; target.PrecioUnitario=source.PrecioUnitario; target.ProyectoId=currentProjectId; target.Origen=OrigenInsumo.Proyecto; target.MaterialMaestroId=null; target.Notas=AppendOrigin(source.Notas, projectName); target.FechaModificacion=DateTime.Now; }
-        private static ManoDeObra CloneManoDeObra(ManoDeObra source, int currentProjectId, string projectName) { var t = new ManoDeObra(); ApplyManoDeObra(t, source, currentProjectId, projectName); return t; }
-        private static void ApplyManoDeObra(ManoDeObra target, ManoDeObra source, int currentProjectId, string projectName) { target.Clave=(source.Clave??string.Empty).Trim().ToUpperInvariant(); target.Descripcion=source.Descripcion; target.Unidad=source.Unidad; target.SalarioBase=source.SalarioBase; target.FactorSalarioReal=source.FactorSalarioReal; target.SalarioReal=source.SalarioReal; target.ProyectoId=currentProjectId; target.Origen=OrigenInsumo.Proyecto; target.ManoDeObraMaestraId=null; target.Notas=AppendOrigin(source.Notas, projectName); target.FechaModificacion=DateTime.Now; }
-        private static Maquinaria CloneMaquinaria(Maquinaria source, int currentProjectId, string projectName) { var t = new Maquinaria(); ApplyMaquinaria(t, source, currentProjectId, projectName); return t; }
-        private static void ApplyMaquinaria(Maquinaria target, Maquinaria source, int currentProjectId, string projectName) { target.Clave=(source.Clave??string.Empty).Trim().ToUpperInvariant(); target.Descripcion=source.Descripcion; target.PotenciaNominal=source.PotenciaNominal; target.TipoCombustible=source.TipoCombustible; target.ValorAdquisicion=source.ValorAdquisicion; target.ValorLlantas=source.ValorLlantas; target.ValorPiezasEspeciales=source.ValorPiezasEspeciales; target.FactorRescate=source.FactorRescate; target.VidaEconomica=source.VidaEconomica; target.TasaInteres=source.TasaInteres; target.HorasEfectivasAnio=source.HorasEfectivasAnio; target.PrimaSeguro=source.PrimaSeguro; target.FactorMantenimiento=source.FactorMantenimiento; target.CantidadCombustible=source.CantidadCombustible; target.PrecioCombustible=source.PrecioCombustible; target.CantidadAceite=source.CantidadAceite; target.PrecioAceite=source.PrecioAceite; target.NumeroLlantas=source.NumeroLlantas; target.VidaEconomicaLlantas=source.VidaEconomicaLlantas; target.VidaPiezasEspeciales=source.VidaPiezasEspeciales; target.SalarioOperador=source.SalarioOperador; target.FactorSalarioReal=source.FactorSalarioReal; target.HorasEfectivasTurno=source.HorasEfectivasTurno; target.CostoHorario=source.CostoHorario; target.EsCostoCalculado=source.EsCostoCalculado; target.ProyectoId=currentProjectId; target.Origen=OrigenInsumo.Proyecto; target.MaquinariaMaestraId=null; target.Notas=AppendOrigin(source.Notas, projectName); target.FechaModificacion=DateTime.Now; target.FechaCalculoCosto=source.FechaCalculoCosto; }
-        private static Herramienta CloneHerramienta(Herramienta source, int currentProjectId, string projectName) { var t = new Herramienta(); ApplyHerramienta(t, source, currentProjectId, projectName); return t; }
-        private static void ApplyHerramienta(Herramienta target, Herramienta source, int currentProjectId, string projectName) { target.Clave=(source.Clave??string.Empty).Trim().ToUpperInvariant(); target.Descripcion=source.Descripcion; target.Unidad=source.Unidad; target.PrecioUnitario=source.PrecioUnitario; target.ProyectoId=currentProjectId; target.Origen=OrigenInsumo.Proyecto; target.Notas=AppendOrigin(source.Notas, projectName); target.FechaModificacion=DateTime.Now; }
     }
 }
