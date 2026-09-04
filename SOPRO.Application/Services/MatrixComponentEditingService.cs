@@ -9,7 +9,7 @@ namespace SOPRO.Application.Services
     // ║  MatrixComponentEditingService — [N5-8]                                 ║
     // ║  UpdateUnitPrice migró su única operación del motor de MotorCalculo-     ║
     // ║  Sopro a SoproCalculationEngine.Multiply (SOPRO.Calculation).            ║
-    // ║  SyncRendimiento conserva Math.Round(1/cantidad, 5, AwayFromZero):       ║
+    // ║  SyncRendimiento delega en Maquinaria.CalcularRendimiento:              ║
     // ║  precisión fija 5 por contrato de captura, no es operación del motor.    ║
     // ║  El resto de métodos no tienen aritmética de motor. Sin cambios de API.  ║
     // ╚══════════════════════════════════════════════════════════════════════════╝

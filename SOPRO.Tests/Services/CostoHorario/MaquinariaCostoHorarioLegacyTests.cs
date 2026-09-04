@@ -222,8 +222,11 @@ public class MaquinariaCostoHorarioLegacyTests
     [DataRow(2.0, 0.50000)]
     [DataRow(3.0, 0.33333)]
     [DataRow(0.5, 2.00000)]
+    [DataRow(320.0, 0.00313)]
     public void CalcularRendimiento_CantidadPositiva_DevuelveUnoSobreCantidad(double cantidad, double esperado)
     {
+        // 1/320 = 0.003125 ejercita exactamente el midpoint: AwayFromZero → 0.00313
+        // (con Banker's sería 0.00312).
         Assert.AreEqual((decimal)esperado, Maquinaria.CalcularRendimiento((decimal)cantidad));
     }
 
