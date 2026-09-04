@@ -1,5 +1,4 @@
 using System;
-using SOPRO.Application.Services;
 using SOPRO.Application.Services.Programacion;
 using System.Collections.Generic;
 using System.Linq;

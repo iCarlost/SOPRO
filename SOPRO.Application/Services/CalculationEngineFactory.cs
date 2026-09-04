@@ -17,6 +17,12 @@ namespace SOPRO.Application.Services
         /// <summary>
         /// Creates an engine from the project's screen-precision configuration.
         /// </summary>
+        /// <remarks>
+        /// Minor contract note: a null proyecto throws
+        /// <see cref="ArgumentNullException"/> here, where the previous inline
+        /// constructions threw <see cref="NullReferenceException"/> at the property
+        /// dereference. Both fail fast on invalid input; the exception type changed.
+        /// </remarks>
         public static SoproCalculationEngine FromProyecto(Proyecto proyecto)
         {
             if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
