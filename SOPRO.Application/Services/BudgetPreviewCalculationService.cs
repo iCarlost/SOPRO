@@ -41,9 +41,7 @@ namespace SOPRO.Application.Services
                 return BuildPreviewFromReferenceCost(input.CostoDirectoReferencia, input, proyecto);
 
             // [N5-3] Motor del paquete directo: fuente única de aritmética
-            var engine = new SoproCalculationEngine(proyecto.DecimalesCantidad,
-                                                    proyecto.DecimalesImporte,
-                                                    proyecto.DecimalesPorcentaje);
+            var engine = CalculationEngineFactory.FromProyecto(proyecto);
 
             decimal totalCd     = 0m;
             decimal totalOc     = 0m;
@@ -105,9 +103,7 @@ namespace SOPRO.Application.Services
             // Si hay proyecto, usar motor para redondear; si no, valores de alta precisión
             // (este path solo se llega cuando no hay conceptos — impacto mínimo)
             var engine = proyecto != null
-                ? new SoproCalculationEngine(proyecto.DecimalesCantidad,
-                                             proyecto.DecimalesImporte,
-                                             proyecto.DecimalesPorcentaje)
+                ? CalculationEngineFactory.FromProyecto(proyecto)
                 : null;
 
             decimal R(decimal v) => engine != null ? engine.RoundAmount(v) : v;

@@ -1,4 +1,5 @@
 using System;
+using SOPRO.Application.Services;
 using SOPRO.Application.Services.Programacion;
 using System.Collections.Generic;
 using System.Linq;
@@ -61,7 +62,7 @@ namespace SOPRO.Application.Services
 
             // ── Motor con la configuración real del proyecto (sin fallbacks mágicos) ─
             var engine = proyecto != null
-                ? new SoproCalculationEngine(proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje)
+                ? CalculationEngineFactory.FromProyecto(proyecto)
                 : new SoproCalculationEngine(4, 2, 4); // solo si proyecto es null (no debería ocurrir)
 
             var fechaInicio = actividad.FechaInicioProgramada?.Date;
@@ -214,7 +215,7 @@ namespace SOPRO.Application.Services
             foreach (var actividad in actividades)
             {
                 var proyecto   = actividad.ProgramaObra?.Proyecto;
-                var engine = proyecto != null ? new SoproCalculationEngine(proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje) : new SoproCalculationEngine(4, 2, 4);
+                var engine = proyecto != null ? CalculationEngineFactory.FromProyecto(proyecto) : new SoproCalculationEngine(4, 2, 4);
 
                 var fechaInicio = actividad.FechaInicioProgramada?.Date;
                 var fechaFin    = actividad.FechaFinProgramada?.Date ?? fechaInicio;
@@ -331,7 +332,7 @@ namespace SOPRO.Application.Services
             context.DistribucionesPeriodo.RemoveRange(actividad.Distribuciones);
 
             var proyecto = actividad.ProgramaObra?.Proyecto;
-            var engine = proyecto != null ? new SoproCalculationEngine(proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje) : new SoproCalculationEngine(4, 2, 4);
+            var engine = proyecto != null ? CalculationEngineFactory.FromProyecto(proyecto) : new SoproCalculationEngine(4, 2, 4);
 
             var validInputs = inputs
                 .Where(x => x.PorcentajeProgramado != 0 || x.CantidadProgramada != 0)

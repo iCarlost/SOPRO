@@ -134,8 +134,7 @@ namespace SOPRO.Application.Services
                 if (!proyectos.TryGetValue(mat.ProyectoId.Value, out var proyecto)) continue;
                 var totals = MatrixComponentCalculationService.Recalculate(
                     mat.Componentes.ToList(), proyecto.DecimalesImporte);
-                mat.CostoDirecto = new SoproCalculationEngine(
-                    proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje)
+                mat.CostoDirecto = CalculationEngineFactory.FromProyecto(proyecto)
                     .RoundAmount(totals.CostoDirectoTotal);
             }
         }
@@ -161,8 +160,7 @@ namespace SOPRO.Application.Services
                 if (!mat.ProyectoId.HasValue) continue;
                 if (!proyectos.TryGetValue(mat.ProyectoId.Value, out var proyecto)) continue;
 
-                var engine = new SoproCalculationEngine(
-                    proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
+                var engine = CalculationEngineFactory.FromProyecto(proyecto);
                 concepto.CostoDirectoUnitario = engine.RoundAmount(mat.CostoDirecto);
                 concepto.CostoDirectoTotal    = engine.Multiply(concepto.Cantidad, concepto.CostoDirectoUnitario);
 
@@ -209,8 +207,7 @@ namespace SOPRO.Application.Services
                 var agrupadores = todos.Where(c => c.EsAgrupador).ToList();
                 if (agrupadores.Count == 0) continue;
 
-                var engine = new SoproCalculationEngine(
-                    proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
+                var engine = CalculationEngineFactory.FromProyecto(proyecto);
 
                 foreach (var agrupador in agrupadores)
                 {

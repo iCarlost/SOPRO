@@ -56,8 +56,7 @@ namespace SOPRO.Application.Services
             if (scopes == MatrixAdjustmentScopes.None) return null;
 
             var componentes = matrix.Componentes.OrderBy(c => c.Orden).ThenBy(c => c.Id).ToList();
-            var engine = new SoproCalculationEngine(
-                proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
+            var engine = CalculationEngineFactory.FromProyecto(proyecto);
             var originales = componentes.ToDictionary(c => c, c => c.Cantidad);
             var ajustables = componentes.Where(c => IsAdjustable(c, scopes)).ToList();
             if (ajustables.Count == 0)
@@ -101,8 +100,7 @@ namespace SOPRO.Application.Services
                 return Fail("El factor de reajuste no puede ser negativo.");
 
             var componentes = matrix.Componentes.OrderBy(c => c.Orden).ThenBy(c => c.Id).ToList();
-            var engine = new SoproCalculationEngine(
-                proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
+            var engine = CalculationEngineFactory.FromProyecto(proyecto);
             var originales = componentes.ToDictionary(c => c, c => c.Cantidad);
             var ajustables = componentes.Where(c => IsAdjustable(c, scopes)).ToList();
             if (ajustables.Count == 0)
@@ -148,8 +146,7 @@ namespace SOPRO.Application.Services
                 return Fail("El monto objetivo debe ser mayor que cero.");
 
             var componentes = matrix.Componentes.OrderBy(c => c.Orden).ThenBy(c => c.Id).ToList();
-            var engine = new SoproCalculationEngine(
-                proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
+            var engine = CalculationEngineFactory.FromProyecto(proyecto);
             var originales = componentes.ToDictionary(c => c, c => c.Cantidad);
             var ajustables = componentes.Where(c => IsAdjustable(c, scopes)).ToList();
 

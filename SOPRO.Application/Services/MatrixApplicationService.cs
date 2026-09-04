@@ -256,8 +256,7 @@ namespace SOPRO.Application.Services
                     {
                         var totals = MatrixComponentCalculationService.Recalculate(
                             affectedMatrix.Componentes.ToList(), proyecto.DecimalesImporte);
-                        affectedMatrix.CostoDirecto = new SoproCalculationEngine(
-                            proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje)
+                        affectedMatrix.CostoDirecto = CalculationEngineFactory.FromProyecto(proyecto)
                             .RoundAmount(totals.CostoDirectoTotal);
                     }
                     else

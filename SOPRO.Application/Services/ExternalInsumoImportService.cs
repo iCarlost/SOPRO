@@ -162,7 +162,7 @@ namespace SOPRO.Application.Services
             var proyectoDestino = currentContext.Proyectos.AsNoTracking()
                 .FirstOrDefault(p => p.Id == currentProjectId);
             var engine = proyectoDestino != null
-                ? new SoproCalculationEngine(proyectoDestino.DecimalesCantidad, proyectoDestino.DecimalesImporte, proyectoDestino.DecimalesPorcentaje)
+                ? CalculationEngineFactory.FromProyecto(proyectoDestino)
                 : new SoproCalculationEngine(2, 2, 4);
 
             foreach (var item in list)

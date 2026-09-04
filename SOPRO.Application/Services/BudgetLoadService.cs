@@ -154,8 +154,7 @@ namespace SOPRO.Application.Services
             // ── Motor: instancia única por llamada, configuración del proyecto ───
             // [N5-6] Aritmética en el engine; la fachada solo para formato (N0 fila 9).
             var motor = new MotorCalculoSopro(proyecto);
-            var engine = new SoproCalculationEngine(
-                proyecto.DecimalesCantidad, proyecto.DecimalesImporte, proyecto.DecimalesPorcentaje);
+            var engine = CalculationEngineFactory.FromProyecto(proyecto);
 
             var pctInput = BudgetPercentageInput.FromProyecto(proyecto).ToPricePercentage();
 
