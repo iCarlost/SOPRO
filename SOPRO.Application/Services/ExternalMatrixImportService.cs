@@ -18,7 +18,8 @@ namespace SOPRO.Application.Services
     // ║          MatrixGraphOrderService.OrdenTopologico + PricePropagation       ║
     // ║          Service.RecalcularConMotor; un ciclo en el grafo importado      ║
     // ║          revierte la importación con diagnóstico de ruta.                ║
-    // ║          El Rendimiento de maquinaria conserva Math.Round 5 por contrato.║
+    // ║          El Rendimiento de maquinaria usa Maquinaria.CalcularRendimiento║
+    // ║          (5 decimales por contrato).                                     ║
     // ║          CRUD/copia de importación intactos.                             ║
     // ╚══════════════════════════════════════════════════════════════════════════╝
     public sealed class ExternalMatrixImportService

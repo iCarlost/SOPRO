@@ -174,7 +174,7 @@ namespace SOPRO.Core.Entities
         /// <summary>
         /// [N7-10] Rendimiento del componente (unidades de obra por hora-máquina):
         /// 1/Cantidad con 5 decimales, o 0 si la cantidad no es positiva. Punto único
-        /// de la fórmula antes duplicada en 5 rutas de Application/WinForms.
+        /// de la fórmula antes duplicada en 5 rutas de Application.
         /// </summary>
         public static decimal CalcularRendimiento(decimal cantidad)
             => cantidad > 0m

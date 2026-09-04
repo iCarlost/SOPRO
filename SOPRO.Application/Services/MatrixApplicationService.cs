@@ -212,8 +212,8 @@ namespace SOPRO.Application.Services
                 AuxiliarId = component.AuxiliarId,
                 HerramientaId = component.HerramientaId,
                 Cantidad = component.Cantidad,
-                        Rendimiento = component.TipoComponente == TipoComponenteMatriz.Maquinaria
-                            ? Maquinaria.CalcularRendimiento(component.Cantidad) : 0m,
+                Rendimiento = component.TipoComponente == TipoComponenteMatriz.Maquinaria
+                    ? Maquinaria.CalcularRendimiento(component.Cantidad) : 0m,
                 Importe = component.Importe,
                 Orden = component.Orden > 0 ? component.Orden : index + 1,
                 Notas = component.Notas ?? string.Empty
