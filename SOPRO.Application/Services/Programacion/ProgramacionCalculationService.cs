@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using SOPRO.Application.Services;
 using SOPRO.Application.Services.Programacion;
 using Sopro.Calculation;
 using SOPRO.Core.Entities;

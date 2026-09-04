@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using Sopro.Calculation;
-using SOPRO.Application.Services;
 using SOPRO.Application.DTOs.Programacion;
 using SOPRO.Data.Context;
 
