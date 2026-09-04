@@ -216,4 +216,23 @@ public class MaquinariaCostoHorarioLegacyTests
 
         Assert.AreEqual(314.039325m, maquinaria.CostoHorario);
     }
+
+    [DataTestMethod]
+    [DataRow(1.0, 1.00000)]
+    [DataRow(2.0, 0.50000)]
+    [DataRow(3.0, 0.33333)]
+    [DataRow(0.5, 2.00000)]
+    public void CalcularRendimiento_CantidadPositiva_DevuelveUnoSobreCantidad(double cantidad, double esperado)
+    {
+        Assert.AreEqual((decimal)esperado, Maquinaria.CalcularRendimiento((decimal)cantidad));
+    }
+
+    [DataTestMethod]
+    [DataRow(0.0)]
+    [DataRow(-1.0)]
+    [DataRow(-2.5)]
+    public void CalcularRendimiento_CantidadNoPositiva_RetornaCero(double cantidad)
+    {
+        Assert.AreEqual(0m, Maquinaria.CalcularRendimiento((decimal)cantidad));
+    }
 }

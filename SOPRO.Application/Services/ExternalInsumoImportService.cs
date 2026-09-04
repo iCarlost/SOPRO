@@ -235,7 +235,7 @@ namespace SOPRO.Application.Services
                             currentContext.SaveChanges();
                             result.ImportedMaquinaria++;
                         }
-                        result.ImportedComponents.Add(new ComponenteMatriz { MaquinariaId = target.Id, Maquinaria = target, TipoComponente = TipoComponenteMatriz.Maquinaria, Cantidad = cantidad, Rendimiento = cantidad > 0 ? Math.Round(1m / cantidad, 5, MidpointRounding.AwayFromZero) : 0m, Importe = engine.Multiply(cantidad, target.CostoHorario) });
+                        result.ImportedComponents.Add(new ComponenteMatriz { MaquinariaId = target.Id, Maquinaria = target, TipoComponente = TipoComponenteMatriz.Maquinaria, Cantidad = cantidad, Rendimiento = Maquinaria.CalcularRendimiento(cantidad), Importe = engine.Multiply(cantidad, target.CostoHorario) });
                         break;
                     }
                     case TipoComponenteMatriz.Herramienta:

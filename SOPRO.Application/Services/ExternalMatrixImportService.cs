@@ -323,8 +323,8 @@ namespace SOPRO.Application.Services
                         MatrizId = target.Id,
                         TipoComponente = component.TipoComponente,
                         Cantidad = component.Cantidad,
-                        Rendimiento = component.TipoComponente == TipoComponenteMatriz.Maquinaria && component.Cantidad > 0
-                            ? Math.Round(1m / component.Cantidad, 5, MidpointRounding.AwayFromZero) : 0m,
+                        Rendimiento = component.TipoComponente == TipoComponenteMatriz.Maquinaria
+                            ? Maquinaria.CalcularRendimiento(component.Cantidad) : 0m,
                         Importe = component.Importe,
                         Orden = component.Orden,
                         Notas = component.Notas ?? string.Empty,
