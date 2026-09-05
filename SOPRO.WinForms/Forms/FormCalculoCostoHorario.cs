@@ -107,29 +107,25 @@ namespace SOPRO.WinForms.Forms
         // ──────────────────────────────────────────────────────────────────────
         private void Recalcular()
         {
-            var result = HourlyCostPresentationMapper.FromBreakdown(
-                MaquinariaHourlyCostAdapter.Calculate(new Maquinaria
-            {
-                ValorAdquisicion = nudValorAdquisicion.Value,
-                ValorLlantas = nudValorLlantas.Value,
-                ValorPiezasEspeciales = nudValorPiezasEsp.Value,
-                FactorRescate = nudFactorRescate.Value,
-                VidaEconomica = nudVidaEconomica.Value,
-                TasaInteres = nudTasaInteres.Value,
-                HorasEfectivasAnio = nudHorasAnio.Value,
-                PrimaSeguro = nudPrimaSeguro.Value,
-                FactorMantenimiento = nudFactorManten.Value,
-                CantidadCombustible = nudCantCombustible.Value,
-                PrecioCombustible = nudPrecioCombustible.Value,
-                CantidadAceite = nudCantAceite.Value,
-                PrecioAceite = nudPrecioAceite.Value,
-                NumeroLlantas = (int)nudNumLlantas.Value,
-                VidaEconomicaLlantas = nudVidaLlantas.Value,
-                VidaPiezasEspeciales = nudVidaPiezasEsp.Value,
-                SalarioOperador = nudSalarioOperador.Value,
-                FactorSalarioReal = nudFSR.Value,
-                HorasEfectivasTurno = nudHorasTurno.Value
-            }));
+            var result = MaquinariaHourlyCostAdapter.Calculate(MaquinariaHourlyCostAdapter.FromValues(
+                nudValorAdquisicion.Value,
+                nudValorLlantas.Value,
+                nudValorPiezasEsp.Value,
+                nudFactorRescate.Value,
+                nudVidaEconomica.Value,
+                nudTasaInteres.Value,
+                nudHorasAnio.Value,
+                nudPrimaSeguro.Value,
+                nudFactorManten.Value,
+                nudCantCombustible.Value,
+                nudPrecioCombustible.Value,
+                nudCantAceite.Value,
+                nudPrecioAceite.Value,
+                nudVidaLlantas.Value,
+                nudVidaPiezasEsp.Value,
+                nudSalarioOperador.Value,
+                nudFSR.Value,
+                nudHorasTurno.Value));
 
             _vm = result.NetValue;
             _vr = result.SalvageValue;

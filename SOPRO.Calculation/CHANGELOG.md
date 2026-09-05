@@ -7,6 +7,9 @@ All notable changes to `SOPRO.Calculation` are documented here.
 - Hourly machinery cost is now available as a pure, immutable calculation in the
   standalone package through `HourlyCostCalculator`; Core, WinForms and the PDF/Excel
   cost-hour reports delegate to it.
+- Non-positive denominator compatibility preserves visible intermediate values and
+  only suppresses dependent divisions; exceptional overflow fallback remains limited
+  to inapplicable branches.
 - Matrix graph: `MatrixNodeInput` supports optional precomputed leaf totals
   (`precomputedDirectCostTotal`) for auxiliary nodes whose components are not expanded
   in the graph (the stored auxiliary cost is consumed exactly as the canonical

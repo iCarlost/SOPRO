@@ -57,46 +57,30 @@ public class MaquinariaCostoHorarioCalculatorTests
     }
 
     [TestMethod]
-    public void FromBreakdown_MapsEveryPresentationOutput()
+    public void FromValues_MapsEveryCalculationInput()
     {
-        var source = new HourlyCostBreakdown
-        {
-            NetValue = 201m,
-            SalvageValue = 202m,
-            AverageValue = 203m,
-            Depreciation = 204m,
-            Investment = 205m,
-            Insurance = 206m,
-            Maintenance = 207m,
-            FixedChargesTotal = 208m,
-            Fuel = 209m,
-            Lubricants = 210m,
-            Tires = 211m,
-            SpecialParts = 212m,
-            ConsumptionTotal = 213m,
-            RealSalary = 214m,
-            Operation = 215m,
-            HourlyCost = 216m
-        };
+        var input = MaquinariaHourlyCostAdapter.FromValues(
+            101m, 102m, 103m, 0.04m, 105m, 6m, 107m, 8m, 0.09m,
+            110m, 11m, 112m, 13m, 115m, 116m, 117m, 1.18m, 119m);
 
-        var values = HourlyCostPresentationMapper.FromBreakdown(source);
-
-        Assert.AreEqual(source.NetValue, values.NetValue);
-        Assert.AreEqual(source.SalvageValue, values.SalvageValue);
-        Assert.AreEqual(source.AverageValue, values.AverageValue);
-        Assert.AreEqual(source.Depreciation, values.Depreciation);
-        Assert.AreEqual(source.Investment, values.Investment);
-        Assert.AreEqual(source.Insurance, values.Insurance);
-        Assert.AreEqual(source.Maintenance, values.Maintenance);
-        Assert.AreEqual(source.FixedChargesTotal, values.FixedChargesTotal);
-        Assert.AreEqual(source.Fuel, values.Fuel);
-        Assert.AreEqual(source.Lubricants, values.Lubricants);
-        Assert.AreEqual(source.Tires, values.Tires);
-        Assert.AreEqual(source.SpecialParts, values.SpecialParts);
-        Assert.AreEqual(source.ConsumptionTotal, values.ConsumptionTotal);
-        Assert.AreEqual(source.RealSalary, values.RealSalary);
-        Assert.AreEqual(source.Operation, values.Operation);
-        Assert.AreEqual(source.HourlyCost, values.HourlyCost);
+        Assert.AreEqual(101m, input.AcquisitionValue);
+        Assert.AreEqual(102m, input.TireValue);
+        Assert.AreEqual(103m, input.SpecialPartsValue);
+        Assert.AreEqual(0.04m, input.SalvageFactor);
+        Assert.AreEqual(105m, input.EconomicLifeHours);
+        Assert.AreEqual(6m, input.InterestRatePercentage);
+        Assert.AreEqual(107m, input.EffectiveHoursPerYear);
+        Assert.AreEqual(8m, input.InsuranceRatePercentage);
+        Assert.AreEqual(0.09m, input.MaintenanceFactor);
+        Assert.AreEqual(110m, input.FuelQuantity);
+        Assert.AreEqual(11m, input.FuelPrice);
+        Assert.AreEqual(112m, input.OilQuantity);
+        Assert.AreEqual(13m, input.OilPrice);
+        Assert.AreEqual(115m, input.TireLifeHours);
+        Assert.AreEqual(116m, input.SpecialPartsLifeHours);
+        Assert.AreEqual(117m, input.OperatorSalary);
+        Assert.AreEqual(1.18m, input.RealSalaryFactor);
+        Assert.AreEqual(119m, input.EffectiveHoursPerShift);
     }
 
     [TestMethod]
@@ -204,6 +188,28 @@ public class MaquinariaCostoHorarioCalculatorTests
         };
 
         Assert.ThrowsException<OverflowException>(() => HourlyCostCalculator.Calculate(input));
+    }
+
+    [TestMethod]
+    public void Calculate_NonPositiveDenominators_OnlyFallbackOnIntermediateOverflow()
+    {
+        var input = new HourlyCostInput
+        {
+            AcquisitionValue = decimal.MaxValue,
+            SalvageFactor = 1m,
+            EffectiveHoursPerYear = 0m,
+            OperatorSalary = decimal.MaxValue,
+            RealSalaryFactor = 2m,
+            EffectiveHoursPerShift = 0m
+        };
+
+        var result = HourlyCostCalculator.Calculate(input);
+
+        Assert.AreEqual(0m, result.AverageValue);
+        Assert.AreEqual(0m, result.Investment);
+        Assert.AreEqual(0m, result.Insurance);
+        Assert.AreEqual(0m, result.RealSalary);
+        Assert.AreEqual(0m, result.Operation);
     }
 
     [TestMethod]
