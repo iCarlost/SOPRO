@@ -6,6 +6,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using SOPRO.Application.Services;
+using Sopro.Calculation.Labor;
 
 namespace SOPRO.WinForms.Services
 {
@@ -428,101 +430,56 @@ namespace SOPRO.WinForms.Services
         // ─────────────────────────────────────────────────────────────────────
         private static FSRCalc RecalcularCompleto(Dictionary<string, string> p, decimal? overrideSN = null)
         {
-            decimal Get(string key, decimal def = 0)
-                => p.TryGetValue(key, out var v) && decimal.TryParse(v,
-                    System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : def;
-            int GetInt(string key, int def = 0)
-                => p.TryGetValue(key, out var v) && int.TryParse(v, out var i) ? i : def;
+            decimal SN = overrideSN ?? (p.TryGetValue("SalarioNominal", out var snV)
+                && decimal.TryParse(snV, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var snD) ? snD : 0m);
 
-            var c = new FSRCalc();
+            var input = FsrInputAdapter.FromDictionary(p, SN);
+            var b = RealSalaryFactorCalculator.Calculate(input);
 
-            decimal SN  = overrideSN ?? Get("SalarioNominal");
-            decimal AW  = Get("SalarioMinimo", 1);
-            int     BB  = GetInt("Jornada", 0);
-            int     AR  = GetInt("Semestre", 0) + 1;
-            int     AV  = GetInt("Anio", 2008);
-            decimal BC  = Get("HorasJornada", 8);
-
-            decimal htBase = BB == 0 ? 8m : (BB == 1 ? 7.5m : 7m);
-            decimal BD = BC - htBase;
-            decimal BE = BB == 0 ? 1.1875m : (BB == 1 ? 1.2m : 1.214286m);
-            decimal BF = BE > BD ? BD : BE;
-            decimal BG = BD - BF;
-
-            c.FSR_SAMI  = 1.0m;
-            c.FSR_SACAL = (SN * (1 + BG / htBase)) / AW;
-
-            c.FSR_DPCAL = Get("DiasCalendario", 365);
-            decimal FSR_DPAGU = Get("DiasAguinaldo", 15);
-            decimal FSR_DNVAC = Get("DiasVacaciones", 12);
-            decimal FSR_PPVAC = Get("PrimaVacacional", 25);
-            decimal FSR_DNDOM = Get("DiasDominical", 0);
-            decimal FSR_PPDOM = Get("PctDominical", 0);
-            decimal FSR_DPOT1 = Get("OtrosDiasPagados", 0);
-
-            c.FSR_DVAC  = FSR_DNVAC;
-            c.FSR_DPPVA = FSR_PPVAC / 100m * FSR_DNVAC;
-            c.FSR_DPPDO = FSR_PPDOM / 100m * FSR_DNDOM;
-            c.FSR_DPHEX = (BF * 2m + BG * 3m) / 24m * c.FSR_DPCAL;
-            c.FSR_DPA   = c.FSR_DPCAL + FSR_DPAGU + c.FSR_DPPVA + c.FSR_DPPDO + c.FSR_DPHEX + FSR_DPOT1;
-
-            c.FSR_DNLA  = Get("DiasDescanso", 52) + Get("DiasFestivos", 7)
-                        + Get("DiasContrato", 0)  + Get("DiasSindicato", 0)
-                        + c.FSR_DVAC
-                        + Get("DiasEnfermedad", 0) + Get("DiasClima", 0)
-                        + Get("DiasArrastre", 0)   + Get("DiasGuardia", 0)
-                        + Get("OtrosDiasNL", 0);
-            c.FSR_DLA   = c.FSR_DPCAL - c.FSR_DNLA;
-
-            c.FSR_FSI  = c.FSR_DLA  > 0 ? c.FSR_DPA  / c.FSR_DLA  : 0;
-            c.FSR_FSBC = c.FSR_DPCAL > 0 ? c.FSR_DPA / c.FSR_DPCAL : 0;
-            c.FSR_SABC = c.FSR_SACAL * c.FSR_FSBC;
-
-            c.AA = AV <= 2003 ? 17.15m : AV == 2004 ? 17.80m : AV == 2005 ? 18.45m
-                 : AV == 2006 ? 19.10m : AV == 2007 ? 19.75m : 20.40m;
-            c.AB = AV <= 2003 ? 3.55m  : AV == 2004 ? 3.06m  : AV == 2005 ? 2.57m
-                 : AV == 2006 ? 2.08m  : AV == 2007 ? 1.59m  : 1.10m;
-
-            decimal BA    = 25m * c.FSR_SAMI;
-            c.AS_lim = AV <= 2003 ? 20m : AV == 2004 ? 21m : AV == 2005 ? 22m
-                     : AV == 2006 ? 23m : (AV == 2007 && AR == 1) ? 24m : 25m;
-            decimal AY    = c.AS_lim * c.FSR_SAMI;
-            c.AU    = c.FSR_SABC <= 3m * c.FSR_SAMI ? 0m : c.FSR_SABC - 3m * c.FSR_SAMI;
-            c.AZ    = AY;
-
-            c.FSR_IMPE_p  = 0.70m  + (c.FSR_SACAL > c.FSR_SAMI ? 0m : 0.250m);
-            c.FSR_IMGM_p  = 1.05m  + (c.FSR_SACAL > c.FSR_SAMI ? 0m : 0.375m);
-            c.FSR_IMINV_p = 1.75m  + (c.FSR_SACAL > c.FSR_SAMI ? 0m : 0.625m);
-            c.FSR_IMCE_p  = 3.15m  + (c.FSR_SACAL > c.FSR_SAMI ? 0m : 1.125m);
-
-            decimal FSR_IMGUA_p = Get("PctGuarderias", 1);
-            decimal FSR_IMSAR_p = Get("PctRetiro", 2);
-            decimal FSR_IMRTR_p = Get("PctRiesgos", 4.58875m);
-
-            c.AC = c.AA / 100m * c.FSR_SAMI;
-            c.AD = c.FSR_SABC < BA ? c.AB / 100m * c.AU            : c.AB / 100m * BA;
-            c.AE = c.FSR_SABC < BA ? c.FSR_IMPE_p  / 100m * c.FSR_SABC : c.FSR_IMPE_p  / 100m * BA;
-            c.AF = c.FSR_SABC < BA ? c.FSR_IMGM_p  / 100m * c.FSR_SABC : c.FSR_IMGM_p  / 100m * BA;
-            c.AG = c.FSR_SABC < AY ? c.FSR_IMINV_p / 100m * c.FSR_SABC : c.FSR_IMINV_p / 100m * AY;
-            c.AH = c.FSR_SABC < BA ? FSR_IMGUA_p   / 100m * c.FSR_SABC : FSR_IMGUA_p   / 100m * BA;
-            c.AI = c.FSR_SABC < BA ? FSR_IMSAR_p   / 100m * c.FSR_SABC : FSR_IMSAR_p   / 100m * BA;
-            c.AJ = c.FSR_SABC < AY ? c.FSR_IMCE_p  / 100m * c.FSR_SABC : c.FSR_IMCE_p  / 100m * AY;
-            c.AK = c.FSR_SABC < BA ? FSR_IMRTR_p   / 100m * c.FSR_SABC : FSR_IMRTR_p   / 100m * BA;
-            c.AL = c.AC + c.AD + c.AE + c.AF + c.AG + c.AH + c.AI + c.AJ + c.AK;
-            c.FSR_IMIMS = c.FSR_SACAL > 0 ? c.AL / c.FSR_SACAL : 0;
-
-            decimal FSR_IMINF_p = Get("PctINFONAVIT", 5);
-            c.AM = c.FSR_SABC < AY ? FSR_IMINF_p / 100m * c.FSR_SABC : FSR_IMINF_p / 100m * AY;
-            c.AN = Get("PctNomina", 2.4m)    / 100m * c.FSR_SABC;
-            c.AO = Get("OtrosImpuestos", 0)  / 100m * c.FSR_SABC;
-            c.AP = c.AL + c.AM + c.AN + c.AO;
-            c.AQ = c.FSR_SACAL > 0 ? c.AP / c.FSR_SACAL : 0;
-
-            c.BH      = c.AQ * c.FSR_FSI;
-            c.FSR_FSR = c.BH + c.FSR_FSI;
-
-            return c;
+            return new FSRCalc
+            {
+                FSR_SAMI  = b.MinimumSalaryUnit,
+                FSR_SACAL = b.AdjustedNominalSalaryInMinimumSalaryUnits,
+                FSR_DPCAL = b.CalendarDays,
+                FSR_DVAC  = b.VacationDays,
+                FSR_DPPVA = b.VacationPremiumDays,
+                FSR_DPPDO = b.SundayPremiumEquivalentDays,
+                FSR_DPHEX = b.OvertimeEquivalentDays,
+                FSR_DPA   = b.PaidDays,
+                FSR_DNLA  = b.NonWorkingDays,
+                FSR_DLA   = b.WorkedDays,
+                FSR_FSI   = b.PaidToWorkedDaysFactor,
+                FSR_FSBC  = b.ContributionBaseFactor,
+                FSR_SABC  = b.ContributionBaseSalaryInMinimumSalaryUnits,
+                AA        = b.FixedFeePercentage,
+                AB        = b.ExcessPercentage,
+                AU        = b.ThreeMinimumSalaryExcess,
+                AS_lim    = b.LifeAndRetirementCap,
+                AZ        = b.InfonavitSalaryLimit,
+                FSR_IMPE_p  = b.CashBenefitsPercentage,
+                FSR_IMGM_p  = b.PensionerMedicalExpensesPercentage,
+                FSR_IMINV_p = b.DisabilityAndLifePercentage,
+                FSR_IMCE_p  = b.SeveranceAndOldAgePercentage,
+                AC        = b.FixedFee,
+                AD        = b.ThreeMinimumSalaryExcessContribution,
+                AE        = b.CashBenefitsContribution,
+                AF        = b.PensionerMedicalExpensesContribution,
+                AG        = b.DisabilityAndLifeContribution,
+                AH        = b.DaycareContribution,
+                AI        = b.RetirementContribution,
+                AJ        = b.SeveranceAndOldAgeContribution,
+                AK        = b.OccupationalRiskContribution,
+                AL        = b.EmployerImssTotal,
+                FSR_IMIMS = b.EmployerImssFactor,
+                AM        = b.InfonavitContribution,
+                AN        = b.PayrollTax,
+                AO        = b.OtherTaxes,
+                AP        = b.EmployerObligations,
+                AQ        = b.EmployerObligationsFactor,
+                BH        = b.EmployerObligationsWeightedByPaidToWorkedDays,
+                FSR_FSR   = b.Factor
+            };
         }
 
         private class FSRCalc

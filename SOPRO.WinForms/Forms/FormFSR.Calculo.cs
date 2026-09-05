@@ -10,11 +10,13 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
 using SOPRO.Application.Services;
+using Sopro.Calculation.Labor;
 
 namespace SOPRO.WinForms.Forms
 {
     /// <summary>
     /// Cálculo del factor de salario real según legislación mexicana.
+    /// Delega en <see cref="RealSalaryFactorCalculator"/> (motor puro, N7-13b).
     /// </summary>
     public partial class FormFSR
     {
@@ -38,96 +40,86 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         private decimal CalcularFSR(decimal SN)
         {
-            int     BB  = cboJornada.SelectedIndex;
-            int     AR  = cboSemestre.SelectedIndex + 1;
-            int     AV  = (int)nudAnio.Value;
-            decimal BC  = nudHorasJornada.Value;
-            decimal AW  = nudSalarioMinimo.Value;
+            var input = new RealSalaryFactorInput
+            {
+                NominalSalary = SN,
+                MinimumSalary = nudSalarioMinimo.Value,
+                WorkShift = (WorkShiftType)cboJornada.SelectedIndex,
+                Semester = cboSemestre.SelectedIndex + 1,
+                Year = (int)nudAnio.Value,
+                HoursPerShift = nudHorasJornada.Value,
+                CalendarDays = nudDiasCalendario.Value,
+                ChristmasBonusDays = nudDiasAguinaldo.Value,
+                VacationDays = nudDiasVacaciones.Value,
+                VacationPremiumPercentage = nudPrimaVacacional.Value,
+                SundayPremiumDays = nudDiasDominical.Value,
+                SundayPremiumPercentage = nudPctDominical.Value,
+                OtherPaidDays = nudOtrosDiasPagados.Value,
+                RestDays = nudDiasDescanso.Value,
+                HolidayDays = nudDiasFestivos.Value,
+                ContractDays = nudDiasContrato.Value,
+                UnionDays = nudDiasSindicato.Value,
+                IllnessDays = nudDiasEnfermedad.Value,
+                WeatherDays = nudDiasClima.Value,
+                CarryoverDays = nudDiasArrastre.Value,
+                GuardDutyDays = nudDiasGuardia.Value,
+                OtherNonWorkingDays = nudOtrosDiasNL.Value,
+                DaycarePercentage = nudPctGuarderias.Value,
+                RetirementPercentage = nudPctRetiro.Value,
+                OccupationalRiskPercentage = nudPctRiesgos.Value,
+                InfonavitPercentage = nudPctINFONAVIT.Value,
+                PayrollTaxPercentage = nudPctNomina.Value,
+                OtherTaxesPercentage = nudOtrosImpuestos.Value
+            };
 
-            // Horas extras por jornada
-            decimal htBase = BB == 0 ? 8m : (BB == 1 ? 7.5m : 7m);
-            BD = BC - htBase;
-            BE = BB == 0 ? 1.1875m : (BB == 1 ? 1.2m : 1.214286m);
-            BF = BE > BD ? BD : BE;
-            BG = BD - BF;
+            var b = RealSalaryFactorCalculator.Calculate(input);
 
-            FSR_SAMI  = 1.0m;
-            FSR_SACAL = (SN * (1 + BG / htBase)) / AW;
+            BD = b.OvertimeHours;
+            BE = b.DoubleOvertimeLimit;
+            BF = b.DoubleOvertimeHours;
+            BG = b.TripleOvertimeHours;
+            FSR_SAMI = b.MinimumSalaryUnit;
+            FSR_SACAL = b.AdjustedNominalSalaryInMinimumSalaryUnits;
+            FSR_DVAC = b.VacationDays;
+            FSR_DPPVA = b.VacationPremiumDays;
+            FSR_DPPDO = b.SundayPremiumEquivalentDays;
+            FSR_DPHEX = b.OvertimeEquivalentDays;
+            FSR_DPA = b.PaidDays;
+            FSR_DNLA = b.NonWorkingDays;
+            FSR_DLA = b.WorkedDays;
+            FSR_FSI = b.PaidToWorkedDaysFactor;
+            FSR_FSBC = b.ContributionBaseFactor;
+            FSR_SABC = b.ContributionBaseSalaryInMinimumSalaryUnits;
+            AA = b.FixedFeePercentage;
+            AB = b.ExcessPercentage;
+            BA = b.GeneralContributionCap;
+            AS_lim = b.LifeAndRetirementCap;
+            AY = b.LifeAndRetirementSalaryLimit;
+            AU = b.ThreeMinimumSalaryExcess;
+            FSR_IMPE_p = b.CashBenefitsPercentage;
+            FSR_IMGM_p = b.PensionerMedicalExpensesPercentage;
+            FSR_IMINV_p = b.DisabilityAndLifePercentage;
+            FSR_IMCE_p = b.SeveranceAndOldAgePercentage;
+            AC = b.FixedFee;
+            AD = b.ThreeMinimumSalaryExcessContribution;
+            AE = b.CashBenefitsContribution;
+            AF = b.PensionerMedicalExpensesContribution;
+            AG = b.DisabilityAndLifeContribution;
+            AH = b.DaycareContribution;
+            AI = b.RetirementContribution;
+            AJ = b.SeveranceAndOldAgeContribution;
+            AK = b.OccupationalRiskContribution;
+            AL = b.EmployerImssTotal;
+            FSR_IMIMS = b.EmployerImssFactor;
+            AZ = b.InfonavitSalaryLimit;
+            AM = b.InfonavitContribution;
+            AN = b.PayrollTax;
+            AO = b.OtherTaxes;
+            AP = b.EmployerObligations;
+            AQ = b.EmployerObligationsFactor;
+            BH = b.EmployerObligationsWeightedByPaidToWorkedDays;
 
-            decimal FSR_DPCAL  = nudDiasCalendario.Value;
-            decimal FSR_DPAGU  = nudDiasAguinaldo.Value;
-            decimal FSR_DNVAC  = nudDiasVacaciones.Value;
-            decimal FSR_PPVAC  = nudPrimaVacacional.Value;
-            decimal FSR_DNDOM  = nudDiasDominical.Value;
-            decimal FSR_PPDOM  = nudPctDominical.Value;
-            decimal FSR_DPOT1  = nudOtrosDiasPagados.Value;
-
-            FSR_DVAC  = FSR_DNVAC;
-            FSR_DPPVA = FSR_PPVAC / 100m * FSR_DNVAC;
-            FSR_DPPDO = FSR_PPDOM / 100m * FSR_DNDOM;
-            FSR_DPHEX = (BF * 2m + BG * 3m) / 24m * FSR_DPCAL;
-            FSR_DPA   = FSR_DPCAL + FSR_DPAGU + FSR_DPPVA + FSR_DPPDO + FSR_DPHEX + FSR_DPOT1;
-
-            decimal FSR_DNSEP = nudDiasDescanso.Value;
-            decimal FSR_DNFES = nudDiasFestivos.Value;
-            decimal FSR_DNDCO = nudDiasContrato.Value;
-            decimal FSR_DNSIN = nudDiasSindicato.Value;
-            decimal FSR_DNPER = nudDiasEnfermedad.Value;
-            decimal FSR_DNCLI = nudDiasClima.Value;
-            decimal FSR_DNARR = nudDiasArrastre.Value;
-            decimal FSR_DNGUA = nudDiasGuardia.Value;
-            decimal FSR_DNOT3 = nudOtrosDiasNL.Value;
-
-            FSR_DNLA = FSR_DNSEP + FSR_DNFES + FSR_DNDCO + FSR_DNSIN + FSR_DVAC
-                      + FSR_DNPER + FSR_DNCLI + FSR_DNARR + FSR_DNGUA + FSR_DNOT3;
-            FSR_DLA  = FSR_DPCAL - FSR_DNLA;
-
-            FSR_FSI  = FSR_DLA > 0 ? FSR_DPA / FSR_DLA : 0;
-            FSR_FSBC = FSR_DPCAL > 0 ? FSR_DPA / FSR_DPCAL : 0;
-            FSR_SABC = FSR_SACAL * FSR_FSBC;
-
-            AA = AV <= 2003 ? 17.15m : AV == 2004 ? 17.80m : AV == 2005 ? 18.45m
-               : AV == 2006 ? 19.10m : AV == 2007 ? 19.75m : 20.40m;
-            AB = AV <= 2003 ? 3.55m  : AV == 2004 ? 3.06m  : AV == 2005 ? 2.57m
-               : AV == 2006 ? 2.08m  : AV == 2007 ? 1.59m  : 1.10m;
-
-            BA = 25m * FSR_SAMI;
-            AS_lim = AV <= 2003 ? 20m : AV == 2004 ? 21m : AV == 2005 ? 22m
-                   : AV == 2006 ? 23m : (AV == 2007 && AR == 1) ? 24m : 25m;
-            AY = AS_lim * FSR_SAMI;
-            AU = FSR_SABC <= 3m * FSR_SAMI ? 0m : FSR_SABC - 3m * FSR_SAMI;
-
-            FSR_IMPE_p  = 0.70m  + (FSR_SACAL > FSR_SAMI ? 0m : 0.250m);
-            FSR_IMGM_p  = 1.05m  + (FSR_SACAL > FSR_SAMI ? 0m : 0.375m);
-            FSR_IMINV_p = 1.75m  + (FSR_SACAL > FSR_SAMI ? 0m : 0.625m);
-            FSR_IMCE_p  = 3.15m  + (FSR_SACAL > FSR_SAMI ? 0m : 1.125m);
-
-            decimal FSR_IMGUA_p = nudPctGuarderias.Value;
-            decimal FSR_IMSAR_p = nudPctRetiro.Value;
-            decimal FSR_IMRTR_p = nudPctRiesgos.Value;
-
-            AC = AA / 100m * FSR_SAMI;
-            AD = FSR_SABC < BA ? AB / 100m * AU       : AB / 100m * BA;
-            AE = FSR_SABC < BA ? FSR_IMPE_p  / 100m * FSR_SABC : FSR_IMPE_p  / 100m * BA;
-            AF = FSR_SABC < BA ? FSR_IMGM_p  / 100m * FSR_SABC : FSR_IMGM_p  / 100m * BA;
-            AG = FSR_SABC < AY ? FSR_IMINV_p / 100m * FSR_SABC : FSR_IMINV_p / 100m * AY;
-            AH = FSR_SABC < BA ? FSR_IMGUA_p / 100m * FSR_SABC : FSR_IMGUA_p / 100m * BA;
-            AI = FSR_SABC < BA ? FSR_IMSAR_p / 100m * FSR_SABC : FSR_IMSAR_p / 100m * BA;
-            AJ = FSR_SABC < AY ? FSR_IMCE_p  / 100m * FSR_SABC : FSR_IMCE_p  / 100m * AY;
-            AK = FSR_SABC < BA ? FSR_IMRTR_p / 100m * FSR_SABC : FSR_IMRTR_p / 100m * BA;
-            AL = AC + AD + AE + AF + AG + AH + AI + AJ + AK;
-            FSR_IMIMS = FSR_SACAL > 0 ? AL / FSR_SACAL : 0;
-
-            AZ = AY;
-            decimal FSR_IMINF_p = nudPctINFONAVIT.Value;
-            AM = FSR_SABC < AZ ? FSR_IMINF_p / 100m * FSR_SABC : FSR_IMINF_p / 100m * AZ;
-            AN = nudPctNomina.Value      / 100m * FSR_SABC;
-            AO = nudOtrosImpuestos.Value / 100m * FSR_SABC;
-            AP = AL + AM + AN + AO;
-            AQ = FSR_SACAL > 0 ? AP / FSR_SACAL : 0;
-
-            BH      = AQ * FSR_FSI;
-            return BH + FSR_FSI;
+            return b.Factor;
         }
     }
 }
