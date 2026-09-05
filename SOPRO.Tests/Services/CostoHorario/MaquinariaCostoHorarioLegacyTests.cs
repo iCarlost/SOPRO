@@ -6,7 +6,8 @@ namespace SOPRO.Tests.Services.CostoHorario;
 /// <summary>
 /// Caracterización N0 de la implementación legacy del costo horario.
 /// La fórmula canónica vive en Sopro.Calculation.Equipment.HourlyCostCalculator;
-/// Maquinaria y WinForms delegan en ella a través de SOPRO.Core.Services.MaquinariaHourlyCostAdapter.
+/// Maquinaria delega a través de SOPRO.Core.Services.MaquinariaHourlyCostAdapter;
+/// WinForms construye HourlyCostInput directamente.
 /// Estos tests preservan la semántica visible del wrapper legacy.
 /// </summary>
 [TestClass]
