@@ -7,6 +7,7 @@ using PdfSharp.Drawing;
 using PdfSharp.Drawing.Layout;
 using PdfSharp.Pdf;
 using SOPRO.Core.Entities;
+using SOPRO.Core.Services;
 
 namespace SOPRO.WinForms.Services
 {
@@ -86,21 +87,22 @@ namespace SOPRO.WinForms.Services
 
         private void DrawMachineSheet(XGraphics gfx, PageLayout layout, Proyecto proyecto, Maquinaria maq, ConfiguracionTituloReporte? tituloCfg)
         {
-            decimal valorNeto = maq.ValorAdquisicion - maq.ValorLlantas - maq.ValorPiezasEspeciales;
-            decimal valorRescate = valorNeto * maq.FactorRescate;
-            decimal depreciacion = maq.VidaEconomica > 0 ? (valorNeto - valorRescate) / maq.VidaEconomica : 0;
-            decimal inversion = maq.HorasEfectivasAnio > 0 ? ((valorNeto + valorRescate) / 2m) * (maq.TasaInteres / 100m) / maq.HorasEfectivasAnio : 0;
-            decimal seguros = maq.HorasEfectivasAnio > 0 ? ((valorNeto + valorRescate) / 2m) * (maq.PrimaSeguro / 100m) / maq.HorasEfectivasAnio : 0;
-            decimal mantenimiento = maq.FactorMantenimiento * depreciacion;
-            decimal totalCargosFijos = depreciacion + inversion + seguros + mantenimiento;
-            decimal combustibles = maq.CantidadCombustible * maq.PrecioCombustible;
-            decimal lubricantes = maq.CantidadAceite * maq.PrecioAceite;
-            decimal llantas = maq.VidaEconomicaLlantas > 0 ? maq.ValorLlantas / maq.VidaEconomicaLlantas : 0;
-            decimal piezasEsp = maq.VidaPiezasEspeciales > 0 ? maq.ValorPiezasEspeciales / maq.VidaPiezasEspeciales : 0;
-            decimal totalConsumos = combustibles + lubricantes + llantas + piezasEsp;
-            decimal salarioReal = maq.SalarioOperador * maq.FactorSalarioReal;
-            decimal operacion = maq.HorasEfectivasTurno > 0 ? salarioReal / maq.HorasEfectivasTurno : 0;
-            decimal costoHorario = totalCargosFijos + totalConsumos + operacion;
+            var result = MaquinariaHourlyCostAdapter.Calculate(maq);
+            decimal valorNeto = result.NetValue;
+            decimal valorRescate = result.SalvageValue;
+            decimal depreciacion = result.Depreciation;
+            decimal inversion = result.Investment;
+            decimal seguros = result.Insurance;
+            decimal mantenimiento = result.Maintenance;
+            decimal totalCargosFijos = result.FixedChargesTotal;
+            decimal combustibles = result.Fuel;
+            decimal lubricantes = result.Lubricants;
+            decimal llantas = result.Tires;
+            decimal piezasEsp = result.SpecialParts;
+            decimal totalConsumos = result.ConsumptionTotal;
+            decimal salarioReal = result.RealSalary;
+            decimal operacion = result.Operation;
+            decimal costoHorario = result.HourlyCost;
 
             var fonts = CreateFonts();
             double y = layout.BodyTop;

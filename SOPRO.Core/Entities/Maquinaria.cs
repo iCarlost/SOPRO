@@ -1,4 +1,5 @@
 using System;
+using SOPRO.Core.Services;
 
 namespace SOPRO.Core.Entities
 {
@@ -126,47 +127,9 @@ namespace SOPRO.Core.Entities
         /// </summary>
         public void CalcularCostoHorario()
         {
-            // A. CARGOS FIJOS
-            decimal valorNeto = ValorAdquisicion - ValorLlantas - ValorPiezasEspeciales;
-            decimal valorRescate = valorNeto * FactorRescate;
-            
-            decimal depreciacion = 0;
-            if (VidaEconomica > 0)
-                depreciacion = (valorNeto - valorRescate) / VidaEconomica;
-            
-            decimal inversion = 0;
-            if (HorasEfectivasAnio > 0)
-                inversion = ((valorNeto + valorRescate) / 2m) * (TasaInteres / 100m) / HorasEfectivasAnio;
-            
-            decimal seguros = 0;
-            if (HorasEfectivasAnio > 0)
-                seguros = ((valorNeto + valorRescate) / 2m) * (PrimaSeguro / 100m) / HorasEfectivasAnio;
-            
-            decimal mantenimiento = FactorMantenimiento * depreciacion;
-            
-            decimal totalCargosFijos = depreciacion + inversion + seguros + mantenimiento;
-            
-            // B. CONSUMOS
-            decimal combustibles = CantidadCombustible * PrecioCombustible;
-            decimal lubricantes = CantidadAceite * PrecioAceite;
-            
-            decimal llantas = 0;
-            if (VidaEconomicaLlantas > 0)
-                llantas = ValorLlantas / VidaEconomicaLlantas;
-            
-            decimal piezasEspeciales = 0;
-            if (VidaPiezasEspeciales > 0)
-                piezasEspeciales = ValorPiezasEspeciales / VidaPiezasEspeciales;
-            
-            decimal totalConsumos = combustibles + lubricantes + llantas + piezasEspeciales;
-            
-            // C. OPERACIÓN
-            decimal operacion = 0;
-            if (HorasEfectivasTurno > 0)
-                operacion = (SalarioOperador * FactorSalarioReal) / HorasEfectivasTurno;
-            
-            // TOTAL
-            CostoHorario = totalCargosFijos + totalConsumos + operacion;
+            var result = MaquinariaHourlyCostAdapter.Calculate(this);
+
+            CostoHorario = result.HourlyCost;
             EsCostoCalculado = true;
             FechaCalculoCosto = DateTime.Now;
         }

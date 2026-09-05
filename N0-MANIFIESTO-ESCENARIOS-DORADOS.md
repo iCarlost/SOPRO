@@ -78,7 +78,7 @@ Entradas inválidas (`null`, JSON vacío/inválido, salario ≤ 0) devuelven `nu
 
 ## 5. Golden Costo Horario (legacy Core)
 
-`SOPRO.Tests\Services\CostoHorario\MaquinariaCostoHorarioLegacyTests` — caracteriza directamente `Maquinaria.CalcularCostoHorario()` (fórmula canónica legacy; `FormCalculoCostoHorario.Recalcular` duplica la misma aritmética, ver fila 19 de la tabla de divergencias).
+`SOPRO.Tests\Services\CostoHorario\MaquinariaCostoHorarioLegacyTests` — caracteriza el wrapper legacy `Maquinaria.CalcularCostoHorario()`, que delega en `Sopro.Calculation.Equipment.HourlyCostCalculator` a través de `MaquinariaHourlyCostAdapter` (fórmula canónica centralizada en N7-12, ver fila 19 de la tabla de divergencias).
 
 | Caso | Total congelado |
 |---|---|
