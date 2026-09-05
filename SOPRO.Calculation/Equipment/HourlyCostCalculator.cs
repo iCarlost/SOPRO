@@ -57,18 +57,7 @@ public static class HourlyCostCalculator
         decimal netValue = input.AcquisitionValue - input.TireValue - input.SpecialPartsValue;
         decimal salvageValue = netValue * input.SalvageFactor;
 
-        decimal averageValue;
-        try
-        {
-            averageValue = (netValue + salvageValue) / 2m;
-        }
-        catch (OverflowException) when (input.EffectiveHoursPerYear <= 0)
-        {
-            // Legacy Core skipped this intermediate when Investment/Insurance
-            // were inapplicable; preserve that exceptional edge without hiding
-            // overflow for a valid positive denominator.
-            averageValue = 0m;
-        }
+        decimal averageValue = (netValue + salvageValue) / 2m;
 
         decimal depreciation = input.EconomicLifeHours > 0
             ? (netValue - salvageValue) / input.EconomicLifeHours
@@ -92,16 +81,7 @@ public static class HourlyCostCalculator
             : 0m;
         decimal consumptionTotal = fuel + lubricants + tires + specialParts;
 
-        decimal realSalary;
-        try
-        {
-            realSalary = input.OperatorSalary * input.RealSalaryFactor;
-        }
-        catch (OverflowException) when (input.EffectiveHoursPerShift <= 0)
-        {
-            // Operation is skipped by the legacy calculation when Ht is not positive.
-            realSalary = 0m;
-        }
+        decimal realSalary = input.OperatorSalary * input.RealSalaryFactor;
         decimal operation = input.EffectiveHoursPerShift > 0
             ? realSalary / input.EffectiveHoursPerShift
             : 0m;

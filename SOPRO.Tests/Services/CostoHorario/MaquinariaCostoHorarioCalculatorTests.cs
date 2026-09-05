@@ -191,7 +191,7 @@ public class MaquinariaCostoHorarioCalculatorTests
     }
 
     [TestMethod]
-    public void Calculate_NonPositiveDenominators_OnlyFallbackOnIntermediateOverflow()
+    public void Calculate_NonPositiveDenominators_StillPropagatesIntermediateOverflow()
     {
         var input = new HourlyCostInput
         {
@@ -203,13 +203,7 @@ public class MaquinariaCostoHorarioCalculatorTests
             EffectiveHoursPerShift = 0m
         };
 
-        var result = HourlyCostCalculator.Calculate(input);
-
-        Assert.AreEqual(0m, result.AverageValue);
-        Assert.AreEqual(0m, result.Investment);
-        Assert.AreEqual(0m, result.Insurance);
-        Assert.AreEqual(0m, result.RealSalary);
-        Assert.AreEqual(0m, result.Operation);
+        Assert.ThrowsException<OverflowException>(() => HourlyCostCalculator.Calculate(input));
     }
 
     [TestMethod]
@@ -239,6 +233,22 @@ public class MaquinariaCostoHorarioCalculatorTests
         Assert.AreEqual(0m, result.SpecialParts);
         Assert.AreEqual(480m, result.RealSalary);
         Assert.AreEqual(0m, result.Operation);
+    }
+
+    [TestMethod]
+    public void Calculate_NegativeDenominators_StillPropagatesIntermediateOverflow()
+    {
+        var input = new HourlyCostInput
+        {
+            AcquisitionValue = decimal.MaxValue,
+            SalvageFactor = 1m,
+            EffectiveHoursPerYear = -1m,
+            OperatorSalary = decimal.MaxValue,
+            RealSalaryFactor = 2m,
+            EffectiveHoursPerShift = -1m
+        };
+
+        Assert.ThrowsException<OverflowException>(() => HourlyCostCalculator.Calculate(input));
     }
 
     [TestMethod]

@@ -94,8 +94,7 @@ IReadOnlyList<decimal> partes = motor.DistributeAmount(1000m, new[] { 33m, 33m, 
 - El costo horario usa `HourlyCostCalculator` con entradas y resultados escalares
   inmutables; la fecha de calculo y la persistencia quedan fuera del motor.
 - `AverageValue` y `RealSalary` se conservan con divisores no positivos para la
-  presentacion legacy; si ese intermedio desborda en una rama inapplicable, solo
-  esa rama cae a cero. Un overflow con divisor positivo se propaga.
+  presentacion legacy. El overflow se propaga en todos los casos.
 
 ## Verificacion (Gate N1)
 

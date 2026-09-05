@@ -5,8 +5,9 @@ namespace SOPRO.Tests.Services.CostoHorario;
 
 /// <summary>
 /// Caracterización N0 de la implementación legacy del costo horario.
-/// La fórmula canónica vive en <see cref="Maquinaria.CalcularCostoHorario"/> (SOPRO.Core),
-/// que es la misma aritmética que replica FormCalculoCostoHorario.Recalcular (WinForms).
+/// La fórmula canónica vive en <see cref="HourlyCostCalculator"/> (SOPRO.Calculation);
+/// Maquinaria y WinForms delegan en ella a través de <see cref="MaquinariaHourlyCostAdapter"/>.
+/// Estos tests preservan la semántica visible del wrapper legacy.
 /// </summary>
 [TestClass]
 public class MaquinariaCostoHorarioLegacyTests

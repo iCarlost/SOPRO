@@ -2,6 +2,7 @@ using SOPRO.Core.Entities;
 using SOPRO.Core.Services;
 using SOPRO.Data.Context;
 using SOPRO.Data.Repositories;
+using Sopro.Calculation.Equipment;
 using System;
 using System.Windows.Forms;
 
@@ -107,25 +108,27 @@ namespace SOPRO.WinForms.Forms
         // ──────────────────────────────────────────────────────────────────────
         private void Recalcular()
         {
-            var result = MaquinariaHourlyCostAdapter.Calculate(MaquinariaHourlyCostAdapter.FromValues(
-                nudValorAdquisicion.Value,
-                nudValorLlantas.Value,
-                nudValorPiezasEsp.Value,
-                nudFactorRescate.Value,
-                nudVidaEconomica.Value,
-                nudTasaInteres.Value,
-                nudHorasAnio.Value,
-                nudPrimaSeguro.Value,
-                nudFactorManten.Value,
-                nudCantCombustible.Value,
-                nudPrecioCombustible.Value,
-                nudCantAceite.Value,
-                nudPrecioAceite.Value,
-                nudVidaLlantas.Value,
-                nudVidaPiezasEsp.Value,
-                nudSalarioOperador.Value,
-                nudFSR.Value,
-                nudHorasTurno.Value));
+            var result = HourlyCostCalculator.Calculate(new HourlyCostInput
+            {
+                AcquisitionValue = nudValorAdquisicion.Value,
+                TireValue = nudValorLlantas.Value,
+                SpecialPartsValue = nudValorPiezasEsp.Value,
+                SalvageFactor = nudFactorRescate.Value,
+                EconomicLifeHours = nudVidaEconomica.Value,
+                InterestRatePercentage = nudTasaInteres.Value,
+                EffectiveHoursPerYear = nudHorasAnio.Value,
+                InsuranceRatePercentage = nudPrimaSeguro.Value,
+                MaintenanceFactor = nudFactorManten.Value,
+                FuelQuantity = nudCantCombustible.Value,
+                FuelPrice = nudPrecioCombustible.Value,
+                OilQuantity = nudCantAceite.Value,
+                OilPrice = nudPrecioAceite.Value,
+                TireLifeHours = nudVidaLlantas.Value,
+                SpecialPartsLifeHours = nudVidaPiezasEsp.Value,
+                OperatorSalary = nudSalarioOperador.Value,
+                RealSalaryFactor = nudFSR.Value,
+                EffectiveHoursPerShift = nudHorasTurno.Value
+            });
 
             _vm = result.NetValue;
             _vr = result.SalvageValue;
