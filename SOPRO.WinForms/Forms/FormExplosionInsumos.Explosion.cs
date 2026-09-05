@@ -89,5 +89,10 @@ namespace SOPRO.WinForms.Forms
             if (gridRows.Length > 0)
                 dgvExplosion.Rows.AddRange(gridRows);
         }
+
+        private void cmbFiltro_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            GenerarExplosion();
+        }
     }
 }
