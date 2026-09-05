@@ -4,6 +4,13 @@ All notable changes to `SOPRO.Calculation` are documented here.
 
 ## Unreleased
 
+- Mexican real salary factor (FSR) is now available as a pure, immutable scalar
+  calculation through `RealSalaryFactorCalculator`, including the complete report
+  breakdown and the legacy AE-2(C) `AE + AF` aggregate.
+- FSR preserves year/semester caps, strict contribution-limit branches, the night-shift
+  fallback for unknown enum values, non-positive day guards, and arithmetic exception
+  propagation. JSON parsing, defaults, formatting and nullable service behavior remain
+  adapter responsibilities.
 - Hourly machinery cost is now available as a pure, immutable calculation in the
   standalone package through `HourlyCostCalculator`; Core, WinForms and the PDF/Excel
   cost-hour reports delegate to it.

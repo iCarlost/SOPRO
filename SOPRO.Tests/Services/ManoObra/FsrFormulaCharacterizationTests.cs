@@ -5,9 +5,9 @@ using System.Text.Json;
 namespace SOPRO.Tests.Services.ManoObra;
 
 /// <summary>
-/// N7-13a: Characterization tests for all FSR intermediates.
-/// Uses the same formula as FsrCalculationService but replicates it
-/// to expose every intermediate variable for golden assertions.
+/// N7-13a: Characterization tests for the legacy FSR formula.
+/// The test-only breakdown exposes intermediates that the current production
+/// API does not return; every relevant value is frozen with an exact golden.
 /// </summary>
 [TestClass]
 public class FsrFormulaCharacterizationTests
@@ -41,13 +41,13 @@ public class FsrFormulaCharacterizationTests
         => p.TryGetValue(key, out var v) && int.TryParse(v, out var i) ? i : def;
 
     /// <summary>Replicates FsrCalculationService.Calcular logic step-by-step.</summary>
-    private static (decimal FSI, decimal SACAL, decimal DPA, decimal DNLA, decimal DLA,
-        decimal FSBC, decimal SABC, decimal AU, decimal AL, decimal AP, decimal AQ, decimal BH,
+    private static (decimal FSI, decimal SAMI, decimal SACAL, decimal DPCAL, decimal DPA, decimal DNLA, decimal DLA,
+        decimal FSBC, decimal SABC, decimal AA, decimal AB, decimal AU, decimal AL, decimal AP, decimal AQ, decimal BH,
         decimal IMPE_p, decimal IMGM_p, decimal IMINV_p, decimal IMCE_p,
         decimal AC, decimal AD, decimal AE, decimal AF, decimal AG, decimal AH, decimal AI, decimal AJ, decimal AK,
-        decimal AM, decimal AN, decimal AO, decimal BA, decimal AY, decimal AS_lim,
+        decimal AM, decimal AN, decimal AO, decimal BA, decimal AY, decimal AZ, decimal AS_lim, decimal IMIMS,
         decimal DVAC, decimal DPPVA, decimal DPPDO, decimal DPHEX,
-        decimal htBase, decimal BD, decimal BE, decimal BF, decimal BG)
+        decimal htBase, decimal BD, decimal BE, decimal BF, decimal BG, decimal FSR)
         CalculateAll(Dictionary<string, string> p, decimal SN)
     {
         decimal AW = Get(p, "SalarioMinimo", 1);
@@ -121,6 +121,7 @@ public class FsrFormulaCharacterizationTests
         decimal AJ = SABC < AY ? IMCE_p / 100m * SABC : IMCE_p / 100m * AY;
         decimal AK = SABC < BA ? IMRTR_p / 100m * SABC : IMRTR_p / 100m * BA;
         decimal AL = AC + AD + AE + AF + AG + AH + AI + AJ + AK;
+        decimal IMIMS = SACAL > 0 ? AL / SACAL : 0;
 
         decimal IMINF_p = Get(p, "PctINFONAVIT", 5);
         decimal AZ = AY;
@@ -133,12 +134,12 @@ public class FsrFormulaCharacterizationTests
         decimal BH = AQ * FSI;
         decimal result = BH + FSI;
 
-        return (FSI, SACAL, DPA, DNLA, DLA, FSBC, SABC, AU, AL, AP, AQ, BH,
+        return (FSI, SAMI, SACAL, DPCAL, DPA, DNLA, DLA, FSBC, SABC, AA, AB, AU, AL, AP, AQ, BH,
             IMPE_p, IMGM_p, IMINV_p, IMCE_p,
             AC, AD, AE, AF, AG, AH, AI, AJ, AK,
-            AM, AN, AO, BA, AY, AS_lim,
+            AM, AN, AO, BA, AY, AZ, AS_lim, IMIMS,
             DVAC, DPPVA, DPPDO, DPHEX,
-            htBase, BD, BE, BF, BG);
+            htBase, BD, BE, BF, BG, result);
     }
 
     [TestMethod]
@@ -150,70 +151,63 @@ public class FsrFormulaCharacterizationTests
 
         Assert.IsNotNull(fsr);
 
-        // Final FSR
         Assert.AreEqual(fsr.Value, r.BH + r.FSI);
         Assert.AreEqual(1.7308240339418507128878948841m, fsr.Value);
 
-        // Hours chain
         Assert.AreEqual(8m, r.htBase);
         Assert.AreEqual(0m, r.BD);
         Assert.AreEqual(1.1875m, r.BE);
         Assert.AreEqual(0m, r.BF);
         Assert.AreEqual(0m, r.BG);
 
-        // Salary calibration
-        Assert.AreEqual(500m / 248.93m, r.SACAL);
+        Assert.AreEqual(1m, r.SAMI);
+        Assert.AreEqual(2.0085967942795163298919374925m, r.SACAL);
 
-        // Days
+        Assert.AreEqual(365m, r.DPCAL);
         Assert.AreEqual(12m, r.DVAC);
         Assert.AreEqual(3m, r.DPPVA);
         Assert.AreEqual(0m, r.DPPDO);
         Assert.AreEqual(0m, r.DPHEX);
-        Assert.AreEqual(365m + 15m + 3m + 0m + 0m + 0m, r.DPA);
+        Assert.AreEqual(383m, r.DPA);
         Assert.AreEqual(71m, r.DNLA);
         Assert.AreEqual(294m, r.DLA);
 
-        // Factors
-        Assert.AreEqual(r.DPA / r.DLA, r.FSI);
-        Assert.AreEqual(r.DPA / 365m, r.FSBC);
-        Assert.AreEqual(r.SACAL * r.FSBC, r.SABC);
+        Assert.AreEqual(1.3027210884353741496598639456m, r.FSI);
+        Assert.AreEqual(1.0493150684931506849315068493m, r.FSBC);
+        Assert.AreEqual(2.1076508827645335735578412592m, r.SABC);
 
-        // Year-dependent caps (2026)
-        Assert.AreEqual(20.40m, 20.40m); // AA
-        Assert.AreEqual(1.10m, 1.10m);   // AB
+        Assert.AreEqual(20.40m, r.AA);
+        Assert.AreEqual(1.10m, r.AB);
         Assert.AreEqual(25m, r.BA);
         Assert.AreEqual(25m, r.AS_lim);
         Assert.AreEqual(25m, r.AY);
-        Assert.AreEqual(0m, r.AU); // SABC < 3 → AU = 0
+        Assert.AreEqual(25m, r.AZ);
+        Assert.AreEqual(0m, r.AU);
 
-        // IMSS rates (SACAL > SAMI for salary 500)
         Assert.AreEqual(0.70m, r.IMPE_p);
         Assert.AreEqual(1.05m, r.IMGM_p);
         Assert.AreEqual(1.75m, r.IMINV_p);
         Assert.AreEqual(3.15m, r.IMCE_p);
 
-        // IMSS quotas (SABC < BA → use SABC; AU=0 because SABC <= 3)
-        Assert.AreEqual(0m, r.AU);
-        Assert.AreEqual(20.40m / 100m, r.AC);
-        Assert.AreEqual(0m, r.AD);   // AB/100 * AU = 0 because AU=0
-        Assert.AreEqual(0.70m / 100m * r.SABC, r.AE);
-        Assert.AreEqual(1.05m / 100m * r.SABC, r.AF);
-        Assert.AreEqual(1.75m / 100m * r.SABC, r.AG);
-        Assert.AreEqual(1m / 100m * r.SABC, r.AH);
-        Assert.AreEqual(2m / 100m * r.SABC, r.AI);
-        Assert.AreEqual(3.15m / 100m * r.SABC, r.AJ);
-        Assert.AreEqual(4.58875m / 100m * r.SABC, r.AK);
+        Assert.AreEqual(0.204m, r.AC);
+        Assert.AreEqual(0m, r.AD);
+        Assert.AreEqual(0.0147535561793517350149048888m, r.AE);
+        Assert.AreEqual(0.0221303342690276025223573332m, r.AF);
+        Assert.AreEqual(0.0368838904483793375372622220m, r.AG);
+        Assert.AreEqual(0.0210765088276453357355784126m, r.AH);
+        Assert.AreEqual(0.0421530176552906714711568252m, r.AI);
+        Assert.AreEqual(0.0663910028070828075670719997m, r.AJ);
+        Assert.AreEqual(0.0967148298828575343566354408m, r.AK);
+        Assert.AreEqual(0.5041031400696350242049671223m, r.AL);
+        Assert.AreEqual(0.2509727893150684931506849315m, r.IMIMS);
 
-        // INFONAVIT and taxes
-        Assert.AreEqual(5m / 100m * r.SABC, r.AM);
-        Assert.AreEqual(2.4m / 100m * r.SABC, r.AN);
+        Assert.AreEqual(0.1053825441382266786778920630m, r.AM);
+        Assert.AreEqual(0.0505836211863488057653881902m, r.AN);
         Assert.AreEqual(0m, r.AO);
-
-        // Totals
-        Assert.AreEqual(r.AC + r.AD + r.AE + r.AF + r.AG + r.AH + r.AI + r.AJ + r.AK, r.AL);
-        Assert.AreEqual(r.AL + r.AM + r.AN + r.AO, r.AP);
-        Assert.AreEqual(r.AP / r.SACAL, r.AQ);
-        Assert.AreEqual(r.AQ * r.FSI, r.BH);
+        Assert.AreEqual(0.6600693053942105086482473755m, r.AP);
+        Assert.AreEqual(0.3286221043835616438356164384m, r.AQ);
+        Assert.AreEqual(0.4281029455064765632280309385m, r.BH);
+        Assert.AreEqual(1.7308240339418507128878948841m, r.FSR);
     }
 
     [TestMethod]
@@ -245,6 +239,9 @@ public class FsrFormulaCharacterizationTests
         Assert.AreEqual(1.2m, r.BE);
         Assert.AreEqual(0.5m, r.BF); // min(1.2, 0.5)
         Assert.AreEqual(0m, r.BG);   // 0.5 - 0.5
+        Assert.AreEqual(15.208333333333333333333333346m, r.DPHEX);
+        Assert.AreEqual(1.8117642796659389592975698651m,
+            FsrCalculationService.Calcular(JsonSerializer.Serialize(p), 500m));
     }
 
     [TestMethod]
@@ -258,10 +255,13 @@ public class FsrFormulaCharacterizationTests
         Assert.AreEqual(1.214286m, r.BE);
         Assert.AreEqual(1m, r.BF); // min(1.214286, 1)
         Assert.AreEqual(0m, r.BG); // 1 - 1
+        Assert.AreEqual(30.416666666666666666666666654m, r.DPHEX);
+        Assert.AreEqual(1.8936373182554372586172977560m,
+            FsrCalculationService.Calcular(JsonSerializer.Serialize(p), 500m));
     }
 
     [TestMethod]
-    public void JornadaDiurna_HorasExtras_BGBecero()
+    public void JornadaDiurna_HorasExtras_BGNoEsCero()
     {
         // BC=10 > htBase=8 → BD=2, BE=1.1875, BF=1.1875, BG=0.8125
         var p = new Dictionary<string, string>(Params2026) { ["HorasJornada"] = "10" };
@@ -271,19 +271,22 @@ public class FsrFormulaCharacterizationTests
         Assert.AreEqual(1.1875m, r.BE);
         Assert.AreEqual(1.1875m, r.BF);
         Assert.AreEqual(0.8125m, r.BG);
-        Assert.IsTrue(r.DPHEX > 0, "DPHEX should be positive with overtime");
+        Assert.AreEqual(73.190104166666666666666666654m, r.DPHEX);
+        Assert.AreEqual(2.1143764300047069863859539774m,
+            FsrCalculationService.Calcular(JsonSerializer.Serialize(p), 500m));
     }
 
     [TestMethod]
     public void Anio2003_UseLegacyCaps()
     {
         var p = new Dictionary<string, string>(Params2026) { ["Anio"] = "2003" };
-        var r = CalculateAll(p, 500m);
+        var r = CalculateAll(p, 6000m);
 
-        // AA and AB from year <= 2003
-        Assert.AreEqual(17.15m, 17.15m); // AA
-        Assert.AreEqual(3.55m, 3.55m);   // AB
-        Assert.AreEqual(20m, r.AS_lim);  // AS_lim
+        Assert.AreEqual(17.15m, r.AA);
+        Assert.AreEqual(3.55m, r.AB);
+        Assert.AreEqual(20m, r.AS_lim);
+        Assert.AreEqual(1.6259638389502036545211691982m,
+            FsrCalculationService.Calcular(JsonSerializer.Serialize(p), 6000m));
     }
 
     [TestMethod]
@@ -294,9 +297,11 @@ public class FsrFormulaCharacterizationTests
             ["Anio"] = "2007",
             ["Semestre"] = "0"  // AR = 0+1 = 1
         };
-        var r = CalculateAll(p, 500m);
+        var r = CalculateAll(p, 6000m);
 
         Assert.AreEqual(24m, r.AS_lim);
+        Assert.AreEqual(1.6222885935307025207343211258m,
+            FsrCalculationService.Calcular(JsonSerializer.Serialize(p), 6000m));
     }
 
     [TestMethod]
@@ -307,9 +312,60 @@ public class FsrFormulaCharacterizationTests
             ["Anio"] = "2007",
             ["Semestre"] = "1"  // AR = 1+1 = 2
         };
-        var r = CalculateAll(p, 500m);
+        var r = CalculateAll(p, 6000m);
 
         Assert.AreEqual(25m, r.AS_lim);
+        Assert.AreEqual(1.6276393184796821125710558196m,
+            FsrCalculationService.Calcular(JsonSerializer.Serialize(p), 6000m));
+    }
+
+    [TestMethod]
+    public void SalarioIgualAlMinimo_AplicaTasasObreroPatronales()
+    {
+        var r = CalculateAll(Params2026, 248.93m);
+
+        Assert.AreEqual(1m, r.SACAL);
+        Assert.AreEqual(0.95m, r.IMPE_p);
+        Assert.AreEqual(1.425m, r.IMGM_p);
+        Assert.AreEqual(2.375m, r.IMINV_p);
+        Assert.AreEqual(4.275m, r.IMCE_p);
+        Assert.AreEqual(1.8967357164989283384586711398m,
+            FsrCalculationService.Calcular(JsonSerializer.Serialize(Params2026), 248.93m));
+    }
+
+    [TestMethod]
+    public void JornadaDesconocida_SeTrataComoNocturna()
+    {
+        var nocturna = new Dictionary<string, string>(Params2026) { ["Jornada"] = "2" };
+        var desconocida = new Dictionary<string, string>(Params2026) { ["Jornada"] = "99" };
+
+        Assert.AreEqual(
+            FsrCalculationService.Calcular(JsonSerializer.Serialize(nocturna), 500m),
+            FsrCalculationService.Calcular(JsonSerializer.Serialize(desconocida), 500m));
+    }
+
+    [TestMethod]
+    public void ParametrosOmitidos_UsanDefaultsLegacy()
+    {
+        Assert.AreEqual(1.3493076147435001397819401734m,
+            FsrCalculationService.Calcular("{}", 500m));
+    }
+
+    [TestMethod]
+    public void DiasLaboradosNoPositivos_RegresaFactorCero()
+    {
+        var p = new Dictionary<string, string>(Params2026) { ["DiasDescanso"] = "365" };
+
+        Assert.AreEqual(0m,
+            FsrCalculationService.Calcular(JsonSerializer.Serialize(p), 500m));
+    }
+
+    [TestMethod]
+    public void SalarioMinimoCero_RegresaNullPorDivisionEntreCero()
+    {
+        var p = new Dictionary<string, string>(Params2026) { ["SalarioMinimo"] = "0" };
+
+        Assert.IsNull(FsrCalculationService.Calcular(JsonSerializer.Serialize(p), 500m));
     }
 
     [TestMethod]

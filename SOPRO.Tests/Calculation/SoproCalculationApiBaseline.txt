@@ -2,6 +2,8 @@ ctor Sopro.Calculation.CalculationPrecision(Int32 quantityDecimals, Int32 amount
 ctor Sopro.Calculation.DirectCostLine(Decimal Quantity, Decimal UnitDirectCost, Boolean IsGrouping, Boolean HasMatrix)
 ctor Sopro.Calculation.Equipment.HourlyCostBreakdown()
 ctor Sopro.Calculation.Equipment.HourlyCostInput()
+ctor Sopro.Calculation.Labor.RealSalaryFactorBreakdown()
+ctor Sopro.Calculation.Labor.RealSalaryFactorInput()
 ctor Sopro.Calculation.Matrices.MatrixComponentInput(Int32 Id, Int32 Order, MatrixComponentType Type, Decimal Quantity, Decimal ResolvedUnitPrice, Boolean IsPercentageOfLabor, Int32? ReferencedMatrixId = null)
 ctor Sopro.Calculation.Matrices.MatrixComponentResult(Int32 ComponentId, Int32 Order, Decimal Amount)
 ctor Sopro.Calculation.Matrices.MatrixGraphCalculator(CalculationPrecision precision)
@@ -13,6 +15,9 @@ ctor Sopro.Calculation.PriceBreakdown(Decimal DirectCost, Decimal IndirectCosts,
 ctor Sopro.Calculation.PricePercentageInput()
 ctor Sopro.Calculation.SoproCalculationEngine(CalculationPrecision precision)
 ctor Sopro.Calculation.SoproCalculationEngine(Int32 quantityDecimals, Int32 amountDecimals, Int32 percentageDecimals)
+enum-member Sopro.Calculation.Labor.WorkShiftType.Day = 0
+enum-member Sopro.Calculation.Labor.WorkShiftType.Mixed = 1
+enum-member Sopro.Calculation.Labor.WorkShiftType.Night = 2
 enum-member Sopro.Calculation.Matrices.MatrixComponentType.Auxiliary = 3
 enum-member Sopro.Calculation.Matrices.MatrixComponentType.Labor = 1
 enum-member Sopro.Calculation.Matrices.MatrixComponentType.Machinery = 2
@@ -23,6 +28,7 @@ enum-member Sopro.Calculation.Matrices.MatrixType.Basic = 1
 enum-member Sopro.Calculation.Matrices.MatrixType.Crew = 2
 enum-member Sopro.Calculation.PercentageCalculationMode.Accumulative = 0
 enum-member Sopro.Calculation.PercentageCalculationMode.OverDirectCost = 1
+enum-underlying Sopro.Calculation.Labor.WorkShiftType = Int32
 enum-underlying Sopro.Calculation.Matrices.MatrixComponentType = Int32
 enum-underlying Sopro.Calculation.Matrices.MatrixType = Int32
 enum-underlying Sopro.Calculation.PercentageCalculationMode = Int32
@@ -34,6 +40,10 @@ method Boolean Sopro.Calculation.Equipment.HourlyCostBreakdown.Equals(HourlyCost
 method Boolean Sopro.Calculation.Equipment.HourlyCostBreakdown.Equals(Object? obj)
 method Boolean Sopro.Calculation.Equipment.HourlyCostInput.Equals(HourlyCostInput? other)
 method Boolean Sopro.Calculation.Equipment.HourlyCostInput.Equals(Object? obj)
+method Boolean Sopro.Calculation.Labor.RealSalaryFactorBreakdown.Equals(Object? obj)
+method Boolean Sopro.Calculation.Labor.RealSalaryFactorBreakdown.Equals(RealSalaryFactorBreakdown? other)
+method Boolean Sopro.Calculation.Labor.RealSalaryFactorInput.Equals(Object? obj)
+method Boolean Sopro.Calculation.Labor.RealSalaryFactorInput.Equals(RealSalaryFactorInput? other)
 method Boolean Sopro.Calculation.Matrices.MatrixComponentInput.Equals(MatrixComponentInput? other)
 method Boolean Sopro.Calculation.Matrices.MatrixComponentInput.Equals(Object? obj)
 method Boolean Sopro.Calculation.Matrices.MatrixComponentResult.Equals(MatrixComponentResult? other)
@@ -60,6 +70,8 @@ method Int32 Sopro.Calculation.CalculationPrecision.GetHashCode()
 method Int32 Sopro.Calculation.DirectCostLine.GetHashCode()
 method Int32 Sopro.Calculation.Equipment.HourlyCostBreakdown.GetHashCode()
 method Int32 Sopro.Calculation.Equipment.HourlyCostInput.GetHashCode()
+method Int32 Sopro.Calculation.Labor.RealSalaryFactorBreakdown.GetHashCode()
+method Int32 Sopro.Calculation.Labor.RealSalaryFactorInput.GetHashCode()
 method Int32 Sopro.Calculation.Matrices.MatrixComponentInput.GetHashCode()
 method Int32 Sopro.Calculation.Matrices.MatrixComponentResult.GetHashCode()
 method Int32 Sopro.Calculation.PriceBreakdown.GetHashCode()
@@ -70,10 +82,14 @@ method MatrixGraphResult Sopro.Calculation.Matrices.MatrixGraphCalculator.Calcul
 method PriceBreakdown Sopro.Calculation.PriceBreakdown.<Clone>$()
 method PriceBreakdown Sopro.Calculation.SoproCalculationEngine.CalculateUnitPrice(Decimal directCost, PricePercentageInput percentages)
 method PricePercentageInput Sopro.Calculation.PricePercentageInput.<Clone>$()
+method RealSalaryFactorBreakdown Sopro.Calculation.Labor.RealSalaryFactorBreakdown.<Clone>$()
+method RealSalaryFactorInput Sopro.Calculation.Labor.RealSalaryFactorInput.<Clone>$()
 method String Sopro.Calculation.CalculationPrecision.ToString()
 method String Sopro.Calculation.DirectCostLine.ToString()
 method String Sopro.Calculation.Equipment.HourlyCostBreakdown.ToString()
 method String Sopro.Calculation.Equipment.HourlyCostInput.ToString()
+method String Sopro.Calculation.Labor.RealSalaryFactorBreakdown.ToString()
+method String Sopro.Calculation.Labor.RealSalaryFactorInput.ToString()
 method String Sopro.Calculation.Matrices.MatrixComponentInput.ToString()
 method String Sopro.Calculation.Matrices.MatrixComponentResult.ToString()
 method String Sopro.Calculation.PriceBreakdown.ToString()
@@ -90,6 +106,10 @@ method static Boolean Sopro.Calculation.Equipment.HourlyCostBreakdown.op_Equalit
 method static Boolean Sopro.Calculation.Equipment.HourlyCostBreakdown.op_Inequality(HourlyCostBreakdown? left, HourlyCostBreakdown? right)
 method static Boolean Sopro.Calculation.Equipment.HourlyCostInput.op_Equality(HourlyCostInput? left, HourlyCostInput? right)
 method static Boolean Sopro.Calculation.Equipment.HourlyCostInput.op_Inequality(HourlyCostInput? left, HourlyCostInput? right)
+method static Boolean Sopro.Calculation.Labor.RealSalaryFactorBreakdown.op_Equality(RealSalaryFactorBreakdown? left, RealSalaryFactorBreakdown? right)
+method static Boolean Sopro.Calculation.Labor.RealSalaryFactorBreakdown.op_Inequality(RealSalaryFactorBreakdown? left, RealSalaryFactorBreakdown? right)
+method static Boolean Sopro.Calculation.Labor.RealSalaryFactorInput.op_Equality(RealSalaryFactorInput? left, RealSalaryFactorInput? right)
+method static Boolean Sopro.Calculation.Labor.RealSalaryFactorInput.op_Inequality(RealSalaryFactorInput? left, RealSalaryFactorInput? right)
 method static Boolean Sopro.Calculation.Matrices.MatrixComponentInput.op_Equality(MatrixComponentInput? left, MatrixComponentInput? right)
 method static Boolean Sopro.Calculation.Matrices.MatrixComponentInput.op_Inequality(MatrixComponentInput? left, MatrixComponentInput? right)
 method static Boolean Sopro.Calculation.Matrices.MatrixComponentResult.op_Equality(MatrixComponentResult? left, MatrixComponentResult? right)
@@ -99,6 +119,7 @@ method static Boolean Sopro.Calculation.PriceBreakdown.op_Inequality(PriceBreakd
 method static Boolean Sopro.Calculation.PricePercentageInput.op_Equality(PricePercentageInput? left, PricePercentageInput? right)
 method static Boolean Sopro.Calculation.PricePercentageInput.op_Inequality(PricePercentageInput? left, PricePercentageInput? right)
 method static HourlyCostBreakdown Sopro.Calculation.Equipment.HourlyCostCalculator.Calculate(HourlyCostInput input)
+method static RealSalaryFactorBreakdown Sopro.Calculation.Labor.RealSalaryFactorCalculator.Calculate(RealSalaryFactorInput input)
 prop-get Boolean Sopro.Calculation.DirectCostLine.HasMatrix
 prop-get Boolean Sopro.Calculation.DirectCostLine.IsGrouping
 prop-get Boolean Sopro.Calculation.Matrices.MatrixComponentInput.IsPercentageOfLabor
@@ -139,6 +160,79 @@ prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.SpecialPartsLifeHou
 prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.SpecialPartsValue
 prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.TireLifeHours
 prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.TireValue
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.AdjustedNominalSalaryInMinimumSalaryUnits
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.BaseHours
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.CalendarDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.CashBenefitsContribution
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.CashBenefitsPercentage
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.ContributionBaseFactor
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.ContributionBaseSalaryInMinimumSalaryUnits
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.DaycareContribution
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.DisabilityAndLifeContribution
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.DisabilityAndLifePercentage
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.DoubleOvertimeHours
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.DoubleOvertimeLimit
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.EmployerImssFactor
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.EmployerImssTotal
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.EmployerObligations
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.EmployerObligationsFactor
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.EmployerObligationsWeightedByPaidToWorkedDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.ExcessPercentage
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.Factor
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.FixedFee
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.FixedFeePercentage
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.GeneralContributionCap
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.InfonavitContribution
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.InfonavitSalaryLimit
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.LifeAndRetirementCap
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.LifeAndRetirementSalaryLimit
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.MedicalBenefitsInKindContribution
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.MinimumSalaryUnit
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.NonWorkingDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.OccupationalRiskContribution
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.OtherTaxes
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.OvertimeEquivalentDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.OvertimeHours
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.PaidDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.PaidToWorkedDaysFactor
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.PayrollTax
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.PensionerMedicalExpensesContribution
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.PensionerMedicalExpensesPercentage
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.RetirementContribution
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.SeveranceAndOldAgeContribution
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.SeveranceAndOldAgePercentage
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.SundayPremiumEquivalentDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.ThreeMinimumSalaryExcess
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.ThreeMinimumSalaryExcessContribution
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.TripleOvertimeHours
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.VacationDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.VacationPremiumDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.WorkedDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.CalendarDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.CarryoverDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.ChristmasBonusDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.ContractDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.DaycarePercentage
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.GuardDutyDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.HolidayDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.HoursPerShift
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.IllnessDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.InfonavitPercentage
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.MinimumSalary
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.NominalSalary
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.OccupationalRiskPercentage
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.OtherNonWorkingDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.OtherPaidDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.OtherTaxesPercentage
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.PayrollTaxPercentage
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.RestDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.RetirementPercentage
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.SundayPremiumDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.SundayPremiumPercentage
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.UnionDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.VacationDays
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.VacationPremiumPercentage
+prop-get Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.WeatherDays
 prop-get Decimal Sopro.Calculation.Matrices.MatrixComponentInput.Quantity
 prop-get Decimal Sopro.Calculation.Matrices.MatrixComponentInput.ResolvedUnitPrice
 prop-get Decimal Sopro.Calculation.Matrices.MatrixComponentResult.Amount
@@ -186,6 +280,8 @@ prop-get IReadOnlyList<MatrixNodeInput> Sopro.Calculation.Matrices.MatrixGraphIn
 prop-get Int32 Sopro.Calculation.CalculationPrecision.AmountDecimals
 prop-get Int32 Sopro.Calculation.CalculationPrecision.PercentageDecimals
 prop-get Int32 Sopro.Calculation.CalculationPrecision.QuantityDecimals
+prop-get Int32 Sopro.Calculation.Labor.RealSalaryFactorInput.Semester
+prop-get Int32 Sopro.Calculation.Labor.RealSalaryFactorInput.Year
 prop-get Int32 Sopro.Calculation.Matrices.MatrixComponentInput.Id
 prop-get Int32 Sopro.Calculation.Matrices.MatrixComponentInput.Order
 prop-get Int32 Sopro.Calculation.Matrices.MatrixComponentResult.ComponentId
@@ -202,6 +298,7 @@ prop-get MatrixComponentType Sopro.Calculation.Matrices.MatrixComponentInput.Typ
 prop-get MatrixType Sopro.Calculation.Matrices.MatrixNodeInput.Type
 prop-get MatrixType Sopro.Calculation.Matrices.MatrixNodeResult.Type
 prop-get PercentageCalculationMode Sopro.Calculation.PricePercentageInput.Mode
+prop-get WorkShiftType Sopro.Calculation.Labor.RealSalaryFactorInput.WorkShift
 prop-set init Boolean Sopro.Calculation.DirectCostLine.HasMatrix
 prop-set init Boolean Sopro.Calculation.DirectCostLine.IsGrouping
 prop-set init Boolean Sopro.Calculation.Matrices.MatrixComponentInput.IsPercentageOfLabor
@@ -241,6 +338,79 @@ prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.SpecialPartsLi
 prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.SpecialPartsValue
 prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.TireLifeHours
 prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.TireValue
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.AdjustedNominalSalaryInMinimumSalaryUnits
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.BaseHours
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.CalendarDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.CashBenefitsContribution
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.CashBenefitsPercentage
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.ContributionBaseFactor
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.ContributionBaseSalaryInMinimumSalaryUnits
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.DaycareContribution
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.DisabilityAndLifeContribution
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.DisabilityAndLifePercentage
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.DoubleOvertimeHours
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.DoubleOvertimeLimit
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.EmployerImssFactor
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.EmployerImssTotal
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.EmployerObligations
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.EmployerObligationsFactor
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.EmployerObligationsWeightedByPaidToWorkedDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.ExcessPercentage
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.Factor
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.FixedFee
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.FixedFeePercentage
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.GeneralContributionCap
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.InfonavitContribution
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.InfonavitSalaryLimit
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.LifeAndRetirementCap
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.LifeAndRetirementSalaryLimit
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.MedicalBenefitsInKindContribution
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.MinimumSalaryUnit
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.NonWorkingDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.OccupationalRiskContribution
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.OtherTaxes
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.OvertimeEquivalentDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.OvertimeHours
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.PaidDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.PaidToWorkedDaysFactor
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.PayrollTax
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.PensionerMedicalExpensesContribution
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.PensionerMedicalExpensesPercentage
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.RetirementContribution
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.SeveranceAndOldAgeContribution
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.SeveranceAndOldAgePercentage
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.SundayPremiumEquivalentDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.ThreeMinimumSalaryExcess
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.ThreeMinimumSalaryExcessContribution
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.TripleOvertimeHours
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.VacationDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.VacationPremiumDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.WorkedDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.CalendarDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.CarryoverDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.ChristmasBonusDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.ContractDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.DaycarePercentage
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.GuardDutyDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.HolidayDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.HoursPerShift
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.IllnessDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.InfonavitPercentage
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.MinimumSalary
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.NominalSalary
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.OccupationalRiskPercentage
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.OtherNonWorkingDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.OtherPaidDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.OtherTaxesPercentage
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.PayrollTaxPercentage
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.RestDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.RetirementPercentage
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.SundayPremiumDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.SundayPremiumPercentage
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.UnionDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.VacationDays
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.VacationPremiumPercentage
+prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorInput.WeatherDays
 prop-set init Decimal Sopro.Calculation.Matrices.MatrixComponentInput.Quantity
 prop-set init Decimal Sopro.Calculation.Matrices.MatrixComponentInput.ResolvedUnitPrice
 prop-set init Decimal Sopro.Calculation.Matrices.MatrixComponentResult.Amount
@@ -258,6 +428,8 @@ prop-set init Decimal Sopro.Calculation.PricePercentageInput.FieldIndirectsPerce
 prop-set init Decimal Sopro.Calculation.PricePercentageInput.FinancingPercentage
 prop-set init Decimal Sopro.Calculation.PricePercentageInput.ProfitPercentage
 prop-set init Decimal Sopro.Calculation.PricePercentageInput.ReferenceDirectCost
+prop-set init Int32 Sopro.Calculation.Labor.RealSalaryFactorInput.Semester
+prop-set init Int32 Sopro.Calculation.Labor.RealSalaryFactorInput.Year
 prop-set init Int32 Sopro.Calculation.Matrices.MatrixComponentInput.Id
 prop-set init Int32 Sopro.Calculation.Matrices.MatrixComponentInput.Order
 prop-set init Int32 Sopro.Calculation.Matrices.MatrixComponentResult.ComponentId
@@ -265,6 +437,8 @@ prop-set init Int32 Sopro.Calculation.Matrices.MatrixComponentResult.Order
 prop-set init Int32? Sopro.Calculation.Matrices.MatrixComponentInput.ReferencedMatrixId
 prop-set init MatrixComponentType Sopro.Calculation.Matrices.MatrixComponentInput.Type
 prop-set init PercentageCalculationMode Sopro.Calculation.PricePercentageInput.Mode
+prop-set init WorkShiftType Sopro.Calculation.Labor.RealSalaryFactorInput.WorkShift
+type Sopro.Calculation.Labor.WorkShiftType
 type Sopro.Calculation.Matrices.MatrixComponentType
 type Sopro.Calculation.Matrices.MatrixType
 type Sopro.Calculation.PercentageCalculationMode
@@ -272,6 +446,8 @@ type sealed Sopro.Calculation.CalculationPrecision
 type sealed Sopro.Calculation.DirectCostLine
 type sealed Sopro.Calculation.Equipment.HourlyCostBreakdown
 type sealed Sopro.Calculation.Equipment.HourlyCostInput
+type sealed Sopro.Calculation.Labor.RealSalaryFactorBreakdown
+type sealed Sopro.Calculation.Labor.RealSalaryFactorInput
 type sealed Sopro.Calculation.Matrices.MatrixComponentInput
 type sealed Sopro.Calculation.Matrices.MatrixComponentResult
 type sealed Sopro.Calculation.Matrices.MatrixGraphCalculator
@@ -283,3 +459,4 @@ type sealed Sopro.Calculation.PriceBreakdown
 type sealed Sopro.Calculation.PricePercentageInput
 type sealed Sopro.Calculation.SoproCalculationEngine
 type static Sopro.Calculation.Equipment.HourlyCostCalculator
+type static Sopro.Calculation.Labor.RealSalaryFactorCalculator

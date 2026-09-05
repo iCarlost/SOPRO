@@ -14,8 +14,10 @@ procesa.
   `PriceBreakdown` y el enum `PercentageCalculationMode`. El slice de matrices
   agrega `MatrixGraphInput`, `MatrixNodeInput`, `MatrixComponentInput`,
   `MatrixGraphCalculator` y sus resultados inmutables. El slice de costo horario
-  agrega `HourlyCostInput`, `HourlyCostBreakdown` y `HourlyCostCalculator`. Los ayudantes
-  (`UnitPriceCalculator`, `AmountDistributor`) son internos.
+  agrega `HourlyCostInput`, `HourlyCostBreakdown` y `HourlyCostCalculator`. El slice FSR
+  agrega `RealSalaryFactorInput`, `RealSalaryFactorBreakdown`, `WorkShiftType` y
+  `RealSalaryFactorCalculator`. Los ayudantes (`UnitPriceCalculator`,
+  `AmountDistributor`) son internos.
 - Invariante del grafo de matrices: los IDs de componente son unicos en todo el
   grafo (incluidos nodos no alcanzados desde la raiz); los IDs temporales de
   componentes sin guardar los asigna el adaptador de Application. Tipos de
@@ -95,6 +97,17 @@ IReadOnlyList<decimal> partes = motor.DistributeAmount(1000m, new[] { 33m, 33m, 
   inmutables; la fecha de calculo y la persistencia quedan fuera del motor.
 - `AverageValue` y `RealSalary` se conservan con divisores no positivos para la
   presentacion legacy. El overflow se propaga en todos los casos.
+- FSR usa entradas y desglose escalares inmutables en
+  `Sopro.Calculation.Labor.RealSalaryFactorCalculator`; no parsea JSON, no aplica
+  defaults y no formatea valores. `Semester` es 1-based; los adaptadores legacy deben
+  convertir el indice persistido/UI con `+1`.
+- Una jornada fuera de `WorkShiftType` conserva el fallback legacy nocturno. El motor
+  puro propaga division entre cero y overflow; el adaptador de Application conserva
+  por separado su contrato `salario <= 0`/error -> `null`.
+- Los topes anuales, comparaciones estrictas, tasas para salario ajustado `<= 1` y
+  valores negativos de horas se conservan sin validacion nueva. El desglose expone
+  tambien `MedicalBenefitsInKindContribution` como la suma legacy `AE + AF` usada por
+  AE-2(C), aunque su etiqueta historica sea anomala.
 
 ## Verificacion (Gate N1)
 
