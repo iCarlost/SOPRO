@@ -7,7 +7,7 @@ using PdfSharp.Drawing;
 using PdfSharp.Drawing.Layout;
 using PdfSharp.Pdf;
 using SOPRO.Core.Entities;
-using Sopro.Calculation.Equipment;
+using SOPRO.Core.Services;
 
 namespace SOPRO.WinForms.Services
 {
@@ -87,27 +87,7 @@ namespace SOPRO.WinForms.Services
 
         private void DrawMachineSheet(XGraphics gfx, PageLayout layout, Proyecto proyecto, Maquinaria maq, ConfiguracionTituloReporte? tituloCfg)
         {
-            var result = HourlyCostCalculator.Calculate(new HourlyCostInput
-            {
-                AcquisitionValue = maq.ValorAdquisicion,
-                TireValue = maq.ValorLlantas,
-                SpecialPartsValue = maq.ValorPiezasEspeciales,
-                SalvageFactor = maq.FactorRescate,
-                EconomicLifeHours = maq.VidaEconomica,
-                InterestRatePercentage = maq.TasaInteres,
-                EffectiveHoursPerYear = maq.HorasEfectivasAnio,
-                InsuranceRatePercentage = maq.PrimaSeguro,
-                MaintenanceFactor = maq.FactorMantenimiento,
-                FuelQuantity = maq.CantidadCombustible,
-                FuelPrice = maq.PrecioCombustible,
-                OilQuantity = maq.CantidadAceite,
-                OilPrice = maq.PrecioAceite,
-                TireLifeHours = maq.VidaEconomicaLlantas,
-                SpecialPartsLifeHours = maq.VidaPiezasEspeciales,
-                OperatorSalary = maq.SalarioOperador,
-                RealSalaryFactor = maq.FactorSalarioReal,
-                EffectiveHoursPerShift = maq.HorasEfectivasTurno
-            });
+            var result = MaquinariaHourlyCostAdapter.Calculate(maq);
             decimal valorNeto = result.NetValue;
             decimal valorRescate = result.SalvageValue;
             decimal depreciacion = result.Depreciation;

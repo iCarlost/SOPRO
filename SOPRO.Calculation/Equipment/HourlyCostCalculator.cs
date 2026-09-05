@@ -57,9 +57,7 @@ public static class HourlyCostCalculator
         decimal netValue = input.AcquisitionValue - input.TireValue - input.SpecialPartsValue;
         decimal salvageValue = netValue * input.SalvageFactor;
 
-        decimal averageValue = 0m;
-        if (input.EffectiveHoursPerYear > 0)
-            averageValue = (netValue + salvageValue) / 2m;
+        decimal averageValue = (netValue + salvageValue) / 2m;
 
         decimal depreciation = input.EconomicLifeHours > 0
             ? (netValue - salvageValue) / input.EconomicLifeHours
@@ -83,9 +81,7 @@ public static class HourlyCostCalculator
             : 0m;
         decimal consumptionTotal = fuel + lubricants + tires + specialParts;
 
-        decimal realSalary = 0m;
-        if (input.EffectiveHoursPerShift > 0)
-            realSalary = input.OperatorSalary * input.RealSalaryFactor;
+        decimal realSalary = input.OperatorSalary * input.RealSalaryFactor;
         decimal operation = input.EffectiveHoursPerShift > 0
             ? realSalary / input.EffectiveHoursPerShift
             : 0m;

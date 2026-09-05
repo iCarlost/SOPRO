@@ -1,5 +1,5 @@
 using System;
-using Sopro.Calculation.Equipment;
+using SOPRO.Core.Services;
 
 namespace SOPRO.Core.Entities
 {
@@ -127,27 +127,7 @@ namespace SOPRO.Core.Entities
         /// </summary>
         public void CalcularCostoHorario()
         {
-            var result = HourlyCostCalculator.Calculate(new HourlyCostInput
-            {
-                AcquisitionValue = ValorAdquisicion,
-                TireValue = ValorLlantas,
-                SpecialPartsValue = ValorPiezasEspeciales,
-                SalvageFactor = FactorRescate,
-                EconomicLifeHours = VidaEconomica,
-                InterestRatePercentage = TasaInteres,
-                EffectiveHoursPerYear = HorasEfectivasAnio,
-                InsuranceRatePercentage = PrimaSeguro,
-                MaintenanceFactor = FactorMantenimiento,
-                FuelQuantity = CantidadCombustible,
-                FuelPrice = PrecioCombustible,
-                OilQuantity = CantidadAceite,
-                OilPrice = PrecioAceite,
-                TireLifeHours = VidaEconomicaLlantas,
-                SpecialPartsLifeHours = VidaPiezasEspeciales,
-                OperatorSalary = SalarioOperador,
-                RealSalaryFactor = FactorSalarioReal,
-                EffectiveHoursPerShift = HorasEfectivasTurno
-            });
+            var result = MaquinariaHourlyCostAdapter.Calculate(this);
 
             CostoHorario = result.HourlyCost;
             EsCostoCalculado = true;

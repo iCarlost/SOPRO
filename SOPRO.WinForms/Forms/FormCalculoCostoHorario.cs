@@ -1,9 +1,9 @@
 using SOPRO.Core.Entities;
+using SOPRO.Core.Services;
 using SOPRO.Data.Context;
 using SOPRO.Data.Repositories;
 using System;
 using System.Windows.Forms;
-using Sopro.Calculation.Equipment;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -107,27 +107,29 @@ namespace SOPRO.WinForms.Forms
         // ──────────────────────────────────────────────────────────────────────
         private void Recalcular()
         {
-            var result = HourlyCostCalculator.Calculate(new HourlyCostInput
+            var result = HourlyCostPresentationMapper.FromBreakdown(
+                MaquinariaHourlyCostAdapter.Calculate(new Maquinaria
             {
-                AcquisitionValue = nudValorAdquisicion.Value,
-                TireValue = nudValorLlantas.Value,
-                SpecialPartsValue = nudValorPiezasEsp.Value,
-                SalvageFactor = nudFactorRescate.Value,
-                EconomicLifeHours = nudVidaEconomica.Value,
-                InterestRatePercentage = nudTasaInteres.Value,
-                EffectiveHoursPerYear = nudHorasAnio.Value,
-                InsuranceRatePercentage = nudPrimaSeguro.Value,
-                MaintenanceFactor = nudFactorManten.Value,
-                FuelQuantity = nudCantCombustible.Value,
-                FuelPrice = nudPrecioCombustible.Value,
-                OilQuantity = nudCantAceite.Value,
-                OilPrice = nudPrecioAceite.Value,
-                TireLifeHours = nudVidaLlantas.Value,
-                SpecialPartsLifeHours = nudVidaPiezasEsp.Value,
-                OperatorSalary = nudSalarioOperador.Value,
-                RealSalaryFactor = nudFSR.Value,
-                EffectiveHoursPerShift = nudHorasTurno.Value
-            });
+                ValorAdquisicion = nudValorAdquisicion.Value,
+                ValorLlantas = nudValorLlantas.Value,
+                ValorPiezasEspeciales = nudValorPiezasEsp.Value,
+                FactorRescate = nudFactorRescate.Value,
+                VidaEconomica = nudVidaEconomica.Value,
+                TasaInteres = nudTasaInteres.Value,
+                HorasEfectivasAnio = nudHorasAnio.Value,
+                PrimaSeguro = nudPrimaSeguro.Value,
+                FactorMantenimiento = nudFactorManten.Value,
+                CantidadCombustible = nudCantCombustible.Value,
+                PrecioCombustible = nudPrecioCombustible.Value,
+                CantidadAceite = nudCantAceite.Value,
+                PrecioAceite = nudPrecioAceite.Value,
+                NumeroLlantas = (int)nudNumLlantas.Value,
+                VidaEconomicaLlantas = nudVidaLlantas.Value,
+                VidaPiezasEspeciales = nudVidaPiezasEsp.Value,
+                SalarioOperador = nudSalarioOperador.Value,
+                FactorSalarioReal = nudFSR.Value,
+                HorasEfectivasTurno = nudHorasTurno.Value
+            }));
 
             _vm = result.NetValue;
             _vr = result.SalvageValue;

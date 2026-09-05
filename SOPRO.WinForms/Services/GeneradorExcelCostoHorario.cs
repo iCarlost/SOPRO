@@ -2,7 +2,7 @@ using ClosedXML.Excel;
 using ClosedXML.Excel.Drawings;
 using SOPRO.Data.Context;
 using SOPRO.Core.Entities;
-using Sopro.Calculation.Equipment;
+using SOPRO.Core.Services;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -35,27 +35,7 @@ namespace SOPRO.WinForms.Services
             var ws = wb.Worksheets.Add(nombreHoja);
 
             // Calcular valores derivados con la única implementación del motor.
-            var result = HourlyCostCalculator.Calculate(new HourlyCostInput
-            {
-                AcquisitionValue = maq.ValorAdquisicion,
-                TireValue = maq.ValorLlantas,
-                SpecialPartsValue = maq.ValorPiezasEspeciales,
-                SalvageFactor = maq.FactorRescate,
-                EconomicLifeHours = maq.VidaEconomica,
-                InterestRatePercentage = maq.TasaInteres,
-                EffectiveHoursPerYear = maq.HorasEfectivasAnio,
-                InsuranceRatePercentage = maq.PrimaSeguro,
-                MaintenanceFactor = maq.FactorMantenimiento,
-                FuelQuantity = maq.CantidadCombustible,
-                FuelPrice = maq.PrecioCombustible,
-                OilQuantity = maq.CantidadAceite,
-                OilPrice = maq.PrecioAceite,
-                TireLifeHours = maq.VidaEconomicaLlantas,
-                SpecialPartsLifeHours = maq.VidaPiezasEspeciales,
-                OperatorSalary = maq.SalarioOperador,
-                RealSalaryFactor = maq.FactorSalarioReal,
-                EffectiveHoursPerShift = maq.HorasEfectivasTurno
-            });
+            var result = MaquinariaHourlyCostAdapter.Calculate(maq);
             decimal valorNeto = result.NetValue;
             decimal valorRescate = result.SalvageValue;
             decimal depreciacion = result.Depreciation;
