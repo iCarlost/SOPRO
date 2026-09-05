@@ -57,33 +57,6 @@ public class MaquinariaCostoHorarioCalculatorTests
     }
 
     [TestMethod]
-    public void FromValues_MapsEveryCalculationInput()
-    {
-        var input = MaquinariaHourlyCostAdapter.FromValues(
-            101m, 102m, 103m, 0.04m, 105m, 6m, 107m, 8m, 0.09m,
-            110m, 11m, 112m, 13m, 115m, 116m, 117m, 1.18m, 119m);
-
-        Assert.AreEqual(101m, input.AcquisitionValue);
-        Assert.AreEqual(102m, input.TireValue);
-        Assert.AreEqual(103m, input.SpecialPartsValue);
-        Assert.AreEqual(0.04m, input.SalvageFactor);
-        Assert.AreEqual(105m, input.EconomicLifeHours);
-        Assert.AreEqual(6m, input.InterestRatePercentage);
-        Assert.AreEqual(107m, input.EffectiveHoursPerYear);
-        Assert.AreEqual(8m, input.InsuranceRatePercentage);
-        Assert.AreEqual(0.09m, input.MaintenanceFactor);
-        Assert.AreEqual(110m, input.FuelQuantity);
-        Assert.AreEqual(11m, input.FuelPrice);
-        Assert.AreEqual(112m, input.OilQuantity);
-        Assert.AreEqual(13m, input.OilPrice);
-        Assert.AreEqual(115m, input.TireLifeHours);
-        Assert.AreEqual(116m, input.SpecialPartsLifeHours);
-        Assert.AreEqual(117m, input.OperatorSalary);
-        Assert.AreEqual(1.18m, input.RealSalaryFactor);
-        Assert.AreEqual(119m, input.EffectiveHoursPerShift);
-    }
-
-    [TestMethod]
     public void Calcular_DevuelveTodosLosComponentesDelGolden()
     {
         var input = new HourlyCostInput

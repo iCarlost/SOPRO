@@ -10,71 +10,29 @@ public static class MaquinariaHourlyCostAdapter
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        return FromValues(
-            source.ValorAdquisicion,
-            source.ValorLlantas,
-            source.ValorPiezasEspeciales,
-            source.FactorRescate,
-            source.VidaEconomica,
-            source.TasaInteres,
-            source.HorasEfectivasAnio,
-            source.PrimaSeguro,
-            source.FactorMantenimiento,
-            source.CantidadCombustible,
-            source.PrecioCombustible,
-            source.CantidadAceite,
-            source.PrecioAceite,
-            source.VidaEconomicaLlantas,
-            source.VidaPiezasEspeciales,
-            source.SalarioOperador,
-            source.FactorSalarioReal,
-            source.HorasEfectivasTurno);
-    }
-
-    public static HourlyCostInput FromValues(
-        decimal acquisitionValue,
-        decimal tireValue,
-        decimal specialPartsValue,
-        decimal salvageFactor,
-        decimal economicLifeHours,
-        decimal interestRatePercentage,
-        decimal effectiveHoursPerYear,
-        decimal insuranceRatePercentage,
-        decimal maintenanceFactor,
-        decimal fuelQuantity,
-        decimal fuelPrice,
-        decimal oilQuantity,
-        decimal oilPrice,
-        decimal tireLifeHours,
-        decimal specialPartsLifeHours,
-        decimal operatorSalary,
-        decimal realSalaryFactor,
-        decimal effectiveHoursPerShift)
-        => new()
+        return new HourlyCostInput
         {
-            AcquisitionValue = acquisitionValue,
-            TireValue = tireValue,
-            SpecialPartsValue = specialPartsValue,
-            SalvageFactor = salvageFactor,
-            EconomicLifeHours = economicLifeHours,
-            InterestRatePercentage = interestRatePercentage,
-            EffectiveHoursPerYear = effectiveHoursPerYear,
-            InsuranceRatePercentage = insuranceRatePercentage,
-            MaintenanceFactor = maintenanceFactor,
-            FuelQuantity = fuelQuantity,
-            FuelPrice = fuelPrice,
-            OilQuantity = oilQuantity,
-            OilPrice = oilPrice,
-            TireLifeHours = tireLifeHours,
-            SpecialPartsLifeHours = specialPartsLifeHours,
-            OperatorSalary = operatorSalary,
-            RealSalaryFactor = realSalaryFactor,
-            EffectiveHoursPerShift = effectiveHoursPerShift
+            AcquisitionValue = source.ValorAdquisicion,
+            TireValue = source.ValorLlantas,
+            SpecialPartsValue = source.ValorPiezasEspeciales,
+            SalvageFactor = source.FactorRescate,
+            EconomicLifeHours = source.VidaEconomica,
+            InterestRatePercentage = source.TasaInteres,
+            EffectiveHoursPerYear = source.HorasEfectivasAnio,
+            InsuranceRatePercentage = source.PrimaSeguro,
+            MaintenanceFactor = source.FactorMantenimiento,
+            FuelQuantity = source.CantidadCombustible,
+            FuelPrice = source.PrecioCombustible,
+            OilQuantity = source.CantidadAceite,
+            OilPrice = source.PrecioAceite,
+            TireLifeHours = source.VidaEconomicaLlantas,
+            SpecialPartsLifeHours = source.VidaPiezasEspeciales,
+            OperatorSalary = source.SalarioOperador,
+            RealSalaryFactor = source.FactorSalarioReal,
+            EffectiveHoursPerShift = source.HorasEfectivasTurno
         };
+    }
 
     public static HourlyCostBreakdown Calculate(Maquinaria source)
         => HourlyCostCalculator.Calculate(FromEntity(source));
-
-    public static HourlyCostBreakdown Calculate(HourlyCostInput source)
-        => HourlyCostCalculator.Calculate(source);
 }
