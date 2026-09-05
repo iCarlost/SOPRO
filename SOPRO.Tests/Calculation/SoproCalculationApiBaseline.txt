@@ -13,6 +13,10 @@ ctor Sopro.Calculation.Matrices.MatrixNodeInput(Int32 id, MatrixType type, IEnum
 ctor Sopro.Calculation.Matrices.MatrixNodeInput(Int32 id, MatrixType type, IEnumerable<MatrixComponentInput> components, Decimal? precomputedDirectCostTotal)
 ctor Sopro.Calculation.PriceBreakdown(Decimal DirectCost, Decimal IndirectCosts, Decimal Financing, Decimal Profit, Decimal AdditionalCharges, Decimal UnitPrice, Decimal CentralIndirectsPercentage = 0m, Decimal FieldIndirectsPercentage = 0m)
 ctor Sopro.Calculation.PricePercentageInput()
+ctor Sopro.Calculation.Pricing.IndirectCostPercentageInput()
+ctor Sopro.Calculation.Pricing.IndirectCostPercentageResult()
+ctor Sopro.Calculation.Pricing.UtilityInput()
+ctor Sopro.Calculation.Pricing.UtilityResult()
 ctor Sopro.Calculation.SoproCalculationEngine(CalculationPrecision precision)
 ctor Sopro.Calculation.SoproCalculationEngine(Int32 quantityDecimals, Int32 amountDecimals, Int32 percentageDecimals)
 enum-member Sopro.Calculation.Labor.WorkShiftType.Day = 0
@@ -52,6 +56,14 @@ method Boolean Sopro.Calculation.PriceBreakdown.Equals(Object? obj)
 method Boolean Sopro.Calculation.PriceBreakdown.Equals(PriceBreakdown? other)
 method Boolean Sopro.Calculation.PricePercentageInput.Equals(Object? obj)
 method Boolean Sopro.Calculation.PricePercentageInput.Equals(PricePercentageInput? other)
+method Boolean Sopro.Calculation.Pricing.IndirectCostPercentageInput.Equals(IndirectCostPercentageInput? other)
+method Boolean Sopro.Calculation.Pricing.IndirectCostPercentageInput.Equals(Object? obj)
+method Boolean Sopro.Calculation.Pricing.IndirectCostPercentageResult.Equals(IndirectCostPercentageResult? other)
+method Boolean Sopro.Calculation.Pricing.IndirectCostPercentageResult.Equals(Object? obj)
+method Boolean Sopro.Calculation.Pricing.UtilityInput.Equals(Object? obj)
+method Boolean Sopro.Calculation.Pricing.UtilityInput.Equals(UtilityInput? other)
+method Boolean Sopro.Calculation.Pricing.UtilityResult.Equals(Object? obj)
+method Boolean Sopro.Calculation.Pricing.UtilityResult.Equals(UtilityResult? other)
 method CalculationPrecision Sopro.Calculation.CalculationPrecision.<Clone>$()
 method Decimal Sopro.Calculation.SoproCalculationEngine.CalculateAmountOverBase(Decimal factor, Decimal baseAmount)
 method Decimal Sopro.Calculation.SoproCalculationEngine.Multiply(Decimal quantity, Decimal unitPrice)
@@ -66,6 +78,8 @@ method HourlyCostBreakdown Sopro.Calculation.Equipment.HourlyCostBreakdown.<Clon
 method HourlyCostInput Sopro.Calculation.Equipment.HourlyCostInput.<Clone>$()
 method IReadOnlyList<Decimal> Sopro.Calculation.SoproCalculationEngine.DistributeAmount(Decimal total, IReadOnlyList<Decimal>? weights)
 method IReadOnlyList<Decimal> Sopro.Calculation.SoproCalculationEngine.DistributeQuantity(Decimal total, IReadOnlyList<Decimal>? weights)
+method IndirectCostPercentageInput Sopro.Calculation.Pricing.IndirectCostPercentageInput.<Clone>$()
+method IndirectCostPercentageResult Sopro.Calculation.Pricing.IndirectCostPercentageResult.<Clone>$()
 method Int32 Sopro.Calculation.CalculationPrecision.GetHashCode()
 method Int32 Sopro.Calculation.DirectCostLine.GetHashCode()
 method Int32 Sopro.Calculation.Equipment.HourlyCostBreakdown.GetHashCode()
@@ -76,6 +90,10 @@ method Int32 Sopro.Calculation.Matrices.MatrixComponentInput.GetHashCode()
 method Int32 Sopro.Calculation.Matrices.MatrixComponentResult.GetHashCode()
 method Int32 Sopro.Calculation.PriceBreakdown.GetHashCode()
 method Int32 Sopro.Calculation.PricePercentageInput.GetHashCode()
+method Int32 Sopro.Calculation.Pricing.IndirectCostPercentageInput.GetHashCode()
+method Int32 Sopro.Calculation.Pricing.IndirectCostPercentageResult.GetHashCode()
+method Int32 Sopro.Calculation.Pricing.UtilityInput.GetHashCode()
+method Int32 Sopro.Calculation.Pricing.UtilityResult.GetHashCode()
 method MatrixComponentInput Sopro.Calculation.Matrices.MatrixComponentInput.<Clone>$()
 method MatrixComponentResult Sopro.Calculation.Matrices.MatrixComponentResult.<Clone>$()
 method MatrixGraphResult Sopro.Calculation.Matrices.MatrixGraphCalculator.Calculate(MatrixGraphInput input)
@@ -94,6 +112,12 @@ method String Sopro.Calculation.Matrices.MatrixComponentInput.ToString()
 method String Sopro.Calculation.Matrices.MatrixComponentResult.ToString()
 method String Sopro.Calculation.PriceBreakdown.ToString()
 method String Sopro.Calculation.PricePercentageInput.ToString()
+method String Sopro.Calculation.Pricing.IndirectCostPercentageInput.ToString()
+method String Sopro.Calculation.Pricing.IndirectCostPercentageResult.ToString()
+method String Sopro.Calculation.Pricing.UtilityInput.ToString()
+method String Sopro.Calculation.Pricing.UtilityResult.ToString()
+method UtilityInput Sopro.Calculation.Pricing.UtilityInput.<Clone>$()
+method UtilityResult Sopro.Calculation.Pricing.UtilityResult.<Clone>$()
 method Void Sopro.Calculation.DirectCostLine.Deconstruct(out Decimal Quantity, out Decimal UnitDirectCost, out Boolean IsGrouping, out Boolean HasMatrix)
 method Void Sopro.Calculation.Matrices.MatrixComponentInput.Deconstruct(out Int32 Id, out Int32 Order, out MatrixComponentType Type, out Decimal Quantity, out Decimal ResolvedUnitPrice, out Boolean IsPercentageOfLabor, out Int32? ReferencedMatrixId)
 method Void Sopro.Calculation.Matrices.MatrixComponentResult.Deconstruct(out Int32 ComponentId, out Int32 Order, out Decimal Amount)
@@ -118,11 +142,22 @@ method static Boolean Sopro.Calculation.PriceBreakdown.op_Equality(PriceBreakdow
 method static Boolean Sopro.Calculation.PriceBreakdown.op_Inequality(PriceBreakdown? left, PriceBreakdown? right)
 method static Boolean Sopro.Calculation.PricePercentageInput.op_Equality(PricePercentageInput? left, PricePercentageInput? right)
 method static Boolean Sopro.Calculation.PricePercentageInput.op_Inequality(PricePercentageInput? left, PricePercentageInput? right)
+method static Boolean Sopro.Calculation.Pricing.IndirectCostPercentageInput.op_Equality(IndirectCostPercentageInput? left, IndirectCostPercentageInput? right)
+method static Boolean Sopro.Calculation.Pricing.IndirectCostPercentageInput.op_Inequality(IndirectCostPercentageInput? left, IndirectCostPercentageInput? right)
+method static Boolean Sopro.Calculation.Pricing.IndirectCostPercentageResult.op_Equality(IndirectCostPercentageResult? left, IndirectCostPercentageResult? right)
+method static Boolean Sopro.Calculation.Pricing.IndirectCostPercentageResult.op_Inequality(IndirectCostPercentageResult? left, IndirectCostPercentageResult? right)
+method static Boolean Sopro.Calculation.Pricing.UtilityInput.op_Equality(UtilityInput? left, UtilityInput? right)
+method static Boolean Sopro.Calculation.Pricing.UtilityInput.op_Inequality(UtilityInput? left, UtilityInput? right)
+method static Boolean Sopro.Calculation.Pricing.UtilityResult.op_Equality(UtilityResult? left, UtilityResult? right)
+method static Boolean Sopro.Calculation.Pricing.UtilityResult.op_Inequality(UtilityResult? left, UtilityResult? right)
 method static HourlyCostBreakdown Sopro.Calculation.Equipment.HourlyCostCalculator.Calculate(HourlyCostInput input)
+method static IndirectCostPercentageResult Sopro.Calculation.Pricing.IndirectCostPercentageCalculator.Calculate(IndirectCostPercentageInput input)
 method static RealSalaryFactorBreakdown Sopro.Calculation.Labor.RealSalaryFactorCalculator.Calculate(RealSalaryFactorInput input)
+method static UtilityResult Sopro.Calculation.Pricing.UtilityCalculator.Calculate(UtilityInput input)
 prop-get Boolean Sopro.Calculation.DirectCostLine.HasMatrix
 prop-get Boolean Sopro.Calculation.DirectCostLine.IsGrouping
 prop-get Boolean Sopro.Calculation.Matrices.MatrixComponentInput.IsPercentageOfLabor
+prop-get Boolean Sopro.Calculation.Pricing.UtilityInput.IsAssistedMode
 prop-get CalculationPrecision Sopro.Calculation.SoproCalculationEngine.Precision
 prop-get Decimal Sopro.Calculation.DirectCostLine.Quantity
 prop-get Decimal Sopro.Calculation.DirectCostLine.UnitDirectCost
@@ -271,6 +306,27 @@ prop-get Decimal Sopro.Calculation.PricePercentageInput.FieldIndirectsPercentage
 prop-get Decimal Sopro.Calculation.PricePercentageInput.FinancingPercentage
 prop-get Decimal Sopro.Calculation.PricePercentageInput.ProfitPercentage
 prop-get Decimal Sopro.Calculation.PricePercentageInput.ReferenceDirectCost
+prop-get Decimal Sopro.Calculation.Pricing.IndirectCostPercentageInput.AnnualWorkVolume
+prop-get Decimal Sopro.Calculation.Pricing.IndirectCostPercentageInput.DirectCost
+prop-get Decimal Sopro.Calculation.Pricing.IndirectCostPercentageInput.FieldTotal
+prop-get Decimal Sopro.Calculation.Pricing.IndirectCostPercentageInput.OfficeCentralAnnualTotal
+prop-get Decimal Sopro.Calculation.Pricing.IndirectCostPercentageResult.FieldPercentage
+prop-get Decimal Sopro.Calculation.Pricing.IndirectCostPercentageResult.OfficeCentralPercentage
+prop-get Decimal Sopro.Calculation.Pricing.IndirectCostPercentageResult.TotalPercentage
+prop-get Decimal Sopro.Calculation.Pricing.UtilityInput.BaseUtilidad
+prop-get Decimal Sopro.Calculation.Pricing.UtilityInput.GrossUtilidadPercentage
+prop-get Decimal Sopro.Calculation.Pricing.UtilityInput.IsrPercentage
+prop-get Decimal Sopro.Calculation.Pricing.UtilityInput.NetUtilidadPercentage
+prop-get Decimal Sopro.Calculation.Pricing.UtilityInput.PtuPercentage
+prop-get Decimal Sopro.Calculation.Pricing.UtilityResult.BaseUtilidad
+prop-get Decimal Sopro.Calculation.Pricing.UtilityResult.GrossUtilidadPercentage
+prop-get Decimal Sopro.Calculation.Pricing.UtilityResult.ImporteIsr
+prop-get Decimal Sopro.Calculation.Pricing.UtilityResult.ImportePtu
+prop-get Decimal Sopro.Calculation.Pricing.UtilityResult.ImporteUtilidad
+prop-get Decimal Sopro.Calculation.Pricing.UtilityResult.IsrPercentage
+prop-get Decimal Sopro.Calculation.Pricing.UtilityResult.NetUtilidadPercentage
+prop-get Decimal Sopro.Calculation.Pricing.UtilityResult.PtuPercentage
+prop-get Decimal Sopro.Calculation.Pricing.UtilityResult.UtilidadNetaEstimada
 prop-get Decimal? Sopro.Calculation.Matrices.MatrixNodeInput.PrecomputedDirectCostTotal
 prop-get IReadOnlyDictionary<Int32, Decimal> Sopro.Calculation.Matrices.MatrixGraphResult.ComponentAmounts
 prop-get IReadOnlyDictionary<Int32, MatrixNodeResult> Sopro.Calculation.Matrices.MatrixGraphResult.Nodes
@@ -290,6 +346,7 @@ prop-get Int32 Sopro.Calculation.Matrices.MatrixGraphInput.RootMatrixId
 prop-get Int32 Sopro.Calculation.Matrices.MatrixGraphResult.RootMatrixId
 prop-get Int32 Sopro.Calculation.Matrices.MatrixNodeInput.Id
 prop-get Int32 Sopro.Calculation.Matrices.MatrixNodeResult.Id
+prop-get Int32 Sopro.Calculation.Pricing.UtilityInput.AmountDecimals
 prop-get Int32 Sopro.Calculation.SoproCalculationEngine.AmountDecimals
 prop-get Int32 Sopro.Calculation.SoproCalculationEngine.PercentageDecimals
 prop-get Int32 Sopro.Calculation.SoproCalculationEngine.QuantityDecimals
@@ -302,6 +359,7 @@ prop-get WorkShiftType Sopro.Calculation.Labor.RealSalaryFactorInput.WorkShift
 prop-set init Boolean Sopro.Calculation.DirectCostLine.HasMatrix
 prop-set init Boolean Sopro.Calculation.DirectCostLine.IsGrouping
 prop-set init Boolean Sopro.Calculation.Matrices.MatrixComponentInput.IsPercentageOfLabor
+prop-set init Boolean Sopro.Calculation.Pricing.UtilityInput.IsAssistedMode
 prop-set init Decimal Sopro.Calculation.DirectCostLine.Quantity
 prop-set init Decimal Sopro.Calculation.DirectCostLine.UnitDirectCost
 prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.AverageValue
@@ -428,12 +486,34 @@ prop-set init Decimal Sopro.Calculation.PricePercentageInput.FieldIndirectsPerce
 prop-set init Decimal Sopro.Calculation.PricePercentageInput.FinancingPercentage
 prop-set init Decimal Sopro.Calculation.PricePercentageInput.ProfitPercentage
 prop-set init Decimal Sopro.Calculation.PricePercentageInput.ReferenceDirectCost
+prop-set init Decimal Sopro.Calculation.Pricing.IndirectCostPercentageInput.AnnualWorkVolume
+prop-set init Decimal Sopro.Calculation.Pricing.IndirectCostPercentageInput.DirectCost
+prop-set init Decimal Sopro.Calculation.Pricing.IndirectCostPercentageInput.FieldTotal
+prop-set init Decimal Sopro.Calculation.Pricing.IndirectCostPercentageInput.OfficeCentralAnnualTotal
+prop-set init Decimal Sopro.Calculation.Pricing.IndirectCostPercentageResult.FieldPercentage
+prop-set init Decimal Sopro.Calculation.Pricing.IndirectCostPercentageResult.OfficeCentralPercentage
+prop-set init Decimal Sopro.Calculation.Pricing.IndirectCostPercentageResult.TotalPercentage
+prop-set init Decimal Sopro.Calculation.Pricing.UtilityInput.BaseUtilidad
+prop-set init Decimal Sopro.Calculation.Pricing.UtilityInput.GrossUtilidadPercentage
+prop-set init Decimal Sopro.Calculation.Pricing.UtilityInput.IsrPercentage
+prop-set init Decimal Sopro.Calculation.Pricing.UtilityInput.NetUtilidadPercentage
+prop-set init Decimal Sopro.Calculation.Pricing.UtilityInput.PtuPercentage
+prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.BaseUtilidad
+prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.GrossUtilidadPercentage
+prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.ImporteIsr
+prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.ImportePtu
+prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.ImporteUtilidad
+prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.IsrPercentage
+prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.NetUtilidadPercentage
+prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.PtuPercentage
+prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.UtilidadNetaEstimada
 prop-set init Int32 Sopro.Calculation.Labor.RealSalaryFactorInput.Semester
 prop-set init Int32 Sopro.Calculation.Labor.RealSalaryFactorInput.Year
 prop-set init Int32 Sopro.Calculation.Matrices.MatrixComponentInput.Id
 prop-set init Int32 Sopro.Calculation.Matrices.MatrixComponentInput.Order
 prop-set init Int32 Sopro.Calculation.Matrices.MatrixComponentResult.ComponentId
 prop-set init Int32 Sopro.Calculation.Matrices.MatrixComponentResult.Order
+prop-set init Int32 Sopro.Calculation.Pricing.UtilityInput.AmountDecimals
 prop-set init Int32? Sopro.Calculation.Matrices.MatrixComponentInput.ReferencedMatrixId
 prop-set init MatrixComponentType Sopro.Calculation.Matrices.MatrixComponentInput.Type
 prop-set init PercentageCalculationMode Sopro.Calculation.PricePercentageInput.Mode
@@ -457,6 +537,12 @@ type sealed Sopro.Calculation.Matrices.MatrixNodeInput
 type sealed Sopro.Calculation.Matrices.MatrixNodeResult
 type sealed Sopro.Calculation.PriceBreakdown
 type sealed Sopro.Calculation.PricePercentageInput
+type sealed Sopro.Calculation.Pricing.IndirectCostPercentageInput
+type sealed Sopro.Calculation.Pricing.IndirectCostPercentageResult
+type sealed Sopro.Calculation.Pricing.UtilityInput
+type sealed Sopro.Calculation.Pricing.UtilityResult
 type sealed Sopro.Calculation.SoproCalculationEngine
 type static Sopro.Calculation.Equipment.HourlyCostCalculator
 type static Sopro.Calculation.Labor.RealSalaryFactorCalculator
+type static Sopro.Calculation.Pricing.IndirectCostPercentageCalculator
+type static Sopro.Calculation.Pricing.UtilityCalculator

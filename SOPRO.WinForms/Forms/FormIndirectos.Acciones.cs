@@ -9,6 +9,7 @@ using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using SOPRO.Application.Services;
 using SOPRO.WinForms.Undo;
+using Sopro.Calculation.Pricing;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -75,8 +76,15 @@ namespace SOPRO.WinForms.Forms
                 var totalCampo = gruposCampo.Sum(g => g.Total); // ← Ahora sí calcular
 
                 // Calcular porcentajes
-                decimal porcOC = volumenAnual > 0 ? (totalOC / volumenAnual) * 100 : 0;
-                decimal porcCampo = costoDirecto > 0 ? (totalCampo / costoDirecto) * 100 : 0;
+                var pctResult = IndirectCostPercentageCalculator.Calculate(new IndirectCostPercentageInput
+                {
+                    OfficeCentralAnnualTotal = totalOC,
+                    AnnualWorkVolume = volumenAnual,
+                    FieldTotal = totalCampo,
+                    DirectCost = costoDirecto
+                });
+                decimal porcOC = pctResult.OfficeCentralPercentage;
+                decimal porcCampo = pctResult.FieldPercentage;
 
                 // Actualizar configuración
                 _configuracion.VolumenAnualObra = volumenAnual;
