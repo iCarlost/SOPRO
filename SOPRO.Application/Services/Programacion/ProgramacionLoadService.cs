@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Sopro.Calculation.Calendar;
 using SOPRO.Application.DTOs.Programacion;
+using SOPRO.Application.Services.Programacion;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 
@@ -184,41 +186,8 @@ namespace SOPRO.Application.Services
             if (hasta < desde)
                 return 0;
 
-            var count = 0;
-            for (var current = desde; current <= hasta; current = current.AddDays(1))
-            {
-                if (EsDiaHabil(calendario, current))
-                    count++;
-            }
-
-            return count;
-        }
-
-        private static bool EsDiaHabil(CalendarioLaboral? calendario, DateTime fecha)
-        {
-            if (calendario == null)
-                return fecha.DayOfWeek != DayOfWeek.Saturday && fecha.DayOfWeek != DayOfWeek.Sunday;
-
-            var ex = calendario.Excepciones.FirstOrDefault(x => x.Fecha.Date == fecha.Date);
-            if (ex != null)
-            {
-                if (ex.Tipo == TipoExcepcionCalendario.LaborableEspecial)
-                    return true;
-
-                return false;
-            }
-
-            return fecha.DayOfWeek switch
-            {
-                DayOfWeek.Monday => calendario.Lunes,
-                DayOfWeek.Tuesday => calendario.Martes,
-                DayOfWeek.Wednesday => calendario.Miercoles,
-                DayOfWeek.Thursday => calendario.Jueves,
-                DayOfWeek.Friday => calendario.Viernes,
-                DayOfWeek.Saturday => calendario.Sabado,
-                DayOfWeek.Sunday => calendario.Domingo,
-                _ => false
-            };
+            return WorkingCalendarCalculator.CountWorkingDays(
+                WorkingCalendarAdapter.ToWorkingCalendar(calendario), desde, hasta);
         }
 
         public ProgramLoadDto? LoadProgram(SOPROContext context, int proyectoId)
