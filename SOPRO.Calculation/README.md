@@ -18,9 +18,11 @@ procesa.
    `WorkingCalendarCalculator` para operaciones deterministas de días hábiles,
    excepciones y fechas inclusivas/exclusivas. El slice de costo horario
    agrega `HourlyCostInput`, `HourlyCostBreakdown` y `HourlyCostCalculator`. El slice de planificación
-    agrega `ActivityNetworkInput`, `ActivityNetworkActivityInput`,
-    `ActivityNetworkDependencyInput`, `ActivityNetworkResult` y
-    `ActivityNetworkCalculator` para fechas tempranas/tardías, holgura y ruta crítica.
+agrega `ActivityNetworkInput`, `ActivityNetworkActivityInput`,
+     `ActivityNetworkDependencyInput`, `ActivityNetworkResult` y
+     `ActivityNetworkCalculator` para fechas tempranas/tardías, holgura y ruta crítica.
+     El resultado de cada actividad expone la duración efectiva `DurationWorkingDays`
+     (sin las dependencias establecen el rango), que el consumidor puede persistir.
     El slice FSR agrega `RealSalaryFactorInput`, `RealSalaryFactorBreakdown`, `WorkShiftType` y
   `RealSalaryFactorCalculator`. Los ayudantes (`UnitPriceCalculator`,
   `AmountDistributor`) son internos.
