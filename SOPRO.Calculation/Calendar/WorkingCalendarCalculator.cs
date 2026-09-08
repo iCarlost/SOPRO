@@ -1,37 +1,62 @@
+using System.Collections.ObjectModel;
+
 namespace Sopro.Calculation.Calendar;
 
 /// <summary>Kind of exception overriding the weekly working-day pattern.</summary>
 public enum CalendarExceptionKind
 {
+    /// <summary>The exception makes the date non-working.</summary>
     NonWorking = 0,
+    /// <summary>The exception makes the date working.</summary>
     Working = 1
 }
 
 /// <summary>One date-specific override in a working calendar.</summary>
 public sealed record CalendarException
 {
+    /// <summary>Date affected by the exception.</summary>
     public DateTime Date { get; init; }
+    /// <summary>Override applied to the date.</summary>
     public CalendarExceptionKind Kind { get; init; }
 }
 
 /// <summary>Immutable weekly working calendar and date exceptions.</summary>
 public sealed record WorkingCalendar
 {
+    /// <summary>Whether Monday is working.</summary>
     public bool Monday { get; init; } = true;
+    /// <summary>Whether Tuesday is working.</summary>
     public bool Tuesday { get; init; } = true;
+    /// <summary>Whether Wednesday is working.</summary>
     public bool Wednesday { get; init; } = true;
+    /// <summary>Whether Thursday is working.</summary>
     public bool Thursday { get; init; } = true;
+    /// <summary>Whether Friday is working.</summary>
     public bool Friday { get; init; } = true;
+    /// <summary>Whether Saturday is working.</summary>
     public bool Saturday { get; init; }
+    /// <summary>Whether Sunday is working.</summary>
     public bool Sunday { get; init; }
-    public IReadOnlyList<CalendarException> Exceptions { get; init; } = Array.Empty<CalendarException>();
+
+    /// <summary>Immutable date-specific overrides.</summary>
+    public IReadOnlyList<CalendarException> Exceptions
+    {
+        get => _exceptions;
+        init => _exceptions = new ReadOnlyCollection<CalendarException>(
+            (value ?? throw new ArgumentNullException(nameof(value))).ToList());
+    }
+
+    private IReadOnlyList<CalendarException> _exceptions =
+        new ReadOnlyCollection<CalendarException>(Array.Empty<CalendarException>());
 }
 
 /// <summary>Deterministic working-day operations independent of persistence and system time.</summary>
 public static class WorkingCalendarCalculator
 {
+    /// <summary>Determines whether a date is working under the supplied calendar.</summary>
     public static bool IsWorkingDay(WorkingCalendar? calendar, DateTime date)
     {
+        EnsureUsable(calendar);
         if (calendar == null)
             return date.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday);
 
@@ -52,23 +77,32 @@ public static class WorkingCalendarCalculator
         };
     }
 
+    /// <summary>Counts working days between two inclusive endpoints.</summary>
     public static int CountWorkingDays(WorkingCalendar? calendar, DateTime? start, DateTime? end)
     {
+        EnsureUsable(calendar);
         if (!start.HasValue || !end.HasValue || end.Value.Date < start.Value.Date)
             return 0;
 
         var count = 0;
-        for (var current = start.Value.Date; current <= end.Value.Date; current = NextDay(current))
+        var current = start.Value.Date;
+        while (true)
         {
             if (IsWorkingDay(calendar, current))
                 count++;
+
+            if (current == end.Value.Date)
+                break;
+            current = NextDay(current);
         }
 
         return count;
     }
 
+    /// <summary>Moves forward by working days, counting the first working date as offset zero.</summary>
     public static DateTime AddWorkingDaysInclusive(WorkingCalendar? calendar, DateTime date, int days)
     {
+        EnsureUsable(calendar);
         var current = MoveToWorkingDay(calendar, date.Date, 1);
         if (days <= 0)
             return current;
@@ -76,8 +110,10 @@ public static class WorkingCalendarCalculator
         return Advance(calendar, current, days);
     }
 
+    /// <summary>Moves forward from the first working date after the supplied date.</summary>
     public static DateTime AddWorkingDaysExclusive(WorkingCalendar? calendar, DateTime date, int days)
     {
+        EnsureUsable(calendar);
         var current = MoveToWorkingDay(calendar, NextDay(date.Date), 1);
         if (days <= 0)
             return current;
@@ -85,8 +121,10 @@ public static class WorkingCalendarCalculator
         return Advance(calendar, current, days - 1);
     }
 
+    /// <summary>Moves backward by working days, counting the first working date as offset zero.</summary>
     public static DateTime SubtractWorkingDaysInclusive(WorkingCalendar? calendar, DateTime date, int days)
     {
+        EnsureUsable(calendar);
         var current = MoveToWorkingDay(calendar, date.Date, -1);
         if (days <= 0)
             return current;
@@ -94,8 +132,10 @@ public static class WorkingCalendarCalculator
         return Retreat(calendar, current, days);
     }
 
+    /// <summary>Moves backward from the last working date before the supplied date.</summary>
     public static DateTime SubtractWorkingDaysExclusive(WorkingCalendar? calendar, DateTime date, int days)
     {
+        EnsureUsable(calendar);
         var current = MoveToWorkingDay(calendar, PreviousDay(date.Date), -1);
         if (days <= 0)
             return current;
@@ -103,8 +143,10 @@ public static class WorkingCalendarCalculator
         return Retreat(calendar, current, days - 1);
     }
 
+    /// <summary>Calculates an inclusive finish date from a start date and working-day duration.</summary>
     public static DateTime? CalculateFinishDate(WorkingCalendar? calendar, DateTime? start, int duration)
     {
+        EnsureUsable(calendar);
         if (!start.HasValue)
             return null;
         if (duration <= 0)
@@ -113,8 +155,10 @@ public static class WorkingCalendarCalculator
         return AddWorkingDaysInclusive(calendar, start.Value.Date, duration - 1);
     }
 
+    /// <summary>Calculates an inclusive start date from a finish date and working-day duration.</summary>
     public static DateTime? CalculateStartDate(WorkingCalendar? calendar, DateTime? finish, int duration)
     {
+        EnsureUsable(calendar);
         if (!finish.HasValue)
             return null;
         if (duration <= 0)
@@ -123,6 +167,7 @@ public static class WorkingCalendarCalculator
         return SubtractWorkingDaysInclusive(calendar, finish.Value.Date, duration - 1);
     }
 
+    /// <summary>Normalizes extreme dates to an explicit caller-provided fallback date.</summary>
     public static DateTime SanitizeDate(DateTime date, DateTime fallbackDate)
     {
         var normalized = date.Date;
@@ -134,6 +179,21 @@ public static class WorkingCalendarCalculator
             return fallback;
 
         return normalized;
+    }
+
+    private static void EnsureUsable(WorkingCalendar? calendar)
+    {
+        if (calendar == null)
+            return;
+
+        if (calendar.Monday || calendar.Tuesday || calendar.Wednesday || calendar.Thursday
+            || calendar.Friday || calendar.Saturday || calendar.Sunday
+            || calendar.Exceptions.Any(x => x.Kind == CalendarExceptionKind.Working))
+            return;
+
+        throw new ArgumentException(
+            "A working calendar must enable at least one weekday or contain a working exception.",
+            nameof(calendar));
     }
 
     private static DateTime Advance(WorkingCalendar? calendar, DateTime current, int workingDays)
