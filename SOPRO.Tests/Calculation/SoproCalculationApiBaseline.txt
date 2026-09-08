@@ -1,4 +1,6 @@
 ctor Sopro.Calculation.CalculationPrecision(Int32 quantityDecimals, Int32 amountDecimals, Int32 percentageDecimals)
+ctor Sopro.Calculation.Calendar.CalendarException()
+ctor Sopro.Calculation.Calendar.WorkingCalendar()
 ctor Sopro.Calculation.DirectCostLine(Decimal Quantity, Decimal UnitDirectCost, Boolean IsGrouping, Boolean HasMatrix)
 ctor Sopro.Calculation.Equipment.HourlyCostBreakdown()
 ctor Sopro.Calculation.Equipment.HourlyCostInput()
@@ -19,6 +21,8 @@ ctor Sopro.Calculation.Pricing.UtilityInput()
 ctor Sopro.Calculation.Pricing.UtilityResult()
 ctor Sopro.Calculation.SoproCalculationEngine(CalculationPrecision precision)
 ctor Sopro.Calculation.SoproCalculationEngine(Int32 quantityDecimals, Int32 amountDecimals, Int32 percentageDecimals)
+enum-member Sopro.Calculation.Calendar.CalendarExceptionKind.NonWorking = 0
+enum-member Sopro.Calculation.Calendar.CalendarExceptionKind.Working = 1
 enum-member Sopro.Calculation.Labor.WorkShiftType.Day = 0
 enum-member Sopro.Calculation.Labor.WorkShiftType.Mixed = 1
 enum-member Sopro.Calculation.Labor.WorkShiftType.Night = 2
@@ -32,12 +36,17 @@ enum-member Sopro.Calculation.Matrices.MatrixType.Basic = 1
 enum-member Sopro.Calculation.Matrices.MatrixType.Crew = 2
 enum-member Sopro.Calculation.PercentageCalculationMode.Accumulative = 0
 enum-member Sopro.Calculation.PercentageCalculationMode.OverDirectCost = 1
+enum-underlying Sopro.Calculation.Calendar.CalendarExceptionKind = Int32
 enum-underlying Sopro.Calculation.Labor.WorkShiftType = Int32
 enum-underlying Sopro.Calculation.Matrices.MatrixComponentType = Int32
 enum-underlying Sopro.Calculation.Matrices.MatrixType = Int32
 enum-underlying Sopro.Calculation.PercentageCalculationMode = Int32
 method Boolean Sopro.Calculation.CalculationPrecision.Equals(CalculationPrecision? other)
 method Boolean Sopro.Calculation.CalculationPrecision.Equals(Object? obj)
+method Boolean Sopro.Calculation.Calendar.CalendarException.Equals(CalendarException? other)
+method Boolean Sopro.Calculation.Calendar.CalendarException.Equals(Object? obj)
+method Boolean Sopro.Calculation.Calendar.WorkingCalendar.Equals(Object? obj)
+method Boolean Sopro.Calculation.Calendar.WorkingCalendar.Equals(WorkingCalendar? other)
 method Boolean Sopro.Calculation.DirectCostLine.Equals(DirectCostLine? other)
 method Boolean Sopro.Calculation.DirectCostLine.Equals(Object? obj)
 method Boolean Sopro.Calculation.Equipment.HourlyCostBreakdown.Equals(HourlyCostBreakdown? other)
@@ -65,6 +74,7 @@ method Boolean Sopro.Calculation.Pricing.UtilityInput.Equals(UtilityInput? other
 method Boolean Sopro.Calculation.Pricing.UtilityResult.Equals(Object? obj)
 method Boolean Sopro.Calculation.Pricing.UtilityResult.Equals(UtilityResult? other)
 method CalculationPrecision Sopro.Calculation.CalculationPrecision.<Clone>$()
+method CalendarException Sopro.Calculation.Calendar.CalendarException.<Clone>$()
 method Decimal Sopro.Calculation.SoproCalculationEngine.CalculateAmountOverBase(Decimal factor, Decimal baseAmount)
 method Decimal Sopro.Calculation.SoproCalculationEngine.Multiply(Decimal quantity, Decimal unitPrice)
 method Decimal Sopro.Calculation.SoproCalculationEngine.RoundAmount(Decimal value)
@@ -81,6 +91,8 @@ method IReadOnlyList<Decimal> Sopro.Calculation.SoproCalculationEngine.Distribut
 method IndirectCostPercentageInput Sopro.Calculation.Pricing.IndirectCostPercentageInput.<Clone>$()
 method IndirectCostPercentageResult Sopro.Calculation.Pricing.IndirectCostPercentageResult.<Clone>$()
 method Int32 Sopro.Calculation.CalculationPrecision.GetHashCode()
+method Int32 Sopro.Calculation.Calendar.CalendarException.GetHashCode()
+method Int32 Sopro.Calculation.Calendar.WorkingCalendar.GetHashCode()
 method Int32 Sopro.Calculation.DirectCostLine.GetHashCode()
 method Int32 Sopro.Calculation.Equipment.HourlyCostBreakdown.GetHashCode()
 method Int32 Sopro.Calculation.Equipment.HourlyCostInput.GetHashCode()
@@ -103,6 +115,8 @@ method PricePercentageInput Sopro.Calculation.PricePercentageInput.<Clone>$()
 method RealSalaryFactorBreakdown Sopro.Calculation.Labor.RealSalaryFactorBreakdown.<Clone>$()
 method RealSalaryFactorInput Sopro.Calculation.Labor.RealSalaryFactorInput.<Clone>$()
 method String Sopro.Calculation.CalculationPrecision.ToString()
+method String Sopro.Calculation.Calendar.CalendarException.ToString()
+method String Sopro.Calculation.Calendar.WorkingCalendar.ToString()
 method String Sopro.Calculation.DirectCostLine.ToString()
 method String Sopro.Calculation.Equipment.HourlyCostBreakdown.ToString()
 method String Sopro.Calculation.Equipment.HourlyCostInput.ToString()
@@ -122,8 +136,14 @@ method Void Sopro.Calculation.DirectCostLine.Deconstruct(out Decimal Quantity, o
 method Void Sopro.Calculation.Matrices.MatrixComponentInput.Deconstruct(out Int32 Id, out Int32 Order, out MatrixComponentType Type, out Decimal Quantity, out Decimal ResolvedUnitPrice, out Boolean IsPercentageOfLabor, out Int32? ReferencedMatrixId)
 method Void Sopro.Calculation.Matrices.MatrixComponentResult.Deconstruct(out Int32 ComponentId, out Int32 Order, out Decimal Amount)
 method Void Sopro.Calculation.PriceBreakdown.Deconstruct(out Decimal DirectCost, out Decimal IndirectCosts, out Decimal Financing, out Decimal Profit, out Decimal AdditionalCharges, out Decimal UnitPrice, out Decimal CentralIndirectsPercentage, out Decimal FieldIndirectsPercentage)
+method WorkingCalendar Sopro.Calculation.Calendar.WorkingCalendar.<Clone>$()
 method static Boolean Sopro.Calculation.CalculationPrecision.op_Equality(CalculationPrecision? left, CalculationPrecision? right)
 method static Boolean Sopro.Calculation.CalculationPrecision.op_Inequality(CalculationPrecision? left, CalculationPrecision? right)
+method static Boolean Sopro.Calculation.Calendar.CalendarException.op_Equality(CalendarException? left, CalendarException? right)
+method static Boolean Sopro.Calculation.Calendar.CalendarException.op_Inequality(CalendarException? left, CalendarException? right)
+method static Boolean Sopro.Calculation.Calendar.WorkingCalendar.op_Equality(WorkingCalendar? left, WorkingCalendar? right)
+method static Boolean Sopro.Calculation.Calendar.WorkingCalendar.op_Inequality(WorkingCalendar? left, WorkingCalendar? right)
+method static Boolean Sopro.Calculation.Calendar.WorkingCalendarCalculator.IsWorkingDay(WorkingCalendar? calendar, DateTime date)
 method static Boolean Sopro.Calculation.DirectCostLine.op_Equality(DirectCostLine? left, DirectCostLine? right)
 method static Boolean Sopro.Calculation.DirectCostLine.op_Inequality(DirectCostLine? left, DirectCostLine? right)
 method static Boolean Sopro.Calculation.Equipment.HourlyCostBreakdown.op_Equality(HourlyCostBreakdown? left, HourlyCostBreakdown? right)
@@ -150,15 +170,32 @@ method static Boolean Sopro.Calculation.Pricing.UtilityInput.op_Equality(Utility
 method static Boolean Sopro.Calculation.Pricing.UtilityInput.op_Inequality(UtilityInput? left, UtilityInput? right)
 method static Boolean Sopro.Calculation.Pricing.UtilityResult.op_Equality(UtilityResult? left, UtilityResult? right)
 method static Boolean Sopro.Calculation.Pricing.UtilityResult.op_Inequality(UtilityResult? left, UtilityResult? right)
+method static DateTime Sopro.Calculation.Calendar.WorkingCalendarCalculator.AddWorkingDaysExclusive(WorkingCalendar? calendar, DateTime date, Int32 days)
+method static DateTime Sopro.Calculation.Calendar.WorkingCalendarCalculator.AddWorkingDaysInclusive(WorkingCalendar? calendar, DateTime date, Int32 days)
+method static DateTime Sopro.Calculation.Calendar.WorkingCalendarCalculator.SanitizeDate(DateTime date, DateTime fallbackDate)
+method static DateTime Sopro.Calculation.Calendar.WorkingCalendarCalculator.SubtractWorkingDaysExclusive(WorkingCalendar? calendar, DateTime date, Int32 days)
+method static DateTime Sopro.Calculation.Calendar.WorkingCalendarCalculator.SubtractWorkingDaysInclusive(WorkingCalendar? calendar, DateTime date, Int32 days)
+method static DateTime? Sopro.Calculation.Calendar.WorkingCalendarCalculator.CalculateFinishDate(WorkingCalendar? calendar, DateTime? start, Int32 duration)
+method static DateTime? Sopro.Calculation.Calendar.WorkingCalendarCalculator.CalculateStartDate(WorkingCalendar? calendar, DateTime? finish, Int32 duration)
 method static HourlyCostBreakdown Sopro.Calculation.Equipment.HourlyCostCalculator.Calculate(HourlyCostInput input)
 method static IndirectCostPercentageResult Sopro.Calculation.Pricing.IndirectCostPercentageCalculator.Calculate(IndirectCostPercentageInput input)
+method static Int32 Sopro.Calculation.Calendar.WorkingCalendarCalculator.CountWorkingDays(WorkingCalendar? calendar, DateTime? start, DateTime? end)
 method static RealSalaryFactorBreakdown Sopro.Calculation.Labor.RealSalaryFactorCalculator.Calculate(RealSalaryFactorInput input)
 method static UtilityResult Sopro.Calculation.Pricing.UtilityCalculator.Calculate(UtilityInput input)
+prop-get Boolean Sopro.Calculation.Calendar.WorkingCalendar.Friday
+prop-get Boolean Sopro.Calculation.Calendar.WorkingCalendar.Monday
+prop-get Boolean Sopro.Calculation.Calendar.WorkingCalendar.Saturday
+prop-get Boolean Sopro.Calculation.Calendar.WorkingCalendar.Sunday
+prop-get Boolean Sopro.Calculation.Calendar.WorkingCalendar.Thursday
+prop-get Boolean Sopro.Calculation.Calendar.WorkingCalendar.Tuesday
+prop-get Boolean Sopro.Calculation.Calendar.WorkingCalendar.Wednesday
 prop-get Boolean Sopro.Calculation.DirectCostLine.HasMatrix
 prop-get Boolean Sopro.Calculation.DirectCostLine.IsGrouping
 prop-get Boolean Sopro.Calculation.Matrices.MatrixComponentInput.IsPercentageOfLabor
 prop-get Boolean Sopro.Calculation.Pricing.UtilityInput.IsAssistedMode
 prop-get CalculationPrecision Sopro.Calculation.SoproCalculationEngine.Precision
+prop-get CalendarExceptionKind Sopro.Calculation.Calendar.CalendarException.Kind
+prop-get DateTime Sopro.Calculation.Calendar.CalendarException.Date
 prop-get Decimal Sopro.Calculation.DirectCostLine.Quantity
 prop-get Decimal Sopro.Calculation.DirectCostLine.UnitDirectCost
 prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.AverageValue
@@ -330,6 +367,7 @@ prop-get Decimal Sopro.Calculation.Pricing.UtilityResult.UtilidadNetaEstimada
 prop-get Decimal? Sopro.Calculation.Matrices.MatrixNodeInput.PrecomputedDirectCostTotal
 prop-get IReadOnlyDictionary<Int32, Decimal> Sopro.Calculation.Matrices.MatrixGraphResult.ComponentAmounts
 prop-get IReadOnlyDictionary<Int32, MatrixNodeResult> Sopro.Calculation.Matrices.MatrixGraphResult.Nodes
+prop-get IReadOnlyList<CalendarException> Sopro.Calculation.Calendar.WorkingCalendar.Exceptions
 prop-get IReadOnlyList<MatrixComponentInput> Sopro.Calculation.Matrices.MatrixNodeInput.Components
 prop-get IReadOnlyList<MatrixComponentResult> Sopro.Calculation.Matrices.MatrixNodeResult.Components
 prop-get IReadOnlyList<MatrixNodeInput> Sopro.Calculation.Matrices.MatrixGraphInput.Nodes
@@ -356,10 +394,19 @@ prop-get MatrixType Sopro.Calculation.Matrices.MatrixNodeInput.Type
 prop-get MatrixType Sopro.Calculation.Matrices.MatrixNodeResult.Type
 prop-get PercentageCalculationMode Sopro.Calculation.PricePercentageInput.Mode
 prop-get WorkShiftType Sopro.Calculation.Labor.RealSalaryFactorInput.WorkShift
+prop-set init Boolean Sopro.Calculation.Calendar.WorkingCalendar.Friday
+prop-set init Boolean Sopro.Calculation.Calendar.WorkingCalendar.Monday
+prop-set init Boolean Sopro.Calculation.Calendar.WorkingCalendar.Saturday
+prop-set init Boolean Sopro.Calculation.Calendar.WorkingCalendar.Sunday
+prop-set init Boolean Sopro.Calculation.Calendar.WorkingCalendar.Thursday
+prop-set init Boolean Sopro.Calculation.Calendar.WorkingCalendar.Tuesday
+prop-set init Boolean Sopro.Calculation.Calendar.WorkingCalendar.Wednesday
 prop-set init Boolean Sopro.Calculation.DirectCostLine.HasMatrix
 prop-set init Boolean Sopro.Calculation.DirectCostLine.IsGrouping
 prop-set init Boolean Sopro.Calculation.Matrices.MatrixComponentInput.IsPercentageOfLabor
 prop-set init Boolean Sopro.Calculation.Pricing.UtilityInput.IsAssistedMode
+prop-set init CalendarExceptionKind Sopro.Calculation.Calendar.CalendarException.Kind
+prop-set init DateTime Sopro.Calculation.Calendar.CalendarException.Date
 prop-set init Decimal Sopro.Calculation.DirectCostLine.Quantity
 prop-set init Decimal Sopro.Calculation.DirectCostLine.UnitDirectCost
 prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.AverageValue
@@ -507,6 +554,7 @@ prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.IsrPercentage
 prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.NetUtilidadPercentage
 prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.PtuPercentage
 prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.UtilidadNetaEstimada
+prop-set init IReadOnlyList<CalendarException> Sopro.Calculation.Calendar.WorkingCalendar.Exceptions
 prop-set init Int32 Sopro.Calculation.Labor.RealSalaryFactorInput.Semester
 prop-set init Int32 Sopro.Calculation.Labor.RealSalaryFactorInput.Year
 prop-set init Int32 Sopro.Calculation.Matrices.MatrixComponentInput.Id
@@ -518,11 +566,14 @@ prop-set init Int32? Sopro.Calculation.Matrices.MatrixComponentInput.ReferencedM
 prop-set init MatrixComponentType Sopro.Calculation.Matrices.MatrixComponentInput.Type
 prop-set init PercentageCalculationMode Sopro.Calculation.PricePercentageInput.Mode
 prop-set init WorkShiftType Sopro.Calculation.Labor.RealSalaryFactorInput.WorkShift
+type Sopro.Calculation.Calendar.CalendarExceptionKind
 type Sopro.Calculation.Labor.WorkShiftType
 type Sopro.Calculation.Matrices.MatrixComponentType
 type Sopro.Calculation.Matrices.MatrixType
 type Sopro.Calculation.PercentageCalculationMode
 type sealed Sopro.Calculation.CalculationPrecision
+type sealed Sopro.Calculation.Calendar.CalendarException
+type sealed Sopro.Calculation.Calendar.WorkingCalendar
 type sealed Sopro.Calculation.DirectCostLine
 type sealed Sopro.Calculation.Equipment.HourlyCostBreakdown
 type sealed Sopro.Calculation.Equipment.HourlyCostInput
@@ -542,6 +593,7 @@ type sealed Sopro.Calculation.Pricing.IndirectCostPercentageResult
 type sealed Sopro.Calculation.Pricing.UtilityInput
 type sealed Sopro.Calculation.Pricing.UtilityResult
 type sealed Sopro.Calculation.SoproCalculationEngine
+type static Sopro.Calculation.Calendar.WorkingCalendarCalculator
 type static Sopro.Calculation.Equipment.HourlyCostCalculator
 type static Sopro.Calculation.Labor.RealSalaryFactorCalculator
 type static Sopro.Calculation.Pricing.IndirectCostPercentageCalculator
