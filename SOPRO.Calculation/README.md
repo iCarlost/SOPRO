@@ -18,7 +18,10 @@ procesa.
    `WorkingCalendarCalculator` para operaciones deterministas de días hábiles,
    excepciones y fechas inclusivas/exclusivas. El slice de costo horario
   agrega `HourlyCostInput`, `HourlyCostBreakdown` y `HourlyCostCalculator`. El slice FSR
-  agrega `RealSalaryFactorInput`, `RealSalaryFactorBreakdown`, `WorkShiftType` y
+   agrega `ActivityNetworkInput`, `ActivityNetworkActivityInput`,
+   `ActivityNetworkDependencyInput`, `ActivityNetworkResult` y
+   `ActivityNetworkCalculator` para fechas tempranas/tardías, holgura y ruta crítica.
+   El slice FSR agrega `RealSalaryFactorInput`, `RealSalaryFactorBreakdown`, `WorkShiftType` y
   `RealSalaryFactorCalculator`. Los ayudantes (`UnitPriceCalculator`,
   `AmountDistributor`) son internos.
 - Invariante del grafo de matrices: los IDs de componente son unicos en todo el
@@ -122,6 +125,11 @@ DateTime fin = Sopro.Calculation.Calendar.WorkingCalendarCalculator.CalculateFin
   semanal no tiene días laborables, las excepciones `Working` forman un calendario
   finito: los desplazamientos buscan directamente las fechas disponibles y rechazan
   inmediatamente una dirección o desfase sin fecha alcanzable.
+- `ActivityNetworkCalculator` recibe una red materializada, copia sus colecciones,
+  ordena topológicamente las actividades y rechaza ciclos, IDs duplicados,
+  referencias desconocidas y tipos de dependencia no definidos. Conserva las reglas
+  legacy para restricciones mixtas de inicio/fin: el rango queda determinado por
+  ambos límites y la duración se recalcula contando días hábiles.
 - El costo horario usa `HourlyCostCalculator` con entradas y resultados escalares
   inmutables; la fecha de calculo y la persistencia quedan fuera del motor.
 - `AverageValue` y `RealSalary` se conservan con divisores no positivos para la

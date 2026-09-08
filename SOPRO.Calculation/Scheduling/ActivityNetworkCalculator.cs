@@ -170,6 +170,9 @@ public static class ActivityNetworkCalculator
             if (!activities.ContainsKey(dependency.SourceActivityId)
                 || !activities.ContainsKey(dependency.TargetActivityId))
                 throw new ArgumentException("Dependencies must reference known activities.", nameof(input));
+            if (!Enum.IsDefined(dependency.Type))
+                throw new ArgumentOutOfRangeException(nameof(input), dependency.Type,
+                    "Dependency type is not supported.");
 
             predecessors[dependency.TargetActivityId].Add(dependency);
             successors[dependency.SourceActivityId].Add(dependency);

@@ -45,9 +45,20 @@ public sealed class ActivityNetworkCalculatorTests
         var result = ActivityNetworkCalculator.Calculate(new ActivityNetworkInput(
             new DateTime(2026, 1, 5), new[] { source, target }, new[] { dependency }));
         var actual = result.Activities.Single(activity => activity.Id == 2);
+        var sourceResult = result.Activities.Single(activity => activity.Id == 1);
 
         Assert.AreEqual(Date(expectedStart), actual.EarlyStartDate);
         Assert.AreEqual(Date(expectedFinish), actual.EarlyFinishDate);
+        Assert.AreEqual(Date(expectedStart), actual.LateStartDate);
+        Assert.AreEqual(Date(expectedFinish), actual.LateFinishDate);
+        Assert.AreEqual(0, actual.SlackDays);
+        Assert.IsTrue(actual.IsCritical);
+        Assert.AreEqual(Date("2026-01-05"), sourceResult.EarlyStartDate);
+        Assert.AreEqual(Date("2026-01-06"), sourceResult.EarlyFinishDate);
+        Assert.AreEqual(Date("2026-01-05"), sourceResult.LateStartDate);
+        Assert.AreEqual(Date("2026-01-06"), sourceResult.LateFinishDate);
+        Assert.AreEqual(0, sourceResult.SlackDays);
+        Assert.IsTrue(sourceResult.IsCritical);
     }
 
     [TestMethod]
@@ -67,6 +78,109 @@ public sealed class ActivityNetworkCalculatorTests
         Assert.ThrowsException<InvalidOperationException>(() =>
             ActivityNetworkCalculator.Calculate(new ActivityNetworkInput(
                 new DateTime(2026, 1, 5), activities, dependencies)));
+    }
+
+    [TestMethod]
+    public void MixedStartAndFinishConstraints_RecalculateLegacyRangeDuration()
+    {
+        var activities = new[]
+        {
+            new ActivityNetworkActivityInput(1, 1, 2, new DateTime(2026, 1, 5)),
+            new ActivityNetworkActivityInput(2, 2, 4, new DateTime(2026, 1, 5)),
+            new ActivityNetworkActivityInput(3, 3, 2, new DateTime(2026, 1, 5))
+        };
+        var dependencies = new[]
+        {
+            new ActivityNetworkDependencyInput(1, 3, ActivityDependencyType.StartToStart),
+            new ActivityNetworkDependencyInput(2, 3, ActivityDependencyType.FinishToFinish)
+        };
+
+        var result = ActivityNetworkCalculator.Calculate(new ActivityNetworkInput(
+            new DateTime(2026, 1, 5), activities, dependencies));
+
+        Assert.AreEqual(new DateTime(2026, 1, 8), result.ProjectFinishDate);
+        AssertActivity(result, 3, "2026-01-05", "2026-01-08", "2026-01-05", "2026-01-08", 0, true);
+    }
+
+    [TestMethod]
+    public void CompetingSuccessors_UseMostRestrictiveLateBounds()
+    {
+        var activities = new[]
+        {
+            new ActivityNetworkActivityInput(1, 1, 2, new DateTime(2026, 1, 5)),
+            new ActivityNetworkActivityInput(2, 2, 4, new DateTime(2026, 1, 5)),
+            new ActivityNetworkActivityInput(3, 3, 2, new DateTime(2026, 1, 5))
+        };
+        var dependencies = new[]
+        {
+            new ActivityNetworkDependencyInput(1, 2, ActivityDependencyType.FinishToStart),
+            new ActivityNetworkDependencyInput(1, 3, ActivityDependencyType.StartToStart)
+        };
+
+        var result = ActivityNetworkCalculator.Calculate(new ActivityNetworkInput(
+            new DateTime(2026, 1, 5), activities, dependencies));
+
+        Assert.AreEqual(new DateTime(2026, 1, 12), result.ProjectFinishDate);
+        AssertActivity(result, 1, "2026-01-05", "2026-01-06", "2026-01-09", "2026-01-09", 4, false);
+        AssertActivity(result, 2, "2026-01-07", "2026-01-12", "2026-01-07", "2026-01-12", 0, true);
+        AssertActivity(result, 3, "2026-01-05", "2026-01-06", "2026-01-09", "2026-01-12", 4, false);
+    }
+
+    [TestMethod]
+    public void NonPositiveDuration_UsesOneWorkingDay()
+    {
+        var result = ActivityNetworkCalculator.Calculate(new ActivityNetworkInput(
+            new DateTime(2026, 1, 5), new[]
+            {
+                new ActivityNetworkActivityInput(1, 1, 0, new DateTime(2026, 1, 5)),
+                new ActivityNetworkActivityInput(2, 2, -4, new DateTime(2026, 1, 6))
+            }));
+
+        AssertActivity(result, 1, "2026-01-05", "2026-01-05", "2026-01-06", "2026-01-06", 1, false);
+        AssertActivity(result, 2, "2026-01-06", "2026-01-06", "2026-01-06", "2026-01-06", 0, true);
+    }
+
+    [TestMethod]
+    public void NegativeLag_PreservesLegacyExclusiveBoundary()
+    {
+        var result = ActivityNetworkCalculator.Calculate(new ActivityNetworkInput(
+            new DateTime(2026, 1, 5),
+            new[]
+            {
+                new ActivityNetworkActivityInput(1, 1, 2, new DateTime(2026, 1, 5)),
+                new ActivityNetworkActivityInput(2, 2, 2, new DateTime(2026, 1, 5))
+            },
+            new[]
+            {
+                new ActivityNetworkDependencyInput(1, 2, ActivityDependencyType.FinishToStart, -1)
+            }));
+
+        AssertActivity(result, 2, "2026-01-07", "2026-01-08", "2026-01-07", "2026-01-08", 0, true);
+    }
+
+    [TestMethod]
+    public void InvalidIdentifiersAndDependencyTypes_AreRejected()
+    {
+        var activities = new[]
+        {
+            new ActivityNetworkActivityInput(1, 1, 1),
+            new ActivityNetworkActivityInput(1, 2, 1)
+        };
+        Assert.ThrowsException<ArgumentException>(() =>
+            ActivityNetworkCalculator.Calculate(new ActivityNetworkInput(
+                new DateTime(2026, 1, 5), activities)));
+
+        var unknownReference = new ActivityNetworkDependencyInput(
+            1, 99, ActivityDependencyType.FinishToStart);
+        Assert.ThrowsException<ArgumentException>(() =>
+            ActivityNetworkCalculator.Calculate(new ActivityNetworkInput(
+                new DateTime(2026, 1, 5), new[] { activities[0] }, new[] { unknownReference })));
+
+        var invalidType = new ActivityNetworkDependencyInput(
+            1, 1, (ActivityDependencyType)99);
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+            ActivityNetworkCalculator.Calculate(new ActivityNetworkInput(
+                new DateTime(2026, 1, 5), new[] { activities[0] }, new[] { invalidType })));
     }
 
     [TestMethod]

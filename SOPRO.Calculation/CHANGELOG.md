@@ -9,6 +9,11 @@ All notable changes to `SOPRO.Calculation` are documented here.
   exceptions, explicit inclusive/exclusive date semantics, deterministic date
   sanitization, fail-fast validation for calendars without working days, and direct
   indexed lookup for finite exception-only calendars.
+- Activity network and critical-path operations are now available through the pure
+  `ActivityNetworkCalculator`. The calculator supports FS, SS, FF and SF relations,
+  working-day lags, early/late dates, slack and critical-path membership; it rejects
+  cycles, duplicate IDs, unknown references and undefined dependency types while
+  preserving the legacy mixed start/finish range rule.
 - Mexican real salary factor (FSR) is now available as a pure, immutable scalar
   calculation through `RealSalaryFactorCalculator`, including the complete report
   breakdown and the legacy AE-2(C) `AE + AF` aggregate.
