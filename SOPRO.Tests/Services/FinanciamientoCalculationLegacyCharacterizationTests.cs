@@ -125,25 +125,28 @@ public class FinanciamientoCalculationLegacyCharacterizationTests
             porcentajeAnticipo: 80m,
             desfaseCobro: 1,
             baseCalculo: "Acumulable",
-            modeloDual: true);
+            modeloDual: true,
+            puntosAdicionales: 3m);
 
         escenario.Calcular();
 
         var filas = escenario.Filas;
 
+        // Crítico: con el diferencial 3pp, tasa TIIE = 12% (a favor) y tasa efectiva = 15% (en contra).
+        // Si un futuro calculador intercambiara las tasas, estas aserciones dejarían de pasar.
         Assert.AreEqual(500.00m, filas[0].SaldoAcumulado);
-        Assert.AreEqual(1.1507m, filas[0].InteresPeriodo, "Saldo positivo: interés a favor con tasa TIIE.");
+        Assert.AreEqual(1.1507m, filas[0].InteresPeriodo, "Saldo positivo: interés a favor Round(500 x 0.00230137, 4), tasa TIIE.");
 
         Assert.AreEqual(-400.00m, filas[1].SaldoAcumulado);
-        Assert.AreEqual(-0.9205m, filas[1].InteresPeriodo, "Saldo negativo: interés en contra, signo explícito.");
+        Assert.AreEqual(-1.1507m, filas[1].InteresPeriodo, "Saldo negativo: interés en contra Round(400 x 0.00287671, 4), tasa efectiva.");
 
         Assert.AreEqual(-200.00m, filas[2].SaldoAcumulado);
-        Assert.AreEqual(-0.4603m, filas[2].InteresPeriodo);
+        Assert.AreEqual(-0.5753m, filas[2].InteresPeriodo, "Round(200 x 0.00287671, 4), tasa efectiva.");
 
         Assert.AreEqual(1.1507m, escenario.Config.InteresesPositivos, "Round(1.1507, 4).");
-        Assert.AreEqual(1.3808m, escenario.Config.InteresesNegativos, "Round(0.9205 + 0.4603, 4).");
-        Assert.AreEqual(-0.2301m, escenario.Config.FinanciamientoNeto, "Round(1.1507 - 1.3808, 4).");
-        Assert.AreEqual(-0.01046m, escenario.Config.PorcentajeCalculado);
+        Assert.AreEqual(1.7260m, escenario.Config.InteresesNegativos, "Round(1.1507 + 0.5753, 4).");
+        Assert.AreEqual(-0.5753m, escenario.Config.FinanciamientoNeto, "Round(1.1507 - 1.7260, 4).");
+        Assert.AreEqual(-0.02615m, escenario.Config.PorcentajeCalculado, "Round(-0.5753 / 2200 x 100, 5).");
     }
 
     [TestMethod]
@@ -233,7 +236,8 @@ public class FinanciamientoCalculationLegacyCharacterizationTests
         (decimal P1, decimal P2)? cantidadesProgramadas = null,
         bool programaActivo = true,
         bool conPeriodos = true,
-        bool conConcepto = true)
+        bool conConcepto = true,
+        decimal puntosAdicionales = 0m)
     {
         var context = TestDbFactory.CreateContext();
 
@@ -369,7 +373,7 @@ public class FinanciamientoCalculationLegacyCharacterizationTests
         {
             ProyectoId = proyecto.Id,
             TasaTIIE = 12m,
-            PuntosAdicionales = 0m,
+            PuntosAdicionales = puntosAdicionales,
             PorcentajeAnticipo = porcentajeAnticipo,
             DesfaseCobro = desfaseCobro,
             BaseCalculo = baseCalculo
