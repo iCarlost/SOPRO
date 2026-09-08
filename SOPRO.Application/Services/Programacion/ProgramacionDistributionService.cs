@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using Sopro.Calculation;
+using Sopro.Calculation.Calendar;
 using SOPRO.Application.DTOs.Programacion;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -413,7 +414,10 @@ namespace SOPRO.Application.Services
         }
 
         // ════════════════════════════════════════════════════════════════════════
-        // HELPERS DE CALENDARIO (sin cambios)
+        // HELPERS DE CALENDARIO
+        // El predicado de día hábil y el conteo delegados a WorkingCalendarCalculator
+        // (N7-16e); la variante en caché (BuildWorkingDayDistributionCached) es una
+        // optimización O(1) sobre el rango precalculado, con la misma semántica.
         // ════════════════════════════════════════════════════════════════════════
 
         private static List<DistributionSlice> BuildWorkingDayDistributionCached(
@@ -453,51 +457,21 @@ namespace SOPRO.Application.Services
             var finActividad    = fechaFin.Value.Date;
             if (finActividad < inicioActividad) return resultado;
 
+            var workingCalendar = WorkingCalendarAdapter.ToWorkingCalendar(calendario);
+
             foreach (var periodo in periodos)
             {
                 var inicio = Max(inicioActividad, periodo.FechaInicio.Date);
                 var fin    = Min(finActividad,    periodo.FechaFin.Date);
                 if (fin < inicio) continue;
 
-                var dias = CountWorkingDays(calendario, inicio, fin);
+                var dias = WorkingCalendarCalculator.CountWorkingDays(workingCalendar, inicio, fin);
                 if (dias <= 0) continue;
 
                 resultado.Add(new DistributionSlice(periodo, dias));
             }
 
             return resultado;
-        }
-
-        private static int CountWorkingDays(CalendarioLaboral? calendario, DateTime inicio, DateTime fin)
-        {
-            if (fin < inicio) return 0;
-            int count = 0;
-            for (var current = inicio.Date; current <= fin.Date; current = current.AddDays(1))
-                if (IsWorkingDay(calendario, current))
-                    count++;
-            return count;
-        }
-
-        private static bool IsWorkingDay(CalendarioLaboral? calendario, DateTime date)
-        {
-            if (calendario == null)
-                return date.DayOfWeek != DayOfWeek.Saturday && date.DayOfWeek != DayOfWeek.Sunday;
-
-            var ex = calendario.Excepciones.FirstOrDefault(x => x.Fecha.Date == date.Date);
-            if (ex != null)
-                return ex.Tipo == TipoExcepcionCalendario.LaborableEspecial;
-
-            return date.DayOfWeek switch
-            {
-                DayOfWeek.Monday    => calendario.Lunes,
-                DayOfWeek.Tuesday   => calendario.Martes,
-                DayOfWeek.Wednesday => calendario.Miercoles,
-                DayOfWeek.Thursday  => calendario.Jueves,
-                DayOfWeek.Friday    => calendario.Viernes,
-                DayOfWeek.Saturday  => calendario.Sabado,
-                DayOfWeek.Sunday    => calendario.Domingo,
-                _ => false
-            };
         }
 
         private static DateTime Min(DateTime a, DateTime b) => a <= b ? a : b;
