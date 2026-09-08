@@ -12,8 +12,11 @@ procesa.
 - Superficie publica minima (hallazgo 2): `CalculationPrecision`,
   `SoproCalculationEngine`, `DirectCostLine`, `PricePercentageInput`,
   `PriceBreakdown` y el enum `PercentageCalculationMode`. El slice de matrices
-  agrega `MatrixGraphInput`, `MatrixNodeInput`, `MatrixComponentInput`,
-  `MatrixGraphCalculator` y sus resultados inmutables. El slice de costo horario
+   agrega `MatrixGraphInput`, `MatrixNodeInput`, `MatrixComponentInput`,
+   `MatrixGraphCalculator` y sus resultados inmutables. El slice de calendario
+   agrega `WorkingCalendar`, `CalendarException`, `CalendarExceptionKind` y
+   `WorkingCalendarCalculator` para operaciones deterministas de días hábiles,
+   excepciones y fechas inclusivas/exclusivas. El slice de costo horario
   agrega `HourlyCostInput`, `HourlyCostBreakdown` y `HourlyCostCalculator`. El slice FSR
   agrega `RealSalaryFactorInput`, `RealSalaryFactorBreakdown`, `WorkShiftType` y
   `RealSalaryFactorCalculator`. Los ayudantes (`UnitPriceCalculator`,
@@ -75,6 +78,26 @@ var desglose = motor.CalculateUnitPrice(1000m, new PricePercentageInput
 });
 
 IReadOnlyList<decimal> partes = motor.DistributeAmount(1000m, new[] { 33m, 33m, 34m });
+
+var calendario = new Sopro.Calculation.Calendar.WorkingCalendar
+{
+    Monday = true,
+    Tuesday = true,
+    Wednesday = true,
+    Thursday = true,
+    Friday = true,
+    Exceptions = new[]
+    {
+        new Sopro.Calculation.Calendar.CalendarException
+        {
+            Date = new DateTime(2026, 1, 1),
+            Kind = Sopro.Calculation.Calendar.CalendarExceptionKind.NonWorking
+        }
+    }
+};
+
+DateTime fin = Sopro.Calculation.Calendar.WorkingCalendarCalculator.CalculateFinishDate(
+    calendario, new DateTime(2026, 1, 5), 5)!.Value;
 ```
 
 ## Semantica preservada (decisiones N0, `N0-TABLA-DECISIONES-DIVERGENCIAS.md`)
@@ -93,6 +116,12 @@ IReadOnlyList<decimal> partes = motor.DistributeAmount(1000m, new[] { 33m, 33m, 
   (filas 12, 14).
 - El formato de cultura NO vive aqui: queda en la fachada legacy (fila 9).
 - El reloj no participa en ninguna aritmetica (fila 0 / manifiesto §4).
+- `WorkingCalendarCalculator` recibe todos sus datos, copia defensivamente las
+  excepciones y rechaza calendarios sin ningún día laborable. Los extremos de fecha
+  se procesan sin incrementar más allá de `DateTime.MaxValue`/`MinValue`. Si el patrón
+  semanal no tiene días laborables, las excepciones `Working` forman un calendario
+  finito: los desplazamientos buscan directamente las fechas disponibles y rechazan
+  inmediatamente una dirección o desfase sin fecha alcanzable.
 - El costo horario usa `HourlyCostCalculator` con entradas y resultados escalares
   inmutables; la fecha de calculo y la persistencia quedan fuera del motor.
 - `AverageValue` y `RealSalary` se conservan con divisores no positivos para la
