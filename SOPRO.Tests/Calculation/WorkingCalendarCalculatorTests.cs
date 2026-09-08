@@ -117,6 +117,37 @@ public sealed class WorkingCalendarCalculatorTests
     }
 
     [TestMethod]
+    public void FiniteExceptionCalendar_FindsReachableDatesWithoutScanningTheWholeRange()
+    {
+        var calendar = CalendarWithOnlyWorkingExceptions(new DateTime(2026, 1, 10), new DateTime(2026, 1, 20));
+
+        Assert.AreEqual(new DateTime(2026, 1, 10),
+            WorkingCalendarCalculator.AddWorkingDaysInclusive(calendar, new DateTime(2026, 1, 1), 0));
+        Assert.AreEqual(new DateTime(2026, 1, 20),
+            WorkingCalendarCalculator.AddWorkingDaysExclusive(calendar, new DateTime(2026, 1, 10), 1));
+        Assert.AreEqual(new DateTime(2026, 1, 20),
+            WorkingCalendarCalculator.SubtractWorkingDaysInclusive(calendar, new DateTime(2026, 12, 1), 0));
+        Assert.AreEqual(new DateTime(2026, 1, 10),
+            WorkingCalendarCalculator.SubtractWorkingDaysExclusive(calendar, new DateTime(2026, 1, 20), 1));
+    }
+
+    [TestMethod]
+    public void FiniteExceptionCalendar_RejectsMissingDirectionAndExhaustedOffsets()
+    {
+        var calendar = CalendarWithOnlyWorkingExceptions(new DateTime(2026, 1, 10), new DateTime(2026, 1, 20));
+        var onlyPastException = CalendarWithOnlyWorkingExceptions(new DateTime(2025, 1, 1));
+
+        Assert.ThrowsException<InvalidOperationException>(() =>
+            WorkingCalendarCalculator.AddWorkingDaysInclusive(onlyPastException, new DateTime(2026, 1, 1), 0));
+        Assert.ThrowsException<InvalidOperationException>(() =>
+            WorkingCalendarCalculator.SubtractWorkingDaysInclusive(calendar, new DateTime(2025, 1, 1), 0));
+        Assert.ThrowsException<InvalidOperationException>(() =>
+            WorkingCalendarCalculator.AddWorkingDaysInclusive(calendar, new DateTime(2026, 1, 10), 2));
+        Assert.ThrowsException<InvalidOperationException>(() =>
+            WorkingCalendarCalculator.SubtractWorkingDaysInclusive(calendar, new DateTime(2026, 1, 20), 2));
+    }
+
+    [TestMethod]
     public void CountWorkingDays_HandlesMaximumDateWithoutIncrementingPastIt()
     {
         Assert.AreEqual(1, WorkingCalendarCalculator.CountWorkingDays(
@@ -188,4 +219,20 @@ public sealed class WorkingCalendarCalculatorTests
             _ => false
         };
     }
+
+    private static WorkingCalendar CalendarWithOnlyWorkingExceptions(params DateTime[] dates) => new()
+    {
+        Monday = false,
+        Tuesday = false,
+        Wednesday = false,
+        Thursday = false,
+        Friday = false,
+        Saturday = false,
+        Sunday = false,
+        Exceptions = dates.Select(date => new CalendarException
+        {
+            Date = date,
+            Kind = CalendarExceptionKind.Working
+        }).ToArray()
+    };
 }

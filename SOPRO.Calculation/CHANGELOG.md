@@ -7,7 +7,8 @@ All notable changes to `SOPRO.Calculation` are documented here.
 - Working calendar operations are now available through the pure
   `WorkingCalendarCalculator`, with immutable weekly patterns, defensively copied
   exceptions, explicit inclusive/exclusive date semantics, deterministic date
-  sanitization, and fail-fast validation for calendars without working days.
+  sanitization, fail-fast validation for calendars without working days, and direct
+  indexed lookup for finite exception-only calendars.
 - Mexican real salary factor (FSR) is now available as a pure, immutable scalar
   calculation through `RealSalaryFactorCalculator`, including the complete report
   breakdown and the legacy AE-2(C) `AE + AF` aggregate.

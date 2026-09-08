@@ -42,12 +42,34 @@ public sealed record WorkingCalendar
     public IReadOnlyList<CalendarException> Exceptions
     {
         get => _exceptions;
-        init => _exceptions = new ReadOnlyCollection<CalendarException>(
-            (value ?? throw new ArgumentNullException(nameof(value))).ToList());
+        init
+        {
+            var copied = (value ?? throw new ArgumentNullException(nameof(value))).ToList();
+            _exceptions = new ReadOnlyCollection<CalendarException>(copied);
+            _exceptionsByDate = copied
+                .GroupBy(x => x.Date.Date)
+                .ToDictionary(x => x.Key, x => x.First());
+            _workingExceptionDates = _exceptionsByDate.Values
+                .Where(x => x.Kind == CalendarExceptionKind.Working)
+                .Select(x => x.Date)
+                .OrderBy(x => x)
+                .ToArray();
+        }
     }
 
     private IReadOnlyList<CalendarException> _exceptions =
         new ReadOnlyCollection<CalendarException>(Array.Empty<CalendarException>());
+    private IReadOnlyDictionary<DateTime, CalendarException> _exceptionsByDate =
+        new Dictionary<DateTime, CalendarException>();
+    private DateTime[] _workingExceptionDates = Array.Empty<DateTime>();
+
+    internal bool HasWeeklyWorkingDay => Monday || Tuesday || Wednesday || Thursday
+        || Friday || Saturday || Sunday;
+
+    internal bool TryGetException(DateTime date, out CalendarException? exception) =>
+        _exceptionsByDate.TryGetValue(date.Date, out exception);
+
+    internal DateTime[] WorkingExceptionDates => _workingExceptionDates;
 }
 
 /// <summary>Deterministic working-day operations independent of persistence and system time.</summary>
@@ -60,8 +82,7 @@ public static class WorkingCalendarCalculator
         if (calendar == null)
             return date.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday);
 
-        var exception = calendar.Exceptions.FirstOrDefault(x => x.Date.Date == date.Date);
-        if (exception != null)
+        if (calendar.TryGetException(date, out var exception))
             return exception.Kind == CalendarExceptionKind.Working;
 
         return date.DayOfWeek switch
@@ -188,7 +209,7 @@ public static class WorkingCalendarCalculator
 
         if (calendar.Monday || calendar.Tuesday || calendar.Wednesday || calendar.Thursday
             || calendar.Friday || calendar.Saturday || calendar.Sunday
-            || calendar.Exceptions.Any(x => x.Kind == CalendarExceptionKind.Working))
+            || calendar.WorkingExceptionDates.Length > 0)
             return;
 
         throw new ArgumentException(
@@ -218,11 +239,34 @@ public static class WorkingCalendarCalculator
 
     private static DateTime MoveToWorkingDay(WorkingCalendar? calendar, DateTime date, int direction)
     {
+        if (calendar != null && !calendar.HasWeeklyWorkingDay)
+            return FindExceptionWorkingDay(calendar, date.Date, direction);
+
         var current = date.Date;
         while (!IsWorkingDay(calendar, current))
             current = direction > 0 ? NextDay(current) : PreviousDay(current);
 
         return current;
+    }
+
+    private static DateTime FindExceptionWorkingDay(WorkingCalendar calendar, DateTime date, int direction)
+    {
+        var dates = calendar.WorkingExceptionDates;
+        var index = Array.BinarySearch(dates, date);
+        if (index < 0)
+            index = ~index;
+
+        if (direction < 0)
+            index--;
+
+        if (direction < 0 && index >= dates.Length)
+            index = dates.Length - 1;
+
+        if (index < 0 || index >= dates.Length)
+            throw new InvalidOperationException(
+                "The working calendar has no reachable working exception in the requested direction.");
+
+        return dates[index];
     }
 
     private static DateTime NextDay(DateTime date)

@@ -118,7 +118,10 @@ DateTime fin = Sopro.Calculation.Calendar.WorkingCalendarCalculator.CalculateFin
 - El reloj no participa en ninguna aritmetica (fila 0 / manifiesto §4).
 - `WorkingCalendarCalculator` recibe todos sus datos, copia defensivamente las
   excepciones y rechaza calendarios sin ningún día laborable. Los extremos de fecha
-  se procesan sin incrementar más allá de `DateTime.MaxValue`/`MinValue`.
+  se procesan sin incrementar más allá de `DateTime.MaxValue`/`MinValue`. Si el patrón
+  semanal no tiene días laborables, las excepciones `Working` forman un calendario
+  finito: los desplazamientos buscan directamente las fechas disponibles y rechazan
+  inmediatamente una dirección o desfase sin fecha alcanzable.
 - El costo horario usa `HourlyCostCalculator` con entradas y resultados escalares
   inmutables; la fecha de calculo y la persistencia quedan fuera del motor.
 - `AverageValue` y `RealSalary` se conservan con divisores no positivos para la
