@@ -17,11 +17,11 @@ procesa.
    agrega `WorkingCalendar`, `CalendarException`, `CalendarExceptionKind` y
    `WorkingCalendarCalculator` para operaciones deterministas de días hábiles,
    excepciones y fechas inclusivas/exclusivas. El slice de costo horario
-  agrega `HourlyCostInput`, `HourlyCostBreakdown` y `HourlyCostCalculator`. El slice FSR
-   agrega `ActivityNetworkInput`, `ActivityNetworkActivityInput`,
-   `ActivityNetworkDependencyInput`, `ActivityNetworkResult` y
-   `ActivityNetworkCalculator` para fechas tempranas/tardías, holgura y ruta crítica.
-   El slice FSR agrega `RealSalaryFactorInput`, `RealSalaryFactorBreakdown`, `WorkShiftType` y
+   agrega `HourlyCostInput`, `HourlyCostBreakdown` y `HourlyCostCalculator`. El slice de planificación
+    agrega `ActivityNetworkInput`, `ActivityNetworkActivityInput`,
+    `ActivityNetworkDependencyInput`, `ActivityNetworkResult` y
+    `ActivityNetworkCalculator` para fechas tempranas/tardías, holgura y ruta crítica.
+    El slice FSR agrega `RealSalaryFactorInput`, `RealSalaryFactorBreakdown`, `WorkShiftType` y
   `RealSalaryFactorCalculator`. Los ayudantes (`UnitPriceCalculator`,
   `AmountDistributor`) son internos.
 - Invariante del grafo de matrices: los IDs de componente son unicos en todo el
