@@ -148,6 +148,20 @@ public sealed class WorkingCalendarCalculatorTests
     }
 
     [TestMethod]
+    public void FiniteExceptionCalendar_PreservesExactBackwardMatchAndNormalizesTime()
+    {
+        var calendar = CalendarWithOnlyWorkingExceptions(
+            new DateTime(2026, 1, 10, 12, 30, 0), new DateTime(2026, 1, 20));
+
+        Assert.AreEqual(new DateTime(2026, 1, 20),
+            WorkingCalendarCalculator.SubtractWorkingDaysInclusive(calendar, new DateTime(2026, 1, 20), 0));
+        Assert.AreEqual(new DateTime(2026, 1, 20),
+            WorkingCalendarCalculator.CalculateStartDate(calendar, new DateTime(2026, 1, 20), 1));
+        Assert.AreEqual(new DateTime(2026, 1, 10),
+            WorkingCalendarCalculator.AddWorkingDaysInclusive(calendar, new DateTime(2026, 1, 10), 0));
+    }
+
+    [TestMethod]
     public void CountWorkingDays_HandlesMaximumDateWithoutIncrementingPastIt()
     {
         Assert.AreEqual(1, WorkingCalendarCalculator.CountWorkingDays(

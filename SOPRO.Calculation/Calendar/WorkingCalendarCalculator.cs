@@ -51,7 +51,7 @@ public sealed record WorkingCalendar
                 .ToDictionary(x => x.Key, x => x.First());
             _workingExceptionDates = _exceptionsByDate.Values
                 .Where(x => x.Kind == CalendarExceptionKind.Working)
-                .Select(x => x.Date)
+                .Select(x => x.Date.Date)
                 .OrderBy(x => x)
                 .ToArray();
         }
@@ -254,10 +254,11 @@ public static class WorkingCalendarCalculator
         var dates = calendar.WorkingExceptionDates;
         var index = Array.BinarySearch(dates, date);
         if (index < 0)
+        {
             index = ~index;
-
-        if (direction < 0)
-            index--;
+            if (direction < 0)
+                index--;
+        }
 
         if (direction < 0 && index >= dates.Length)
             index = dates.Length - 1;
