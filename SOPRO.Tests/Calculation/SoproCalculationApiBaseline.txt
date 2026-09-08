@@ -19,6 +19,9 @@ ctor Sopro.Calculation.Pricing.IndirectCostPercentageInput()
 ctor Sopro.Calculation.Pricing.IndirectCostPercentageResult()
 ctor Sopro.Calculation.Pricing.UtilityInput()
 ctor Sopro.Calculation.Pricing.UtilityResult()
+ctor Sopro.Calculation.Scheduling.ActivityNetworkActivityInput(Int32 id, Int32 order, Int32 durationWorkingDays, DateTime? initialStartDate = null)
+ctor Sopro.Calculation.Scheduling.ActivityNetworkDependencyInput(Int32 sourceActivityId, Int32 targetActivityId, ActivityDependencyType type, Int32 lagDays = 0)
+ctor Sopro.Calculation.Scheduling.ActivityNetworkInput(DateTime programStartDate, IEnumerable<ActivityNetworkActivityInput> activities, IEnumerable<ActivityNetworkDependencyInput>? dependencies = null, WorkingCalendar? calendar = null)
 ctor Sopro.Calculation.SoproCalculationEngine(CalculationPrecision precision)
 ctor Sopro.Calculation.SoproCalculationEngine(Int32 quantityDecimals, Int32 amountDecimals, Int32 percentageDecimals)
 enum-member Sopro.Calculation.Calendar.CalendarExceptionKind.NonWorking = 0
@@ -36,11 +39,16 @@ enum-member Sopro.Calculation.Matrices.MatrixType.Basic = 1
 enum-member Sopro.Calculation.Matrices.MatrixType.Crew = 2
 enum-member Sopro.Calculation.PercentageCalculationMode.Accumulative = 0
 enum-member Sopro.Calculation.PercentageCalculationMode.OverDirectCost = 1
+enum-member Sopro.Calculation.Scheduling.ActivityDependencyType.FinishToFinish = 2
+enum-member Sopro.Calculation.Scheduling.ActivityDependencyType.FinishToStart = 0
+enum-member Sopro.Calculation.Scheduling.ActivityDependencyType.StartToFinish = 3
+enum-member Sopro.Calculation.Scheduling.ActivityDependencyType.StartToStart = 1
 enum-underlying Sopro.Calculation.Calendar.CalendarExceptionKind = Int32
 enum-underlying Sopro.Calculation.Labor.WorkShiftType = Int32
 enum-underlying Sopro.Calculation.Matrices.MatrixComponentType = Int32
 enum-underlying Sopro.Calculation.Matrices.MatrixType = Int32
 enum-underlying Sopro.Calculation.PercentageCalculationMode = Int32
+enum-underlying Sopro.Calculation.Scheduling.ActivityDependencyType = Int32
 method Boolean Sopro.Calculation.CalculationPrecision.Equals(CalculationPrecision? other)
 method Boolean Sopro.Calculation.CalculationPrecision.Equals(Object? obj)
 method Boolean Sopro.Calculation.Calendar.CalendarException.Equals(CalendarException? other)
@@ -137,6 +145,7 @@ method Void Sopro.Calculation.Matrices.MatrixComponentInput.Deconstruct(out Int3
 method Void Sopro.Calculation.Matrices.MatrixComponentResult.Deconstruct(out Int32 ComponentId, out Int32 Order, out Decimal Amount)
 method Void Sopro.Calculation.PriceBreakdown.Deconstruct(out Decimal DirectCost, out Decimal IndirectCosts, out Decimal Financing, out Decimal Profit, out Decimal AdditionalCharges, out Decimal UnitPrice, out Decimal CentralIndirectsPercentage, out Decimal FieldIndirectsPercentage)
 method WorkingCalendar Sopro.Calculation.Calendar.WorkingCalendar.<Clone>$()
+method static ActivityNetworkResult Sopro.Calculation.Scheduling.ActivityNetworkCalculator.Calculate(ActivityNetworkInput input)
 method static Boolean Sopro.Calculation.CalculationPrecision.op_Equality(CalculationPrecision? left, CalculationPrecision? right)
 method static Boolean Sopro.Calculation.CalculationPrecision.op_Inequality(CalculationPrecision? left, CalculationPrecision? right)
 method static Boolean Sopro.Calculation.Calendar.CalendarException.op_Equality(CalendarException? left, CalendarException? right)
@@ -182,6 +191,7 @@ method static IndirectCostPercentageResult Sopro.Calculation.Pricing.IndirectCos
 method static Int32 Sopro.Calculation.Calendar.WorkingCalendarCalculator.CountWorkingDays(WorkingCalendar? calendar, DateTime? start, DateTime? end)
 method static RealSalaryFactorBreakdown Sopro.Calculation.Labor.RealSalaryFactorCalculator.Calculate(RealSalaryFactorInput input)
 method static UtilityResult Sopro.Calculation.Pricing.UtilityCalculator.Calculate(UtilityInput input)
+prop-get ActivityDependencyType Sopro.Calculation.Scheduling.ActivityNetworkDependencyInput.Type
 prop-get Boolean Sopro.Calculation.Calendar.WorkingCalendar.Friday
 prop-get Boolean Sopro.Calculation.Calendar.WorkingCalendar.Monday
 prop-get Boolean Sopro.Calculation.Calendar.WorkingCalendar.Saturday
@@ -193,9 +203,17 @@ prop-get Boolean Sopro.Calculation.DirectCostLine.HasMatrix
 prop-get Boolean Sopro.Calculation.DirectCostLine.IsGrouping
 prop-get Boolean Sopro.Calculation.Matrices.MatrixComponentInput.IsPercentageOfLabor
 prop-get Boolean Sopro.Calculation.Pricing.UtilityInput.IsAssistedMode
+prop-get Boolean Sopro.Calculation.Scheduling.ActivityNetworkActivityResult.IsCritical
 prop-get CalculationPrecision Sopro.Calculation.SoproCalculationEngine.Precision
 prop-get CalendarExceptionKind Sopro.Calculation.Calendar.CalendarException.Kind
 prop-get DateTime Sopro.Calculation.Calendar.CalendarException.Date
+prop-get DateTime Sopro.Calculation.Scheduling.ActivityNetworkInput.ProgramStartDate
+prop-get DateTime? Sopro.Calculation.Scheduling.ActivityNetworkActivityInput.InitialStartDate
+prop-get DateTime? Sopro.Calculation.Scheduling.ActivityNetworkActivityResult.EarlyFinishDate
+prop-get DateTime? Sopro.Calculation.Scheduling.ActivityNetworkActivityResult.EarlyStartDate
+prop-get DateTime? Sopro.Calculation.Scheduling.ActivityNetworkActivityResult.LateFinishDate
+prop-get DateTime? Sopro.Calculation.Scheduling.ActivityNetworkActivityResult.LateStartDate
+prop-get DateTime? Sopro.Calculation.Scheduling.ActivityNetworkResult.ProjectFinishDate
 prop-get Decimal Sopro.Calculation.DirectCostLine.Quantity
 prop-get Decimal Sopro.Calculation.DirectCostLine.UnitDirectCost
 prop-get Decimal Sopro.Calculation.Equipment.HourlyCostBreakdown.AverageValue
@@ -367,6 +385,9 @@ prop-get Decimal Sopro.Calculation.Pricing.UtilityResult.UtilidadNetaEstimada
 prop-get Decimal? Sopro.Calculation.Matrices.MatrixNodeInput.PrecomputedDirectCostTotal
 prop-get IReadOnlyDictionary<Int32, Decimal> Sopro.Calculation.Matrices.MatrixGraphResult.ComponentAmounts
 prop-get IReadOnlyDictionary<Int32, MatrixNodeResult> Sopro.Calculation.Matrices.MatrixGraphResult.Nodes
+prop-get IReadOnlyList<ActivityNetworkActivityInput> Sopro.Calculation.Scheduling.ActivityNetworkInput.Activities
+prop-get IReadOnlyList<ActivityNetworkActivityResult> Sopro.Calculation.Scheduling.ActivityNetworkResult.Activities
+prop-get IReadOnlyList<ActivityNetworkDependencyInput> Sopro.Calculation.Scheduling.ActivityNetworkInput.Dependencies
 prop-get IReadOnlyList<CalendarException> Sopro.Calculation.Calendar.WorkingCalendar.Exceptions
 prop-get IReadOnlyList<MatrixComponentInput> Sopro.Calculation.Matrices.MatrixNodeInput.Components
 prop-get IReadOnlyList<MatrixComponentResult> Sopro.Calculation.Matrices.MatrixNodeResult.Components
@@ -385,6 +406,14 @@ prop-get Int32 Sopro.Calculation.Matrices.MatrixGraphResult.RootMatrixId
 prop-get Int32 Sopro.Calculation.Matrices.MatrixNodeInput.Id
 prop-get Int32 Sopro.Calculation.Matrices.MatrixNodeResult.Id
 prop-get Int32 Sopro.Calculation.Pricing.UtilityInput.AmountDecimals
+prop-get Int32 Sopro.Calculation.Scheduling.ActivityNetworkActivityInput.DurationWorkingDays
+prop-get Int32 Sopro.Calculation.Scheduling.ActivityNetworkActivityInput.Id
+prop-get Int32 Sopro.Calculation.Scheduling.ActivityNetworkActivityInput.Order
+prop-get Int32 Sopro.Calculation.Scheduling.ActivityNetworkActivityResult.Id
+prop-get Int32 Sopro.Calculation.Scheduling.ActivityNetworkActivityResult.SlackDays
+prop-get Int32 Sopro.Calculation.Scheduling.ActivityNetworkDependencyInput.LagDays
+prop-get Int32 Sopro.Calculation.Scheduling.ActivityNetworkDependencyInput.SourceActivityId
+prop-get Int32 Sopro.Calculation.Scheduling.ActivityNetworkDependencyInput.TargetActivityId
 prop-get Int32 Sopro.Calculation.SoproCalculationEngine.AmountDecimals
 prop-get Int32 Sopro.Calculation.SoproCalculationEngine.PercentageDecimals
 prop-get Int32 Sopro.Calculation.SoproCalculationEngine.QuantityDecimals
@@ -394,6 +423,7 @@ prop-get MatrixType Sopro.Calculation.Matrices.MatrixNodeInput.Type
 prop-get MatrixType Sopro.Calculation.Matrices.MatrixNodeResult.Type
 prop-get PercentageCalculationMode Sopro.Calculation.PricePercentageInput.Mode
 prop-get WorkShiftType Sopro.Calculation.Labor.RealSalaryFactorInput.WorkShift
+prop-get WorkingCalendar? Sopro.Calculation.Scheduling.ActivityNetworkInput.Calendar
 prop-set init Boolean Sopro.Calculation.Calendar.WorkingCalendar.Friday
 prop-set init Boolean Sopro.Calculation.Calendar.WorkingCalendar.Monday
 prop-set init Boolean Sopro.Calculation.Calendar.WorkingCalendar.Saturday
@@ -571,6 +601,7 @@ type Sopro.Calculation.Labor.WorkShiftType
 type Sopro.Calculation.Matrices.MatrixComponentType
 type Sopro.Calculation.Matrices.MatrixType
 type Sopro.Calculation.PercentageCalculationMode
+type Sopro.Calculation.Scheduling.ActivityDependencyType
 type sealed Sopro.Calculation.CalculationPrecision
 type sealed Sopro.Calculation.Calendar.CalendarException
 type sealed Sopro.Calculation.Calendar.WorkingCalendar
@@ -592,9 +623,15 @@ type sealed Sopro.Calculation.Pricing.IndirectCostPercentageInput
 type sealed Sopro.Calculation.Pricing.IndirectCostPercentageResult
 type sealed Sopro.Calculation.Pricing.UtilityInput
 type sealed Sopro.Calculation.Pricing.UtilityResult
+type sealed Sopro.Calculation.Scheduling.ActivityNetworkActivityInput
+type sealed Sopro.Calculation.Scheduling.ActivityNetworkActivityResult
+type sealed Sopro.Calculation.Scheduling.ActivityNetworkDependencyInput
+type sealed Sopro.Calculation.Scheduling.ActivityNetworkInput
+type sealed Sopro.Calculation.Scheduling.ActivityNetworkResult
 type sealed Sopro.Calculation.SoproCalculationEngine
 type static Sopro.Calculation.Calendar.WorkingCalendarCalculator
 type static Sopro.Calculation.Equipment.HourlyCostCalculator
 type static Sopro.Calculation.Labor.RealSalaryFactorCalculator
 type static Sopro.Calculation.Pricing.IndirectCostPercentageCalculator
 type static Sopro.Calculation.Pricing.UtilityCalculator
+type static Sopro.Calculation.Scheduling.ActivityNetworkCalculator
