@@ -220,7 +220,7 @@ public sealed class CalendarioCharacterizationTests
 
     [TestMethod]
     [Timeout(5000)]
-    public void RedConCiclo_TerminaSinBucleInfinito()
+    public void RedConCiclo_SeRechazaFormalmente()
     {
         using var context = TestDbFactory.CreateContext();
         var proyecto = new Proyecto
@@ -255,25 +255,233 @@ public sealed class CalendarioCharacterizationTests
             new DependenciaActividad { ActividadOrigenId = segunda.Id, ActividadDestinoId = primera.Id });
         context.SaveChanges();
 
+        // Contrato N7-16: el límite de iteraciones legacy truncaba el resultado sin
+        // diagnosticar el ciclo; ahora el calculador puro lo rechaza formalmente.
+        Assert.ThrowsException<InvalidOperationException>(() =>
+            new SOPRO.Application.Services.ProgramacionCalculationService()
+                .RecalculateProgram(context, programa.Id));
+
+        // Nada debe persistirse cuando la red es inválida.
+        var actividadesFinales = context.ActividadesProgramadas.ToList();
+        Assert.IsNull(context.ActividadesProgramadas.Find(primera.Id)!.FechaInicioTemprana);
+        Assert.IsNull(actividadesFinales.Single(a => a.Id == segunda.Id).FechaFinTardia);
+    }
+
+    [TestMethod]
+    public void RedMixta_RestriccionesMixtas_ColapsanORedimensionanRango()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var proyecto = CrearProyecto("Red mixta");
+        context.Proyectos.Add(proyecto);
+        context.SaveChanges();
+
+        var programa = new ProgramaObra
+        {
+            ProyectoId = proyecto.Id,
+            FechaInicioPrograma = new DateTime(2026, 1, 5)
+        };
+        context.ProgramasObra.Add(programa);
+        context.SaveChanges();
+
+        var finA = CrearActividad(programa.Id, "FinA", new DateTime(2026, 1, 5), 1, 1);
+        var finB = CrearActividad(programa.Id, "FinB", new DateTime(2026, 1, 5), 1, 2);
+        var mixta = CrearActividad(programa.Id, "Mixta", new DateTime(2026, 1, 5), 1, 3);
+        context.ActividadesProgramadas.AddRange(finA, finB, mixta);
+        context.SaveChanges();
+        context.DependenciasActividad.AddRange(
+            new DependenciaActividad { ActividadOrigenId = finA.Id, ActividadDestinoId = mixta.Id, TipoDependencia = TipoDependenciaActividad.FS },
+            new DependenciaActividad { ActividadOrigenId = finB.Id, ActividadDestinoId = mixta.Id, TipoDependencia = TipoDependenciaActividad.FF });
+        context.SaveChanges();
+
         new SOPRO.Application.Services.ProgramacionCalculationService()
             .RecalculateProgram(context, programa.Id);
 
-        var primeraFinal = context.ActividadesProgramadas.Find(primera.Id)!;
-        var segundaFinal = context.ActividadesProgramadas.Find(segunda.Id)!;
-        // Contrato legacy caracterizado: el límite de iteraciones evita el bucle,
-        // pero no diagnostica el ciclo; N7-16b deberá reemplazarlo por rechazo formal.
-        Assert.AreEqual(Fecha("2026-03-10"), primeraFinal.FechaInicioProgramada!.Value.Date);
-        Assert.AreEqual(Fecha("2026-03-11"), primeraFinal.FechaFinProgramada!.Value.Date);
-        Assert.AreEqual(Fecha("2026-03-12"), segundaFinal.FechaInicioProgramada!.Value.Date);
-        Assert.AreEqual(Fecha("2026-03-13"), segundaFinal.FechaFinProgramada!.Value.Date);
-        Assert.IsNull(primeraFinal.FechaInicioTardia);
-        Assert.IsNull(primeraFinal.FechaFinTardia);
-        Assert.IsNull(segundaFinal.FechaInicioTardia);
-        Assert.IsNull(segundaFinal.FechaFinTardia);
-        Assert.AreEqual(0, primeraFinal.HolguraDias);
-        Assert.AreEqual(0, segundaFinal.HolguraDias);
-        Assert.IsFalse(primeraFinal.RutaCritica);
-        Assert.IsFalse(segundaFinal.RutaCritica);
+        var actual = context.ActividadesProgramadas.Find(mixta.Id)!;
+        // FS exige inicio >= 2026-01-06; FF exige fin >= 2026-01-05.
+        // La regla legacy mezcla ambos límites: el rango queda definido por ambos
+        // y la duración se recalcula sobre el rango (aqui colapsado a un dia).
+        Assert.AreEqual(Fecha("2026-01-06"), actual.FechaInicioProgramada!.Value.Date);
+        Assert.AreEqual(Fecha("2026-01-06"), actual.FechaFinProgramada!.Value.Date);
+        Assert.AreEqual(1, actual.DuracionDiasHabiles);
+    }
+
+    [TestMethod]
+    public void CadenaConDesfases_ConservaFechasTempranasYDuracion()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var proyecto = CrearProyecto("Cadena con desfases");
+        context.Proyectos.Add(proyecto);
+        context.SaveChanges();
+
+        var programa = new ProgramaObra
+        {
+            ProyectoId = proyecto.Id,
+            FechaInicioPrograma = new DateTime(2026, 1, 5)
+        };
+        context.ProgramasObra.Add(programa);
+        context.SaveChanges();
+
+        var a = CrearActividad(programa.Id, "A", new DateTime(2026, 1, 5), 2, 1);
+        var b = CrearActividad(programa.Id, "B", new DateTime(2026, 1, 5), 2, 2);
+        var c = CrearActividad(programa.Id, "C", new DateTime(2026, 1, 5), 3, 3);
+        context.ActividadesProgramadas.AddRange(a, b, c);
+        context.SaveChanges();
+        context.DependenciasActividad.AddRange(
+            new DependenciaActividad { ActividadOrigenId = a.Id, ActividadDestinoId = b.Id, DesfaseDias = 1 },
+            new DependenciaActividad { ActividadOrigenId = b.Id, ActividadDestinoId = c.Id });
+        context.SaveChanges();
+
+        new SOPRO.Application.Services.ProgramacionCalculationService()
+            .RecalculateProgram(context, programa.Id);
+
+        var actividades = context.ActividadesProgramadas.ToDictionary(x => x.Descripcion);
+        AssertActividad(actividades["A"], "2026-01-05", "2026-01-06", "2026-01-05", "2026-01-06", 0, true);
+        AssertActividad(actividades["B"], "2026-01-07", "2026-01-08", "2026-01-07", "2026-01-08", 0, true);
+        AssertActividad(actividades["C"], "2026-01-09", "2026-01-13", "2026-01-09", "2026-01-13", 0, true);
+        Assert.AreEqual(2, actividades["B"].DuracionDiasHabiles);
+        Assert.AreEqual(3, actividades["C"].DuracionDiasHabiles);
+    }
+
+    [TestMethod]
+    public void ActividadesResumen_SeExcluyenDeLaRedYSeAgrupan()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var proyecto = CrearProyecto("Resumen y agrupador");
+        context.Proyectos.Add(proyecto);
+        context.SaveChanges();
+
+        var programa = new ProgramaObra
+        {
+            ProyectoId = proyecto.Id,
+            FechaInicioPrograma = new DateTime(2026, 1, 5)
+        };
+        context.ProgramasObra.Add(programa);
+        context.SaveChanges();
+
+        var resumen = CrearActividad(programa.Id, "Resumen", new DateTime(2026, 1, 5), 1, 1);
+        resumen.EsResumen = true;
+        resumen.Nivel = 1;
+        var hijo1 = CrearActividad(programa.Id, "Hijo1", new DateTime(2026, 1, 5), 2, 2);
+        hijo1.Nivel = 2;
+        var hijo2 = CrearActividad(programa.Id, "Hijo2", new DateTime(2026, 1, 8), 2, 3);
+        hijo2.Nivel = 2;
+        context.ActividadesProgramadas.AddRange(resumen, hijo1, hijo2);
+        context.SaveChanges();
+
+        new SOPRO.Application.Services.ProgramacionCalculationService()
+            .RecalculateProgram(context, programa.Id);
+
+        var actual = context.ActividadesProgramadas.Find(resumen.Id)!;
+        Assert.AreEqual(Fecha("2026-01-05"), actual.FechaInicioProgramada!.Value.Date);
+        Assert.AreEqual(Fecha("2026-01-09"), actual.FechaFinProgramada!.Value.Date);
+        Assert.AreEqual(5, actual.DuracionDiasHabiles);
+        Assert.IsNull(actual.FechaInicioTemprana);
+        Assert.IsNull(actual.FechaFinTardia);
+    }
+
+    [TestMethod]
+    public void Hito_DuracionCero_SePisaAUndiaHabil()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var proyecto = CrearProyecto("Hito");
+        context.Proyectos.Add(proyecto);
+        context.SaveChanges();
+
+        var programa = new ProgramaObra
+        {
+            ProyectoId = proyecto.Id,
+            FechaInicioPrograma = new DateTime(2026, 1, 5)
+        };
+        context.ProgramasObra.Add(programa);
+        context.SaveChanges();
+
+        var hito = CrearActividad(programa.Id, "Hito", new DateTime(2026, 1, 5), 5, 1);
+        hito.EsHito = true;
+        context.ActividadesProgramadas.Add(hito);
+        context.SaveChanges();
+
+        new SOPRO.Application.Services.ProgramacionCalculationService()
+            .RecalculateProgram(context, programa.Id);
+
+        var actual = context.ActividadesProgramadas.Find(hito.Id)!;
+        Assert.AreEqual(Fecha("2026-01-05"), actual.FechaInicioProgramada!.Value.Date);
+        Assert.AreEqual(Fecha("2026-01-05"), actual.FechaFinProgramada!.Value.Date);
+        Assert.AreEqual(1, actual.DuracionDiasHabiles);
+    }
+
+    [TestMethod]
+    public void DependenciaCuyaOrigenEsResumen_SeOmitiraSinLanzar()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var proyecto = CrearProyecto("Dep a resumen");
+        context.Proyectos.Add(proyecto);
+        context.SaveChanges();
+
+        var programa = new ProgramaObra
+        {
+            ProyectoId = proyecto.Id,
+            FechaInicioPrograma = new DateTime(2026, 1, 5)
+        };
+        context.ProgramasObra.Add(programa);
+        context.SaveChanges();
+
+        var resumen = CrearActividad(programa.Id, "Resumen", new DateTime(2026, 1, 5), 1, 1);
+        resumen.EsResumen = true;
+        resumen.Nivel = 1;
+        var a = CrearActividad(programa.Id, "A", new DateTime(2026, 1, 5), 2, 2);
+        var b = CrearActividad(programa.Id, "B", new DateTime(2026, 1, 5), 2, 3);
+        context.ActividadesProgramadas.AddRange(resumen, a, b);
+        context.SaveChanges();
+        context.DependenciasActividad.AddRange(
+            new DependenciaActividad { ActividadOrigenId = resumen.Id, ActividadDestinoId = a.Id },
+            new DependenciaActividad { ActividadOrigenId = a.Id, ActividadDestinoId = b.Id });
+        context.SaveChanges();
+
+        // La dependencia cuyo origen es resumen se descarta (equivalente al skip legacy)
+        // y el resto de la red se calcula sin lanzar.
+        new SOPRO.Application.Services.ProgramacionCalculationService()
+            .RecalculateProgram(context, programa.Id);
+
+        var actividades = context.ActividadesProgramadas.ToDictionary(x => x.Descripcion);
+        AssertActivityIgnoreSummary(actividades["A"], "2026-01-05", "2026-01-06");
+        AssertActivityIgnoreSummary(actividades["B"], "2026-01-07", "2026-01-08");
+    }
+
+    [TestMethod]
+    public void WrappersPublicos_DeleganAlCalendarioPuro()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var proyecto = CrearProyecto("Wrappers calendario");
+        context.Proyectos.Add(proyecto);
+        context.SaveChanges();
+
+        var calendario = new CalendarioLaboral { ProyectoId = proyecto.Id };
+        context.CalendariosLaborales.Add(calendario);
+        context.SaveChanges();
+        var programa = new ProgramaObra
+        {
+            ProyectoId = proyecto.Id,
+            FechaInicioPrograma = new DateTime(2026, 1, 5),
+            CalendarioLaboralId = calendario.Id
+        };
+        context.ProgramasObra.Add(programa);
+        context.SaveChanges();
+
+        var service = new SOPRO.Application.Services.ProgramacionCalculationService();
+        Assert.IsTrue(service.IsWorkingDay(context, programa.Id, new DateTime(2026, 1, 5)));
+        Assert.IsFalse(service.IsWorkingDay(context, programa.Id, new DateTime(2026, 1, 10)));
+        Assert.AreEqual(Fecha("2026-01-09"),
+            service.CalculateFinishDate(context, programa.Id, new DateTime(2026, 1, 5), 5));
+        Assert.AreEqual(Fecha("2026-01-05"),
+            service.CalculateStartDate(context, programa.Id, new DateTime(2026, 1, 9), 5));
+        Assert.AreEqual(5,
+            service.CalculateBusinessDaysInclusive(context, programa.Id, new DateTime(2026, 1, 5), new DateTime(2026, 1, 9)));
+    }
+
+    private static void AssertActivityIgnoreSummary(ActividadProgramada actividad, string inicio, string fin)
+    {
+        Assert.AreEqual(Fecha(inicio), actividad.FechaInicioProgramada!.Value.Date);
+        Assert.AreEqual(Fecha(fin), actividad.FechaFinProgramada!.Value.Date);
     }
 
     private static Proyecto CrearProyecto(string nombre) => new()

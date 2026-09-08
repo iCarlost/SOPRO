@@ -107,6 +107,8 @@ public sealed class ActivityNetworkActivityResult
     public DateTime? LateStartDate { get; }
     /// <summary>Calculated late finish.</summary>
     public DateTime? LateFinishDate { get; }
+    /// <summary>Working-day duration after dependency constraints are applied.</summary>
+    public int DurationWorkingDays { get; }
     /// <summary>Working-day slack.</summary>
     public int SlackDays { get; }
     /// <summary>Whether the activity belongs to the critical path.</summary>
@@ -118,6 +120,7 @@ public sealed class ActivityNetworkActivityResult
         DateTime? earlyFinishDate,
         DateTime? lateStartDate,
         DateTime? lateFinishDate,
+        int durationWorkingDays,
         int slackDays,
         bool isCritical)
     {
@@ -126,6 +129,7 @@ public sealed class ActivityNetworkActivityResult
         EarlyFinishDate = earlyFinishDate;
         LateStartDate = lateStartDate;
         LateFinishDate = lateFinishDate;
+        DurationWorkingDays = durationWorkingDays;
         SlackDays = slackDays;
         IsCritical = isCritical;
     }
@@ -210,6 +214,7 @@ public static class ActivityNetworkCalculator
                 state.EarlyFinishDate,
                 state.LateStartDate,
                 state.LateFinishDate,
+                state.DurationWorkingDays,
                 slack,
                 slack == 0 && state.EarlyStartDate.HasValue && state.LateStartDate.HasValue);
         });

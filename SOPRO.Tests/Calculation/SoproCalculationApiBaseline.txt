@@ -409,6 +409,7 @@ prop-get Int32 Sopro.Calculation.Pricing.UtilityInput.AmountDecimals
 prop-get Int32 Sopro.Calculation.Scheduling.ActivityNetworkActivityInput.DurationWorkingDays
 prop-get Int32 Sopro.Calculation.Scheduling.ActivityNetworkActivityInput.Id
 prop-get Int32 Sopro.Calculation.Scheduling.ActivityNetworkActivityInput.Order
+prop-get Int32 Sopro.Calculation.Scheduling.ActivityNetworkActivityResult.DurationWorkingDays
 prop-get Int32 Sopro.Calculation.Scheduling.ActivityNetworkActivityResult.Id
 prop-get Int32 Sopro.Calculation.Scheduling.ActivityNetworkActivityResult.SlackDays
 prop-get Int32 Sopro.Calculation.Scheduling.ActivityNetworkDependencyInput.LagDays

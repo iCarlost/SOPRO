@@ -14,6 +14,9 @@ All notable changes to `SOPRO.Calculation` are documented here.
   working-day lags, early/late dates, slack and critical-path membership; it rejects
   cycles, duplicate IDs, unknown references and undefined dependency types while
   preserving the legacy mixed start/finish range rule.
+- `ActivityNetworkActivityResult` exposes the effective `DurationWorkingDays` after
+  dependency constraints, so consumers can persist the resized range like the legacy
+  schedule did.
 - Mexican real salary factor (FSR) is now available as a pure, immutable scalar
   calculation through `RealSalaryFactorCalculator`, including the complete report
   breakdown and the legacy AE-2(C) `AE + AF` aggregate.
