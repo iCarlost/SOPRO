@@ -38,6 +38,24 @@ All notable changes to `SOPRO.Calculation` are documented here.
 - `SOPRO.Application.MatrixComponentCalculationService` now delegates all matrix
   component arithmetic to `MatrixGraphCalculator` through `MatrixGraphSnapshotAdapter`
   (single implementation, N7-1b).
+- Financing is now available as a pure, immutable calculation through
+  `FinancingCalculator`. It reproduces the legacy `FinanciamientoCalculationService`
+  arithmetic against the N7-17a characterization goldens before any production code
+  delegates to it: advance basis (total budget with fallback to the accumulated
+  base), accumulation base expressed as `FinancingBaseCalculationMode`
+  (`Accumulative` = direct + indirect cost, `OverDirectCost` = direct cost),
+  advance amortization capped by pending and collected amounts, per-period rate
+  `Round(annualRate x days / 365, 8)`, interest `Round(balance x rate, 4)` accrued
+  on negative balances (or on both signs in dual mode, charging the effective
+  rate — TIIE + additional points — on balances against and the plain TIIE rate
+  on balances in favor), percentage
+  `Round(net / base x 100, 5)`, and the delay-suffix period construction. Precision
+  is explicit through `FinancingPrecision` (`Legacy` factory mirrors the legacy
+  widths: amounts project precision, fixed 8/6/4/5 for rate/amortization/
+  interest/percentage), and EF, entities and persistence remain adapter
+  responsibilities (N7-17c). The "estimated amount" of each input period is the
+  scheduled collected estimate (`ImporteProgramado`); the distribution residue that
+  reshapes direct cost does not rewrite collected estimates.
 
 ## 0.1.0 - 2026-08-22
 

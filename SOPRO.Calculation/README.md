@@ -24,7 +24,12 @@ agrega `ActivityNetworkInput`, `ActivityNetworkActivityInput`,
      El resultado de cada actividad expone la duración efectiva `DurationWorkingDays`
      (sin las dependencias establecen el rango), que el consumidor puede persistir.
     El slice FSR agrega `RealSalaryFactorInput`, `RealSalaryFactorBreakdown`, `WorkShiftType` y
-  `RealSalaryFactorCalculator`. Los ayudantes (`UnitPriceCalculator`,
+  `RealSalaryFactorCalculator`. El slice de financiamiento agrega `FinancingInput`,
+  `FinancingPeriodInput`, `FinancingBaseCalculationMode`, `FinancingPrecision`,
+  `FinancingRowResult`, `FinancingResult` y `FinancingCalculator`, con la base de
+  acumulación como enum y una política de precisión explícita e inmutable
+  (montos como el proyecto; 8/6/4/5 para tasa/amortización/interés/porcentaje).
+  Los ayudantes (`UnitPriceCalculator`,
   `AmountDistributor`) son internos.
 - Invariante del grafo de matrices: los IDs de componente son unicos en todo el
   grafo (incluidos nodos no alcanzados desde la raiz); los IDs temporales de
