@@ -167,22 +167,21 @@ public sealed class FinancingCalculatorTests
             interestDecimals: 2,
             percentageDecimals: 2);
 
+        // Entradas ya redondeadas a la precisión de montos (1 decimal), como exige el contrato.
         var result = Calculate(new Scenario(
             effectiveRate: 12m,
             tiieRate: 12m,
             advance: 33m,
             delay: 1,
-            periods: Periods((1000.66m, 100.44m, 1000.66m), (1000.66m, 100.44m, 1000.66m)),
+            periods: Periods((1000.7m, 100.4m, 1000.7m), (1000.7m, 100.4m, 1000.7m)),
             precision: precision));
 
-        // Montos a 1 decimal: egreso 1101.10 -> 1101.1; saldos -871.74 -> -871.7.
         AssertRow(result.Rows[0], 1, "P1", "2026-01-01", "2026-01-07", 7, 1101.1m, 660.0m, 0.0m, 0.0m, -441.1m, -441.1m, 1.01m);
-        // Amortización a 1 decimal con cap por pendiente: 330.2178 -> 330.2; r2 cap 329.8.
-        AssertRow(result.Rows[1], 2, "P2", "2026-01-08", "2026-01-14", 7, 1101.1m, 0.0m, 1000.7m, 330.2m, -430.6m, -871.7m, 2.01m);
-        AssertRow(result.Rows[2], 3, "Período de desfase 1", "2026-01-15", "2026-01-21", 7, 0.0m, 0.0m, 1000.7m, 329.8m, 670.9m, -200.9m, 0.46m);
+        AssertRow(result.Rows[1], 2, "P2", "2026-01-08", "2026-01-14", 7, 1101.1m, 0.0m, 1000.7m, 330.2m, -430.6m, -871.7m, 2.00m);
+        AssertRow(result.Rows[2], 3, "Período de desfase 1", "2026-01-15", "2026-01-21", 7, 0.0m, 0.0m, 1000.7m, 329.8m, 670.9m, -200.8m, 0.46m);
 
-        // Tasa a 4 decimales: 0.00230137 -> 0.0023. Interés a 2: 3.48.
-        AssertFinancingResult(result, negativeInterest: 3.48m, positiveInterest: 0m, net: 3.48m, percentage: 0.16m);
+        // Tasa a 4 decimales: 0.00230137 -> 0.0023. Interés a 2: 1.01+2.00+0.46 = 3.47.
+        AssertFinancingResult(result, negativeInterest: 3.47m, positiveInterest: 0m, net: 3.47m, percentage: 0.16m);
 
         var negative = new FinancingPrecision(amountDecimals: -1, rateDecimals: -8, amortizationDecimals: -6, interestDecimals: -4, percentageDecimals: -5);
         Assert.AreEqual(0, negative.AmountDecimals);
