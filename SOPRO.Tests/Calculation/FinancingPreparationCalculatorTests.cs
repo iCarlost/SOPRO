@@ -234,6 +234,105 @@ public sealed class FinancingPreparationCalculatorTests
     }
 
     [TestMethod]
+    public void TodasCantidadesCero_ResiduoVaALaUltimaDistribucion()
+    {
+        // Cantidad 2 x 100 = 200; distribuciones 0 + 0; sin fila con monto → el
+        // fallback del legado manda el total a la última distribución → [0, 200].
+        var result = Prepare(amountDecimals: 2, periodCount: 2, concepts: new[]
+        {
+            Concept(quantity: 2m, unitCd: 100m, totalCd: 0m,
+                Distribution(0, 0m), Distribution(1, 0m))
+        });
+
+        AssertPrepared(result[0], directCost: 0m, indirectCost: 0m, expenditure: 0m, estimated: 0m);
+        AssertPrepared(result[1], directCost: 200.00m, indirectCost: 0m, expenditure: 200.00m, estimated: 0m);
+    }
+
+    [TestMethod]
+    public void PeriodIndexFueraDeRango_EnDistribucion_LanzaArgumentOutOfRange()
+    {
+        Action calcular = () => Prepare(amountDecimals: 2, periodCount: 2, concepts: new[]
+        {
+            Concept(quantity: 2m, unitCd: 100m, totalCd: 0m,
+                Distribution(0, 1m), Distribution(2, 1m))
+        });
+
+        Assert.ThrowsException<ArgumentOutOfRangeException>(calcular);
+    }
+
+    [TestMethod]
+    public void PeriodIndexFueraDeRango_EnEstimacion_LanzaArgumentOutOfRange()
+    {
+        Action calcular = () => Prepare(amountDecimals: 2, periodCount: 2, estimates: new[]
+        {
+            Estimate(1, 10m),
+            Estimate(3, 20m)
+        });
+
+        Assert.ThrowsException<ArgumentOutOfRangeException>(calcular);
+    }
+
+    [TestMethod]
+    public void PrepareBaseScheduleConNull_LanzaArgumentNull()
+    {
+        Assert.ThrowsException<ArgumentNullException>(
+            () => FinancingPreparationCalculator.PrepareBaseSchedule(null!));
+    }
+
+    [TestMethod]
+    public void ReconcileIndirectCostConNull_LanzaArgumentNull()
+    {
+        Assert.ThrowsException<ArgumentNullException>(
+            () => FinancingPreparationCalculator.ReconcileIndirectCost(null!, officialIndirectCost: 1m, amountDecimals: 2));
+    }
+
+    [TestMethod]
+    public void ReconcileConCIPrevioDistintoDeCero_DistribuyeProporcional()
+    {
+        // CI previo [10, 0, 10] suman 20 ≠ 30 oficial → reparto sobre las filas con
+        // monto (índices 0 y 2), cada una recibe 30*10/20 = 15 → [15, 0, 15].
+        var rows = new[]
+        {
+            new FinancingPreparedPeriod(100m, 10m, 110m, 0m),
+            new FinancingPreparedPeriod(100m, 0m, 100m, 0m),
+            new FinancingPreparedPeriod(100m, 10m, 110m, 0m)
+        };
+
+        var result = Reconcile(rows, officialIndirectCost: 30m, amountDecimals: 2);
+
+        AssertPrepared(result[0], directCost: 100.00m, indirectCost: 15.00m, expenditure: 115.00m, estimated: 0m);
+        AssertPrepared(result[1], directCost: 100.00m, indirectCost: 0m, expenditure: 100.00m, estimated: 0m);
+        AssertPrepared(result[2], directCost: 100.00m, indirectCost: 15.00m, expenditure: 115.00m, estimated: 0m);
+    }
+
+    [TestMethod]
+    public void LasEntradasNoSonMutablesPorCast()
+    {
+        var input = new FinancingPreparationInput(2, 2,
+            new[] { Concept(quantity: 2m, unitCd: 100m, totalCd: 0m, Distribution(0, 1m), Distribution(1, 1m)) },
+            new[] { Estimate(0, 10m) });
+
+        InteropAssertNoSePuedeMutar(input.Concepts, () => new FinancingConceptInput(0m, 0m, 0m, null));
+        InteropAssertNoSePuedeMutar(input.Estimates, () => new FinancingEstimateLine(0, 0m));
+        InteropAssertNoSePuedeMutar(input.Concepts[0].Distributions, () => new FinancingConceptDistribution(0, 0m));
+    }
+
+    [TestMethod]
+    public void LosResultadosNoSonMutablesPorCast()
+    {
+        var preparado = Prepare(amountDecimals: 2, periodCount: 2, concepts: new[]
+        {
+            Concept(quantity: 2m, unitCd: 100m, totalCd: 0m,
+                Distribution(0, 1m), Distribution(1, 1m))
+        });
+
+        var reconciliado = Reconcile(preparado, officialIndirectCost: 20m, amountDecimals: 2);
+
+        InteropAssertNoSePuedeMutar(preparado, () => new FinancingPreparedPeriod(0m, 0m, 0m, 0m));
+        InteropAssertNoSePuedeMutar(reconciliado, () => new FinancingPreparedPeriod(0m, 0m, 0m, 0m));
+    }
+
+    [TestMethod]
     public void ReconcileConFilasVaciasDevuelveListaVacia()
     {
         Assert.AreEqual(0, FinancingPreparationCalculator.ReconcileIndirectCost(
@@ -268,6 +367,14 @@ public sealed class FinancingPreparationCalculatorTests
         decimal officialIndirectCost,
         int amountDecimals)
         => FinancingPreparationCalculator.ReconcileIndirectCost(rows, officialIndirectCost, amountDecimals);
+
+    private static void InteropAssertNoSePuedeMutar<T>(System.Collections.Generic.IReadOnlyList<T> readOnly, System.Func<T> factory)
+    {
+        // Una lista mutable backante sería reconvertible a List<T>; ReadOnlyCollection no lo permite.
+        Assert.ThrowsException<System.InvalidCastException>(() => (System.Collections.Generic.List<T>)readOnly);
+        Assert.ThrowsException<System.NotSupportedException>(
+            () => ((System.Collections.Generic.ICollection<T>)readOnly).Add(factory()));
+    }
 
     private static void AssertPrepared(
         FinancingPreparedPeriod period,

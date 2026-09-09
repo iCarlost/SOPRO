@@ -29,6 +29,15 @@ agrega `ActivityNetworkInput`, `ActivityNetworkActivityInput`,
   `FinancingRowResult`, `FinancingResult` y `FinancingCalculator`, con la base de
   acumulación como enum y una política de precisión explícita e inmutable
   (montos como el proyecto; 8/6/4/5 para tasa/amortización/interés/porcentaje).
+  La preparación CD/CI agrega `FinancingPreparationCalculator` (fases
+  `PrepareBaseSchedule` y `ReconcileIndirectCost`), `FinancingPreparationInput`,
+  `FinancingConceptInput`, `FinancingConceptDistribution`, `FinancingEstimateLine`
+  y `FinancingPreparedPeriod`: entradas y resultados son colecciones realmente de
+  solo-lectura (`ReadOnlyCollection<T>`), los índices de período fuera de rango
+  se rechazan con `ArgumentOutOfRangeException` y los nulos con
+  `ArgumentNullException` (fail-fast, sin pérdida silenciosa). El total de CI
+  oficial NO se calcula aquí: lo entrega el consumidor desde su preview de costos
+  de referencia, cuya única implementación vive en Application.
   Los ayudantes (`UnitPriceCalculator`,
   `AmountDistributor`) son internos.
 - Invariante del grafo de matrices: los IDs de componente son unicos en todo el

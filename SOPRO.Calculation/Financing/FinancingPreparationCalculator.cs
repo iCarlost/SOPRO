@@ -1,11 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 
 namespace Sopro.Calculation.Financing;
 
 /// <summary>
 /// Period distribution of a single concept for the direct-cost preparation.
+/// The period index is validated by
+/// <see cref="FinancingPreparationCalculator.PrepareBaseSchedule"/> and must be
+/// inside <c>[0, FinancingPreparationInput.PeriodCount)</c>.
 /// </summary>
 /// <param name="PeriodIndex">
 /// Zero-based index of the target period inside the program order (see
@@ -19,7 +23,8 @@ public sealed record FinancingConceptDistribution(int PeriodIndex, decimal Progr
 /// distribution. Order matters: the estimate is rounded after each addition.
 /// </summary>
 /// <param name="PeriodIndex">
-/// Zero-based index of the target period inside the program order.
+/// Zero-based index of the target period inside the program order; validated by
+/// <see cref="FinancingPreparationCalculator.PrepareBaseSchedule"/>.
 /// </param>
 /// <param name="ProgrammedImport">Programmed import (<c>ImporteProgramado</c>) to accumulate.</param>
 public sealed record FinancingEstimateLine(int PeriodIndex, decimal ProgrammedImport);
@@ -39,7 +44,10 @@ public sealed class FinancingConceptInput
     /// <summary>Total direct cost of the concept (<c>CostoDirectoTotal</c>).</summary>
     public decimal TotalDirectCost { get; }
 
-    /// <summary>Ordered period shares of the concept.</summary>
+    /// <summary>
+    /// Ordered period shares of the concept. Exposed as a truly read-only
+    /// collection (see <see cref="ReadOnlyCollection{T}"/>).
+    /// </summary>
     public IReadOnlyList<FinancingConceptDistribution> Distributions { get; }
 
     /// <summary>
@@ -58,7 +66,8 @@ public sealed class FinancingConceptInput
         QuantityTotal = quantityTotal;
         UnitDirectCost = unitDirectCost;
         TotalDirectCost = totalDirectCost;
-        Distributions = new List<FinancingConceptDistribution>(distributions ?? Enumerable.Empty<FinancingConceptDistribution>());
+        Distributions = new ReadOnlyCollection<FinancingConceptDistribution>(
+            (distributions ?? Enumerable.Empty<FinancingConceptDistribution>()).ToList());
     }
 }
 
@@ -75,12 +84,16 @@ public sealed class FinancingPreparationInput
     /// <summary>Number of base periods of the program.</summary>
     public int PeriodCount { get; }
 
-    /// <summary>Concepts whose direct cost is distributed across the periods.</summary>
+    /// <summary>
+    /// Concepts whose direct cost is distributed across the periods. Exposed as
+    /// a truly read-only collection.
+    /// </summary>
     public IReadOnlyList<FinancingConceptInput> Concepts { get; }
 
     /// <summary>
     /// Estimate accumulation lines in the exact order of the legacy call flow
-    /// (rounding is applied after each addition).
+    /// (rounding is applied after each addition). Exposed as a truly read-only
+    /// collection.
     /// </summary>
     public IReadOnlyList<FinancingEstimateLine> Estimates { get; }
 
@@ -97,10 +110,15 @@ public sealed class FinancingPreparationInput
         IEnumerable<FinancingConceptInput>? concepts,
         IEnumerable<FinancingEstimateLine>? estimates)
     {
+        if (periodCount < 0)
+            throw new ArgumentOutOfRangeException(nameof(periodCount), "The number of periods cannot be negative.");
+
         AmountDecimals = Math.Max(0, amountDecimals);
-        PeriodCount = Math.Max(0, periodCount);
-        Concepts = new List<FinancingConceptInput>(concepts ?? Enumerable.Empty<FinancingConceptInput>());
-        Estimates = new List<FinancingEstimateLine>(estimates ?? Enumerable.Empty<FinancingEstimateLine>());
+        PeriodCount = periodCount;
+        Concepts = new ReadOnlyCollection<FinancingConceptInput>(
+            (concepts ?? Enumerable.Empty<FinancingConceptInput>()).ToList());
+        Estimates = new ReadOnlyCollection<FinancingEstimateLine>(
+            (estimates ?? Enumerable.Empty<FinancingEstimateLine>()).ToList());
     }
 }
 
@@ -143,7 +161,9 @@ public sealed record FinancingPreparedPeriod(
 /// <item>the multiplication of quantity and unit price rounds the visible unit
 /// price first and then the result (project amount precision, AwayFromZero);</item>
 /// <item>the residue (expected minus distributed) is absorbed in the last period
-/// whose programmed quantity or computed import is non-zero;</item>
+/// whose programmed quantity or computed import is non-zero (when the total is
+/// positive and every quantity is zero, the whole residue lands in the last
+/// distribution, exactly like the legacy fallback);</item>
 /// <item>the collected estimate is accumulated from the stored
 /// <c>ImporteProgramado</c> and never receives the direct-cost residue;</item>
 /// <item>when the current indirect total differs from the official total, the
@@ -152,6 +172,18 @@ public sealed record FinancingPreparedPeriod(
 /// (assigning the whole official total to the last period when the base is zero too).</item>
 /// </list>
 /// </summary>
+/// <remarks>
+/// Contract:
+/// <list type="bullet">
+/// <item>Every <see cref="FinancingConceptDistribution.PeriodIndex"/> and
+/// <see cref="FinancingEstimateLine.PeriodIndex"/> must be inside
+/// <c>[0, PeriodCount)</c>; anything else throws
+/// <see cref="ArgumentOutOfRangeException"/> (fail-fast, no silent loss).</item>
+/// <item>Inputs and results are exposed through truly read-only collections
+/// (<see cref="ReadOnlyCollection{T}"/>); they cannot be mutated through casts.</item>
+/// <item>Null inputs throw <see cref="ArgumentNullException"/>.</item>
+/// </list>
+/// </remarks>
 public static class FinancingPreparationCalculator
 {
     /// <summary>
@@ -163,11 +195,18 @@ public static class FinancingPreparationCalculator
     /// <param name="input">Preparation input.</param>
     /// <returns>
     /// One prepared period per <see cref="FinancingPreparationInput.PeriodCount"/>,
-    /// in program order. Direct cost is rounded; expenditure equals the direct
-    /// cost at this stage and is recomputed after the indirect-cost reconciliation.
+    /// in program order, exposed through an immutable collection. Direct cost is
+    /// rounded; expenditure equals the direct cost at this stage and is recomputed
+    /// after the indirect-cost reconciliation.
     /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="input"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// A period index of a distribution or an estimate is outside <c>[0, PeriodCount)</c>.
+    /// </exception>
     public static IReadOnlyList<FinancingPreparedPeriod> PrepareBaseSchedule(FinancingPreparationInput input)
     {
+        ArgumentNullException.ThrowIfNull(input);
+
         var directCost = new decimal[input.PeriodCount];
         var estimated = new decimal[input.PeriodCount];
 
@@ -194,6 +233,7 @@ public static class FinancingPreparationCalculator
             for (int i = 0; i < concept.Distributions.Count; i++)
             {
                 var distribution = concept.Distributions[i];
+                ValidarIndice(distribution.PeriodIndex, input.PeriodCount, nameof(FinancingConceptDistribution));
                 decimal importe = Multiply(distribution.ProgrammedQuantity, cdUnit, input.AmountDecimals);
                 importes[i] = importe;
                 suma += importe;
@@ -207,18 +247,14 @@ public static class FinancingPreparationCalculator
             importes[ultimoIndiceConMonto] += totalEsperado - suma;
 
             for (int i = 0; i < concept.Distributions.Count; i++)
-            {
-                int index = concept.Distributions[i].PeriodIndex;
-                if (index >= 0 && index < input.PeriodCount)
-                    directCost[index] += importes[i];
-            }
+                directCost[concept.Distributions[i].PeriodIndex] += importes[i];
         }
 
         foreach (var estimate in input.Estimates)
         {
-            if (estimate.PeriodIndex >= 0 && estimate.PeriodIndex < input.PeriodCount)
-                estimated[estimate.PeriodIndex] = Round(
-                    estimated[estimate.PeriodIndex] + estimate.ProgrammedImport, input.AmountDecimals);
+            ValidarIndice(estimate.PeriodIndex, input.PeriodCount, nameof(FinancingEstimateLine));
+            estimated[estimate.PeriodIndex] = Round(
+                estimated[estimate.PeriodIndex] + estimate.ProgrammedImport, input.AmountDecimals);
         }
 
         var result = new FinancingPreparedPeriod[input.PeriodCount];
@@ -228,7 +264,7 @@ public static class FinancingPreparationCalculator
             result[i] = new FinancingPreparedPeriod(cd, 0m, cd, estimated[i]);
         }
 
-        return result;
+        return new ReadOnlyCollection<FinancingPreparedPeriod>(result);
     }
 
     /// <summary>
@@ -246,14 +282,20 @@ public static class FinancingPreparationCalculator
     /// reference-cost preview) and already rounded.
     /// </param>
     /// <param name="amountDecimals">Amount precision of the reconciliation.</param>
-    /// <returns>A new list of prepared periods with indirect cost, rounded expenditure and estimates.</returns>
+    /// <returns>
+    /// A new immutable list of prepared periods with indirect cost, rounded
+    /// expenditure and estimates.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="rows"/> is null.</exception>
     public static IReadOnlyList<FinancingPreparedPeriod> ReconcileIndirectCost(
         IReadOnlyList<FinancingPreparedPeriod> rows,
         decimal officialIndirectCost,
         int amountDecimals)
     {
+        ArgumentNullException.ThrowIfNull(rows);
+
         if (rows.Count == 0)
-            return Array.Empty<FinancingPreparedPeriod>();
+            return new ReadOnlyCollection<FinancingPreparedPeriod>(Array.Empty<FinancingPreparedPeriod>());
 
         var indirectCost = new decimal[rows.Count];
         for (int i = 0; i < rows.Count; i++)
@@ -319,7 +361,15 @@ public static class FinancingPreparationCalculator
                 Round(rows[i].EstimatedAmount, amountDecimals));
         }
 
-        return result;
+        return new ReadOnlyCollection<FinancingPreparedPeriod>(result);
+    }
+
+    private static void ValidarIndice(int index, int periodCount, string itemName)
+    {
+        if (index < 0 || index >= periodCount)
+            throw new ArgumentOutOfRangeException(
+                nameof(index),
+                $"{itemName}.PeriodIndex ({index}) is outside the range [0, {periodCount}).");
     }
 
     private static decimal Round(decimal value, int decimals)

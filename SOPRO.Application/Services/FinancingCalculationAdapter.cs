@@ -196,14 +196,9 @@ namespace SOPRO.Application.Services
                 {
                     var concepto = g.First().ActividadProgramada!.ConceptoPresupuesto!;
                     var shares = g
-                        .OrderBy(d => periodoIndex.TryGetValue(d.PeriodoProgramaId, out var orden) ? orden : int.MaxValue)
-                        .Select(d =>
-                        {
-                            int index = periodoIndex.TryGetValue(d.PeriodoProgramaId, out var shareIndex)
-                                ? shareIndex
-                                : -1;
-                            return new FinancingConceptDistribution(index, d.CantidadProgramada);
-                        })
+                        .Where(d => periodoIndex.ContainsKey(d.PeriodoProgramaId))
+                        .OrderBy(d => periodoIndex[d.PeriodoProgramaId])
+                        .Select(d => new FinancingConceptDistribution(periodoIndex[d.PeriodoProgramaId], d.CantidadProgramada))
                         .ToList();
 
                     return new FinancingConceptInput(
