@@ -20,7 +20,7 @@ namespace SOPRO.Tests.Services;
 [TestClass]
 public class FinanciamientoCalculationServiceDelegationTests
 {
-    private static readonly List<Escenario> _escenarios = new();
+    private readonly List<Escenario> _escenarios = new();
 
     [TestCleanup]
     public void Cleanup()
@@ -30,6 +30,7 @@ public class FinanciamientoCalculationServiceDelegationTests
             e.Context.Dispose();
             try
             {
+                Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
                 File.Delete(e.DbPath);
             }
             catch
@@ -54,6 +55,9 @@ public class FinanciamientoCalculationServiceDelegationTests
         e.Config.PorcentajeAnticipo = 0m;
         e.Context.SaveChanges();
 
+        // Pequeña pausa para que el recálculo sea estrictamente posterior y se
+        // pueda comprobar que FechaCalculo se actualizó (no solo se conservó).
+        System.Threading.Thread.Sleep(5);
         var segunda = service.Calcular(e.Context, e.Config, e.Proyecto);
         var segundaFilas = Filas(e, out var segundaIds);
 
@@ -75,8 +79,8 @@ public class FinanciamientoCalculationServiceDelegationTests
             Assert.AreEqual(segunda, guardada.PorcentajeCalculado, "Porcentaje persistido = retorno.");
             Assert.IsNotNull(guardada.FechaCalculo);
             Assert.IsTrue(
-                guardada.FechaCalculo >= primeraFecha,
-                "FechaCalculo se actualiza en el recálculo.");
+                guardada.FechaCalculo > primeraFecha,
+                "FechaCalculo se actualiza en el recálculo (estrictamente posterior).");
         }
     }
 
@@ -87,6 +91,8 @@ public class FinanciamientoCalculationServiceDelegationTests
         var service = new FinanciamientoCalculationService();
 
         service.Calcular(e.Context, e.Config, e.Proyecto);
+        Assert.AreEqual(3, Filas(e, out _).Count, "El cálculo inicial persiste 3 filas.");
+        Assert.IsNotNull(e.Config.FechaCalculo, "El cálculo inicial fija FechaCalculo.");
         var filasAntes = Filas(e, out _);
         var configAntes = ClaveConfig(e);
 
@@ -108,6 +114,8 @@ public class FinanciamientoCalculationServiceDelegationTests
         var service = new FinanciamientoCalculationService();
 
         service.Calcular(e.Context, e.Config, e.Proyecto);
+        Assert.AreEqual(3, Filas(e, out _).Count, "El cálculo inicial persiste 3 filas.");
+        Assert.IsNotNull(e.Config.FechaCalculo, "El cálculo inicial fija FechaCalculo.");
         var filasAntes = Filas(e, out _);
         var configAntes = ClaveConfig(e);
 
@@ -130,6 +138,8 @@ public class FinanciamientoCalculationServiceDelegationTests
         var service = new FinanciamientoCalculationService();
 
         service.Calcular(e.Context, e.Config, e.Proyecto);
+        Assert.AreEqual(3, Filas(e, out _).Count, "El cálculo inicial persiste 3 filas.");
+        Assert.IsNotNull(e.Config.FechaCalculo, "El cálculo inicial fija FechaCalculo.");
         var filasAntes = Filas(e, out _);
         var configAntes = ClaveConfig(e);
 
@@ -152,6 +162,8 @@ public class FinanciamientoCalculationServiceDelegationTests
         var service = new FinanciamientoCalculationService();
 
         service.Calcular(e.Context, e.Config, e.Proyecto);
+        Assert.AreEqual(3, Filas(e, out _).Count, "El cálculo inicial persiste 3 filas.");
+        Assert.IsNotNull(e.Config.FechaCalculo, "El cálculo inicial fija FechaCalculo.");
         var filasAntes = Filas(e, out _);
         var configAntes = ClaveConfig(e);
 
@@ -247,7 +259,7 @@ public class FinanciamientoCalculationServiceDelegationTests
                (c.FechaCalculo.HasValue ? c.FechaCalculo.Value.ToString("O") : "null");
     }
 
-    private static Escenario CrearEscenario(decimal porcentajeAnticipo, int desfaseCobro, string baseCalculo)
+    private Escenario CrearEscenario(decimal porcentajeAnticipo, int desfaseCobro, string baseCalculo)
     {
         var dbPath = TestDbFactory.CreateTempDbPath();
         var context = TestDbFactory.CreateContextAt(dbPath);
