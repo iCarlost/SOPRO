@@ -17,7 +17,7 @@ namespace SOPRO.Application.Services
     /// - Costo financiero = aplicación de la tasa efectiva al saldo acumulado deficitario
     /// - % Financiamiento = Costo financiero total / Base (CD o CD+CI)
     ///
-    /// Desde N7-17c la aritmética del flujo delega en <see cref="FinancingCalculatorAdapter"/>,
+    /// Desde N7-17c la aritmética del flujo delega en <see cref="FinancingCalculationAdapter"/>,
     /// que mapea la entidades a <c>Sopro.Calculation.Financing</c> y persiste el resultado.
     /// </summary>
     public sealed class FinanciamientoCalculationService

@@ -1,16 +1,18 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
+using SOPRO.Data.Context;
 using SOPRO.Tests.TestInfrastructure;
 
 namespace SOPRO.Tests.Services;
 
 /// <summary>
 /// Comportamientos del adaptador de financiamiento (N7-17c) que no capturan los
-/// goldens de N7-17a: recálculo reemplazando filas y guardas que conservan filas
-/// previamente persistidas (el legado retorna 0 sin tocar filas ni configuración).
-/// La paridad aritmética completa queda probada por los 8 goldens de N7-17a, que
+/// goldens de N7-17a: recÃ¡lculo reemplazando filas, guardas que conservan filas
+/// previamente persistidas sin mutar configuraciÃ³n, y preservaciÃ³n de la hora de
+/// las fechas de los perÃ­odos base (el legado persistÃ­a los DateTime originales).
+/// La paridad aritmÃ©tica completa queda probada por los 8 goldens de N7-17a, que
 /// pasan contra el servicio delegado.
 /// </summary>
 [TestClass]
@@ -19,89 +21,181 @@ public class FinanciamientoCalculationServiceDelegationTests
     [TestMethod]
     public void Recalculo_ReemplazaFilasYActualizaConfig()
     {
-        var escenario = CrearEscenario(porcentajeAnticipo: 30m, desfaseCobro: 1, baseCalculo: "Acumulable");
+        var e = CrearEscenario(porcentajeAnticipo: 30m, desfaseCobro: 1, baseCalculo: "Acumulable");
         var service = new FinanciamientoCalculationService();
 
-        var primera = service.Calcular(escenario.Context, escenario.Config, escenario.Proyecto);
-        var filasPrimera = Filas(escenario);
-        var fechaPrimera = escenario.Config.FechaCalculo;
+        var primera = service.Calcular(e.Context, e.Config, e.Proyecto);
+        var primeraFilas = Filas(e, out var primeraIds);
+        var primeraFecha = e.Config.FechaCalculo;
 
-        System.Threading.Thread.Sleep(10);
-        var segunda = service.Calcular(escenario.Context, escenario.Config, escenario.Proyecto);
-        var filasSegunda = Filas(escenario);
+        // Entradas distintas entre llamadas: sin anticipo el flujo cambia por completo.
+        e.Config.PorcentajeAnticipo = 0m;
+        e.Context.SaveChanges();
 
-        Assert.AreEqual(0.16737m, primera);
-        Assert.AreEqual(primera, segunda, "El recálculo produce el mismo porcentaje.");
-        Assert.AreEqual(3, filasSegunda.Count, "Recálculo: 2 periodos + 1 fila de desfase.");
+        var segunda = service.Calcular(e.Context, e.Config, e.Proyecto);
+        var segundaFilas = Filas(e, out var segundaIds);
 
-        Assert.AreEqual(filasPrimera.Count, filasSegunda.Count);
-        Assert.AreEqual(1100.00m, filasSegunda[0].Egresos);
-        Assert.AreEqual(600.00m, filasSegunda[0].AnticipoRecibido);
-        Assert.AreEqual(3.6822m, escenario.Config.FinanciamientoNeto, "Config mutada en cada cálculo.");
-        Assert.IsNotNull(escenario.Config.FechaCalculo);
+        Assert.AreEqual(0.16737m, primera, "CÃ¡lculo base con anticipo 30%.");
+        Assert.AreNotEqual(primera, segunda, "Anticipo distinto produce resultado distinto.");
+        Assert.AreEqual(primeraFilas.Count, segundaFilas.Count, "3 filas en ambos cÃ¡lculos (2 base + 1 desfase).");
+        Assert.AreEqual(3, segundaFilas.Count);
         Assert.IsTrue(
-            escenario.Config.FechaCalculo >= fechaPrimera,
-            "FechaCalculo se actualiza (o se conserva) en el recálculo.");
-        Assert.AreEqual(0.0000m, escenario.Config.InteresesPositivos);
-        Assert.AreEqual(0.16737m, escenario.Config.PorcentajeCalculado);
+            primeraIds.All(id => !segundaIds.Contains(id)),
+            "El recÃ¡lculo reemplaza las filas previstas (Ids nuevos), no las reutiliza.");
+        Assert.IsTrue(
+            FilasCompletas(e).All(f => f.AnticipoRecibido == 0m),
+            "Sin anticipo: todas las filas persistidas con anticipo 0.");
+        Assert.AreEqual(segunda, e.Config.PorcentajeCalculado);
+        Assert.IsNotNull(e.Config.FechaCalculo);
+        Assert.IsTrue(
+            e.Config.FechaCalculo >= primeraFecha,
+            "FechaCalculo se actualiza en el recÃ¡lculo.");
     }
 
     [TestMethod]
-    public void GuardSinProgramaActivo_ConservaFilasPreviamentePersistidas()
+    public void GuardSinProgramaActivo_ConservaFilasPreviamentePersistidasYConfiguracion()
     {
-        var escenario = CrearEscenario(porcentajeAnticipo: 30m, desfaseCobro: 1, baseCalculo: "Acumulable");
+        var e = CrearEscenario(porcentajeAnticipo: 30m, desfaseCobro: 1, baseCalculo: "Acumulable");
         var service = new FinanciamientoCalculationService();
 
-        service.Calcular(escenario.Context, escenario.Config, escenario.Proyecto);
-        Assert.AreEqual(3, Filas(escenario).Count, "Cálculo exitoso persiste 3 filas.");
+        service.Calcular(e.Context, e.Config, e.Proyecto);
+        var filasAntes = Filas(e, out _);
+        var configAntes = ClaveConfig(e);
 
-        var programa = escenario.Context.ProgramasObra.Single(p => p.ProyectoId == escenario.Proyecto.Id);
+        var programa = e.Context.ProgramasObra.Single(p => p.ProyectoId == e.Proyecto.Id);
         programa.Activo = false;
-        escenario.Context.SaveChanges();
-        var netoAntes = escenario.Config.FinanciamientoNeto;
+        e.Context.SaveChanges();
 
-        var porcentaje = service.Calcular(escenario.Context, escenario.Config, escenario.Proyecto);
+        var porcentaje = service.Calcular(e.Context, e.Config, e.Proyecto);
 
         Assert.AreEqual(0m, porcentaje, "Guard devuelve 0.");
-        Assert.AreEqual(3, Filas(escenario).Count, "Guard NO elimina las filas previamente persistidas.");
-        Assert.AreEqual(netoAntes, escenario.Config.FinanciamientoNeto, "Guard NO muta la configuración.");
+        AssertFilasIguales(filasAntes, Filas(e, out _), "programa inactivo");
+        Assert.AreEqual(configAntes, ClaveConfig(e), "Guard NO muta la configuraciÃ³n.");
     }
 
     [TestMethod]
-    public void GuardBaseCero_ConservaFilasPreviamentePersistidasYDevuelveCero()
+    public void GuardBaseNoPositiva_ConservaFilasPreviamentePersistidasYConfiguracion()
     {
-        var escenario = CrearEscenario(porcentajeAnticipo: 30m, desfaseCobro: 1, baseCalculo: "Acumulable");
+        var e = CrearEscenario(porcentajeAnticipo: 30m, desfaseCobro: 1, baseCalculo: "Acumulable");
         var service = new FinanciamientoCalculationService();
 
-        service.Calcular(escenario.Context, escenario.Config, escenario.Proyecto);
-        Assert.AreEqual(3, Filas(escenario).Count);
+        service.Calcular(e.Context, e.Config, e.Proyecto);
+        var filasAntes = Filas(e, out _);
+        var configAntes = ClaveConfig(e);
 
-        var concepto = escenario.Context.ConceptosPresupuesto.Single();
+        var concepto = e.Context.ConceptosPresupuesto.Single();
         concepto.Cantidad = 0m;
         concepto.ImporteTotal = 0m;
-        escenario.Context.SaveChanges();
+        e.Context.SaveChanges();
 
-        var porcentaje = service.Calcular(escenario.Context, escenario.Config, escenario.Proyecto);
+        var porcentaje = service.Calcular(e.Context, e.Config, e.Proyecto);
 
         Assert.AreEqual(0m, porcentaje, "Base no positiva devuelve 0.");
-        Assert.AreEqual(3, Filas(escenario).Count, "Guard NO elimina filas previas.");
-        Assert.AreEqual(3.6822m, escenario.Config.FinanciamientoNeto, "Guard NO muta la configuración.");
+        AssertFilasIguales(filasAntes, Filas(e, out _), "base no positiva");
+        Assert.AreEqual(configAntes, ClaveConfig(e), "Guard NO muta la configuraciÃ³n.");
     }
 
-    private static List<FilaFlujoCajaFinanciamiento> Filas(
-        (SOPRO.Data.Context.SOPROContext Context, Proyecto Proyecto, ConfiguracionFinanciamiento Config) escenario)
-        => escenario.Context.FilasFlujoCajaFinanciamiento
+    [TestMethod]
+    public void GuardProgramaActivoSinPeriodos_ConservaFilasPreviamentePersistidasYConfiguracion()
+    {
+        var e = CrearEscenario(porcentajeAnticipo: 30m, desfaseCobro: 1, baseCalculo: "Acumulable");
+        var service = new FinanciamientoCalculationService();
+
+        service.Calcular(e.Context, e.Config, e.Proyecto);
+        var filasAntes = Filas(e, out _);
+        var configAntes = ClaveConfig(e);
+
+        e.Context.DistribucionesPeriodo.RemoveRange(
+            e.Context.DistribucionesPeriodo.Where(d => d.ActividadProgramada.ProgramaObraId == e.Programa.Id));
+        e.Context.PeriodosPrograma.RemoveRange(
+            e.Context.PeriodosPrograma.Where(p => p.ProgramaObraId == e.Programa.Id));
+        e.Context.SaveChanges();
+
+        var porcentaje = service.Calcular(e.Context, e.Config, e.Proyecto);
+
+        Assert.AreEqual(0m, porcentaje, "Programa activo sin perÃ­odos devuelve 0.");
+        AssertFilasIguales(filasAntes, Filas(e, out _), "programa sin perÃ­odos");
+        Assert.AreEqual(configAntes, ClaveConfig(e), "Guard NO muta la configuraciÃ³n.");
+    }
+
+    [TestMethod]
+    public void FilasBase_PreservanHoraDeLaFecha_AlPersistir()
+    {
+        var e = CrearEscenario(porcentajeAnticipo: 30m, desfaseCobro: 1, baseCalculo: "Acumulable");
+
+        var periodos = e.Context.PeriodosPrograma
+            .Where(p => p.ProgramaObraId == e.Programa.Id)
+            .OrderBy(p => p.NumeroPeriodo)
+            .ToList();
+        periodos[0].FechaInicio = new DateTime(2026, 1, 1, 8, 30, 0);
+        periodos[0].FechaFin = new DateTime(2026, 1, 7, 18, 0, 0);
+        periodos[1].FechaInicio = new DateTime(2026, 1, 8, 9, 15, 0);
+        periodos[1].FechaFin = new DateTime(2026, 1, 14, 17, 30, 0);
+        e.Context.SaveChanges();
+
+        var service = new FinanciamientoCalculationService();
+        var porcentaje = service.Calcular(e.Context, e.Config, e.Proyecto);
+
+        Assert.AreNotEqual(0m, porcentaje, "El cÃ¡lculo no debe caer en guardas.");
+        var filas = FilasCompletas(e);
+        Assert.AreEqual(3, filas.Count);
+        Assert.AreEqual(new DateTime(2026, 1, 1, 8, 30, 0), filas[0].FechaInicio);
+        Assert.AreEqual(new DateTime(2026, 1, 7, 18, 0, 0), filas[0].FechaFin);
+        Assert.AreEqual(new DateTime(2026, 1, 8, 9, 15, 0), filas[1].FechaInicio);
+        Assert.AreEqual(new DateTime(2026, 1, 14, 17, 30, 0), filas[1].FechaFin);
+        // La fila de desfase conserva el criterio legacy: arranca a medianoche.
+        Assert.AreEqual(new DateTime(2026, 1, 15), filas[2].FechaInicio);
+        Assert.AreEqual(new DateTime(2026, 1, 21), filas[2].FechaFin);
+    }
+
+    private static void AssertFilasIguales(List<(int Id, string Clave)> antes, List<(int Id, string Clave)> despues, string contexto)
+    {
+        Assert.AreEqual(antes.Count, despues.Count, $"[{contexto}] Mismo nÃºmero de filas.");
+        Assert.IsTrue(
+            antes.Select(f => f.Clave).SequenceEqual(despues.Select(f => f.Clave)),
+            $"[{contexto}] El contenido completo de las filas se conserva.");
+    }
+
+    private static List<FilaFlujoCajaFinanciamiento> FilasCompletas(Escenario e)
+    {
+        using var fresh = new SOPROContext(e.DbPath);
+        return fresh.FilasFlujoCajaFinanciamiento
             .AsNoTracking()
-            .Where(f => f.ConfiguracionFinanciamientoId == escenario.Config.Id)
+            .Where(f => f.ConfiguracionFinanciamientoId == e.Config.Id)
             .OrderBy(f => f.NumeroPeriodo)
             .ToList();
+    }
 
-    private static (SOPRO.Data.Context.SOPROContext Context, Proyecto Proyecto, ConfiguracionFinanciamiento Config) CrearEscenario(
-        decimal porcentajeAnticipo,
-        int desfaseCobro,
-        string baseCalculo)
+    private static List<(int Id, string Clave)> Filas(Escenario e, out List<int> ids)
     {
-        var context = TestDbFactory.CreateContext();
+        using var fresh = new SOPROContext(e.DbPath);
+        var lista = fresh.FilasFlujoCajaFinanciamiento
+            .AsNoTracking()
+            .Where(f => f.ConfiguracionFinanciamientoId == e.Config.Id)
+            .OrderBy(f => f.NumeroPeriodo)
+            .AsEnumerable()
+            .Select(f => (f.Id, Clave(f)))
+            .ToList();
+        ids = lista.Select(f => f.Id).ToList();
+        return lista;
+    }
+
+    private static string Clave(FilaFlujoCajaFinanciamiento f) =>
+        $"{f.NumeroPeriodo}|{f.Etiqueta}|{f.FechaInicio:O}|{f.FechaFin:O}|{f.DiasPeriodo}|{f.Egresos}|" +
+        $"{f.AnticipoRecibido}|{f.EstimacionCobrada}|{f.AmortizacionAnticipo}|{f.FlujoNeto}|{f.SaldoAcumulado}|{f.InteresPeriodo}";
+
+    private static string ClaveConfig(Escenario e)
+    {
+        using var fresh = new SOPROContext(e.DbPath);
+        var c = fresh.ConfiguracionesFinanciamiento.Single(x => x.Id == e.Config.Id);
+        return $"{c.InteresesNegativos}|{c.InteresesPositivos}|{c.FinanciamientoNeto}|{c.PorcentajeCalculado}|" +
+               (c.FechaCalculo.HasValue ? c.FechaCalculo.Value.ToString("O") : "null");
+    }
+
+    private static Escenario CrearEscenario(decimal porcentajeAnticipo, int desfaseCobro, string baseCalculo)
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        var context = TestDbFactory.CreateContextAt(dbPath);
 
         var proyecto = new Proyecto
         {
@@ -231,6 +325,22 @@ public class FinanciamientoCalculationServiceDelegationTests
         context.ConfiguracionesFinanciamiento.Add(config);
         context.SaveChanges();
 
-        return (context, proyecto, config);
+        return new Escenario
+        {
+            DbPath = dbPath,
+            Context = context,
+            Proyecto = proyecto,
+            Config = config,
+            Programa = programa
+        };
+    }
+
+    private sealed class Escenario
+    {
+        public string DbPath { get; init; } = string.Empty;
+        public SOPROContext Context { get; init; } = null!;
+        public Proyecto Proyecto { get; init; } = null!;
+        public ConfiguracionFinanciamiento Config { get; init; } = null!;
+        public ProgramaObra Programa { get; init; } = null!;
     }
 }

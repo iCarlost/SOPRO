@@ -79,6 +79,17 @@ namespace SOPRO.Application.Services
             if (periodosCalc.Count == 0)
                 return 0m;
 
+            // Guarda del legado: base no positiva se comprueba ANTES de sumar el
+            // presupuesto (misma semántica: no hay trabajo adicional y no se tocan
+            // filas previas ni configuración). La base coincide exactamente con la
+            // del calculador: CD (SobreCD) o CD + CI (Acumulable), sobre periodos base.
+            decimal basePrevia = config.BaseCalculo == "SobreCD"
+                ? periodosCalc.Sum(p => p.CostoDirecto)
+                : periodosCalc.Sum(p => p.CostoDirecto + p.CostoIndirecto);
+
+            if (basePrevia <= 0m)
+                return 0m;
+
             decimal totalPresupuesto = BudgetPricingService.RoundImporte(proyecto,
                 context.ConceptosPresupuesto
                     .AsNoTracking()

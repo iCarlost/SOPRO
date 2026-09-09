@@ -59,8 +59,9 @@ namespace SOPRO.Core.Entities
         public decimal InteresesPositivos { get; set; }
 
         /// <summary>
-        /// Financiamiento neto = InteresesNegativos - InteresesPositivos.
-        /// Siempre >= 0 para obra pública.
+        /// Financiamiento neto = InteresesPositivos - InteresesNegativos (modelo
+        /// dual). En el modelo clásico coincide con el costo: InteresesNegativos.
+        /// Puede ser negativo en el modelo dual si hay ingreso financiero neto.
         /// </summary>
         public decimal FinanciamientoNeto { get; set; }
 

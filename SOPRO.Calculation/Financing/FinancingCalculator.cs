@@ -125,8 +125,8 @@ public sealed class FinancingPeriodInput
 
         PeriodNumber = periodNumber;
         Label = label;
-        StartDate = startDate.Date;
-        EndDate = endDate.Date;
+        StartDate = startDate;
+        EndDate = endDate;
         Days = days;
         DirectCost = directCost;
         IndirectCost = indirectCost;
@@ -521,8 +521,8 @@ public static class FinancingCalculator
         {
             PeriodNumber = periodNumber;
             Label = label;
-            StartDate = startDate.Date;
-            EndDate = endDate.Date;
+            StartDate = startDate;
+            EndDate = endDate;
             Days = days;
             Expenditure = expenditure;
             EstimatedAmount = estimatedAmount;
