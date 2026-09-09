@@ -72,9 +72,10 @@ public sealed class FinancingConceptInput
 }
 
 /// <summary>
-/// Immutable input of the CD/CI preparation. Contains only scalars: the caller is
-/// responsible for EF queries, filtering, grouping, ordering and any other
-/// application-level concern.
+/// Immutable input of the CD/CI preparation. Holds only the numeric preparation
+/// data (no EF, entities or persistence concerns): the caller is responsible for
+/// EF queries, filtering, grouping, ordering and any other application-level
+/// concern.
 /// </summary>
 public sealed class FinancingPreparationInput
 {
@@ -178,7 +179,10 @@ public sealed record FinancingPreparedPeriod(
 /// <item>Every <see cref="FinancingConceptDistribution.PeriodIndex"/> and
 /// <see cref="FinancingEstimateLine.PeriodIndex"/> must be inside
 /// <c>[0, PeriodCount)</c>; anything else throws
-/// <see cref="ArgumentOutOfRangeException"/> (fail-fast, no silent loss).</item>
+/// <see cref="ArgumentOutOfRangeException"/> (fail-fast, no silent loss). The
+/// check runs in an initial pass over the whole input, BEFORE any semantic guard
+/// (quantity, expected total or empty distributions), so omitted concepts cannot
+/// hide an invalid index.</item>
 /// <item>Inputs and results are exposed through truly read-only collections
 /// (<see cref="ReadOnlyCollection{T}"/>); they cannot be mutated through casts.</item>
 /// <item>Null inputs throw <see cref="ArgumentNullException"/>.</item>
@@ -207,6 +211,18 @@ public static class FinancingPreparationCalculator
     {
         ArgumentNullException.ThrowIfNull(input);
 
+        // Pasada inicial de validación: todo PeriodIndex del input debe estar en
+        // rango ANTES de cualquier guarda semántica (cantidad/total/distribuciones),
+        // para que el contrato fail-fast no admita huecos en conceptos omitidos.
+        foreach (var concept in input.Concepts)
+        {
+            foreach (var distribution in concept.Distributions)
+                ValidarIndice(distribution.PeriodIndex, input.PeriodCount, nameof(FinancingConceptDistribution));
+        }
+
+        foreach (var estimate in input.Estimates)
+            ValidarIndice(estimate.PeriodIndex, input.PeriodCount, nameof(FinancingEstimateLine));
+
         var directCost = new decimal[input.PeriodCount];
         var estimated = new decimal[input.PeriodCount];
 
@@ -233,7 +249,6 @@ public static class FinancingPreparationCalculator
             for (int i = 0; i < concept.Distributions.Count; i++)
             {
                 var distribution = concept.Distributions[i];
-                ValidarIndice(distribution.PeriodIndex, input.PeriodCount, nameof(FinancingConceptDistribution));
                 decimal importe = Multiply(distribution.ProgrammedQuantity, cdUnit, input.AmountDecimals);
                 importes[i] = importe;
                 suma += importe;
@@ -252,7 +267,6 @@ public static class FinancingPreparationCalculator
 
         foreach (var estimate in input.Estimates)
         {
-            ValidarIndice(estimate.PeriodIndex, input.PeriodCount, nameof(FinancingEstimateLine));
             estimated[estimate.PeriodIndex] = Round(
                 estimated[estimate.PeriodIndex] + estimate.ProgrammedImport, input.AmountDecimals);
         }

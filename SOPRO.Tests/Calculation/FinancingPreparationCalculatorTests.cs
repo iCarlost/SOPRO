@@ -273,6 +273,34 @@ public sealed class FinancingPreparationCalculatorTests
     }
 
     [TestMethod]
+    public void PeriodIndexFueraDeRango_EnConceptoOmitidoPorCantidadCero_Lanza()
+    {
+        // La pasada inicial valida ANTES de la guarda de cantidad, así un concepto
+        // omitido no puede esconder un índice inválido (contrato fail-fast).
+        Action calcular = () => Prepare(amountDecimals: 2, periodCount: 2, concepts: new[]
+        {
+            Concept(quantity: 0m, unitCd: 100m, totalCd: 0m,
+                Distribution(0, 1m), Distribution(5, 1m))
+        });
+
+        Assert.ThrowsException<ArgumentOutOfRangeException>(calcular);
+    }
+
+    [TestMethod]
+    public void PeriodIndexFueraDeRango_EnConceptoOmitidoPorTotalEsperadoCero_Lanza()
+    {
+        // Mismo contrato para un concepto omitido porque su total esperado es cero
+        // (cdUnit y total ambos cero).
+        Action calcular = () => Prepare(amountDecimals: 2, periodCount: 2, concepts: new[]
+        {
+            Concept(quantity: 2m, unitCd: 0m, totalCd: 0m,
+                Distribution(-1, 1m))
+        });
+
+        Assert.ThrowsException<ArgumentOutOfRangeException>(calcular);
+    }
+
+    [TestMethod]
     public void PrepareBaseScheduleConNull_LanzaArgumentNull()
     {
         Assert.ThrowsException<ArgumentNullException>(
