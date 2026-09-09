@@ -4,6 +4,23 @@ All notable changes to `SOPRO.Calculation` are documented here.
 
 ## Unreleased
 
+- The CD/CI preparation of the financing flow is now available as a pure,
+  immutable calculation through `FinancingPreparationCalculator` (N7-17d).
+  `PrepareBaseSchedule` distributes the concept direct cost across the program
+  periods multiplying the programmed quantity by the visible unit price (unit
+  price rounded first, result rounded afterwards, project amount precision) and
+  absorbs each distribution residue in the last period whose programmed quantity
+  or computed import is non-zero; the collected estimate is accumulated from
+  `ImporteProgramado` rounding after each addition and never receives the direct
+  cost residue. `ReconcileIndirectCost` replicates the legacy reconciliation of
+  the official indirect-cost total across the periods: proportional distribution
+  over the periods that have amount, or over the direct-cost base when the
+  current total is zero (the last period absorbs the rounding residue), or the
+  whole official total assigned to the last period when the base is zero too.
+  The official indirect-cost total itself remains an application concern computed
+  by the single budget reference-cost preview implementation; EF queries,
+  filtering, grouping, ordering, mapping and persistence stay in
+  `FinancingCalculationAdapter`.
 - Working calendar operations are now available through the pure
   `WorkingCalendarCalculator`, with immutable weekly patterns, defensively copied
   exceptions, explicit inclusive/exclusive date semantics, deterministic date

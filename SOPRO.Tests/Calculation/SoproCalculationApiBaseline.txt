@@ -4,9 +4,14 @@ ctor Sopro.Calculation.Calendar.WorkingCalendar()
 ctor Sopro.Calculation.DirectCostLine(Decimal Quantity, Decimal UnitDirectCost, Boolean IsGrouping, Boolean HasMatrix)
 ctor Sopro.Calculation.Equipment.HourlyCostBreakdown()
 ctor Sopro.Calculation.Equipment.HourlyCostInput()
+ctor Sopro.Calculation.Financing.FinancingConceptDistribution(Int32 PeriodIndex, Decimal ProgrammedQuantity)
+ctor Sopro.Calculation.Financing.FinancingConceptInput(Decimal quantityTotal, Decimal unitDirectCost, Decimal totalDirectCost, IEnumerable<FinancingConceptDistribution>? distributions)
+ctor Sopro.Calculation.Financing.FinancingEstimateLine(Int32 PeriodIndex, Decimal ProgrammedImport)
 ctor Sopro.Calculation.Financing.FinancingInput(Decimal effectiveAnnualRatePercentage, Decimal tiieAnnualRatePercentage, Decimal advancePercentage, Int32 collectionDelayPeriods, FinancingBaseCalculationMode baseCalculationMode, Decimal totalBudgetAmount, Boolean isDualModel, FinancingPrecision precision, IEnumerable<FinancingPeriodInput> periods)
 ctor Sopro.Calculation.Financing.FinancingPeriodInput(Int32 periodNumber, String label, DateTime startDate, DateTime endDate, Int32 days, Decimal directCost, Decimal indirectCost, Decimal estimatedAmount)
 ctor Sopro.Calculation.Financing.FinancingPrecision(Int32 amountDecimals, Int32 rateDecimals = 8, Int32 amortizationDecimals = 6, Int32 interestDecimals = 4, Int32 percentageDecimals = 5)
+ctor Sopro.Calculation.Financing.FinancingPreparationInput(Int32 amountDecimals, Int32 periodCount, IEnumerable<FinancingConceptInput>? concepts, IEnumerable<FinancingEstimateLine>? estimates)
+ctor Sopro.Calculation.Financing.FinancingPreparedPeriod(Decimal DirectCost, Decimal IndirectCost, Decimal Expenditure, Decimal EstimatedAmount)
 ctor Sopro.Calculation.Labor.RealSalaryFactorBreakdown()
 ctor Sopro.Calculation.Labor.RealSalaryFactorInput()
 ctor Sopro.Calculation.Matrices.MatrixComponentInput(Int32 Id, Int32 Order, MatrixComponentType Type, Decimal Quantity, Decimal ResolvedUnitPrice, Boolean IsPercentageOfLabor, Int32? ReferencedMatrixId = null)
@@ -67,8 +72,14 @@ method Boolean Sopro.Calculation.Equipment.HourlyCostBreakdown.Equals(HourlyCost
 method Boolean Sopro.Calculation.Equipment.HourlyCostBreakdown.Equals(Object? obj)
 method Boolean Sopro.Calculation.Equipment.HourlyCostInput.Equals(HourlyCostInput? other)
 method Boolean Sopro.Calculation.Equipment.HourlyCostInput.Equals(Object? obj)
+method Boolean Sopro.Calculation.Financing.FinancingConceptDistribution.Equals(FinancingConceptDistribution? other)
+method Boolean Sopro.Calculation.Financing.FinancingConceptDistribution.Equals(Object? obj)
+method Boolean Sopro.Calculation.Financing.FinancingEstimateLine.Equals(FinancingEstimateLine? other)
+method Boolean Sopro.Calculation.Financing.FinancingEstimateLine.Equals(Object? obj)
 method Boolean Sopro.Calculation.Financing.FinancingPrecision.Equals(FinancingPrecision? other)
 method Boolean Sopro.Calculation.Financing.FinancingPrecision.Equals(Object? obj)
+method Boolean Sopro.Calculation.Financing.FinancingPreparedPeriod.Equals(FinancingPreparedPeriod? other)
+method Boolean Sopro.Calculation.Financing.FinancingPreparedPeriod.Equals(Object? obj)
 method Boolean Sopro.Calculation.Labor.RealSalaryFactorBreakdown.Equals(Object? obj)
 method Boolean Sopro.Calculation.Labor.RealSalaryFactorBreakdown.Equals(RealSalaryFactorBreakdown? other)
 method Boolean Sopro.Calculation.Labor.RealSalaryFactorInput.Equals(Object? obj)
@@ -100,7 +111,10 @@ method Decimal Sopro.Calculation.SoproCalculationEngine.SumAmounts(IEnumerable<D
 method Decimal Sopro.Calculation.SoproCalculationEngine.SumDirectCost(IEnumerable<DirectCostLine>? lines)
 method Decimal Sopro.Calculation.SoproCalculationEngine.SumQuantities(IEnumerable<Decimal>? values)
 method DirectCostLine Sopro.Calculation.DirectCostLine.<Clone>$()
+method FinancingConceptDistribution Sopro.Calculation.Financing.FinancingConceptDistribution.<Clone>$()
+method FinancingEstimateLine Sopro.Calculation.Financing.FinancingEstimateLine.<Clone>$()
 method FinancingPrecision Sopro.Calculation.Financing.FinancingPrecision.<Clone>$()
+method FinancingPreparedPeriod Sopro.Calculation.Financing.FinancingPreparedPeriod.<Clone>$()
 method HourlyCostBreakdown Sopro.Calculation.Equipment.HourlyCostBreakdown.<Clone>$()
 method HourlyCostInput Sopro.Calculation.Equipment.HourlyCostInput.<Clone>$()
 method IReadOnlyList<Decimal> Sopro.Calculation.SoproCalculationEngine.DistributeAmount(Decimal total, IReadOnlyList<Decimal>? weights)
@@ -113,7 +127,10 @@ method Int32 Sopro.Calculation.Calendar.WorkingCalendar.GetHashCode()
 method Int32 Sopro.Calculation.DirectCostLine.GetHashCode()
 method Int32 Sopro.Calculation.Equipment.HourlyCostBreakdown.GetHashCode()
 method Int32 Sopro.Calculation.Equipment.HourlyCostInput.GetHashCode()
+method Int32 Sopro.Calculation.Financing.FinancingConceptDistribution.GetHashCode()
+method Int32 Sopro.Calculation.Financing.FinancingEstimateLine.GetHashCode()
 method Int32 Sopro.Calculation.Financing.FinancingPrecision.GetHashCode()
+method Int32 Sopro.Calculation.Financing.FinancingPreparedPeriod.GetHashCode()
 method Int32 Sopro.Calculation.Labor.RealSalaryFactorBreakdown.GetHashCode()
 method Int32 Sopro.Calculation.Labor.RealSalaryFactorInput.GetHashCode()
 method Int32 Sopro.Calculation.Matrices.MatrixComponentInput.GetHashCode()
@@ -138,7 +155,10 @@ method String Sopro.Calculation.Calendar.WorkingCalendar.ToString()
 method String Sopro.Calculation.DirectCostLine.ToString()
 method String Sopro.Calculation.Equipment.HourlyCostBreakdown.ToString()
 method String Sopro.Calculation.Equipment.HourlyCostInput.ToString()
+method String Sopro.Calculation.Financing.FinancingConceptDistribution.ToString()
+method String Sopro.Calculation.Financing.FinancingEstimateLine.ToString()
 method String Sopro.Calculation.Financing.FinancingPrecision.ToString()
+method String Sopro.Calculation.Financing.FinancingPreparedPeriod.ToString()
 method String Sopro.Calculation.Labor.RealSalaryFactorBreakdown.ToString()
 method String Sopro.Calculation.Labor.RealSalaryFactorInput.ToString()
 method String Sopro.Calculation.Matrices.MatrixComponentInput.ToString()
@@ -152,6 +172,9 @@ method String Sopro.Calculation.Pricing.UtilityResult.ToString()
 method UtilityInput Sopro.Calculation.Pricing.UtilityInput.<Clone>$()
 method UtilityResult Sopro.Calculation.Pricing.UtilityResult.<Clone>$()
 method Void Sopro.Calculation.DirectCostLine.Deconstruct(out Decimal Quantity, out Decimal UnitDirectCost, out Boolean IsGrouping, out Boolean HasMatrix)
+method Void Sopro.Calculation.Financing.FinancingConceptDistribution.Deconstruct(out Int32 PeriodIndex, out Decimal ProgrammedQuantity)
+method Void Sopro.Calculation.Financing.FinancingEstimateLine.Deconstruct(out Int32 PeriodIndex, out Decimal ProgrammedImport)
+method Void Sopro.Calculation.Financing.FinancingPreparedPeriod.Deconstruct(out Decimal DirectCost, out Decimal IndirectCost, out Decimal Expenditure, out Decimal EstimatedAmount)
 method Void Sopro.Calculation.Matrices.MatrixComponentInput.Deconstruct(out Int32 Id, out Int32 Order, out MatrixComponentType Type, out Decimal Quantity, out Decimal ResolvedUnitPrice, out Boolean IsPercentageOfLabor, out Int32? ReferencedMatrixId)
 method Void Sopro.Calculation.Matrices.MatrixComponentResult.Deconstruct(out Int32 ComponentId, out Int32 Order, out Decimal Amount)
 method Void Sopro.Calculation.PriceBreakdown.Deconstruct(out Decimal DirectCost, out Decimal IndirectCosts, out Decimal Financing, out Decimal Profit, out Decimal AdditionalCharges, out Decimal UnitPrice, out Decimal CentralIndirectsPercentage, out Decimal FieldIndirectsPercentage)
@@ -170,8 +193,14 @@ method static Boolean Sopro.Calculation.Equipment.HourlyCostBreakdown.op_Equalit
 method static Boolean Sopro.Calculation.Equipment.HourlyCostBreakdown.op_Inequality(HourlyCostBreakdown? left, HourlyCostBreakdown? right)
 method static Boolean Sopro.Calculation.Equipment.HourlyCostInput.op_Equality(HourlyCostInput? left, HourlyCostInput? right)
 method static Boolean Sopro.Calculation.Equipment.HourlyCostInput.op_Inequality(HourlyCostInput? left, HourlyCostInput? right)
+method static Boolean Sopro.Calculation.Financing.FinancingConceptDistribution.op_Equality(FinancingConceptDistribution? left, FinancingConceptDistribution? right)
+method static Boolean Sopro.Calculation.Financing.FinancingConceptDistribution.op_Inequality(FinancingConceptDistribution? left, FinancingConceptDistribution? right)
+method static Boolean Sopro.Calculation.Financing.FinancingEstimateLine.op_Equality(FinancingEstimateLine? left, FinancingEstimateLine? right)
+method static Boolean Sopro.Calculation.Financing.FinancingEstimateLine.op_Inequality(FinancingEstimateLine? left, FinancingEstimateLine? right)
 method static Boolean Sopro.Calculation.Financing.FinancingPrecision.op_Equality(FinancingPrecision? left, FinancingPrecision? right)
 method static Boolean Sopro.Calculation.Financing.FinancingPrecision.op_Inequality(FinancingPrecision? left, FinancingPrecision? right)
+method static Boolean Sopro.Calculation.Financing.FinancingPreparedPeriod.op_Equality(FinancingPreparedPeriod? left, FinancingPreparedPeriod? right)
+method static Boolean Sopro.Calculation.Financing.FinancingPreparedPeriod.op_Inequality(FinancingPreparedPeriod? left, FinancingPreparedPeriod? right)
 method static Boolean Sopro.Calculation.Labor.RealSalaryFactorBreakdown.op_Equality(RealSalaryFactorBreakdown? left, RealSalaryFactorBreakdown? right)
 method static Boolean Sopro.Calculation.Labor.RealSalaryFactorBreakdown.op_Inequality(RealSalaryFactorBreakdown? left, RealSalaryFactorBreakdown? right)
 method static Boolean Sopro.Calculation.Labor.RealSalaryFactorInput.op_Equality(RealSalaryFactorInput? left, RealSalaryFactorInput? right)
@@ -202,6 +231,8 @@ method static DateTime? Sopro.Calculation.Calendar.WorkingCalendarCalculator.Cal
 method static FinancingPrecision Sopro.Calculation.Financing.FinancingPrecision.Legacy(Int32 amountDecimals)
 method static FinancingResult Sopro.Calculation.Financing.FinancingCalculator.Calculate(FinancingInput input)
 method static HourlyCostBreakdown Sopro.Calculation.Equipment.HourlyCostCalculator.Calculate(HourlyCostInput input)
+method static IReadOnlyList<FinancingPreparedPeriod> Sopro.Calculation.Financing.FinancingPreparationCalculator.PrepareBaseSchedule(FinancingPreparationInput input)
+method static IReadOnlyList<FinancingPreparedPeriod> Sopro.Calculation.Financing.FinancingPreparationCalculator.ReconcileIndirectCost(IReadOnlyList<FinancingPreparedPeriod> rows, Decimal officialIndirectCost, Int32 amountDecimals)
 method static IndirectCostPercentageResult Sopro.Calculation.Pricing.IndirectCostPercentageCalculator.Calculate(IndirectCostPercentageInput input)
 method static Int32 Sopro.Calculation.Calendar.WorkingCalendarCalculator.CountWorkingDays(WorkingCalendar? calendar, DateTime? start, DateTime? end)
 method static RealSalaryFactorBreakdown Sopro.Calculation.Labor.RealSalaryFactorCalculator.Calculate(RealSalaryFactorInput input)
@@ -270,6 +301,11 @@ prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.SpecialPartsLifeHou
 prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.SpecialPartsValue
 prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.TireLifeHours
 prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.TireValue
+prop-get Decimal Sopro.Calculation.Financing.FinancingConceptDistribution.ProgrammedQuantity
+prop-get Decimal Sopro.Calculation.Financing.FinancingConceptInput.QuantityTotal
+prop-get Decimal Sopro.Calculation.Financing.FinancingConceptInput.TotalDirectCost
+prop-get Decimal Sopro.Calculation.Financing.FinancingConceptInput.UnitDirectCost
+prop-get Decimal Sopro.Calculation.Financing.FinancingEstimateLine.ProgrammedImport
 prop-get Decimal Sopro.Calculation.Financing.FinancingInput.AdvancePercentage
 prop-get Decimal Sopro.Calculation.Financing.FinancingInput.EffectiveAnnualRatePercentage
 prop-get Decimal Sopro.Calculation.Financing.FinancingInput.TiieAnnualRatePercentage
@@ -277,6 +313,10 @@ prop-get Decimal Sopro.Calculation.Financing.FinancingInput.TotalBudgetAmount
 prop-get Decimal Sopro.Calculation.Financing.FinancingPeriodInput.DirectCost
 prop-get Decimal Sopro.Calculation.Financing.FinancingPeriodInput.EstimatedAmount
 prop-get Decimal Sopro.Calculation.Financing.FinancingPeriodInput.IndirectCost
+prop-get Decimal Sopro.Calculation.Financing.FinancingPreparedPeriod.DirectCost
+prop-get Decimal Sopro.Calculation.Financing.FinancingPreparedPeriod.EstimatedAmount
+prop-get Decimal Sopro.Calculation.Financing.FinancingPreparedPeriod.Expenditure
+prop-get Decimal Sopro.Calculation.Financing.FinancingPreparedPeriod.IndirectCost
 prop-get Decimal Sopro.Calculation.Financing.FinancingResult.NegativeInterest
 prop-get Decimal Sopro.Calculation.Financing.FinancingResult.NetFinancing
 prop-get Decimal Sopro.Calculation.Financing.FinancingResult.Percentage
@@ -429,6 +469,9 @@ prop-get IReadOnlyList<ActivityNetworkActivityInput> Sopro.Calculation.Schedulin
 prop-get IReadOnlyList<ActivityNetworkActivityResult> Sopro.Calculation.Scheduling.ActivityNetworkResult.Activities
 prop-get IReadOnlyList<ActivityNetworkDependencyInput> Sopro.Calculation.Scheduling.ActivityNetworkInput.Dependencies
 prop-get IReadOnlyList<CalendarException> Sopro.Calculation.Calendar.WorkingCalendar.Exceptions
+prop-get IReadOnlyList<FinancingConceptDistribution> Sopro.Calculation.Financing.FinancingConceptInput.Distributions
+prop-get IReadOnlyList<FinancingConceptInput> Sopro.Calculation.Financing.FinancingPreparationInput.Concepts
+prop-get IReadOnlyList<FinancingEstimateLine> Sopro.Calculation.Financing.FinancingPreparationInput.Estimates
 prop-get IReadOnlyList<FinancingPeriodInput> Sopro.Calculation.Financing.FinancingInput.Periods
 prop-get IReadOnlyList<FinancingRowResult> Sopro.Calculation.Financing.FinancingResult.Rows
 prop-get IReadOnlyList<MatrixComponentInput> Sopro.Calculation.Matrices.MatrixNodeInput.Components
@@ -437,6 +480,8 @@ prop-get IReadOnlyList<MatrixNodeInput> Sopro.Calculation.Matrices.MatrixGraphIn
 prop-get Int32 Sopro.Calculation.CalculationPrecision.AmountDecimals
 prop-get Int32 Sopro.Calculation.CalculationPrecision.PercentageDecimals
 prop-get Int32 Sopro.Calculation.CalculationPrecision.QuantityDecimals
+prop-get Int32 Sopro.Calculation.Financing.FinancingConceptDistribution.PeriodIndex
+prop-get Int32 Sopro.Calculation.Financing.FinancingEstimateLine.PeriodIndex
 prop-get Int32 Sopro.Calculation.Financing.FinancingInput.CollectionDelayPeriods
 prop-get Int32 Sopro.Calculation.Financing.FinancingPeriodInput.Days
 prop-get Int32 Sopro.Calculation.Financing.FinancingPeriodInput.PeriodNumber
@@ -445,6 +490,8 @@ prop-get Int32 Sopro.Calculation.Financing.FinancingPrecision.AmountDecimals
 prop-get Int32 Sopro.Calculation.Financing.FinancingPrecision.InterestDecimals
 prop-get Int32 Sopro.Calculation.Financing.FinancingPrecision.PercentageDecimals
 prop-get Int32 Sopro.Calculation.Financing.FinancingPrecision.RateDecimals
+prop-get Int32 Sopro.Calculation.Financing.FinancingPreparationInput.AmountDecimals
+prop-get Int32 Sopro.Calculation.Financing.FinancingPreparationInput.PeriodCount
 prop-get Int32 Sopro.Calculation.Financing.FinancingRowResult.Days
 prop-get Int32 Sopro.Calculation.Financing.FinancingRowResult.PeriodNumber
 prop-get Int32 Sopro.Calculation.Labor.RealSalaryFactorInput.Semester
@@ -528,6 +575,12 @@ prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.SpecialPartsLi
 prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.SpecialPartsValue
 prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.TireLifeHours
 prop-set init Decimal Sopro.Calculation.Equipment.HourlyCostInput.TireValue
+prop-set init Decimal Sopro.Calculation.Financing.FinancingConceptDistribution.ProgrammedQuantity
+prop-set init Decimal Sopro.Calculation.Financing.FinancingEstimateLine.ProgrammedImport
+prop-set init Decimal Sopro.Calculation.Financing.FinancingPreparedPeriod.DirectCost
+prop-set init Decimal Sopro.Calculation.Financing.FinancingPreparedPeriod.EstimatedAmount
+prop-set init Decimal Sopro.Calculation.Financing.FinancingPreparedPeriod.Expenditure
+prop-set init Decimal Sopro.Calculation.Financing.FinancingPreparedPeriod.IndirectCost
 prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.AdjustedNominalSalaryInMinimumSalaryUnits
 prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.BaseHours
 prop-set init Decimal Sopro.Calculation.Labor.RealSalaryFactorBreakdown.CalendarDays
@@ -640,6 +693,8 @@ prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.NetUtilidadPercent
 prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.PtuPercentage
 prop-set init Decimal Sopro.Calculation.Pricing.UtilityResult.UtilidadNetaEstimada
 prop-set init IReadOnlyList<CalendarException> Sopro.Calculation.Calendar.WorkingCalendar.Exceptions
+prop-set init Int32 Sopro.Calculation.Financing.FinancingConceptDistribution.PeriodIndex
+prop-set init Int32 Sopro.Calculation.Financing.FinancingEstimateLine.PeriodIndex
 prop-set init Int32 Sopro.Calculation.Labor.RealSalaryFactorInput.Semester
 prop-set init Int32 Sopro.Calculation.Labor.RealSalaryFactorInput.Year
 prop-set init Int32 Sopro.Calculation.Matrices.MatrixComponentInput.Id
@@ -664,9 +719,14 @@ type sealed Sopro.Calculation.Calendar.WorkingCalendar
 type sealed Sopro.Calculation.DirectCostLine
 type sealed Sopro.Calculation.Equipment.HourlyCostBreakdown
 type sealed Sopro.Calculation.Equipment.HourlyCostInput
+type sealed Sopro.Calculation.Financing.FinancingConceptDistribution
+type sealed Sopro.Calculation.Financing.FinancingConceptInput
+type sealed Sopro.Calculation.Financing.FinancingEstimateLine
 type sealed Sopro.Calculation.Financing.FinancingInput
 type sealed Sopro.Calculation.Financing.FinancingPeriodInput
 type sealed Sopro.Calculation.Financing.FinancingPrecision
+type sealed Sopro.Calculation.Financing.FinancingPreparationInput
+type sealed Sopro.Calculation.Financing.FinancingPreparedPeriod
 type sealed Sopro.Calculation.Financing.FinancingResult
 type sealed Sopro.Calculation.Financing.FinancingRowResult
 type sealed Sopro.Calculation.Labor.RealSalaryFactorBreakdown
@@ -693,6 +753,7 @@ type sealed Sopro.Calculation.SoproCalculationEngine
 type static Sopro.Calculation.Calendar.WorkingCalendarCalculator
 type static Sopro.Calculation.Equipment.HourlyCostCalculator
 type static Sopro.Calculation.Financing.FinancingCalculator
+type static Sopro.Calculation.Financing.FinancingPreparationCalculator
 type static Sopro.Calculation.Labor.RealSalaryFactorCalculator
 type static Sopro.Calculation.Pricing.IndirectCostPercentageCalculator
 type static Sopro.Calculation.Pricing.UtilityCalculator
