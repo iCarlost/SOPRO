@@ -61,7 +61,8 @@ namespace SOPRO.Core.Entities
         /// <summary>
         /// Financiamiento neto = InteresesPositivos - InteresesNegativos (modelo
         /// dual). En el modelo clásico coincide con el costo: InteresesNegativos.
-        /// Puede ser negativo en el modelo dual si hay ingreso financiero neto.
+        /// Un resultado negativo representa costo financiero neto (los intereses
+        /// negativos superan a los positivos); positivo, ingreso financiero neto.
         /// </summary>
         public decimal FinanciamientoNeto { get; set; }
 

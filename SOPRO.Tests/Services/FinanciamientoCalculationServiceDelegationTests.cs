@@ -9,15 +9,37 @@ namespace SOPRO.Tests.Services;
 
 /// <summary>
 /// Comportamientos del adaptador de financiamiento (N7-17c) que no capturan los
-/// goldens de N7-17a: recÃ¡lculo reemplazando filas, guardas que conservan filas
-/// previamente persistidas sin mutar configuraciÃ³n, y preservaciÃ³n de la hora de
-/// las fechas de los perÃ­odos base (el legado persistÃ­a los DateTime originales).
-/// La paridad aritmÃ©tica completa queda probada por los 8 goldens de N7-17a, que
+/// goldens de N7-17a: recálculo reemplazando filas, guardas que conservan filas
+/// previamente persistidas sin mutar configuración, y preservación de la hora de
+/// las fechas de los períodos base (el legado persistía los DateTime originales).
+/// La paridad aritmética completa queda probada por los 8 goldens de N7-17a, que
 /// pasan contra el servicio delegado.
+/// Toda verificación se lee desde un contexto NUEVO sobre la misma base SQLite
+/// (los contextos de lectura no recrean la base; el escenario sí, una sola vez).
 /// </summary>
 [TestClass]
 public class FinanciamientoCalculationServiceDelegationTests
 {
+    private static readonly List<Escenario> _escenarios = new();
+
+    [TestCleanup]
+    public void Cleanup()
+    {
+        foreach (var e in _escenarios)
+        {
+            e.Context.Dispose();
+            try
+            {
+                File.Delete(e.DbPath);
+            }
+            catch
+            {
+                // Archivo temporal SQLite: si el borrado falla se ignora.
+            }
+        }
+        _escenarios.Clear();
+    }
+
     [TestMethod]
     public void Recalculo_ReemplazaFilasYActualizaConfig()
     {
@@ -35,21 +57,27 @@ public class FinanciamientoCalculationServiceDelegationTests
         var segunda = service.Calcular(e.Context, e.Config, e.Proyecto);
         var segundaFilas = Filas(e, out var segundaIds);
 
-        Assert.AreEqual(0.16737m, primera, "CÃ¡lculo base con anticipo 30%.");
+        Assert.AreEqual(0.16737m, primera, "Cálculo base con anticipo 30%.");
         Assert.AreNotEqual(primera, segunda, "Anticipo distinto produce resultado distinto.");
-        Assert.AreEqual(primeraFilas.Count, segundaFilas.Count, "3 filas en ambos cÃ¡lculos (2 base + 1 desfase).");
-        Assert.AreEqual(3, segundaFilas.Count);
+        Assert.AreEqual(3, primeraFilas.Count, "3 filas en el primer cálculo.");
+        Assert.AreEqual(primeraFilas.Count, segundaFilas.Count, "3 filas en el segundo cálculo.");
         Assert.IsTrue(
             primeraIds.All(id => !segundaIds.Contains(id)),
-            "El recÃ¡lculo reemplaza las filas previstas (Ids nuevos), no las reutiliza.");
+            "El recálculo reemplaza las filas previstas (Ids nuevos), no las reutiliza.");
         Assert.IsTrue(
             FilasCompletas(e).All(f => f.AnticipoRecibido == 0m),
             "Sin anticipo: todas las filas persistidas con anticipo 0.");
-        Assert.AreEqual(segunda, e.Config.PorcentajeCalculado);
-        Assert.IsNotNull(e.Config.FechaCalculo);
-        Assert.IsTrue(
-            e.Config.FechaCalculo >= primeraFecha,
-            "FechaCalculo se actualiza en el recÃ¡lculo.");
+
+        // Configuración verificada desde un contexto nuevo (no desde la instancia tracked).
+        using (var fresh = new SOPROContext(e.DbPath))
+        {
+            var guardada = fresh.ConfiguracionesFinanciamiento.Single(x => x.Id == e.Config.Id);
+            Assert.AreEqual(segunda, guardada.PorcentajeCalculado, "Porcentaje persistido = retorno.");
+            Assert.IsNotNull(guardada.FechaCalculo);
+            Assert.IsTrue(
+                guardada.FechaCalculo >= primeraFecha,
+                "FechaCalculo se actualiza en el recálculo.");
+        }
     }
 
     [TestMethod]
@@ -70,11 +98,11 @@ public class FinanciamientoCalculationServiceDelegationTests
 
         Assert.AreEqual(0m, porcentaje, "Guard devuelve 0.");
         AssertFilasIguales(filasAntes, Filas(e, out _), "programa inactivo");
-        Assert.AreEqual(configAntes, ClaveConfig(e), "Guard NO muta la configuraciÃ³n.");
+        Assert.AreEqual(configAntes, ClaveConfig(e), "Guard NO muta la configuración.");
     }
 
     [TestMethod]
-    public void GuardBaseNoPositiva_ConservaFilasPreviamentePersistidasYConfiguracion()
+    public void GuardBaseCero_ConservaFilasPreviamentePersistidasYConfiguracion()
     {
         var e = CrearEscenario(porcentajeAnticipo: 30m, desfaseCobro: 1, baseCalculo: "Acumulable");
         var service = new FinanciamientoCalculationService();
@@ -90,9 +118,31 @@ public class FinanciamientoCalculationServiceDelegationTests
 
         var porcentaje = service.Calcular(e.Context, e.Config, e.Proyecto);
 
-        Assert.AreEqual(0m, porcentaje, "Base no positiva devuelve 0.");
-        AssertFilasIguales(filasAntes, Filas(e, out _), "base no positiva");
-        Assert.AreEqual(configAntes, ClaveConfig(e), "Guard NO muta la configuraciÃ³n.");
+        Assert.AreEqual(0m, porcentaje, "Base cero devuelve 0.");
+        AssertFilasIguales(filasAntes, Filas(e, out _), "base cero");
+        Assert.AreEqual(configAntes, ClaveConfig(e), "Guard NO muta la configuración.");
+    }
+
+    [TestMethod]
+    public void GuardBaseNegativa_ConservaFilasPreviamentePersistidasYConfiguracion()
+    {
+        var e = CrearEscenario(porcentajeAnticipo: 30m, desfaseCobro: 1, baseCalculo: "Acumulable");
+        var service = new FinanciamientoCalculationService();
+
+        service.Calcular(e.Context, e.Config, e.Proyecto);
+        var filasAntes = Filas(e, out _);
+        var configAntes = ClaveConfig(e);
+
+        var concepto = e.Context.ConceptosPresupuesto.Single();
+        concepto.CostoDirectoUnitario = -100m;
+        concepto.CostoDirectoTotal = -2000m;
+        e.Context.SaveChanges();
+
+        var porcentaje = service.Calcular(e.Context, e.Config, e.Proyecto);
+
+        Assert.AreEqual(0m, porcentaje, "Base negativa devuelve 0.");
+        AssertFilasIguales(filasAntes, Filas(e, out _), "base negativa");
+        Assert.AreEqual(configAntes, ClaveConfig(e), "Guard NO muta la configuración.");
     }
 
     [TestMethod]
@@ -113,9 +163,9 @@ public class FinanciamientoCalculationServiceDelegationTests
 
         var porcentaje = service.Calcular(e.Context, e.Config, e.Proyecto);
 
-        Assert.AreEqual(0m, porcentaje, "Programa activo sin perÃ­odos devuelve 0.");
-        AssertFilasIguales(filasAntes, Filas(e, out _), "programa sin perÃ­odos");
-        Assert.AreEqual(configAntes, ClaveConfig(e), "Guard NO muta la configuraciÃ³n.");
+        Assert.AreEqual(0m, porcentaje, "Programa activo sin períodos devuelve 0.");
+        AssertFilasIguales(filasAntes, Filas(e, out _), "programa sin períodos");
+        Assert.AreEqual(configAntes, ClaveConfig(e), "Guard NO muta la configuración.");
     }
 
     [TestMethod]
@@ -136,7 +186,7 @@ public class FinanciamientoCalculationServiceDelegationTests
         var service = new FinanciamientoCalculationService();
         var porcentaje = service.Calcular(e.Context, e.Config, e.Proyecto);
 
-        Assert.AreNotEqual(0m, porcentaje, "El cÃ¡lculo no debe caer en guardas.");
+        Assert.AreNotEqual(0m, porcentaje, "El cálculo no debe caer en guardas.");
         var filas = FilasCompletas(e);
         Assert.AreEqual(3, filas.Count);
         Assert.AreEqual(new DateTime(2026, 1, 1, 8, 30, 0), filas[0].FechaInicio);
@@ -150,20 +200,13 @@ public class FinanciamientoCalculationServiceDelegationTests
 
     private static void AssertFilasIguales(List<(int Id, string Clave)> antes, List<(int Id, string Clave)> despues, string contexto)
     {
-        Assert.AreEqual(antes.Count, despues.Count, $"[{contexto}] Mismo nÃºmero de filas.");
+        Assert.AreEqual(antes.Count, despues.Count, $"[{contexto}] Mismo número de filas.");
+        Assert.IsTrue(
+            antes.Select(f => f.Id).SequenceEqual(despues.Select(f => f.Id)),
+            $"[{contexto}] Las filas conservan los mismos Ids (no se borran y reinsertan).");
         Assert.IsTrue(
             antes.Select(f => f.Clave).SequenceEqual(despues.Select(f => f.Clave)),
             $"[{contexto}] El contenido completo de las filas se conserva.");
-    }
-
-    private static List<FilaFlujoCajaFinanciamiento> FilasCompletas(Escenario e)
-    {
-        using var fresh = new SOPROContext(e.DbPath);
-        return fresh.FilasFlujoCajaFinanciamiento
-            .AsNoTracking()
-            .Where(f => f.ConfiguracionFinanciamientoId == e.Config.Id)
-            .OrderBy(f => f.NumeroPeriodo)
-            .ToList();
     }
 
     private static List<(int Id, string Clave)> Filas(Escenario e, out List<int> ids)
@@ -180,6 +223,16 @@ public class FinanciamientoCalculationServiceDelegationTests
         return lista;
     }
 
+    private static List<FilaFlujoCajaFinanciamiento> FilasCompletas(Escenario e)
+    {
+        using var fresh = new SOPROContext(e.DbPath);
+        return fresh.FilasFlujoCajaFinanciamiento
+            .AsNoTracking()
+            .Where(f => f.ConfiguracionFinanciamientoId == e.Config.Id)
+            .OrderBy(f => f.NumeroPeriodo)
+            .ToList();
+    }
+
     private static string Clave(FilaFlujoCajaFinanciamiento f) =>
         $"{f.NumeroPeriodo}|{f.Etiqueta}|{f.FechaInicio:O}|{f.FechaFin:O}|{f.DiasPeriodo}|{f.Egresos}|" +
         $"{f.AnticipoRecibido}|{f.EstimacionCobrada}|{f.AmortizacionAnticipo}|{f.FlujoNeto}|{f.SaldoAcumulado}|{f.InteresPeriodo}";
@@ -188,7 +241,9 @@ public class FinanciamientoCalculationServiceDelegationTests
     {
         using var fresh = new SOPROContext(e.DbPath);
         var c = fresh.ConfiguracionesFinanciamiento.Single(x => x.Id == e.Config.Id);
-        return $"{c.InteresesNegativos}|{c.InteresesPositivos}|{c.FinanciamientoNeto}|{c.PorcentajeCalculado}|" +
+        return $"{c.ProyectoId}|{c.TasaTIIE}|{c.PuntosAdicionales}|{c.PorcentajeAnticipo}|" +
+               $"{c.PeriodosAmortizacionAnticipo}|{c.DesfaseCobro}|{c.BaseCalculo}|{c.InteresesNegativos}|" +
+               $"{c.InteresesPositivos}|{c.FinanciamientoNeto}|{c.PorcentajeCalculado}|" +
                (c.FechaCalculo.HasValue ? c.FechaCalculo.Value.ToString("O") : "null");
     }
 
@@ -325,7 +380,7 @@ public class FinanciamientoCalculationServiceDelegationTests
         context.ConfiguracionesFinanciamiento.Add(config);
         context.SaveChanges();
 
-        return new Escenario
+        var escenario = new Escenario
         {
             DbPath = dbPath,
             Context = context,
@@ -333,6 +388,8 @@ public class FinanciamientoCalculationServiceDelegationTests
             Config = config,
             Programa = programa
         };
+        _escenarios.Add(escenario);
+        return escenario;
     }
 
     private sealed class Escenario

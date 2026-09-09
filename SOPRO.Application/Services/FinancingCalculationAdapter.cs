@@ -81,11 +81,12 @@ namespace SOPRO.Application.Services
 
             // Guarda del legado: base no positiva se comprueba ANTES de sumar el
             // presupuesto (misma semántica: no hay trabajo adicional y no se tocan
-            // filas previas ni configuración). La base coincide exactamente con la
-            // del calculador: CD (SobreCD) o CD + CI (Acumulable), sobre periodos base.
-            decimal basePrevia = config.BaseCalculo == "SobreCD"
-                ? periodosCalc.Sum(p => p.CostoDirecto)
-                : periodosCalc.Sum(p => p.CostoDirecto + p.CostoIndirecto);
+            // filas previas ni configuración). La suma replica exactamente la del
+            // calculador para paridad decimal: CD y CI se acumulan por separado y
+            // el total (Acumulable) se obtiene como cdTotal + ciTotal.
+            decimal cdTotal = periodosCalc.Sum(p => p.CostoDirecto);
+            decimal ciTotal = periodosCalc.Sum(p => p.CostoIndirecto);
+            decimal basePrevia = config.BaseCalculo == "SobreCD" ? cdTotal : cdTotal + ciTotal;
 
             if (basePrevia <= 0m)
                 return 0m;
