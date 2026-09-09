@@ -16,11 +16,12 @@ namespace SOPRO.Tests.Services;
 /// como ancla de verificación:
 /// - tasa efectiva = TasaTIIE + PuntosAdicionales;
 /// - Egresos período = CD + CI (CI oficial reconciliado por proporción al CD);
-/// - anticpo solo en el primer período; cobro con desfase (estimación N en N+desfase);
+/// - anticipo solo en el primer período; cobro con desfase (estimación N en N+desfase);
 /// - amortización = Round(Cobrada x PorcentajeAnticipo/100, 6) limitada por pendiente y cobrada;
 /// - interés = Round(Saldo x Round(tasa x Dias/365, 8), 4); clásico suma saldos negativos
 ///   (interés positivo en fila) y dual distingue ingresos (tasa TIIE) de costos (tasa efectiva);
-/// - neto = Round(InteresesNegativos - InteresesPositivos, 4); porcentaje = Round(neto/Base, 5);
+/// - neto = clásico Round(InteresesNegativos, 4); dual Round(InteresesPositivos - InteresesNegativos, 4);
+/// - porcentaje = Round(neto/Base x 100, 5);
 /// - montos de fila y config con redondeo de precisión del proyecto.
 /// </summary>
 [TestClass]

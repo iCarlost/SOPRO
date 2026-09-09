@@ -146,6 +146,37 @@ public sealed class FinancingCalculatorTests
     }
 
     [TestMethod]
+    public void BaseRows_PreserveTimeComponent_WhileDelayRowsStayDateOnly()
+    {
+        var inicio1 = new DateTime(2026, 1, 1, 8, 30, 0);
+        var fin1 = new DateTime(2026, 1, 7, 18, 0, 0);
+        var inicio2 = new DateTime(2026, 1, 8, 9, 15, 0);
+        var fin2 = new DateTime(2026, 1, 14, 17, 30, 0);
+
+        // Regresión funcional corregida en NO-GO N7-17c: el legado persistía los
+        // DateTime originales; el calculador NO debe truncar la hora de filas base.
+        var result = Calculate(new Scenario(
+            effectiveRate: 12m,
+            tiieRate: 12m,
+            advance: 30m,
+            delay: 1,
+            periods: new[]
+            {
+                new FinancingPeriodInput(1, "P1", inicio1, fin1, 7, 1000m, 100m, 1000m),
+                new FinancingPeriodInput(2, "P2", inicio2, fin2, 7, 1000m, 100m, 1000m)
+            }));
+
+        Assert.AreEqual(3, result.Rows.Count);
+        Assert.AreEqual(inicio1, result.Rows[0].StartDate);
+        Assert.AreEqual(fin1, result.Rows[0].EndDate);
+        Assert.AreEqual(inicio2, result.Rows[1].StartDate);
+        Assert.AreEqual(fin2, result.Rows[1].EndDate);
+        // La fila de desfase se construye a medianoche, igual que el legado.
+        Assert.AreEqual(new DateTime(2026, 1, 15), result.Rows[2].StartDate);
+        Assert.AreEqual(new DateTime(2026, 1, 21), result.Rows[2].EndDate);
+    }
+
+    [TestMethod]
     public void LegacyPrecision_AppliesFixedLegacyWidths()
     {
         var precision = FinancingPrecision.Legacy(2);

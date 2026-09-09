@@ -55,7 +55,9 @@ All notable changes to `SOPRO.Calculation` are documented here.
   interest/percentage), and EF, entities and persistence remain adapter
   responsibilities (N7-17c). The "estimated amount" of each input period is the
   scheduled collected estimate (`ImporteProgramado`); the distribution residue that
-  reshapes direct cost does not rewrite collected estimates.
+  reshapes direct cost does not rewrite collected estimates. Base-period row dates
+  preserve the exact input `DateTime` values (the legacy persisted the original
+  timestamps); delay-suffix rows are still built at midnight.
 
 ## 0.1.0 - 2026-08-22
 
