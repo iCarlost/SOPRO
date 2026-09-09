@@ -46,8 +46,9 @@ All notable changes to `SOPRO.Calculation` are documented here.
   (`Accumulative` = direct + indirect cost, `OverDirectCost` = direct cost),
   advance amortization capped by pending and collected amounts, per-period rate
   `Round(annualRate x days / 365, 8)`, interest `Round(balance x rate, 4)` accrued
-  on negative balances (or on both signs in dual mode, charging `TasaEfectiva` on
-  balances in favor and `TasaTIIE + puntos` on balances against), percentage
+  on negative balances (or on both signs in dual mode, charging the effective
+  rate — TIIE + additional points — on balances against and the plain TIIE rate
+  on balances in favor), percentage
   `Round(net / base x 100, 5)`, and the delay-suffix period construction. Precision
   is explicit through `FinancingPrecision` (`Legacy` factory mirrors the legacy
   widths: amounts project precision, fixed 8/6/4/5 for rate/amortization/

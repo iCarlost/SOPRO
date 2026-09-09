@@ -4,7 +4,7 @@ ctor Sopro.Calculation.Calendar.WorkingCalendar()
 ctor Sopro.Calculation.DirectCostLine(Decimal Quantity, Decimal UnitDirectCost, Boolean IsGrouping, Boolean HasMatrix)
 ctor Sopro.Calculation.Equipment.HourlyCostBreakdown()
 ctor Sopro.Calculation.Equipment.HourlyCostInput()
-ctor Sopro.Calculation.Financing.FinancingInput(Decimal effectiveAnnualRatePercentage, Decimal tlieAnnualRatePercentage, Decimal advancePercentage, Int32 collectionDelayPeriods, FinancingBaseCalculationMode baseCalculationMode, Decimal totalBudgetAmount, Boolean isDualModel, FinancingPrecision precision, IEnumerable<FinancingPeriodInput> periods)
+ctor Sopro.Calculation.Financing.FinancingInput(Decimal effectiveAnnualRatePercentage, Decimal tiieAnnualRatePercentage, Decimal advancePercentage, Int32 collectionDelayPeriods, FinancingBaseCalculationMode baseCalculationMode, Decimal totalBudgetAmount, Boolean isDualModel, FinancingPrecision precision, IEnumerable<FinancingPeriodInput> periods)
 ctor Sopro.Calculation.Financing.FinancingPeriodInput(Int32 periodNumber, String label, DateTime startDate, DateTime endDate, Int32 days, Decimal directCost, Decimal indirectCost, Decimal estimatedAmount)
 ctor Sopro.Calculation.Financing.FinancingPrecision(Int32 amountDecimals, Int32 rateDecimals = 8, Int32 amortizationDecimals = 6, Int32 interestDecimals = 4, Int32 percentageDecimals = 5)
 ctor Sopro.Calculation.Labor.RealSalaryFactorBreakdown()
@@ -272,7 +272,7 @@ prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.TireLifeHours
 prop-get Decimal Sopro.Calculation.Equipment.HourlyCostInput.TireValue
 prop-get Decimal Sopro.Calculation.Financing.FinancingInput.AdvancePercentage
 prop-get Decimal Sopro.Calculation.Financing.FinancingInput.EffectiveAnnualRatePercentage
-prop-get Decimal Sopro.Calculation.Financing.FinancingInput.TlieAnnualRatePercentage
+prop-get Decimal Sopro.Calculation.Financing.FinancingInput.TiieAnnualRatePercentage
 prop-get Decimal Sopro.Calculation.Financing.FinancingInput.TotalBudgetAmount
 prop-get Decimal Sopro.Calculation.Financing.FinancingPeriodInput.DirectCost
 prop-get Decimal Sopro.Calculation.Financing.FinancingPeriodInput.EstimatedAmount

@@ -1,4 +1,4 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sopro.Calculation.Financing;
 
 namespace SOPRO.Tests.Calculation;
@@ -20,7 +20,7 @@ public sealed class FinancingCalculatorTests
     [TestMethod]
     public void Advance30_Delay1_Accumulative_MatchesLegacyGolden()
     {
-        var result = Calculate(new Scenario(effectiveRate: 12m, tlieRate: 12m, advance: 30m, delay: 1));
+        var result = Calculate(new Scenario(effectiveRate: 12m, tiieRate: 12m, advance: 30m, delay: 1));
 
         Assert.AreEqual(3, result.Rows.Count, "2 periodos base + 1 fila de desfase.");
         AssertFinancingResult(result, negativeInterest: 3.6822m, positiveInterest: 0m, net: 3.6822m, percentage: 0.16737m);
@@ -33,7 +33,7 @@ public sealed class FinancingCalculatorTests
     [TestMethod]
     public void Advance5_NoDelay_AmortizationCapByPendingExhausts()
     {
-        var result = Calculate(new Scenario(effectiveRate: 12m, tlieRate: 12m, advance: 5m, delay: 0));
+        var result = Calculate(new Scenario(effectiveRate: 12m, tiieRate: 12m, advance: 5m, delay: 0));
 
         Assert.AreEqual(2, result.Rows.Count, "Sin desfase: solo los 2 periodos base.");
         AssertFinancingResult(result, negativeInterest: 0.5754m, positiveInterest: 0m, net: 0.5754m, percentage: 0.02615m);
@@ -47,7 +47,7 @@ public sealed class FinancingCalculatorTests
     {
         var result = Calculate(new Scenario(
             effectiveRate: 12m,
-            tlieRate: 12m,
+            tiieRate: 12m,
             advance: 30m,
             delay: 1,
             mode: FinancingBaseCalculationMode.OverDirectCost));
@@ -61,7 +61,7 @@ public sealed class FinancingCalculatorTests
     {
         var result = Calculate(new Scenario(
             effectiveRate: 15m,
-            tlieRate: 12m,
+            tiieRate: 12m,
             advance: 80m,
             delay: 1,
             dual: true));
@@ -78,7 +78,7 @@ public sealed class FinancingCalculatorTests
     {
         var result = Calculate(new Scenario(
             effectiveRate: 12m,
-            tlieRate: 12m,
+            tiieRate: 12m,
             advance: 0m,
             delay: 0,
             periods: Periods(
@@ -98,7 +98,7 @@ public sealed class FinancingCalculatorTests
     {
         var result = Calculate(new Scenario(
             effectiveRate: 12m,
-            tlieRate: 12m,
+            tiieRate: 12m,
             advance: 30m,
             delay: 0,
             totalBudget: 0m,
@@ -115,7 +115,7 @@ public sealed class FinancingCalculatorTests
     {
         var result = Calculate(new Scenario(
             effectiveRate: 12m,
-            tlieRate: 12m,
+            tiieRate: 12m,
             advance: 30m,
             delay: 1,
             periods: Periods((0m, 0m, 0m), (0m, 0m, 0m))));
@@ -132,7 +132,7 @@ public sealed class FinancingCalculatorTests
     {
         var result = FinancingCalculator.Calculate(new FinancingInput(
             effectiveAnnualRatePercentage: 12m,
-            tlieAnnualRatePercentage: 12m,
+            tiieAnnualRatePercentage: 12m,
             advancePercentage: 30m,
             collectionDelayPeriods: 1,
             baseCalculationMode: FinancingBaseCalculationMode.Accumulative,
@@ -158,6 +158,71 @@ public sealed class FinancingCalculatorTests
     }
 
     [TestMethod]
+    public void CustomPrecision_AppliesCustomWidthsAtEveryStage_AndNormalizesNegatives()
+    {
+        var precision = new FinancingPrecision(
+            amountDecimals: 1,
+            rateDecimals: 4,
+            amortizationDecimals: 1,
+            interestDecimals: 2,
+            percentageDecimals: 2);
+
+        var result = Calculate(new Scenario(
+            effectiveRate: 12m,
+            tiieRate: 12m,
+            advance: 33m,
+            delay: 1,
+            periods: Periods((1000.66m, 100.44m, 1000.66m), (1000.66m, 100.44m, 1000.66m)),
+            precision: precision));
+
+        // Montos a 1 decimal: egreso 1101.10 -> 1101.1; saldos -871.74 -> -871.7.
+        AssertRow(result.Rows[0], 1, "P1", "2026-01-01", "2026-01-07", 7, 1101.1m, 660.0m, 0.0m, 0.0m, -441.1m, -441.1m, 1.01m);
+        // Amortización a 1 decimal con cap por pendiente: 330.2178 -> 330.2; r2 cap 329.8.
+        AssertRow(result.Rows[1], 2, "P2", "2026-01-08", "2026-01-14", 7, 1101.1m, 0.0m, 1000.7m, 330.2m, -430.6m, -871.7m, 2.01m);
+        AssertRow(result.Rows[2], 3, "Período de desfase 1", "2026-01-15", "2026-01-21", 7, 0.0m, 0.0m, 1000.7m, 329.8m, 670.9m, -200.9m, 0.46m);
+
+        // Tasa a 4 decimales: 0.00230137 -> 0.0023. Interés a 2: 3.48.
+        AssertFinancingResult(result, negativeInterest: 3.48m, positiveInterest: 0m, net: 3.48m, percentage: 0.16m);
+
+        var negative = new FinancingPrecision(amountDecimals: -1, rateDecimals: -8, amortizationDecimals: -6, interestDecimals: -4, percentageDecimals: -5);
+        Assert.AreEqual(0, negative.AmountDecimals);
+        Assert.AreEqual(0, negative.RateDecimals);
+        Assert.AreEqual(0, negative.AmortizationDecimals);
+        Assert.AreEqual(0, negative.InterestDecimals);
+        Assert.AreEqual(0, negative.PercentageDecimals);
+    }
+
+    [TestMethod]
+    public void Input_DefensivelyCopiesPeriods_AgainstCallerMutation()
+    {
+        var periods = Periods((1000m, 100m, 1000m), (1000m, 100m, 1000m));
+        var input = new FinancingInput(
+            12m,
+            12m,
+            30m,
+            1,
+            FinancingBaseCalculationMode.Accumulative,
+            2000m,
+            false,
+            FinancingPrecision.Legacy(2),
+            periods);
+
+        periods[0] = new FinancingPeriodInput(99, "tampered", DateTime.MinValue, DateTime.MinValue, 99, 1m, 1m, 1m);
+
+        Assert.AreEqual(2, input.Periods.Count);
+        Assert.AreEqual("P1", input.Periods[0].Label);
+        Assert.AreEqual(1000m, input.Periods[0].DirectCost);
+    }
+
+    [TestMethod]
+    public void ResultRows_AreReadOnly()
+    {
+        var result = Calculate(new Scenario(effectiveRate: 12m, tiieRate: 12m, advance: 30m, delay: 1));
+
+        Assert.ThrowsException<NotSupportedException>(() => ((IList<FinancingRowResult>)result.Rows).Add(null!));
+    }
+
+    [TestMethod]
     public void NullInput_IsRejected()
     {
         Assert.ThrowsException<ArgumentNullException>(() => FinancingCalculator.Calculate(null!));
@@ -166,13 +231,13 @@ public sealed class FinancingCalculatorTests
     private static FinancingResult Calculate(Scenario scenario) =>
         FinancingCalculator.Calculate(new FinancingInput(
             scenario.EffectiveRate,
-            scenario.TlieRate,
+            scenario.TiieRate,
             scenario.Advance,
             scenario.Delay,
             scenario.Mode,
             scenario.TotalBudget,
             scenario.Dual,
-            FinancingPrecision.Legacy(2),
+            scenario.Precision,
             scenario.Periods));
 
     private static void AssertFinancingResult(
@@ -234,31 +299,34 @@ public sealed class FinancingCalculatorTests
     private sealed class Scenario
     {
         public decimal EffectiveRate { get; }
-        public decimal TlieRate { get; }
+        public decimal TiieRate { get; }
         public decimal Advance { get; }
         public int Delay { get; }
         public FinancingBaseCalculationMode Mode { get; }
         public decimal TotalBudget { get; }
         public bool Dual { get; }
+        public FinancingPrecision Precision { get; }
         public FinancingPeriodInput[] Periods { get; }
 
         public Scenario(
             decimal effectiveRate,
-            decimal tlieRate,
+            decimal tiieRate,
             decimal advance,
             int delay,
             FinancingBaseCalculationMode mode = FinancingBaseCalculationMode.Accumulative,
             decimal totalBudget = 2000m,
             bool dual = false,
+            FinancingPrecision? precision = null,
             params FinancingPeriodInput[] periods)
         {
             EffectiveRate = effectiveRate;
-            TlieRate = tlieRate;
+            TiieRate = tiieRate;
             Advance = advance;
             Delay = delay;
             Mode = mode;
             TotalBudget = totalBudget;
             Dual = dual;
+            Precision = precision ?? FinancingPrecision.Legacy(2);
             Periods = periods.Length > 0
                 ? periods
                 : Periods((1000m, 100m, 1000m), (1000m, 100m, 1000m));

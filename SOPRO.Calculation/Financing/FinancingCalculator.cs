@@ -141,7 +141,7 @@ public sealed class FinancingInput
     public decimal EffectiveAnnualRatePercentage { get; }
 
     /// <summary>TIIE annual rate, in percent (used for dual-model positive balances).</summary>
-    public decimal TlieAnnualRatePercentage { get; }
+    public decimal TiieAnnualRatePercentage { get; }
 
     /// <summary>Advance percentage over the total contract amount (0 when none).</summary>
     public decimal AdvancePercentage { get; }
@@ -157,8 +157,10 @@ public sealed class FinancingInput
 
     /// <summary>
     /// Total contract budget. When greater than zero it is used as the advance
-    /// base; otherwise the computed (direct + indirect) base is used, exactly
-    /// like the legacy fallback.
+    /// base; otherwise the base of the selected calculation mode is used (direct
+    /// + indirect for <see cref="FinancingBaseCalculationMode.Accumulative"/>,
+    /// direct cost only for <see cref="FinancingBaseCalculationMode.OverDirectCost"/>),
+    /// exactly like the legacy fallback.
     /// </summary>
     public decimal TotalBudgetAmount { get; }
 
@@ -181,7 +183,7 @@ public sealed class FinancingInput
     /// <summary>Creates an immutable financing input, defensively copying the periods.</summary>
     public FinancingInput(
         decimal effectiveAnnualRatePercentage,
-        decimal tlieAnnualRatePercentage,
+        decimal tiieAnnualRatePercentage,
         decimal advancePercentage,
         int collectionDelayPeriods,
         FinancingBaseCalculationMode baseCalculationMode,
@@ -194,7 +196,7 @@ public sealed class FinancingInput
         ArgumentNullException.ThrowIfNull(periods);
 
         EffectiveAnnualRatePercentage = effectiveAnnualRatePercentage;
-        TlieAnnualRatePercentage = tlieAnnualRatePercentage;
+        TiieAnnualRatePercentage = tiieAnnualRatePercentage;
         AdvancePercentage = advancePercentage;
         CollectionDelayPeriods = collectionDelayPeriods;
         BaseCalculationMode = baseCalculationMode;
@@ -287,7 +289,7 @@ public sealed class FinancingResult
     public decimal PositiveInterest { get; }
 
     /// <summary>
-    /// Net financing = NegativeInterest - PositiveInterest (dual) or the
+    /// Net financing = PositiveInterest - NegativeInterest (dual), or the
     /// negative interest alone (classic model).
     /// </summary>
     public decimal NetFinancing { get; }
@@ -353,7 +355,7 @@ public static class FinancingCalculator
         decimal pendingAmortization = advanceTotal;
         decimal amortizationRate = input.AdvancePercentage / 100m;
         decimal negativeAnnualRate = input.EffectiveAnnualRatePercentage / 100m;
-        decimal positiveAnnualRate = input.TlieAnnualRatePercentage / 100m;
+        decimal positiveAnnualRate = input.TiieAnnualRatePercentage / 100m;
 
         var flowRows = BuildFlowRows(input, basePeriods, precision);
 
