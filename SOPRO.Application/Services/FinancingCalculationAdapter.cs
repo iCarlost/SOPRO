@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
-using Sopro.Calculation;
 using Sopro.Calculation.Financing;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -11,21 +10,26 @@ using SOPRO.Application.Models.Presupuesto;
 namespace SOPRO.Application.Services
 {
     /// <summary>
-    /// Puente entre el dominio (EF + programa de obra) y el calculador puro
-    /// <see cref="FinancingCalculator"/> (N7-17c).
+    /// Puente entre el dominio (EF + programa de obra) y los calculadores puros
+    /// <see cref="FinancingCalculator"/> (N7-17c) y
+    /// <see cref="FinancingPreparationCalculator"/> (N7-17d).
     ///
-    /// Retiene las consultas, la preparación de escalares por período (acumulación de
-    /// CD distribuido, reconciliación de indirectos oficiales, la estimación cobrable
-    /// desde <c>ImporteProgramado</c>), la persistencia de filas y la mutación de la
-    /// configuración. La aritmética del flujo vive en el calculador; aquí solo hay
-    /// mapeo y persistencia.
+    /// Retiene las consultas EF, el filtro/agrupación/orden de conceptos y
+    /// distribuciones, el cómputo del total de indirectos oficiales desde el
+    /// preview de costos de referencia, la persistencia de filas y la mutación de
+    /// la configuración. La preparación numérica CD/CI (acumulación CD con
+    /// absorción de residuo, estimación cobrable e importes período a período) y
+    /// la reconciliación del total oficial de indirectos viven en el componente
+    /// puro; aquí solo hay mapeo, escalares y persistencia.
     /// </summary>
     /// <remarks>
     /// Guardas preservadas exactamente como el legado: sin programa activo, sin
     /// periodos o base no positiva el servicio devuelve 0 SIN eliminar filas previas
-    /// ni mutar la configuración. La preparación CD/CI (con absorción de residuo en
-    /// el último período) sigue viviendo en Application; su posible centralización se
-    /// evalúa por separado.
+    /// ni mutar la configuración. El residuo de CD siempre se absorbe en el último
+    /// período con monto y la estimación cobrable proviene únicamente de
+    /// <c>ImporteProgramado</c> (el residuo no la contamina). El total de indirectos
+    /// oficiales usa la única implementación del preview de referencia del
+    /// presupuesto en Application (no se duplica en el paquete).
     /// </remarks>
     public static class FinancingCalculationAdapter
     {
@@ -57,8 +61,6 @@ namespace SOPRO.Application.Services
             if (periodos.Count == 0)
                 return 0m;
 
-            var engine = CalculationEngineFactory.FromProyecto(proyecto);
-
             var distribuciones = context.DistribucionesPeriodo
                 .AsNoTracking()
                 .Include(d => d.ActividadProgramada)
@@ -66,16 +68,12 @@ namespace SOPRO.Application.Services
                 .Where(d => d.PeriodoPrograma.ProgramaObraId == programa.Id)
                 .ToList();
 
-            // Solo los periodos base: las filas de desfase de cobro las construye el
-            // calculador puro con el mismo criterio (etiqueta, fechas y días del último período).
             var periodosCalc = BuildPeriodRows(
                 proyecto,
                 periodos,
                 distribuciones,
                 proyecto.PorcentajeIndirectosCentral,
-                proyecto.PorcentajeIndirectosCampo,
-                desfaseCobro: 0,
-                engine);
+                proyecto.PorcentajeIndirectosCampo);
             if (periodosCalc.Count == 0)
                 return 0m;
 
@@ -166,111 +164,73 @@ namespace SOPRO.Application.Services
             List<PeriodoPrograma> periodos,
             List<DistribucionPeriodo> distribuciones,
             decimal porcentajeIndirectosCentral,
-            decimal porcentajeIndirectosCampo,
-            int desfaseCobro,
-            SoproCalculationEngine engine)
+            decimal porcentajeIndirectosCampo)
         {
-            var periodOrder = periodos.ToDictionary(p => p.Id, p => p.NumeroPeriodo);
-            var acumulados = periodos.ToDictionary(
-                p => p.Id,
-                p => new PeriodoFinanciamientoCalc
+            var baseRows = periodos
+                .Select(p => new PeriodoFinanciamientoCalc
                 {
                     NumeroPeriodo = p.NumeroPeriodo,
                     Etiqueta = p.Etiqueta,
                     FechaInicio = p.FechaInicio,
                     FechaFin = p.FechaFin,
-                    DiasPeriodo = Math.Max(1, (p.FechaFin.Date - p.FechaInicio.Date).Days + 1),
-                    CostoDirecto = 0m,
-                    CostoIndirecto = 0m,
-                    EgresoTotal = 0m,
-                    EstimacionTotal = 0m
-                });
-
-            var gruposConcepto = distribuciones
-                .Where(d => d.ActividadProgramada?.ConceptoPresupuesto != null
-                         && !d.ActividadProgramada.ConceptoPresupuesto.EsAgrupador
-                         && d.ActividadProgramada.ConceptoPresupuesto.MatrizId.HasValue)
-                .GroupBy(d => d.ActividadProgramada!.ConceptoPresupuestoId!.Value);
-
-            foreach (var grupo in gruposConcepto)
-            {
-                var concepto = grupo.First().ActividadProgramada!.ConceptoPresupuesto!;
-                decimal cantidadConcepto = concepto.Cantidad;
-                if (cantidadConcepto <= 0m)
-                    continue;
-
-                decimal cdUnit = concepto.CostoDirectoUnitario;
-                if (cdUnit <= 0m && concepto.CostoDirectoTotal > 0m)
-                    cdUnit = concepto.CostoDirectoTotal / cantidadConcepto;
-
-                decimal totalCdConcepto = engine.Multiply(cantidadConcepto, cdUnit);
-
-                var distribucionesConcepto = grupo
-                    .OrderBy(d => periodOrder.TryGetValue(d.PeriodoProgramaId, out var orden) ? orden : int.MaxValue)
-                    .ToList();
-
-                AplicarAcumuladoPorDistribucion(proyecto, distribucionesConcepto, cdUnit, totalCdConcepto, acumulados, true, engine);
-            }
-
-            foreach (var distribucion in distribuciones.Where(d => d.ActividadProgramada?.ConceptoPresupuesto != null
-                                                                && !d.ActividadProgramada.ConceptoPresupuesto.EsAgrupador
-                                                                && d.ActividadProgramada.ConceptoPresupuesto.MatrizId.HasValue))
-            {
-                if (acumulados.TryGetValue(distribucion.PeriodoProgramaId, out var rowEstim))
-                    rowEstim.EstimacionTotal = BudgetPricingService.RoundImporte(proyecto, rowEstim.EstimacionTotal + distribucion.ImporteProgramado);
-            }
-
-            var rows = periodos
-                .Select(p =>
-                {
-                    var row = acumulados[p.Id];
-                    row.CostoDirecto = BudgetPricingService.RoundImporte(proyecto, row.CostoDirecto);
-                    row.CostoIndirecto = 0m;
-                    row.EgresoTotal = row.CostoDirecto;
-                    return row;
+                    DiasPeriodo = Math.Max(1, (p.FechaFin.Date - p.FechaInicio.Date).Days + 1)
                 })
                 .ToList();
 
-            // Reconciliar indirectos oficiales del proyecto y fijar egreso = CD + CI
-            ReconciliarIndirectosYEgresos(proyecto, rows);
+            var periodoIndex = periodos
+                .Select((p, i) => (Id: p.Id, Index: i))
+                .ToDictionary(x => x.Id, x => x.Index);
 
-            if (rows.Count > 0 && desfaseCobro > 0)
-            {
-                var ultimo = rows[^1];
-                int diasBase = Math.Max(1, ultimo.DiasPeriodo);
-                for (int extra = 1; extra <= desfaseCobro; extra++)
+            // Solo los periodos base: las filas de desfase de cobro las construye el
+            // calculador puro (FinancingCalculator) con el mismo criterio (etiqueta,
+            // fechas y días del último período).
+            var distribucionesConcepto = distribuciones
+                .Where(d => d.ActividadProgramada?.ConceptoPresupuesto != null
+                         && !d.ActividadProgramada.ConceptoPresupuesto.EsAgrupador
+                         && d.ActividadProgramada.ConceptoPresupuesto.MatrizId.HasValue)
+                .ToList();
+
+            var conceptos = distribucionesConcepto
+                .GroupBy(d => d.ActividadProgramada!.ConceptoPresupuestoId!.Value)
+                .Select(g =>
                 {
-                    DateTime inicio = ultimo.FechaFin.Date.AddDays(1 + diasBase * (extra - 1));
-                    DateTime fin = inicio.AddDays(diasBase - 1);
-                    rows.Add(new PeriodoFinanciamientoCalc
-                    {
-                        NumeroPeriodo = ultimo.NumeroPeriodo + extra,
-                        Etiqueta = $"Período de desfase {extra}",
-                        FechaInicio = inicio,
-                        FechaFin = fin,
-                        DiasPeriodo = diasBase,
-                        CostoDirecto = 0m,
-                        CostoIndirecto = 0m,
-                        EgresoTotal = 0m,
-                        EstimacionTotal = 0m
-                    });
-                }
-            }
+                    var concepto = g.First().ActividadProgramada!.ConceptoPresupuesto!;
+                    var shares = g
+                        .Where(d => periodoIndex.ContainsKey(d.PeriodoProgramaId))
+                        .OrderBy(d => periodoIndex[d.PeriodoProgramaId])
+                        .Select(d => new FinancingConceptDistribution(periodoIndex[d.PeriodoProgramaId], d.CantidadProgramada))
+                        .ToList();
 
-            return rows;
-        }
+                    return new FinancingConceptInput(
+                        concepto.Cantidad,
+                        concepto.CostoDirectoUnitario,
+                        concepto.CostoDirectoTotal,
+                        shares);
+                })
+                .ToList();
 
-        private static void ReconciliarIndirectosYEgresos(Proyecto proyecto, List<PeriodoFinanciamientoCalc> rows)
-        {
-            if (rows.Count == 0)
-                return;
+            var estimaciones = distribucionesConcepto
+                .Where(d => periodoIndex.ContainsKey(d.PeriodoProgramaId))
+                .Select(d => new FinancingEstimateLine(periodoIndex[d.PeriodoProgramaId], d.ImporteProgramado))
+                .ToList();
 
-            decimal totalCd = rows.Sum(x => x.CostoDirecto);
+            var input = new FinancingPreparationInput(
+                proyecto.DecimalesImporte,
+                periodos.Count,
+                conceptos,
+                estimaciones);
+
+            // Preparación numérica CD + estimaciones (residuo absorbido en el último
+            // período con monto). El total de indirectos oficiales proviene de la única
+            // implementación del preview de referencia del presupuesto en Application.
+            var baseSchedule = FinancingPreparationCalculator.PrepareBaseSchedule(input);
+
+            decimal totalCd = baseSchedule.Sum(p => p.DirectCost);
             var preview = BudgetPreviewCalculationService.BuildPreviewFromReferenceCost(totalCd, new BudgetPercentageInput
             {
                 CostoDirectoReferencia = totalCd,
-                IndirectosCentral = proyecto.PorcentajeIndirectosCentral,
-                IndirectosCampo = proyecto.PorcentajeIndirectosCampo,
+                IndirectosCentral = porcentajeIndirectosCentral,
+                IndirectosCampo = porcentajeIndirectosCampo,
                 Financiamiento = 0m,
                 Utilidad = 0m,
                 CargosAdicionales = 0m,
@@ -278,122 +238,21 @@ namespace SOPRO.Application.Services
             });
 
             decimal totalCiOficial = BudgetPricingService.RoundImporte(proyecto, preview.Subtotal1 - preview.CostoDirecto);
-            ReconciliarDistribucion(rows, proyecto, totalCiOficial, esCostoDirecto: false);
 
-            foreach (var row in rows)
+            var preparado = FinancingPreparationCalculator.ReconcileIndirectCost(
+                baseSchedule,
+                totalCiOficial,
+                proyecto.DecimalesImporte);
+
+            for (int i = 0; i < baseRows.Count; i++)
             {
-                row.CostoDirecto = BudgetPricingService.RoundImporte(proyecto, row.CostoDirecto);
-                row.CostoIndirecto = BudgetPricingService.RoundImporte(proyecto, row.CostoIndirecto);
-                row.EgresoTotal = BudgetPricingService.RoundImporte(proyecto, row.CostoDirecto + row.CostoIndirecto);
-                row.EstimacionTotal = BudgetPricingService.RoundImporte(proyecto, row.EstimacionTotal);
-            }
-        }
-
-        private static void ReconciliarDistribucion(List<PeriodoFinanciamientoCalc> rows, Proyecto proyecto, decimal totalOficial, bool esCostoDirecto)
-        {
-            decimal totalActual = rows.Sum(x => esCostoDirecto ? x.CostoDirecto : x.CostoIndirecto);
-            if (totalActual == totalOficial)
-                return;
-
-            var filasConMonto = rows
-                .Where(x => (esCostoDirecto ? x.CostoDirecto : x.CostoIndirecto) != 0m)
-                .ToList();
-
-            if (filasConMonto.Count == 0)
-            {
-                filasConMonto = rows.ToList();
-                if (filasConMonto.Count == 0)
-                    return;
+                baseRows[i].CostoDirecto = preparado[i].DirectCost;
+                baseRows[i].CostoIndirecto = preparado[i].IndirectCost;
+                baseRows[i].EgresoTotal = preparado[i].Expenditure;
+                baseRows[i].EstimacionTotal = preparado[i].EstimatedAmount;
             }
 
-            if (totalActual == 0m)
-            {
-                decimal totalBase = rows.Sum(x => x.CostoDirecto);
-                if (totalBase > 0m)
-                {
-                    decimal acumulado = 0m;
-                    for (int i = 0; i < rows.Count; i++)
-                    {
-                        var fila = rows[i];
-                        decimal nuevo = i == rows.Count - 1
-                            ? totalOficial - acumulado
-                            : BudgetPricingService.RoundImporte(proyecto, totalOficial * fila.CostoDirecto / totalBase);
-                        if (esCostoDirecto)
-                            fila.CostoDirecto = nuevo;
-                        else
-                            fila.CostoIndirecto = nuevo;
-                        acumulado += nuevo;
-                    }
-                }
-                else
-                {
-                    var ultima = filasConMonto[^1];
-                    if (esCostoDirecto)
-                        ultima.CostoDirecto = totalOficial;
-                    else
-                        ultima.CostoIndirecto = totalOficial;
-                }
-                return;
-            }
-
-            decimal acumuladoDistrib = 0m;
-            for (int i = 0; i < filasConMonto.Count; i++)
-            {
-                var fila = filasConMonto[i];
-                decimal actual = esCostoDirecto ? fila.CostoDirecto : fila.CostoIndirecto;
-                decimal nuevo = i == filasConMonto.Count - 1
-                    ? totalOficial - acumuladoDistrib
-                    : BudgetPricingService.RoundImporte(proyecto, totalOficial * actual / totalActual);
-                if (esCostoDirecto)
-                    fila.CostoDirecto = nuevo;
-                else
-                    fila.CostoIndirecto = nuevo;
-                acumuladoDistrib += nuevo;
-            }
-        }
-
-        private static void AplicarAcumuladoPorDistribucion(
-            Proyecto proyecto,
-            List<DistribucionPeriodo> distribucionesConcepto,
-            decimal precioUnitario,
-            decimal totalEsperado,
-            Dictionary<int, PeriodoFinanciamientoCalc> acumulados,
-            bool esCostoDirecto,
-            SoproCalculationEngine engine)
-        {
-            if (distribucionesConcepto.Count == 0 || totalEsperado == 0m)
-                return;
-
-            decimal suma = 0m;
-            int ultimoIndiceConMonto = -1;
-            var importes = new decimal[distribucionesConcepto.Count];
-
-            for (int i = 0; i < distribucionesConcepto.Count; i++)
-            {
-                var distribucion = distribucionesConcepto[i];
-                decimal importe = engine.Multiply(distribucion.CantidadProgramada, precioUnitario);
-                importes[i] = importe;
-                suma += importe;
-                if (distribucion.CantidadProgramada != 0m || importe != 0m)
-                    ultimoIndiceConMonto = i;
-            }
-
-            if (ultimoIndiceConMonto < 0)
-                ultimoIndiceConMonto = distribucionesConcepto.Count - 1;
-
-            importes[ultimoIndiceConMonto] += totalEsperado - suma;
-
-            for (int i = 0; i < distribucionesConcepto.Count; i++)
-            {
-                var distribucion = distribucionesConcepto[i];
-                if (!acumulados.TryGetValue(distribucion.PeriodoProgramaId, out var row))
-                    continue;
-
-                if (esCostoDirecto)
-                    row.CostoDirecto += importes[i];
-                else
-                    row.CostoIndirecto += importes[i];
-            }
+            return baseRows;
         }
 
         private sealed class PeriodoFinanciamientoCalc

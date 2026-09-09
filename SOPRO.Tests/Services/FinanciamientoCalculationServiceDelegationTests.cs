@@ -210,6 +210,34 @@ public class FinanciamientoCalculationServiceDelegationTests
         Assert.AreEqual(new DateTime(2026, 1, 21), filas[2].FechaFin);
     }
 
+    [TestMethod]
+    public void Mapeo_VariosConceptos_YDistribucionesDesordenadas_AsignaCadaPeriodo()
+    {
+        // Dos conceptos con distribuciones insertadas deliberadamente desordenadas
+        // (A-P2, B-P2, A-P1): el adaptador debe agrupar por concepto, ordenar por
+        // índice de período y llevar el CD/CI/EGRESO/estimación a la fila correcta.
+        // A: Cantidad 2 x 100 con P1=1.5 y P2=0.5 → CD [150, 50].
+        // B: Cantidad 1 x 200 en P2 → CD [0, 200]. Total CD = 400.
+        // Estimaciones: A-P1 150, A-P2 50, B-P2 200 → [150, 250].
+        // CI oficial (10% central sobre CD) = 40 → [15, 25].
+        // Egresos: P1 165, P2 275.
+        var e = CrearEscenarioMultiConcepto();
+        var service = new FinanciamientoCalculationService();
+
+        var porcentaje = service.Calcular(e.Context, e.Config, e.Proyecto);
+
+        Assert.AreNotEqual(0m, porcentaje, "El cálculo no debe caer en guardas.");
+        var filas = FilasCompletas(e);
+        Assert.AreEqual(2, filas.Count, "Sin desfase: solo las 2 filas base.");
+
+        Assert.AreEqual(1, filas[0].NumeroPeriodo);
+        Assert.AreEqual(165.00m, filas[0].Egresos, "P1: CD 150 + CI 15.");
+        Assert.AreEqual(150.00m, filas[0].EstimacionCobrada, "P1: solo ImporteProgramado de A.");
+        Assert.AreEqual(2, filas[1].NumeroPeriodo);
+        Assert.AreEqual(275.00m, filas[1].Egresos, "P2: CD 250 + CI 25.");
+        Assert.AreEqual(250.00m, filas[1].EstimacionCobrada, "P2: ImporteProgramado de A y B.");
+    }
+
     private static void AssertFilasIguales(List<(int Id, string Clave)> antes, List<(int Id, string Clave)> despues, string contexto)
     {
         Assert.AreEqual(antes.Count, despues.Count, $"[{contexto}] Mismo número de filas.");
@@ -388,6 +416,188 @@ public class FinanciamientoCalculationServiceDelegationTests
             PorcentajeAnticipo = porcentajeAnticipo,
             DesfaseCobro = desfaseCobro,
             BaseCalculo = baseCalculo
+        };
+        context.ConfiguracionesFinanciamiento.Add(config);
+        context.SaveChanges();
+
+        var escenario = new Escenario
+        {
+            DbPath = dbPath,
+            Context = context,
+            Proyecto = proyecto,
+            Config = config,
+            Programa = programa
+        };
+        _escenarios.Add(escenario);
+        return escenario;
+    }
+
+    private Escenario CrearEscenarioMultiConcepto()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        var context = TestDbFactory.CreateContextAt(dbPath);
+
+        var proyecto = new Proyecto
+        {
+            Nombre = "Proyecto financiamiento multi concepto",
+            Descripcion = string.Empty,
+            Ubicacion = string.Empty,
+            Convocante = string.Empty,
+            Contratista = string.Empty,
+            ApoderadoLegal = string.Empty,
+            FechaInicio = new DateTime(2026, 1, 1),
+            FechaTermino = new DateTime(2026, 1, 31),
+            PlazoEjecucion = 31,
+            PorcentajeIndirectosCentral = 10m,
+            PorcentajeIndirectosCampo = 0m,
+            ModoCalculoPorcentajes = "SobreCD",
+            DecimalesCantidad = 2,
+            DecimalesImporte = 2,
+            DecimalesPorcentaje = 4
+        };
+        context.Proyectos.Add(proyecto);
+        context.SaveChanges();
+
+        var programa = new ProgramaObra
+        {
+            ProyectoId = proyecto.Id,
+            Nombre = "Programa multi concepto",
+            FechaInicioPrograma = new DateTime(2026, 1, 1),
+            Activo = true
+        };
+        context.ProgramasObra.Add(programa);
+        context.SaveChanges();
+
+        var periodo1 = new PeriodoPrograma
+        {
+            ProgramaObraId = programa.Id,
+            NumeroPeriodo = 1,
+            Etiqueta = "P1",
+            FechaInicio = new DateTime(2026, 1, 1),
+            FechaFin = new DateTime(2026, 1, 7)
+        };
+        var periodo2 = new PeriodoPrograma
+        {
+            ProgramaObraId = programa.Id,
+            NumeroPeriodo = 2,
+            Etiqueta = "P2",
+            FechaInicio = new DateTime(2026, 1, 8),
+            FechaFin = new DateTime(2026, 1, 14)
+        };
+        context.PeriodosPrograma.AddRange(periodo1, periodo2);
+        context.SaveChanges();
+
+        var matriz = new Matriz
+        {
+            ProyectoId = proyecto.Id,
+            Clave = "APU-001",
+            Descripcion = "Matriz base",
+            Unidad = "m2",
+            Tipo = TipoMatriz.APU,
+            CostoDirecto = 100m
+        };
+        context.Matrices.Add(matriz);
+        context.SaveChanges();
+
+        var conceptoA = new ConceptoPresupuesto
+        {
+            ProyectoId = proyecto.Id,
+            Clave = "C-A",
+            Descripcion = "Concepto A",
+            Unidad = "m2",
+            Cantidad = 2m,
+            MatrizId = matriz.Id,
+            CostoDirectoUnitario = 100m,
+            CostoDirectoTotal = 200m,
+            PrecioUnitario = 100m,
+            ImporteTotal = 200m
+        };
+        var conceptoB = new ConceptoPresupuesto
+        {
+            ProyectoId = proyecto.Id,
+            Clave = "C-B",
+            Descripcion = "Concepto B",
+            Unidad = "m3",
+            Cantidad = 1m,
+            MatrizId = matriz.Id,
+            CostoDirectoUnitario = 200m,
+            CostoDirectoTotal = 200m,
+            PrecioUnitario = 200m,
+            ImporteTotal = 200m
+        };
+        context.ConceptosPresupuesto.AddRange(conceptoA, conceptoB);
+        context.SaveChanges();
+
+        var actividadA = new ActividadProgramada
+        {
+            ProgramaObraId = programa.Id,
+            ConceptoPresupuestoId = conceptoA.Id,
+            Clave = conceptoA.Clave,
+            Descripcion = conceptoA.Descripcion,
+            Unidad = conceptoA.Unidad,
+            CantidadTotal = 2m,
+            PrecioUnitario = 100m,
+            ImporteTotal = 200m,
+            DuracionDiasHabiles = 10,
+            FechaInicioProgramada = new DateTime(2026, 1, 1),
+            FechaFinProgramada = new DateTime(2026, 1, 14)
+        };
+        var actividadB = new ActividadProgramada
+        {
+            ProgramaObraId = programa.Id,
+            ConceptoPresupuestoId = conceptoB.Id,
+            Clave = conceptoB.Clave,
+            Descripcion = conceptoB.Descripcion,
+            Unidad = conceptoB.Unidad,
+            CantidadTotal = 1m,
+            PrecioUnitario = 200m,
+            ImporteTotal = 200m,
+            DuracionDiasHabiles = 10,
+            FechaInicioProgramada = new DateTime(2026, 1, 1),
+            FechaFinProgramada = new DateTime(2026, 1, 14)
+        };
+        context.ActividadesProgramadas.AddRange(actividadA, actividadB);
+        context.SaveChanges();
+
+        // Distribuciones insertadas desordenadas a propósito (A-P2, B-P2, A-P1).
+        context.DistribucionesPeriodo.AddRange(
+            new DistribucionPeriodo
+            {
+                ActividadProgramadaId = actividadA.Id,
+                PeriodoProgramaId = periodo2.Id,
+                CantidadProgramada = 0.5m,
+                PorcentajeProgramado = 25m,
+                PrecioUnitario = 100m,
+                ImporteProgramado = 50m
+            },
+            new DistribucionPeriodo
+            {
+                ActividadProgramadaId = actividadB.Id,
+                PeriodoProgramaId = periodo2.Id,
+                CantidadProgramada = 1m,
+                PorcentajeProgramado = 100m,
+                PrecioUnitario = 200m,
+                ImporteProgramado = 200m
+            },
+            new DistribucionPeriodo
+            {
+                ActividadProgramadaId = actividadA.Id,
+                PeriodoProgramaId = periodo1.Id,
+                CantidadProgramada = 1.5m,
+                PorcentajeProgramado = 75m,
+                PrecioUnitario = 100m,
+                ImporteProgramado = 150m
+            });
+        context.SaveChanges();
+
+        var config = new ConfiguracionFinanciamiento
+        {
+            ProyectoId = proyecto.Id,
+            TasaTIIE = 12m,
+            PuntosAdicionales = 0m,
+            PorcentajeAnticipo = 0m,
+            DesfaseCobro = 0,
+            BaseCalculo = "SobreCD"
         };
         context.ConfiguracionesFinanciamiento.Add(config);
         context.SaveChanges();
