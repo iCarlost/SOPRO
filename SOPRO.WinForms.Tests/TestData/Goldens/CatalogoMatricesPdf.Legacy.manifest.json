@@ -1,0 +1,11 @@
+{
+  "Schema": "sopro.catalogo-matrices.pdf.manifest.1",
+  "Escenario": "sintetico",
+  "FuenteDatos": "seeds-sintetico",
+  "Generador": "GeneradorPdfCatalogoMatrices",
+  "Titulo": "CATÁLOGO DE MATRICES",
+  "Paginas": 1,
+  "AnchoPt": 792,
+  "AltoPt": 612,
+  "TamanoBytes": 63844
+}
