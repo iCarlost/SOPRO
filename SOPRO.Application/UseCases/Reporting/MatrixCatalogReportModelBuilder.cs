@@ -57,13 +57,58 @@ internal sealed class MatrixCatalogReportModelBuilder
             template,
             now);
 
+        var headerElements = ResolverElementosLibres(template.ElementosEncabezado, proyecto, template, now);
+        var footerElements = ResolverElementosLibres(template.ElementosPie, proyecto, template, now);
+
         var matricesModel = matrices
             .Where(m => m != null)
             .OrderBy(m => m.Clave, StringComparer.Ordinal)
             .Select(BuildMatriz)
             .ToList();
 
-        return new MatrixCatalogReportDocument(title, titleStyle, header, footer, matricesModel, settings.Project.Nombre);
+        return new MatrixCatalogReportDocument(
+            title,
+            titleStyle,
+            header,
+            footer,
+            matricesModel,
+            settings.Project.Nombre,
+            headerElements,
+            footerElements,
+            template.Heights ?? MatrixCatalogPageHeights.Default);
+    }
+
+    /// <summary>
+    /// Resuelve los tokens de los elementos libres PDF con el reloj explícito,
+    /// dejando únicamente {pagina} y {total_paginas} sin resolver (el medio de
+    /// salida los convierte en campos reales). Los elementos de tipo imagen no
+    /// resuelven nada (la imagen son sus bytes, no texto).
+    /// </summary>
+    private static List<MatrixCatalogPageElement> ResolverElementosLibres(
+        IEnumerable<MatrixCatalogPageElement>? elementos,
+        MatrixCatalogProject proyecto,
+        MatrixCatalogTemplate plantilla,
+        DateTime now)
+    {
+        if (elementos == null) return new List<MatrixCatalogPageElement>();
+
+        return elementos
+            .Select(e => e.Kind == MatrixCatalogPageElementKind.Imagen
+                ? e
+                : new MatrixCatalogPageElement(
+                    e.Zone,
+                    e.Kind,
+                    e.X,
+                    e.Y,
+                    e.Width,
+                    e.Height,
+                    MatrixCatalogTokenResolver.Resolver(e.Content, proyecto, plantilla, now),
+                    e.Style,
+                    e.Alignment,
+                    e.ImageBytes,
+                    e.ImageFileName,
+                    e.ImageMimeType))
+            .ToList();
     }
 
     private static string ResolverTitulo(string? filtroTitulo, MatrixCatalogTitleOptions? options)

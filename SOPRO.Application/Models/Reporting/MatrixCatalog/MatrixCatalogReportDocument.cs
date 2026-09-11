@@ -16,6 +16,8 @@ namespace SOPRO.Application.Models.Reporting.MatrixCatalog;
 public sealed class MatrixCatalogReportDocument
 {
     private readonly ReadOnlyCollection<MatrixCatalogMatrix> _matrices;
+    private readonly ReadOnlyCollection<MatrixCatalogPageElement> _headerElements;
+    private readonly ReadOnlyCollection<MatrixCatalogPageElement> _footerElements;
 
     /// <summary>Título del documento (con sufijo de filtro aplicado).</summary>
     public string Title { get; }
@@ -32,6 +34,18 @@ public sealed class MatrixCatalogReportDocument
     /// <summary>Pie del documento (zonas izquierda/centro/derecha).</summary>
     public MatrixCatalogZoneSet Footer { get; }
 
+    /// <summary>
+    /// Elementos libres del encabezado PDF, ya resueltos y ordenados de forma
+    /// definitiva (el renderer no vuelve a ordenar).
+    /// </summary>
+    public IReadOnlyList<MatrixCatalogPageElement> HeaderElements => _headerElements;
+
+    /// <summary>Elementos libres del pie PDF, ordenados igual que el encabezado.</summary>
+    public IReadOnlyList<MatrixCatalogPageElement> FooterElements => _footerElements;
+
+    /// <summary>Alturas de las franjas de encabezado y pie de la plantilla.</summary>
+    public MatrixCatalogPageHeights PageHeights { get; }
+
     /// <summary>Matrices del catálogo ordenadas por clave.</summary>
     public IReadOnlyList<MatrixCatalogMatrix> Matrices => _matrices;
 
@@ -41,7 +55,10 @@ public sealed class MatrixCatalogReportDocument
         MatrixCatalogZoneSet header,
         MatrixCatalogZoneSet footer,
         IEnumerable<MatrixCatalogMatrix> matrices,
-        string projectName = "")
+        string projectName = "",
+        IEnumerable<MatrixCatalogPageElement>? headerElements = null,
+        IEnumerable<MatrixCatalogPageElement>? footerElements = null,
+        MatrixCatalogPageHeights? pageHeights = null)
     {
         Title = title ?? string.Empty;
         TitleStyle = titleStyle ?? throw new ArgumentNullException(nameof(titleStyle));
@@ -50,5 +67,10 @@ public sealed class MatrixCatalogReportDocument
         Footer = footer;
         _matrices = new ReadOnlyCollection<MatrixCatalogMatrix>(
             (matrices ?? throw new ArgumentNullException(nameof(matrices))).ToList());
+        _headerElements = new ReadOnlyCollection<MatrixCatalogPageElement>(
+            (headerElements ?? Array.Empty<MatrixCatalogPageElement>()).ToList());
+        _footerElements = new ReadOnlyCollection<MatrixCatalogPageElement>(
+            (footerElements ?? Array.Empty<MatrixCatalogPageElement>()).ToList());
+        PageHeights = pageHeights ?? MatrixCatalogPageHeights.Default;
     }
 }

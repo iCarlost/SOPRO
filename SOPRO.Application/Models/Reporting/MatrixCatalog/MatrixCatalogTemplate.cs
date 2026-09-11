@@ -2,7 +2,12 @@ namespace SOPRO.Application.Models.Reporting.MatrixCatalog;
 
 /// <summary>
 /// Snapshot neutral de la plantilla de reporte: zonas de encabezado/pie (con su
-/// estilo) y campos dinámicos del proyecto. Datos puros, sin entidades de EF.
+/// estilo), campos dinámicos del proyecto, elementos libres del diseñador PDF y
+/// alturas de franja. Datos puros, sin entidades de EF.
+///
+/// Los elementos libres se materializan ya ordenados por (ZOrder, Id) legacy;
+/// ese orden es definitivo (el renderer no vuelve a ordenar). Sus tokens aún no
+/// están resueltos: el builder los resuelve con el reloj explícito.
 /// </summary>
 internal sealed record MatrixCatalogTemplate(
     MatrixCatalogZoneData EncabezadoIzq,
@@ -21,7 +26,10 @@ internal sealed record MatrixCatalogTemplate(
     string CampoFechaInicio,
     string CampoFechaTermino,
     string CampoTextoLibre1,
-    string CampoTextoLibre2)
+    string CampoTextoLibre2,
+    IReadOnlyList<MatrixCatalogPageElement>? ElementosEncabezado = null,
+    IReadOnlyList<MatrixCatalogPageElement>? ElementosPie = null,
+    MatrixCatalogPageHeights? Heights = null)
 {
     public static MatrixCatalogTemplate Vacia { get; } = new(
         EncabezadoIzq: MatrixCatalogZoneData.Vacia,
@@ -33,7 +41,10 @@ internal sealed record MatrixCatalogTemplate(
         CampoElabaro: "", CampoReviso: "", CampoAutorizo: "", CampoDependencia: "",
         CampoNumeroContrato: "", CampoLicitacion: "", CampoUbicacion: "",
         CampoFechaInicio: "", CampoFechaTermino: "", CampoTextoLibre1: "",
-        CampoTextoLibre2: "");
+        CampoTextoLibre2: "",
+        ElementosEncabezado: Array.Empty<MatrixCatalogPageElement>(),
+        ElementosPie: Array.Empty<MatrixCatalogPageElement>(),
+        Heights: MatrixCatalogPageHeights.Default);
 }
 
 /// <summary>
