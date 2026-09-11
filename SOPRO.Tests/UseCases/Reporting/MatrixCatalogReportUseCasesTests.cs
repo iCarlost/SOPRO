@@ -465,7 +465,6 @@ public class MatrixCatalogReportUseCasesTests
         try
         {
             int idA;
-            int idB;
             int matrizAId;
             int matrizBId;
             using (var ctx = TestDbFactory.CreateContextAt(dbPath))
@@ -479,7 +478,6 @@ public class MatrixCatalogReportUseCasesTests
                 ctx.Matrices.AddRange(matrizA, matrizB);
                 ctx.SaveChanges();
                 idA = pA.Id;
-                idB = pB.Id;
                 matrizAId = matrizA.Id;
                 matrizBId = matrizB.Id;
             }

@@ -9,9 +9,9 @@ namespace SOPRO.Application.UseCases.Reporting;
 /// se ignoran, comportamiento legacy: WHERE IN deduplica).
 ///
 /// Los IDs se materializan en una copia defensiva envuelta en una colección de
-    /// solo lectura: ni la lista que recibe el constructor ni un cast posterior
-    /// pueden mutar la solicitud (gate de inputs inmutables, PLAN-01:703).
-    /// </summary>
+/// solo lectura: ni la lista que recibe el constructor ni un cast posterior
+/// pueden mutar la solicitud (gate de inputs inmutables, PLAN-01:703).
+/// </summary>
     public sealed record BuildMatrixCatalogReportRequest
     {
         /// <summary>IDs de matriz a incluir (copia inmodificable).</summary>

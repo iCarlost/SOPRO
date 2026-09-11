@@ -21,13 +21,13 @@ namespace SOPRO.Application.UseCases.Reporting;
 /// y delega al builder.
 ///
 /// El reloj es explícito vía <see cref="TimeProvider"/> (gate PLAN-01:708): con los
-    /// mismos inputs y el mismo reloj, <see cref="Execute"/> produce el mismo documento.
-    ///
-    /// El catálogo exige un proyecto concreto: la sesión del catálogo maestro
-    /// (<see cref="ProjectRef.IsMasterCatalog"/>) se rechaza explícitamente y el
-    /// filtro de matrices aplica igualdad estricta de <c>ProyectoId</c> (dictamen
-    /// NO-GO: aislamiento por proyecto sin vía de escape por sesión maestra).
-    /// </summary>
+/// mismos inputs y el mismo reloj, <see cref="Execute"/> produce el mismo documento.
+///
+/// El catálogo exige un proyecto concreto: la sesión del catálogo maestro
+/// (<see cref="ProjectRef.IsMasterCatalog"/>) se rechaza explícitamente y el
+/// filtro de matrices aplica igualdad estricta de <c>ProyectoId</c> (dictamen
+/// NO-GO: aislamiento por proyecto sin vía de escape por sesión maestra).
+/// </summary>
 public sealed class BuildMatrixCatalogReport
 {
     private readonly IProjectDbContextFactory _factory;
