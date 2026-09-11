@@ -24,7 +24,6 @@ internal sealed class MatrixCatalogReportModelBuilder
     private const bool DefaultTitleBold = true;
     private const bool DefaultTitleItalic = false;
     private const string DefaultTextColorHex = "#FFFFFF";
-    private const string DefaultBackgroundHex = "#33334C";
     private const string DefaultZoneColorHex = "#000000";
     private const double DefaultZoneSize = 9d;
 
@@ -64,7 +63,7 @@ internal sealed class MatrixCatalogReportModelBuilder
             .Select(BuildMatriz)
             .ToList();
 
-        return new MatrixCatalogReportDocument(title, titleStyle, header, footer, matricesModel);
+        return new MatrixCatalogReportDocument(title, titleStyle, header, footer, matricesModel, settings.Project.Nombre);
     }
 
     private static string ResolverTitulo(string? filtroTitulo, MatrixCatalogTitleOptions? options)
@@ -91,8 +90,7 @@ internal sealed class MatrixCatalogReportModelBuilder
             Size: size,
             Bold: options?.Bold ?? DefaultTitleBold,
             Italic: options?.Italic ?? DefaultTitleItalic,
-            TextColorHex: !string.IsNullOrWhiteSpace(options?.TextColorHex) ? options!.TextColorHex! : DefaultTextColorHex,
-            BackgroundHex: !string.IsNullOrWhiteSpace(options?.BackgroundHex) ? options!.BackgroundHex! : DefaultBackgroundHex);
+            TextColorHex: !string.IsNullOrWhiteSpace(options?.TextColorHex) ? options!.TextColorHex! : DefaultTextColorHex);
     }
 
     private static MatrixCatalogZoneSet ResolverFranja(

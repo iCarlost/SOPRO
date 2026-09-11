@@ -8,6 +8,7 @@ using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.Data.Factories;
+using SOPRO.Tests.TestInfrastructure;
 
 namespace SOPRO.Tests.UseCases.Reporting;
 
@@ -231,7 +232,7 @@ public class MatrixCatalogReportUseCasesTests
         Assert.AreEqual(14d, docDefault.TitleStyle.Size);
         Assert.IsTrue(docDefault.TitleStyle.Bold);
         Assert.AreEqual("#FFFFFF", docDefault.TitleStyle.TextColorHex);
-        Assert.AreEqual("#33334C", docDefault.TitleStyle.BackgroundHex);
+        Assert.AreEqual("APU SINTETICO GOLDEN N7-18A", docDefault.ProjectName);
 
         Assert.AreEqual("CATÁLOGO DE MATRICES (APU)", Build(SnapshotsSinteticos(), filtro: "APU").Title);
         Assert.AreEqual("CATÁLOGO DE MATRICES (BÁSICOS)", Build(SnapshotsSinteticos(), filtro: "Básicos").Title);
@@ -243,7 +244,7 @@ public class MatrixCatalogReportUseCasesTests
     public void Builder_OpcionesDeTituloPersonalizadas()
     {
         var titulo = new MatrixCatalogTitleOptions(
-            "CATÁLOGO PERSONALIZADO", "Arial", 11, false, true, "#112233", "#AABBCC");
+            "CATÁLOGO PERSONALIZADO", "Arial", 11, false, true, "#112233");
 
         var doc = Build(SnapshotsSinteticos(), filtro: "APU", titulo: titulo);
 
@@ -253,7 +254,6 @@ public class MatrixCatalogReportUseCasesTests
         Assert.IsFalse(doc.TitleStyle.Bold);
         Assert.IsTrue(doc.TitleStyle.Italic);
         Assert.AreEqual("#112233", doc.TitleStyle.TextColorHex);
-        Assert.AreEqual("#AABBCC", doc.TitleStyle.BackgroundHex);
     }
 
     // ──────────────────────── Builder: tokens y reloj ───────────────────────
@@ -458,6 +458,116 @@ public class MatrixCatalogReportUseCasesTests
         Assert.AreEqual("CATÁLOGO DE MATRICES", result.Value!.Title);
     }
 
+    [TestMethod]
+    public void Execute_DosProyectos_MatrizDelOtroProyectoNoAparece()
+    {
+        string dbPath = Path.Combine(Path.GetTempPath(), $"sopro_mc_2p_{Guid.NewGuid():N}.db");
+        try
+        {
+            int idA;
+            int idB;
+            using (var ctx = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var pA = CrearProyectoBasico("Proyecto A");
+                var pB = CrearProyectoBasico("Proyecto B");
+                ctx.Proyectos.AddRange(pA, pB);
+                ctx.SaveChanges();
+                ctx.Matrices.AddRange(
+                    new Matriz { ProyectoId = pA.Id, Clave = "A-1", Descripcion = "Matriz de A", Unidad = "pza", CostoDirecto = 10m },
+                    new Matriz { ProyectoId = pB.Id, Clave = "B-1", Descripcion = "Matriz de B", Unidad = "pza", CostoDirecto = 20m });
+                ctx.SaveChanges();
+                idA = pA.Id;
+                idB = pB.Id;
+            }
+
+            var sessionA = CrearSession(dbPath, idA);
+            var useCase = new BuildMatrixCatalogReport(new ProjectDbContextFactory());
+
+            // La matriz de B, pedida con la sesión activa de A, NO aparece: el WHERE
+            // exige m.ProyectoId == sesión (dictamen NO-GO: aislamiento por proyecto).
+            var ajeno = useCase.Execute(sessionA, new BuildMatrixCatalogReportRequest(new[] { idB }), CancellationToken.None).GetAwaiter().GetResult();
+            Assert.IsTrue(ajeno.IsSuccess, ajeno.Error?.Message ?? "sin mensaje");
+            Assert.AreEqual(0, ajeno.Value!.Matrices.Count, "una matriz de otro ProyectoId nunca se reporta.");
+
+            // La matriz del propio proyecto sí aparece.
+            var propio = useCase.Execute(sessionA, new BuildMatrixCatalogReportRequest(new[] { idA }), CancellationToken.None).GetAwaiter().GetResult();
+            Assert.IsTrue(propio.IsSuccess, propio.Error?.Message ?? "sin mensaje");
+            Assert.AreEqual(1, propio.Value!.Matrices.Count);
+            Assert.AreEqual("A-1", propio.Value!.Matrices[0].Key);
+            Assert.AreEqual("Proyecto A", propio.Value!.ProjectName);
+        }
+        finally
+        {
+            try { File.Delete(dbPath); } catch { /* best effort */ }
+        }
+    }
+
+    [TestMethod]
+    public void Execute_RelojFijo_ProduceDocumentoDeterministaDesdeElCasoDeUso()
+    {
+        string dbPath = Path.Combine(Path.GetTempPath(), $"sopro_mc_clock_{Guid.NewGuid():N}.db");
+        try
+        {
+            int idProyecto;
+            int idMatriz;
+            using (var ctx = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var p = CrearProyectoBasico("Proyecto Reloj");
+                ctx.Proyectos.Add(p);
+                ctx.SaveChanges();
+                ctx.Matrices.Add(new Matriz { ProyectoId = p.Id, Clave = "M-1", Descripcion = "Matriz", Unidad = "pza", CostoDirecto = 5m });
+                ctx.PlantillasReporte.Add(new PlantillaReporte
+                {
+                    ProyectoId = p.Id,
+                    EncabezadoCenContenido = "{fecha_impresion}",
+                    EncabezadoIzqContenido = "{nombre_proyecto}",
+                });
+                ctx.SaveChanges();
+                idProyecto = p.Id;
+                idMatriz = ctx.Matrices.Single().Id;
+            }
+
+            var session = CrearSession(dbPath, idProyecto);
+            var useCase = new BuildMatrixCatalogReport(new ProjectDbContextFactory(), new FixedTimeProvider(FechaFija));
+            var request = new BuildMatrixCatalogReportRequest(new[] { idMatriz });
+
+            // El reloj NO es DateTime.Now oculto: se inyecta en Execute y dos llamadas
+            // con el mismo reloj fijo producen exactamente el mismo documento.
+            var r1 = useCase.Execute(session, request, CancellationToken.None).GetAwaiter().GetResult();
+            var r2 = useCase.Execute(session, request, CancellationToken.None).GetAwaiter().GetResult();
+
+            Assert.IsTrue(r1.IsSuccess, r1.Error?.Message ?? "sin mensaje");
+            Assert.AreEqual("27/08/2026 13:45", r1.Value!.Header.Center.Content, "{fecha_impresion} se resuelve con el TimeProvider inyectado.");
+            Assert.AreEqual("Proyecto Reloj", r1.Value!.ProjectName);
+            Assert.AreEqual(r1.Value!.Matrices.Count, r2.Value!.Matrices.Count);
+            Assert.AreEqual(r1.Value!.Header.Center.Content, r2.Value!.Header.Center.Content);
+        }
+        finally
+        {
+            try { File.Delete(dbPath); } catch { /* best effort */ }
+        }
+    }
+
+    // ─────────────────────── Request: inputs inmutables ──────────────────────
+
+    [TestMethod]
+    public void Request_MatrixIdsCopiaDefensiva_NoRetieneLaListaMutable()
+    {
+        var lista = new List<int> { 1, 2, 3 };
+        var request = new BuildMatrixCatalogReportRequest(lista);
+
+        // Mutar la lista original después de construir la solicitud no la altera.
+        lista.Add(4);
+        lista[0] = 99;
+
+        Assert.AreEqual(3, request.MatrixIds.Count);
+        Assert.AreEqual(1, request.MatrixIds[0]);
+        Assert.IsTrue(((ICollection<int>)request.MatrixIds).IsReadOnly, "la copia se materializa como array de solo lectura.");
+        Assert.ThrowsException<NotSupportedException>(() => ((ICollection<int>)request.MatrixIds).Add(5));
+        Assert.ThrowsException<InvalidCastException>(() => (List<int>)request.MatrixIds);
+        Assert.ThrowsException<ArgumentNullException>(() => new BuildMatrixCatalogReportRequest(null!));
+    }
+
     // ─────────────────────────── Infraestructura ────────────────────────────
 
     private sealed class Copia***REMOVED*** : IDisposable
@@ -483,6 +593,47 @@ public class MatrixCatalogReportUseCasesTests
             try { File.SetAttributes(DbPath, FileAttributes.Normal); } catch { /* best effort */ }
             try { File.Delete(DbPath); } catch { /* best effort */ }
         }
+    }
+
+    private sealed class FixedTimeProvider : TimeProvider
+    {
+        private readonly DateTimeOffset _fixedUtc;
+
+        public FixedTimeProvider(DateTime utc)
+            => _fixedUtc = new DateTimeOffset(utc, TimeSpan.Zero);
+
+        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+
+        public override DateTimeOffset GetUtcNow() => _fixedUtc;
+    }
+
+    /// <summary>Crea un Proyecto mínimo con todos los campos NOT NULL de la tabla.</summary>
+    private static Proyecto CrearProyectoBasico(string nombre) => new()
+    {
+        Nombre = nombre,
+        Descripcion = string.Empty,
+        Ubicacion = string.Empty,
+        Convocante = string.Empty,
+        Contratista = string.Empty,
+        ApoderadoLegal = string.Empty,
+        FechaInicio = new DateTime(2026, 1, 1),
+        FechaTermino = new DateTime(2026, 1, 31),
+        PlazoEjecucion = 31,
+        PorcentajeIndirectosCentral = 0m,
+        PorcentajeIndirectosCampo = 0m,
+        PorcentajeFinanciamiento = 0m,
+        PorcentajeUtilidad = 0m,
+        PorcentajeCargosAdicionales = 0m,
+        DecimalesCantidad = 2,
+        DecimalesImporte = 2,
+        DecimalesPorcentaje = 4
+    };
+
+    private static ProjectSessionInfo CrearSession(string dbPath, int proyectoId)
+    {
+        using var lectura = new SOPROContext(dbPath);
+        var proyecto = lectura.Proyectos.AsNoTracking().First(p => p.Id == proyectoId);
+        return ProjectSessionInfo.Create(ProjectRef.FromEntity(proyecto), dbPath, null, proyecto.DecimalesImporte);
     }
 
     private static ProjectSessionInfo LeerSessionReal(string dbPath)

@@ -134,8 +134,7 @@ internal static class MatrixCatalogSourceMapper
             Size: cfg.TamanoFuente,
             Bold: cfg.Negrita,
             Italic: cfg.Cursiva,
-            TextColorHex: cfg.ColorTexto,
-            BackgroundHex: null);
+            TextColorHex: cfg.ColorTexto);
     }
 
     private static MatrixCatalogZoneData Zona(string tipo, string contenido, string fuente, float tamaño, bool negrita, bool cursiva, string alineacion)

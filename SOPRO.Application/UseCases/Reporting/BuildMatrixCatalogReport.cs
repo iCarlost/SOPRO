@@ -19,15 +19,20 @@ namespace SOPRO.Application.UseCases.Reporting;
 /// La aritmética pura vive en <see cref="MatrixCatalogReportModelBuilder"/> (prueable
 /// sin base de datos). Este caso de uso aplica la proyección de entidades a snapshots
 /// y delega al builder.
+///
+/// El reloj es explícito vía <see cref="TimeProvider"/> (gate PLAN-01:708): con los
+/// mismos inputs y el mismo reloj, <see cref="Execute"/> produce el mismo documento.
 /// </summary>
 public sealed class BuildMatrixCatalogReport
 {
     private readonly IProjectDbContextFactory _factory;
+    private readonly TimeProvider _clock;
     private readonly MatrixCatalogReportModelBuilder _builder = new();
 
-    public BuildMatrixCatalogReport(IProjectDbContextFactory factory)
+    public BuildMatrixCatalogReport(IProjectDbContextFactory factory, TimeProvider? timeProvider = null)
     {
         _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+        _clock = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<Result<MatrixCatalogReportDocument>> Execute(
@@ -39,7 +44,8 @@ public sealed class BuildMatrixCatalogReport
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var ids = request.MatrixIds?.ToList() ?? new List<int>();
+        var ids = request.MatrixIds.ToList();
+        var projectId = session.Project.ProjectId;
 
         await using var context = await _factory.CreateAsync(session.DatabasePath, cancellationToken);
 
@@ -65,7 +71,7 @@ public sealed class BuildMatrixCatalogReport
                         .ThenInclude(c => c.Herramienta)
                     .Include(m => m.Componentes)
                         .ThenInclude(c => c.Auxiliar)
-                    .Where(m => ids.Contains(m.Id))
+                    .Where(m => ids.Contains(m.Id) && (!projectId.HasValue || m.ProyectoId == projectId.Value))
                     .OrderBy(m => m.Clave)
                     .ToListAsync(cancellationToken);
             }
@@ -97,7 +103,7 @@ public sealed class BuildMatrixCatalogReport
                 request.FiltroTitulo);
 
             var snapshots = matricesCargadas.Select(MatrixCatalogSourceMapper.MapearMatriz).ToList();
-            var doc = _builder.Build(settings, snapshots, DateTime.Now);
+            var doc = _builder.Build(settings, snapshots, _clock.GetLocalNow().DateTime);
 
             return Result<MatrixCatalogReportDocument>.Ok(doc);
         }
