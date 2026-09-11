@@ -25,10 +25,13 @@ legacy (N7-18e).
 ## Determinismo del PDF
 
 El PDF de PDFsharp 6.2.4-gdi no es determinista entre ejecuciones: el tag de subconjunto de
-fuente (`/FontName LWKAJW+Arial`) y el stream XMP (fechas + UUIDs `xmpMM`) cambian cada vez.
-Mientras el test de determinismo ("2 generaciones originales deben diferir") valide que los
-originales NO son iguales, el normalizador aplica parches de longitud fija a los bytes del
-flujo y el hash de los normalizados debe coincidir entre procesos.
+fuente (`/FontName/...`/`/BaseFont/...`) y el stream XMP (fechas + UUIDs `xmpMM`) cambian cada
+vez. El normalizador actúa SOLO dentro de esos campos: tags en `/BaseFont`/`/FontName`, fechas y
+UUIDs únicamente dentro de sus elementos XMP (paquete `xpacket`). Todo patrón idéntico fuera de
+esos campos queda intacto (test centinela) y toda forma no reconocida provoca fallo rápido. El
+test de determinismo exige como contrato que los normalizados sean byte a byte idénticos; que
+los originales difieran se registra solo como diagnóstico (si PDFsharp fuera determinista el
+hash normalizado seguiría siendo válido).
 
 ## Borrado
 

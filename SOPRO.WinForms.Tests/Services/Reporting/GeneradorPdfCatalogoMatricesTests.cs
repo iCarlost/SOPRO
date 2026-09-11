@@ -12,9 +12,10 @@ namespace SOPRO.WinForms.Tests.Services.Reporting;
 /// números con ToString("#,##0.00"), sensible a CurrentCulture: los tests fijan cultura
 /// invariante para que el golden no dependa del idioma/región de la máquina.
 ///
-/// Antes de aceptar el hash se valida (permanentemente) que dos ejecuciones a segundos de
-/// distancia difieren en bytes crudos (IDs/fechas aleatorias) pero que, normalizados, son
-/// byte a byte idénticos.
+/// El contrato de determinismo es que dos ejecuciones a segundos de distancia, normalizadas
+/// mediante <see cref="PdfNormalizador"/>, son byte a byte idénticas. Que los originales
+/// difieran entre sí se registra solo como diagnóstico: si PDFsharp pasara a ser
+/// determinista la normalización seguiría siendo válida y el test no debe romperse por eso.
 /// </summary>
 [TestClass]
 public class GeneradorPdfCatalogoMatricesTests
@@ -41,9 +42,11 @@ public class GeneradorPdfCatalogoMatricesTests
             string r2 = gen.Generar(fixture.Proyecto, fixture.Matrices, fixture.Plantilla, "", t2);
             string r3 = gen.Generar(fixture.Proyecto, fixture.Matrices, fixture.Plantilla, "", t3);
 
-            // 1) Los originales deben diferir: prueba que la normalización es significativa.
-            Assert.AreNotEqual(Sha256(r1), Sha256(r2),
-                "Se esperaba que dos PDFs crudos del generador legacy difirieran (IDs/fechas aleatorias).");
+            // 1) Diagnóstico (no contrato): se espera que los originales difieran por ser
+            //    IDs/fechas aleatorios; si PDFsharp fuera determinista, no es una regresión.
+            bool originalesDifieren = Sha256(r1) != Sha256(r2);
+            Console.WriteLine(
+                $"Diagnóstico N7-18a: los PDFs crudos difirieron = {originalesDifieren}.");
 
             // 2) Normalizados, deben ser byte a byte idénticos.
             var n1 = PdfNormalizador.Normalizar(r1, "sintetico", "seeds-sintetico");
