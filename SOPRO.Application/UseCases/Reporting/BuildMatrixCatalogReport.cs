@@ -21,8 +21,13 @@ namespace SOPRO.Application.UseCases.Reporting;
 /// y delega al builder.
 ///
 /// El reloj es explícito vía <see cref="TimeProvider"/> (gate PLAN-01:708): con los
-/// mismos inputs y el mismo reloj, <see cref="Execute"/> produce el mismo documento.
-/// </summary>
+    /// mismos inputs y el mismo reloj, <see cref="Execute"/> produce el mismo documento.
+    ///
+    /// El catálogo exige un proyecto concreto: la sesión del catálogo maestro
+    /// (<see cref="ProjectRef.IsMasterCatalog"/>) se rechaza explícitamente y el
+    /// filtro de matrices aplica igualdad estricta de <c>ProyectoId</c> (dictamen
+    /// NO-GO: aislamiento por proyecto sin vía de escape por sesión maestra).
+    /// </summary>
 public sealed class BuildMatrixCatalogReport
 {
     private readonly IProjectDbContextFactory _factory;
@@ -44,8 +49,14 @@ public sealed class BuildMatrixCatalogReport
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (session.Project.IsMasterCatalog)
+            return Result<MatrixCatalogReportDocument>.Fail(
+                AppErrorCode.Validation,
+                "El catálogo de matrices requiere un proyecto.",
+                "La sesión del catálogo maestro no tiene ProyectoId; use una sesión de proyecto.");
+
         var ids = request.MatrixIds.ToList();
-        var projectId = session.Project.ProjectId;
+        var projectId = session.Project.ProjectId!.Value;
 
         await using var context = await _factory.CreateAsync(session.DatabasePath, cancellationToken);
 
@@ -71,21 +82,17 @@ public sealed class BuildMatrixCatalogReport
                         .ThenInclude(c => c.Herramienta)
                     .Include(m => m.Componentes)
                         .ThenInclude(c => c.Auxiliar)
-                    .Where(m => ids.Contains(m.Id) && (!projectId.HasValue || m.ProyectoId == projectId.Value))
+                    .Where(m => ids.Contains(m.Id) && m.ProyectoId == projectId)
                     .OrderBy(m => m.Clave)
                     .ToListAsync(cancellationToken);
             }
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            Proyecto? proyecto = null;
-            if (session.Project.ProjectId is int proyectoId)
-            {
-                proyecto = await context.Proyectos
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(p => p.Id == proyectoId, cancellationToken);
-                cancellationToken.ThrowIfCancellationRequested();
-            }
+            var proyecto = await context.Proyectos
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == projectId, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
             PlantillaReporte? plantilla = null;
             if (proyecto != null)

@@ -466,18 +466,22 @@ public class MatrixCatalogReportUseCasesTests
         {
             int idA;
             int idB;
+            int matrizAId;
+            int matrizBId;
             using (var ctx = TestDbFactory.CreateContextAt(dbPath))
             {
                 var pA = CrearProyectoBasico("Proyecto A");
                 var pB = CrearProyectoBasico("Proyecto B");
                 ctx.Proyectos.AddRange(pA, pB);
                 ctx.SaveChanges();
-                ctx.Matrices.AddRange(
-                    new Matriz { ProyectoId = pA.Id, Clave = "A-1", Descripcion = "Matriz de A", Unidad = "pza", CostoDirecto = 10m },
-                    new Matriz { ProyectoId = pB.Id, Clave = "B-1", Descripcion = "Matriz de B", Unidad = "pza", CostoDirecto = 20m });
+                var matrizA = new Matriz { ProyectoId = pA.Id, Clave = "A-1", Descripcion = "Matriz de A", Unidad = "pza", CostoDirecto = 10m };
+                var matrizB = new Matriz { ProyectoId = pB.Id, Clave = "B-1", Descripcion = "Matriz de B", Unidad = "pza", CostoDirecto = 20m };
+                ctx.Matrices.AddRange(matrizA, matrizB);
                 ctx.SaveChanges();
                 idA = pA.Id;
                 idB = pB.Id;
+                matrizAId = matrizA.Id;
+                matrizBId = matrizB.Id;
             }
 
             var sessionA = CrearSession(dbPath, idA);
@@ -485,12 +489,12 @@ public class MatrixCatalogReportUseCasesTests
 
             // La matriz de B, pedida con la sesión activa de A, NO aparece: el WHERE
             // exige m.ProyectoId == sesión (dictamen NO-GO: aislamiento por proyecto).
-            var ajeno = useCase.Execute(sessionA, new BuildMatrixCatalogReportRequest(new[] { idB }), CancellationToken.None).GetAwaiter().GetResult();
+            var ajeno = useCase.Execute(sessionA, new BuildMatrixCatalogReportRequest(new[] { matrizBId }), CancellationToken.None).GetAwaiter().GetResult();
             Assert.IsTrue(ajeno.IsSuccess, ajeno.Error?.Message ?? "sin mensaje");
             Assert.AreEqual(0, ajeno.Value!.Matrices.Count, "una matriz de otro ProyectoId nunca se reporta.");
 
             // La matriz del propio proyecto sí aparece.
-            var propio = useCase.Execute(sessionA, new BuildMatrixCatalogReportRequest(new[] { idA }), CancellationToken.None).GetAwaiter().GetResult();
+            var propio = useCase.Execute(sessionA, new BuildMatrixCatalogReportRequest(new[] { matrizAId }), CancellationToken.None).GetAwaiter().GetResult();
             Assert.IsTrue(propio.IsSuccess, propio.Error?.Message ?? "sin mensaje");
             Assert.AreEqual(1, propio.Value!.Matrices.Count);
             Assert.AreEqual("A-1", propio.Value!.Matrices[0].Key);
@@ -500,6 +504,25 @@ public class MatrixCatalogReportUseCasesTests
         {
             try { File.Delete(dbPath); } catch { /* best effort */ }
         }
+    }
+
+    [TestMethod]
+    public void Execute_SesionMaestra_RechazadaSinAbrirLaBase()
+    {
+        var useCase = new BuildMatrixCatalogReport(new ProjectDbContextFactory());
+
+        // El catálogo exige un proyecto: la sesión maestra (ProjectId null) no puede
+        // eludir el aislamiento (dictamen NO-GO). El rechazo ocurre antes de tocar
+        // la base, por lo que la ruta puede ser inexistente.
+        var result = useCase.Execute(
+            ProjectSessionInfo.Create(ProjectRef.Master, @"C:\no-existe-esta-base\proyecto.db"),
+            new BuildMatrixCatalogReportRequest(new[] { 1 }),
+            CancellationToken.None).GetAwaiter().GetResult();
+
+        Assert.IsFalse(result.IsSuccess);
+        Assert.AreEqual(AppErrorCode.Validation, result.Error?.Code);
+        Assert.AreEqual("El catálogo de matrices requiere un proyecto.", result.Error?.Message);
+        Assert.IsNotNull(result.Error?.Detail);
     }
 
     [TestMethod]
@@ -562,8 +585,10 @@ public class MatrixCatalogReportUseCasesTests
 
         Assert.AreEqual(3, request.MatrixIds.Count);
         Assert.AreEqual(1, request.MatrixIds[0]);
-        Assert.IsTrue(((ICollection<int>)request.MatrixIds).IsReadOnly, "la copia se materializa como array de solo lectura.");
+        Assert.IsTrue(((ICollection<int>)request.MatrixIds).IsReadOnly, "la copia se envuelve como colección de solo lectura.");
         Assert.ThrowsException<NotSupportedException>(() => ((ICollection<int>)request.MatrixIds).Add(5));
+        Assert.ThrowsException<InvalidCastException>(() => (int[])request.MatrixIds, "un array crudo no se conserva: el cast al tipo mutable debe fallar.");
+        Assert.ThrowsException<NotSupportedException>(() => ((IList<int>)request.MatrixIds)[0] = 99, "asignar por índice IList<int> también debe rechazarse.");
         Assert.ThrowsException<InvalidCastException>(() => (List<int>)request.MatrixIds);
         Assert.ThrowsException<ArgumentNullException>(() => new BuildMatrixCatalogReportRequest(null!));
     }
