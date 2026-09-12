@@ -1,9 +1,8 @@
 using System.IO;
 using System.Text;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using SOPRO.WinForms.Tests.TestInfrastructure;
 
-namespace SOPRO.WinForms.Tests.TestInfrastructure
+namespace SOPRO.Reporting.Tests.TestInfrastructure
 {
     /// <summary>
     /// Test centinela del normalizador de PDF (N7-18a): los patrones que el normalizador debe

@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 
-namespace SOPRO.WinForms.Tests.TestInfrastructure;
+namespace SOPRO.Reporting.Tests.TestInfrastructure;
 
 /// <summary>
 /// Normaliza un PDF de reporte legacy para hacerlo determinista y comparable por hash.

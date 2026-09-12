@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SOPRO.Data.Context;
 using SOPRO.WinForms.Services;
-using SOPRO.WinForms.Tests.TestInfrastructure;
+using SOPRO.Reporting.Tests.TestInfrastructure;
 
 namespace SOPRO.WinForms.Tests.Services.Reporting;
 

@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace SOPRO.WinForms.Tests.TestInfrastructure;
+namespace SOPRO.Reporting.Tests.TestInfrastructure;
 
 /// <summary>
 /// Constantes, opciones de serialización y helpers para comparar/regenerar goldens.

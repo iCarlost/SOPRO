@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -20,26 +19,20 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\SOPRO.WinForms\SOPRO.WinForms.csproj" />
-  </ItemGroup>
-
-  <!--
-    N7-18c: la infraestructura de goldens N7-18a y los goldens viven en su hogar canónico
-    SOPRO.Reporting.Tests. WinForms.Tests los consume como linked items (mismo origen, mismo
-    test-centinela corriendo en ambas suites).
-  -->
-  <ItemGroup>
-    <Compile Include="..\SOPRO.Reporting.Tests\TestInfrastructure\*.cs" Link="TestInfrastructure\%(Filename)%(Extension)" />
+    <ProjectReference Include="..\SOPRO.Reporting\SOPRO.Reporting.csproj" />
+    <ProjectReference Include="..\SOPRO.Application\SOPRO.Application.csproj" />
+    <ProjectReference Include="..\SOPRO.Data\SOPRO.Data.csproj" />
+    <ProjectReference Include="..\SOPRO.Core\SOPRO.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="..\SOPRO.Tests\TestData\***REMOVED***.db" Link="TestData\***REMOVED***.db">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\SOPRO.Reporting.Tests\TestData\Goldens\*.json" Link="TestData\Goldens\%(Filename)%(Extension)">
+    <None Update="TestData\Goldens\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\SOPRO.Reporting.Tests\TestData\Goldens\*.sha256" Link="TestData\Goldens\%(Filename)%(Extension)">
+    <None Update="TestData\Goldens\*.sha256">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

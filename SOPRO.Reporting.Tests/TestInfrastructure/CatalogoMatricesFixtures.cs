@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 
-namespace SOPRO.WinForms.Tests.TestInfrastructure;
+namespace SOPRO.Reporting.Tests.TestInfrastructure;
 
 /// <summary>
 /// Fixture del proyecto real de regresión. Se hace una copia temporal escribible de la BD
