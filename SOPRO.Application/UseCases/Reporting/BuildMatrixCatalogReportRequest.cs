@@ -3,8 +3,10 @@ using SOPRO.Application.Models.Reporting.MatrixCatalog;
 namespace SOPRO.Application.UseCases.Reporting;
 
 /// <summary>
-/// Solicitud del catálogo de matrices. <c>FiltroTitulo</c> determina el sufijo
-/// del título ("" → sin sufijo, "APU" → " (APU)", etc.).
+/// Solicitud del catálogo de matrices. <c>FiltroTitulo</c> añade el sufijo
+/// ("APU" → " (APU)", etc.) al título POR DEFECTO; si
+/// <see cref="MatrixCatalogTitleOptions.Text"/> está configurado, el legacy
+/// reaplica el texto propio y el sufijo NO aparece (paridad estricta).
 /// <c>MatrixIds</c> define las matrices a incluir (IDs duplicados o inexistentes
 /// se ignoran, comportamiento legacy: WHERE IN deduplica).
 ///

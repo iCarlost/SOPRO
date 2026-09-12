@@ -10,6 +10,12 @@ namespace SOPRO.Reporting.Tests.TestInfrastructure;
 /// En modo normal se comparan JSON exactos para que cualquier cambio en la salida legacy
 /// rompa el golden. Con SOPRO_REGENERATE_GOLDENS=1 se (re)escribe el artefacto en la fuente
 /// para dejarlo versionado.
+///
+/// Guarda anti-sobrescritura (oráculo independiente): el modo de regeneración SOLO escribe
+/// cuando el archivo no existe o cuando el contenido nuevo es IDÉNTICO al versionado. Si el
+/// contenido difiere, se rechaza con Assert.Fail: un golden se elimina/renombra a mano y se
+/// vuelve a generar explícitamente. Así ningún test nuevo puede "aprobar" al reescribir los
+/// goldens legacy con la variable de entorno.
 /// </summary>
 internal static class Snapshots
 {
@@ -33,7 +39,21 @@ internal static class Snapshots
         {
             sanity(ruta);
             Directory.CreateDirectory(Path.GetDirectoryName(ruta)!);
-            File.WriteAllText(ruta, actualJson);
+if (File.Exists(ruta))
+            {
+                var existente = JsonNode.Parse(File.ReadAllText(ruta))!;
+                var actualNuevo = JsonNode.Parse(actualJson)!;
+                if (!existente.IsDeepEqual(actualNuevo))
+                    Assert.Fail(
+                        "Regeneración rechazada: '{goldenFileName}' ya existe y el contenido nuevo " +
+                        "difiere del golden versionado. Elimine/renombre el artefacto y vuelva " +
+                        $"a regenerar explicitamente con {GoldenPaths.RegenerateEnvVar}=1." +
+                        $"{Environment.NewLine}{PrimeraDiferencia(existente, actualNuevo, goldenFileName)}");
+            }
+            else
+            {
+                File.WriteAllText(ruta, actualJson);
+            }
             return;
         }
 
@@ -58,7 +78,19 @@ internal static class Snapshots
         if (GoldenPaths.Regenerating)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(ruta)!);
-            File.WriteAllText(ruta, sha256Hex);
+            if (File.Exists(ruta))
+            {
+                var existente = File.ReadAllText(ruta).Trim();
+                if (!string.Equals(existente, sha256Hex, StringComparison.Ordinal))
+                    Assert.Fail(
+                        $"Regeneración rechazada: '{goldenFileName}' ya existe y el hash nuevo diverge " +
+                        $"del golden versionado. Elimine/renombre el artefacto y vuelva a regenerar " +
+                        $"explicitamente con {GoldenPaths.RegenerateEnvVar}=1.");
+            }
+            else
+            {
+                File.WriteAllText(ruta, sha256Hex);
+            }
             return;
         }
         if (!File.Exists(ruta))

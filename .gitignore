@@ -423,4 +423,3 @@ FodyWeavers.xsd
 # SQLite WAL/SHM artefacts generados por los tests sobre la BD real
 *.db-wal
 *.db-shm
-

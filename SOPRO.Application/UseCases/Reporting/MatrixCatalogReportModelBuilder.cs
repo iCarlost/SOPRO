@@ -111,18 +111,24 @@ internal sealed class MatrixCatalogReportModelBuilder
             .ToList();
     }
 
+    /// <summary>
+    /// Resuelve el título visible replicando el legacy GeneradorPdf/ExcelCatalogoMatrices:
+    /// el medio reaplica <c>ObtenerTexto</c> sobre el texto candidato, así que cuando hay un
+    /// <c>TextoTitulo</c> configurado se muestra SOLO ese texto (el sufijo del filtro
+    /// "(APU)"/"(BÁSICOS)"/"(CUADRILLAS)" se descarta); sin configuración, el sufijo se
+    /// conserva sobre el fallback "CATÁLOGO DE MATRICES". (Dictamen Oracle N7-18c.)
+    /// </summary>
     private static string ResolverTitulo(string? filtroTitulo, MatrixCatalogTitleOptions? options)
     {
-        var baseTitulo = !string.IsNullOrWhiteSpace(options?.Text)
-            ? options!.Text!
-            : DefaultFallbackTitle;
+        if (!string.IsNullOrWhiteSpace(options?.Text))
+            return options!.Text!;
 
         return filtroTitulo switch
         {
-            "APU" => baseTitulo + " (APU)",
-            "Básicos" => baseTitulo + " (BÁSICOS)",
-            "Cuadrillas" => baseTitulo + " (CUADRILLAS)",
-            _ => baseTitulo
+            "APU" => DefaultFallbackTitle + " (APU)",
+            "Básicos" => DefaultFallbackTitle + " (BÁSICOS)",
+            "Cuadrillas" => DefaultFallbackTitle + " (CUADRILLAS)",
+            _ => DefaultFallbackTitle
         };
     }
 

@@ -292,9 +292,12 @@ public class MatrixCatalogReportUseCasesTests
         var titulo = new MatrixCatalogTitleOptions(
             "CATÁLOGO PERSONALIZADO", "Arial", 11, false, true, "#112233");
 
+        // Paridad legacy (dictamen Oracle N7-18c): con TextoTitulo configurado el medio
+        // reaplica el texto propio (ReportTitleStyleHelper.ObtenerTexto) y el sufijo del
+        // filtro se descarta: el título visible es SOLO el texto personalizado.
         var doc = Build(SnapshotsSinteticos(), filtro: "APU", titulo: titulo);
 
-        Assert.AreEqual("CATÁLOGO PERSONALIZADO (APU)", doc.Title);
+        Assert.AreEqual("CATÁLOGO PERSONALIZADO", doc.Title);
         Assert.AreEqual("Arial", doc.TitleStyle.FontName);
         Assert.AreEqual(11d, doc.TitleStyle.Size);
         Assert.IsFalse(doc.TitleStyle.Bold);

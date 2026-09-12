@@ -1,3 +1,4 @@
+using System.Globalization;
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
@@ -28,11 +29,22 @@ public sealed class CatalogoMatricesPdfRenderer
     private static readonly double[] BaseColumnCm = { 1.2, 3.0, 12.4, 2.0, 2.6, 3.0, 3.0 };
 
     /// <summary>
-    /// Renderiza el documento a bytes PDF.
+    /// Cultura usada por el render en este render. Por defecto la cultura
+    /// ambiente (comportamiento legacy: CurrentCulture en los ToString de
+    /// formato); se hace explícita y observable para que la API no dependa de
+    /// forma implícita del hilo (dictamen Oracle N7-18c).
     /// </summary>
-    public byte[] Render(MatrixCatalogReportDocument document)
+    private CultureInfo _culture = CultureInfo.CurrentCulture;
+
+    /// <summary>
+    /// Renderiza el documento a bytes PDF. El parámetro <paramref name="culture"/>
+    /// controla el formateo numérico (Cantidad "0.00000", Costo/Importe "#,##0.00");
+    /// si es null se usa <see cref="CultureInfo.CurrentCulture"/> (paridad legacy).
+    /// </summary>
+    public byte[] Render(MatrixCatalogReportDocument document, CultureInfo? culture = null)
     {
         if (document == null) throw new ArgumentNullException(nameof(document));
+        _culture = culture ?? CultureInfo.CurrentCulture;
 
         var doc = new Document();
         doc.Info.Title = document.Title ?? "Catálogo de Matrices";
@@ -201,7 +213,7 @@ public sealed class CatalogoMatricesPdfRenderer
     }
 
     // ── Cuerpo ──────────────────────────────────────────────────────────────
-    private static void EscribirCuerpo(Section section, MatrixCatalogReportDocument document)
+    private void EscribirCuerpo(Section section, MatrixCatalogReportDocument document)
     {
         var pTitle = section.AddParagraph(document.Title ?? string.Empty, "CatalogoMatricesTitle");
         pTitle.Format.Alignment = MParagraphAlignment.Center;
@@ -298,7 +310,7 @@ public sealed class CatalogoMatricesPdfRenderer
         AgregarTexto(row.Cells[6], string.Empty, MParagraphAlignment.Right, bold: false);
     }
 
-    private static void EscribirFilaComponente(Table table, MatrixCatalogComponent comp, bool alt)
+    private void EscribirFilaComponente(Table table, MatrixCatalogComponent comp, bool alt)
     {
         var row = table.AddRow();
         row.HeightRule = RowHeightRule.AtLeast;
@@ -311,12 +323,12 @@ public sealed class CatalogoMatricesPdfRenderer
         AgregarTexto(row.Cells[1], comp.Key ?? string.Empty, MParagraphAlignment.Left, false);
         AgregarTexto(row.Cells[2], comp.Description ?? string.Empty, MParagraphAlignment.Left, false);
         AgregarTexto(row.Cells[3], comp.Unit ?? string.Empty, MParagraphAlignment.Center, false);
-        AgregarTexto(row.Cells[4], comp.Quantity.ToString("0.00000"), MParagraphAlignment.Right, false);
-        AgregarTexto(row.Cells[5], comp.UnitCost.ToString("#,##0.00"), MParagraphAlignment.Right, false);
-        AgregarTexto(row.Cells[6], comp.Amount.ToString("#,##0.00"), MParagraphAlignment.Right, false);
+        AgregarTexto(row.Cells[4], comp.Quantity.ToString("0.00000", _culture), MParagraphAlignment.Right, false);
+        AgregarTexto(row.Cells[5], comp.UnitCost.ToString("#,##0.00", _culture), MParagraphAlignment.Right, false);
+        AgregarTexto(row.Cells[6], comp.Amount.ToString("#,##0.00", _culture), MParagraphAlignment.Right, false);
     }
 
-    private static void EscribirFilaSuma(Table table, decimal total)
+    private void EscribirFilaSuma(Table table, decimal total)
     {
         var row = table.AddRow();
         row.HeightRule = RowHeightRule.AtLeast;
@@ -329,7 +341,7 @@ public sealed class CatalogoMatricesPdfRenderer
 
         row.Cells[0].MergeRight = 5;
         AgregarTexto(row.Cells[0], "Suma", MParagraphAlignment.Right, true);
-        AgregarTexto(row.Cells[6], total.ToString("#,##0.00"), MParagraphAlignment.Right, true);
+        AgregarTexto(row.Cells[6], total.ToString("#,##0.00", _culture), MParagraphAlignment.Right, true);
     }
 
     private static void EscribirFilaSeparacion(Table table)
