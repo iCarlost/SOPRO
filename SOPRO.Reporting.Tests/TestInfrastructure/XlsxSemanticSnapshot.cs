@@ -1,7 +1,7 @@
 using System.Globalization;
 using ClosedXML.Excel;
 
-namespace SOPRO.WinForms.Tests.TestInfrastructure;
+namespace SOPRO.Reporting.Tests.TestInfrastructure;
 
 /// <summary>
 /// Snapshot semántico del XLSX de catálogo de matrices generado por el generador legacy.

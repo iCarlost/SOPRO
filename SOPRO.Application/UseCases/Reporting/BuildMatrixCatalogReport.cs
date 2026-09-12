@@ -95,17 +95,32 @@ public sealed class BuildMatrixCatalogReport
             cancellationToken.ThrowIfCancellationRequested();
 
             PlantillaReporte? plantilla = null;
+            List<PlantillaReporteElemento> elementosExtras = new();
             if (proyecto != null)
             {
                 plantilla = await context.PlantillasReporte
                     .AsNoTracking()
                     .FirstOrDefaultAsync(p => p.ProyectoId == proyecto.Id, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
+
+                if (plantilla != null)
+                {
+                    // Elementos del diseñador libre, ya en el orden definitivo
+                    // (ZOrder, luego Id): el modelo no expone IDs, el renderer
+                    // no vuelve a ordenar.
+                    elementosExtras = await context.PlantillasReporteElementos
+                        .AsNoTracking()
+                        .Where(e => e.PlantillaReporteId == plantilla.Id)
+                        .OrderBy(e => e.ZOrder)
+                        .ThenBy(e => e.Id)
+                        .ToListAsync(cancellationToken);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
             }
 
             var settings = new MatrixCatalogReportSettings(
                 MatrixCatalogSourceMapper.MapearProyecto(proyecto),
-                MatrixCatalogSourceMapper.MapearPlantilla(plantilla),
+                MatrixCatalogSourceMapper.MapearPlantilla(plantilla, elementosExtras),
                 request.TitleOptions,
                 request.FiltroTitulo);
 

@@ -39,6 +39,7 @@ internal sealed class MatrixCatalogReportModelBuilder
         var template = settings.Template ?? MatrixCatalogTemplate.Vacia;
 
         var title = ResolverTitulo(settings.FiltroTitulo, settings.TitleOptions);
+        var metadataTitle = ResolverTituloDocumental(settings.FiltroTitulo, settings.TitleOptions);
         var titleStyle = BuildTitleStyle(settings.TitleOptions);
 
         var header = ResolverFranja(
@@ -57,29 +58,95 @@ internal sealed class MatrixCatalogReportModelBuilder
             template,
             now);
 
+        var headerElements = ResolverElementosLibres(template.ElementosEncabezado, proyecto, template, now);
+        var footerElements = ResolverElementosLibres(template.ElementosPie, proyecto, template, now);
+
         var matricesModel = matrices
             .Where(m => m != null)
             .OrderBy(m => m.Clave, StringComparer.Ordinal)
             .Select(BuildMatriz)
             .ToList();
 
-        return new MatrixCatalogReportDocument(title, titleStyle, header, footer, matricesModel, settings.Project.Nombre);
+        return new MatrixCatalogReportDocument(
+            title,
+            titleStyle,
+            header,
+            footer,
+            matricesModel,
+            settings.Project.Nombre,
+            metadataTitle,
+            headerElements,
+            footerElements,
+            template.Heights ?? MatrixCatalogPageHeights.Default);
     }
 
+    /// <summary>
+    /// Resuelve los tokens de los elementos libres PDF con el reloj explícito,
+    /// dejando únicamente {pagina} y {total_paginas} sin resolver (el medio de
+    /// salida los convierte en campos reales). Los elementos de tipo imagen no
+    /// resuelven nada (la imagen son sus bytes, no texto).
+    /// </summary>
+    private static List<MatrixCatalogPageElement> ResolverElementosLibres(
+        IEnumerable<MatrixCatalogPageElement>? elementos,
+        MatrixCatalogProject proyecto,
+        MatrixCatalogTemplate plantilla,
+        DateTime now)
+    {
+        if (elementos == null) return new List<MatrixCatalogPageElement>();
+
+        return elementos
+            .Select(e => e.Kind == MatrixCatalogPageElementKind.Imagen
+                ? e
+                : new MatrixCatalogPageElement(
+                    e.Zone,
+                    e.Kind,
+                    e.X,
+                    e.Y,
+                    e.Width,
+                    e.Height,
+                    MatrixCatalogTokenResolver.Resolver(e.Content, proyecto, plantilla, now),
+                    e.Style,
+                    e.Alignment,
+                    e.ImageBytes,
+                    e.ImageFileName,
+                    e.ImageMimeType))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Resuelve el título visible replicando el legacy GeneradorPdf/ExcelCatalogoMatrices:
+    /// el medio reaplica <c>ObtenerTexto</c> sobre el texto candidato, así que cuando hay un
+    /// <c>TextoTitulo</c> configurado se muestra SOLO ese texto (el sufijo del filtro
+    /// "(APU)"/"(BÁSICOS)"/"(CUADRILLAS)" se descarta); sin configuración, el sufijo se
+    /// conserva sobre el fallback "CATÁLOGO DE MATRICES". (Dictamen Oracle N7-18c.)
+    /// </summary>
     private static string ResolverTitulo(string? filtroTitulo, MatrixCatalogTitleOptions? options)
     {
-        var baseTitulo = !string.IsNullOrWhiteSpace(options?.Text)
-            ? options!.Text!
-            : DefaultFallbackTitle;
+        if (!string.IsNullOrWhiteSpace(options?.Text))
+            return options!.Text!;
 
-        return filtroTitulo switch
-        {
-            "APU" => baseTitulo + " (APU)",
-            "Básicos" => baseTitulo + " (BÁSICOS)",
-            "Cuadrillas" => baseTitulo + " (CUADRILLAS)",
-            _ => baseTitulo
-        };
+        return DefaultFallbackTitle + ResolverSufijoFiltro(filtroTitulo);
     }
+
+    /// <summary>
+    /// Título documental (metadatos, <c>Info.Title</c> del PDF): el legacy
+    /// (<c>GeneradorPdfCatalogoMatrices.ObtenerTituloCatalogo</c>) conserva el sufijo del
+    /// filtro sobre el texto base (configurado o fallback) SIEMPRE, incluso cuando el título
+    /// visible lo descarta. (Dictamen Oracle N7-18c, 2º NO-GO.)
+    /// </summary>
+    private static string ResolverTituloDocumental(string? filtroTitulo, MatrixCatalogTitleOptions? options)
+    {
+        var baseTitle = string.IsNullOrWhiteSpace(options?.Text) ? DefaultFallbackTitle : options!.Text!;
+        return baseTitle + ResolverSufijoFiltro(filtroTitulo);
+    }
+
+    private static string ResolverSufijoFiltro(string? filtroTitulo) => filtroTitulo switch
+    {
+        "APU" => " (APU)",
+        "Básicos" => " (BÁSICOS)",
+        "Cuadrillas" => " (CUADRILLAS)",
+        _ => string.Empty
+    };
 
     private static MatrixCatalogTitleStyle BuildTitleStyle(MatrixCatalogTitleOptions? options)
     {

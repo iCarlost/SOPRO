@@ -11,15 +11,20 @@ Proyecto de **andamiaje temporal** para N7-18a: caracteriza la salida real (gold
   byte a byte de las fuentes no-deterministas de PDFsharp/MigraDoc) + manifiesto en
   `GeneradorPdfCatalogoMatricesTests`.
 
-Los goldens viven en `TestData/Goldens/` y son el oráculo de N7-18c (renderer neutral en
-`SOPRO.Reporting` validado contra el MISMO golden), antes del swap (N7-18d) y retiro del
-legacy (N7-18e).
+Los goldens viven en su hogar canónico `SOPRO.Reporting.Tests/TestData/Goldens/` (N7-18c) y este
+proyecto los consume como linked items (`TestInfrastructure/*.cs` + `TestData/Goldens/*` del
+proyecto de Reporting); son el oráculo de N7-18c (renderer neutral en `SOPRO.Reporting`
+validado contra el MISMO golden), antes del swap (N7-18d) y retiro del legacy (N7-18e). Los
+sentinels del normalizador corren en ambas suites desde el mismo fuente.
 
 ## Flujo de trabajo
 
-- **Modo normal:** los tests comparan contra la copia de `bin\...\TestData\Goldens`.
-- **Regenerar goldens:** `$env:SOPRO_REGENERATE_GOLDENS=1; dotnet test` — escribe en la
-  fuente (sobrescribe `TestData\Goldens\*`) y pasa sin comparar. Quitar la variable tras
+- **Modo normal:** los tests comparan contra la copia de `bin\...\TestData\Goldens`
+  (copiada desde `SOPRO.Reporting.Tests/TestData/Goldens`).
+- **Regenerar goldens:** `$env:SOPRO_REGENERATE_GOLDENS=1; dotnet test` escribe en la fuente
+  canónica de `SOPRO.Reporting.Tests`. **Guarda anti-sobrescritura (oráculo):** solo escribe si
+  el archivo no existe o si el contenido nuevo es idéntico al versionado; si difiere, el test
+  FALLA (eliminar/renombrar el artefacto y regenerar explícitamente). Quitar la variable tras
   regenerar para volver a comparar.
 
 ## Determinismo del PDF
@@ -35,5 +40,6 @@ hash normalizado seguiría siendo válido).
 
 ## Borrado
 
-Este proyecto es andamiaje; se elimina en N7-18e y los goldens migran a
-`SOPRO.Reporting.Tests`.
+Este proyecto es andamiaje; se elimina en N7-18e. Los goldens y la infraestructura ya
+migraron a `SOPRO.Reporting.Tests` (N7-18c); este proyecto queda solo como consumidor
+temporal de esos artefactos hasta el swap.

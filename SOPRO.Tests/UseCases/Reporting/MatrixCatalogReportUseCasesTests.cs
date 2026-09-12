@@ -104,6 +104,52 @@ public class MatrixCatalogReportUseCasesTests
         return new MatrixCatalogReportModelBuilder().Build(settings, snapshots, FechaFija);
     }
 
+    private static MatrixCatalogReportDocument BuildConPlantilla(MatrixCatalogTemplate plantilla)
+        => new MatrixCatalogReportModelBuilder().Build(
+            new MatrixCatalogReportSettings(ProyectoSintetico(), plantilla, null, null),
+            SnapshotsSinteticos(),
+            FechaFija);
+
+    private static MatrixCatalogTemplate PlantillaConElementos(
+        IReadOnlyList<MatrixCatalogPageElement> encabezado,
+        IReadOnlyList<MatrixCatalogPageElement> pie,
+        MatrixCatalogPageHeights? heights = null)
+        => PlantillaSintetica() with
+        {
+            ElementosEncabezado = encabezado,
+            ElementosPie = pie,
+            Heights = heights ?? new MatrixCatalogPageHeights(60, 229, 40, 170),
+        };
+
+    private static MatrixCatalogPageElement ElementoNeutral(
+        MatrixCatalogPageZone zona,
+        string contenido,
+        MatrixCatalogPageElementKind kind = MatrixCatalogPageElementKind.TextoLibre,
+        string alineacion = "MiddleLeft",
+        int x = 0, int y = 0, int width = 100, int height = 100,
+        IEnumerable<byte>? bytes = null,
+        string file = "", string mime = "")
+        => new(
+            zona, kind, x, y, width, height, contenido,
+            new MatrixCatalogPageElementStyle("Segoe UI", 9, false, false, "#000000"),
+            alineacion, bytes, file, mime);
+
+    private static PlantillaReporteElemento ElementoEntity(
+        string zona,
+        int zorder,
+        int id,
+        string contenido,
+        string tipo = "TextoLibre")
+        => new()
+        {
+            Id = id,
+            PlantillaReporteId = 1,
+            Zona = zona,
+            Tipo = tipo,
+            Contenido = contenido,
+            ZOrder = zorder,
+        };
+
     // ─────────────────────────── Builder: aritmética ────────────────────────
 
     [TestMethod]
@@ -246,9 +292,12 @@ public class MatrixCatalogReportUseCasesTests
         var titulo = new MatrixCatalogTitleOptions(
             "CATÁLOGO PERSONALIZADO", "Arial", 11, false, true, "#112233");
 
+        // Paridad legacy (dictamen Oracle N7-18c): con TextoTitulo configurado el medio
+        // reaplica el texto propio (ReportTitleStyleHelper.ObtenerTexto) y el sufijo del
+        // filtro se descarta: el título visible es SOLO el texto personalizado.
         var doc = Build(SnapshotsSinteticos(), filtro: "APU", titulo: titulo);
 
-        Assert.AreEqual("CATÁLOGO PERSONALIZADO (APU)", doc.Title);
+        Assert.AreEqual("CATÁLOGO PERSONALIZADO", doc.Title);
         Assert.AreEqual("Arial", doc.TitleStyle.FontName);
         Assert.AreEqual(11d, doc.TitleStyle.Size);
         Assert.IsFalse(doc.TitleStyle.Bold);
@@ -589,6 +638,188 @@ public class MatrixCatalogReportUseCasesTests
         Assert.ThrowsException<NotSupportedException>(() => ((IList<int>)request.MatrixIds)[0] = 99, "asignar por índice IList<int> también debe rechazarse.");
         Assert.ThrowsException<InvalidCastException>(() => (List<int>)request.MatrixIds);
         Assert.ThrowsException<ArgumentNullException>(() => new BuildMatrixCatalogReportRequest(null!));
+    }
+
+    // ─────────────── Elementos libres PDF y alturas (N7-18c f0.5) ────────────
+
+    [TestMethod]
+    public void Builder_FallbackClasico_SinElementosLibresYAlturasPorDefecto()
+    {
+        var doc = Build(SnapshotsSinteticos());
+
+        Assert.AreEqual(0, doc.HeaderElements.Count, "sin plantilla con elementos libres, listas vacías.");
+        Assert.AreEqual(0, doc.FooterElements.Count);
+        Assert.AreEqual(MatrixCatalogPageHeights.Default, doc.PageHeights);
+        Assert.IsTrue(((ICollection<MatrixCatalogPageElement>)doc.HeaderElements).IsReadOnly);
+        Assert.IsTrue(((ICollection<MatrixCatalogPageElement>)doc.FooterElements).IsReadOnly);
+    }
+
+    [TestMethod]
+    public void Builder_ElementosLibres_SeRepartenPorZona()
+    {
+        var plantilla = PlantillaConElementos(
+            encabezado: new[]
+            {
+                ElementoNeutral(MatrixCatalogPageZone.Encabezado, "H1"),
+                ElementoNeutral(MatrixCatalogPageZone.Encabezado, "H2"),
+            },
+            pie: new[]
+            {
+                ElementoNeutral(MatrixCatalogPageZone.PieDePagina, "F1"),
+            });
+
+        var doc = BuildConPlantilla(plantilla);
+
+        Assert.AreEqual(2, doc.HeaderElements.Count);
+        Assert.IsTrue(doc.HeaderElements.All(e => e.Zone == MatrixCatalogPageZone.Encabezado));
+        Assert.AreEqual(1, doc.FooterElements.Count);
+        Assert.IsTrue(doc.FooterElements.All(e => e.Zone == MatrixCatalogPageZone.PieDePagina));
+        Assert.AreEqual(new MatrixCatalogPageHeights(60, 229, 40, 170), doc.PageHeights);
+    }
+
+    [TestMethod]
+    public void Mapper_ElementosSinOrdenar_DesempatePorZOrderLuegoId()
+    {
+        var desordenados = new List<PlantillaReporteElemento>
+        {
+            ElementoEntity("PieDePagina", zorder: 1, id: 50, contenido: "PIE"),
+            ElementoEntity("Encabezado", zorder: 2, id: 30, contenido: "C"),
+            ElementoEntity("Encabezado", zorder: 0, id: 90, contenido: "A"),
+            ElementoEntity("Encabezado", zorder: 2, id: 9, contenido: "B"),
+        };
+
+        var plantilla = MatrixCatalogSourceMapper.MapearPlantilla(new PlantillaReporte(), desordenados);
+
+        CollectionAssert.AreEqual(
+            new[] { "A", "B", "C" },
+            plantilla.ElementosEncabezado!.Select(e => e.Content).ToArray(),
+            "El desempate es (ZOrder asc, luego Id asc): (0,90) → (2,9) → (2,30).");
+        CollectionAssert.AreEqual(
+            new[] { "PIE" },
+            plantilla.ElementosPie!.Select(e => e.Content).ToArray());
+    }
+
+    [TestMethod]
+    public void Builder_ElementosLibres_ResuelveTokensYDejaPaginaAlMedio()
+    {
+        var plantilla = PlantillaConElementos(
+            encabezado: new[]
+            {
+                ElementoNeutral(MatrixCatalogPageZone.Encabezado,
+                    "{nombre_proyecto} | {fecha_impresion} | {pagina} {total_paginas}"),
+            },
+            pie: Array.Empty<MatrixCatalogPageElement>());
+
+        var doc = BuildConPlantilla(plantilla);
+
+        Assert.AreEqual(
+            "APU SINTETICO GOLDEN N7-18A | 27/08/2026 13:45 | {pagina} {total_paginas}",
+            doc.HeaderElements[0].Content,
+            "tokens con reloj explícito; {pagina}/{total_paginas} quedan para el medio (N7-18c f0.5).");
+    }
+
+    [TestMethod]
+    public void Mapper_ImagenLibre_CopiaDefensivaNombreYMime()
+    {
+        var bytes = new byte[] { 1, 2, 3, 4, 5 };
+        var entity = new PlantillaReporteElemento
+        {
+            Zona = "Encabezado",
+            Tipo = "Imagen",
+            X = 0, Y = 0, Ancho = 175, Alto = 142,
+            Contenido = "",
+            Fuente = "Segoe UI",
+            ColorTextoHex = "#004E9E",
+            Alineacion = "MiddleLeft",
+            ZOrder = 2,
+            ImagenBytes = bytes,
+            ImagenNombreOrigen = "imagen-sintetica.png",
+            ImagenMimeType = "image/png",
+        };
+
+        var plantilla = MatrixCatalogSourceMapper.MapearPlantilla(new PlantillaReporte(), new[] { entity });
+        var el = plantilla.ElementosEncabezado!.Single();
+
+        Assert.AreEqual(MatrixCatalogPageElementKind.Imagen, el.Kind);
+        Assert.AreEqual(MatrixCatalogPageZone.Encabezado, el.Zone);
+        Assert.AreEqual(175, el.Width);
+        Assert.AreEqual(142, el.Height);
+        Assert.AreEqual("imagen-sintetica.png", el.ImageFileName);
+        Assert.AreEqual("image/png", el.ImageMimeType);
+        CollectionAssert.AreEqual(bytes, el.ImageBytes.ToArray());
+
+        // Copia defensiva: mutar el array original no altera el modelo.
+        bytes[0] = 99;
+        Assert.AreEqual(1, el.ImageBytes[0]);
+        Assert.IsTrue(((ICollection<byte>)el.ImageBytes).IsReadOnly);
+        Assert.ThrowsException<NotSupportedException>(() => ((ICollection<byte>)el.ImageBytes).Add(7));
+    }
+
+    [TestMethod]
+    public void Builder_ElementosLibres_NoFiltranMutacionesPosteriores()
+    {
+        var headerMutable = new List<MatrixCatalogPageElement>
+        {
+            ElementoNeutral(MatrixCatalogPageZone.Encabezado, "A"),
+            ElementoNeutral(MatrixCatalogPageZone.Encabezado, "B"),
+        };
+        var pieMutable = new List<MatrixCatalogPageElement>
+        {
+            ElementoNeutral(MatrixCatalogPageZone.PieDePagina, "PIE"),
+        };
+
+        var doc = BuildConPlantilla(PlantillaConElementos(headerMutable, pieMutable));
+
+        headerMutable.Add(ElementoNeutral(MatrixCatalogPageZone.Encabezado, "C"));
+
+        Assert.AreEqual(2, doc.HeaderElements.Count, "la colección del documento no retiene listas mutables.");
+        Assert.AreEqual(1, doc.FooterElements.Count);
+        Assert.IsTrue(((ICollection<MatrixCatalogPageElement>)doc.HeaderElements).IsReadOnly);
+        Assert.ThrowsException<NotSupportedException>(() =>
+            ((ICollection<MatrixCatalogPageElement>)doc.HeaderElements).Add(ElementoNeutral(MatrixCatalogPageZone.Encabezado, "X")));
+    }
+
+    [TestMethod]
+    public void Proyeccion_PlantillaNula_AlturasPorDefectoYSinElementos()
+    {
+        var plantilla = MatrixCatalogSourceMapper.MapearPlantilla(null);
+
+        Assert.AreEqual(MatrixCatalogPageHeights.Default, plantilla.Heights);
+        Assert.AreEqual(0, plantilla.ElementosEncabezado?.Count ?? 0);
+        Assert.AreEqual(0, plantilla.ElementosPie?.Count ?? 0);
+    }
+
+    [TestMethod]
+    public void Execute_***REMOVED***_CargaLosElementosLibresYLasAlturas()
+    {
+        using var copia = new Copia***REMOVED***();
+        var session = LeerSessionReal(copia.DbPath);
+        var useCase = new BuildMatrixCatalogReport(new ProjectDbContextFactory());
+
+        var result = useCase.Execute(
+            session,
+            new BuildMatrixCatalogReportRequest(LeerIdsMatrices(copia.DbPath)),
+            CancellationToken.None).GetAwaiter().GetResult();
+
+        Assert.IsTrue(result.IsSuccess, result.Error?.Message ?? "sin mensaje");
+        var doc = result.Value!;
+
+        Assert.AreEqual(4, doc.HeaderElements.Count, "encabezado libre real: 4 elementos.");
+        Assert.AreEqual(2, doc.FooterElements.Count, "pie libre real: 2 elementos.");
+        Assert.IsTrue(doc.HeaderElements.All(e => e.Zone == MatrixCatalogPageZone.Encabezado));
+        Assert.IsTrue(doc.FooterElements.All(e => e.Zone == MatrixCatalogPageZone.PieDePagina));
+
+        var imagen = doc.HeaderElements.Single(e => e.Kind == MatrixCatalogPageElementKind.Imagen);
+        Assert.IsTrue(imagen.ImageBytes.Count > 0, "la imagen del encabezado real trae bytes.");
+        Assert.IsFalse(string.IsNullOrEmpty(imagen.ImageFileName));
+        Assert.IsFalse(string.IsNullOrEmpty(imagen.ImageMimeType));
+
+        Assert.AreEqual(1, doc.FooterElements.Count(e =>
+            e.Content.Contains("{pagina}", StringComparison.OrdinalIgnoreCase)));
+        Assert.AreEqual(1, doc.FooterElements.Count(e => e.Content == "***REMOVED***"),
+            "el pie resuelve {autorizo} con el valor del proyecto real.");
+
+        Assert.AreEqual(new MatrixCatalogPageHeights(60, 229, 40, 170), doc.PageHeights);
     }
 
     // ─────────────────────────── Infraestructura ────────────────────────────

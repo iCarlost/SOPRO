@@ -1,4 +1,4 @@
-namespace SOPRO.WinForms.Tests.TestInfrastructure;
+namespace SOPRO.Reporting.Tests.TestInfrastructure;
 
 /// <summary>
 /// Rutas de los goldens de reportes legacy.
@@ -18,12 +18,12 @@ internal static class GoldenPaths
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir != null)
         {
-            if (File.Exists(Path.Combine(dir.FullName, "SOPRO.WinForms.Tests.csproj")))
-                return Path.Combine(dir.FullName, "TestData", "Goldens");
+            if (File.Exists(Path.Combine(dir.FullName, "SOPRO.Reporting.Tests", "SOPRO.Reporting.Tests.csproj")))
+                return Path.Combine(dir.FullName, "SOPRO.Reporting.Tests", "TestData", "Goldens");
             dir = dir.Parent;
         }
         throw new InvalidOperationException(
-            "No se localizó la raíz de SOPRO.WinForms.Tests para escribir goldens.");
+            "No se localizó la raíz de SOPRO.Reporting.Tests para escribir goldens.");
     }
 
     public static bool Regenerating =>

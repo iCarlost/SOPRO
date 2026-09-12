@@ -100,9 +100,11 @@ internal static class MatrixCatalogSourceMapper
         p?.FechaTermino,
         p?.PlazoEjecucion);
 
-    public static MatrixCatalogTemplate MapearPlantilla(PlantillaReporte? t)
+    public static MatrixCatalogTemplate MapearPlantilla(PlantillaReporte? t, IEnumerable<PlantillaReporteElemento>? elementos = null)
     {
         if (t == null) return MatrixCatalogTemplate.Vacia;
+
+        var (encabezado, pie) = MapearElementosLibres(elementos);
 
         return new MatrixCatalogTemplate(
             Zona(t.EncabezadoIzqTipo, t.EncabezadoIzqContenido, t.EncabezadoIzqFuente, t.EncabezadoIzqTamaño, t.EncabezadoIzqNegrita, t.EncabezadoIzqCursiva, t.EncabezadoIzqAlineacion),
@@ -121,8 +123,68 @@ internal static class MatrixCatalogSourceMapper
             t.CampoFechaInicio ?? "",
             t.CampoFechaTermino ?? "",
             t.CampoTextoLibre1 ?? "",
-            t.CampoTextoLibre2 ?? "");
+            t.CampoTextoLibre2 ?? "",
+            encabezado,
+            pie,
+            new MatrixCatalogPageHeights(
+                t.EncabezadoAltura,
+                t.AlturaEncabezadoDmm,
+                t.PiePaginaAltura,
+                t.AlturaPieDmm));
     }
+
+    /// <summary>
+    /// Proyección de los elementos libres del diseñador PDF. Se materializan
+    /// SIEMPRE ordenados por (ZOrder, Id) legacy y separados por zona; ese orden
+    /// es definitivo (el renderer no vuelve a ordenarlos ni ve los IDs).
+    /// Los tokens NO se resuelven aquí: los resuelve el builder con el reloj.
+    /// </summary>
+    private static (IReadOnlyList<MatrixCatalogPageElement> Encabezado, IReadOnlyList<MatrixCatalogPageElement> Pie) MapearElementosLibres(
+        IEnumerable<PlantillaReporteElemento>? elementos)
+    {
+        var ordenados = (elementos ?? Enumerable.Empty<PlantillaReporteElemento>())
+            .OrderBy(e => e.ZOrder)
+            .ThenBy(e => e.Id)
+            .ToList();
+
+        var encabezado = Array.AsReadOnly(ordenados
+            .Where(e => !EsPieDePagina(e))
+            .Select(MapearElementoLibre)
+            .ToArray());
+        var pie = Array.AsReadOnly(ordenados
+            .Where(EsPieDePagina)
+            .Select(MapearElementoLibre)
+            .ToArray());
+
+        return (encabezado, pie);
+    }
+
+    private static bool EsPieDePagina(PlantillaReporteElemento e)
+        => string.Equals(e.Zona, "PieDePagina", StringComparison.OrdinalIgnoreCase);
+
+    private static MatrixCatalogPageElement MapearElementoLibre(PlantillaReporteElemento e) => new(
+        zone: EsPieDePagina(e) ? MatrixCatalogPageZone.PieDePagina : MatrixCatalogPageZone.Encabezado,
+        kind: e.Tipo?.ToUpperInvariant() switch
+        {
+            "IMAGEN" => MatrixCatalogPageElementKind.Imagen,
+            "ETIQUETADINAMICA" => MatrixCatalogPageElementKind.EtiquetaDinamica,
+            _ => MatrixCatalogPageElementKind.TextoLibre
+        },
+        x: e.X,
+        y: e.Y,
+        width: e.Ancho,
+        height: e.Alto,
+        content: e.Contenido ?? "",
+        style: new MatrixCatalogPageElementStyle(
+            FontName: string.IsNullOrWhiteSpace(e.Fuente) ? "Segoe UI" : e.Fuente,
+            Size: e.TamanoFuente,
+            Bold: e.Negrita,
+            Italic: e.Cursiva,
+            ColorHex: e.ColorTextoHex ?? ""),
+        alignment: e.Alineacion ?? "MiddleLeft",
+        imageBytes: e.ImagenBytes,
+        imageFileName: e.ImagenNombreOrigen ?? "",
+        imageMimeType: e.ImagenMimeType ?? "");
 
     public static MatrixCatalogTitleOptions? MapearOpcionesTitulo(ConfiguracionTituloReporte? cfg)
     {
