@@ -439,6 +439,31 @@ public class MatrixCatalogReportUseCasesTests
         Assert.AreEqual("", plantilla.CampoElabaro);
     }
 
+    [TestMethod]
+    public void MapeoTituloLegacy_CopiaSeisCamposYAdmiteNull()
+    {
+        var configuration = new ConfiguracionTituloReporte
+        {
+            TextoTitulo = "Catálogo personalizado",
+            NombreFuente = "Arial",
+            TamanoFuente = 15.5f,
+            Negrita = false,
+            Cursiva = true,
+            ColorTexto = "#123456"
+        };
+
+        var options = MatrixCatalogTitleOptionsMapper.FromLegacy(configuration);
+
+        Assert.IsNotNull(options);
+        Assert.AreEqual(configuration.TextoTitulo, options.Text);
+        Assert.AreEqual(configuration.NombreFuente, options.FontName);
+        Assert.AreEqual(configuration.TamanoFuente, options.Size);
+        Assert.AreEqual(configuration.Negrita, options.Bold);
+        Assert.AreEqual(configuration.Cursiva, options.Italic);
+        Assert.AreEqual(configuration.ColorTexto, options.TextColorHex);
+        Assert.IsNull(MatrixCatalogTitleOptionsMapper.FromLegacy(null));
+    }
+
     // ─────────────────── Integración: proyecto real (SQLite) ────────────────
 
     [TestMethod]

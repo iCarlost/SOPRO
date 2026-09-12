@@ -1,8 +1,10 @@
-﻿using SOPRO.Application.Models.Catalogs;
+﻿using SOPRO.Application.Contracts;
+using SOPRO.Application.Models.Catalogs;
 using SOPRO.Application.Models.Matrices;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 using SOPRO.Data.Repositories;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
@@ -17,11 +19,13 @@ namespace SOPRO.WinForms.Forms
     public partial class FormMatrices : Form, IGridFormato, IBusquedaGrid, IRecalculable, IConsolidacionInsumos
     {
         private readonly SOPROContext _context;
+        private readonly ProjectSessionInfo _sessionInfo;
         private readonly Repository<Matriz> _repository;
         private readonly MatrixCatalogViewService _matrixCatalogViewService = new();
         private readonly MatrixUsageLookupService _matrixUsageLookupService = new();
         private readonly MatrixDeleteFlowService _matrixDeleteFlowService = new();
         private readonly MatrixConsolidationService _matrixConsolidationService = new();
+        private readonly CatalogoMatricesExportService _exportService = new(new ProjectDbContextFactory());
         private readonly int _proyectoId;
         private readonly bool _modoEmbebido;
         private readonly EventHandler _onInsumos;
@@ -51,6 +55,7 @@ namespace SOPRO.WinForms.Forms
             _repository = new Repository<Matriz>(_context);
             _proyectoId = proyectoId;
             _modoEmbebido = modoEmbebido;
+            _sessionInfo = LegacySessionBridge.FromLegacy(_context, _proyectoId);
 
             new EditableReportTitleHelper(_context, panelTop, lblTitulo, () => _proyectoId, ReportTitleModuleKeys.CatalogoMatrices).Attach();
 

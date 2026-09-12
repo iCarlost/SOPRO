@@ -1,6 +1,7 @@
 ﻿using SOPRO.Application.Models.Catalogs;
 using SOPRO.Application.Models.Matrices;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.Data.Repositories;
@@ -90,13 +91,16 @@ namespace SOPRO.WinForms.Forms
 
             try
             {
-                var proyecto = _context.Proyectos.Find(_proyectoId) ?? new Proyecto { Nombre = "Proyecto" };
                 var svcRep = new ReporteService(_context);
-                var plantilla = svcRep.ObtenerOCrearPlantilla(_proyectoId);
+                // Side effect intencional: persiste la plantilla por defecto (paridad del primer reporte).
+                svcRep.ObtenerOCrearPlantilla(_proyectoId);
                 var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyectoId, ReportTitleModuleKeys.CatalogoMatrices, lblTitulo.Text);
-                var generador = new GeneradorPdfCatalogoMatrices(svcRep, _context);
+                var request = new BuildMatrixCatalogReportRequest(
+                    _listaActual.Select(m => m.Id).ToList(),
+                    filtroTitulo,
+                    MatrixCatalogTitleOptionsMapper.FromLegacy(tituloCfg));
 
-                generador.Generar(proyecto, _listaActual, plantilla, filtroTitulo, dlg.FileName, tituloCfg);
+                _exportService.ExportarPdf(_sessionInfo, request, dlg.FileName);
 
                 if (MessageBox.Show(
                     $"Catálogo PDF generado con {_listaActual.Count} matrices.\n\n¿Desea abrir el archivo?",
