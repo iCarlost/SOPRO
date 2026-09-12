@@ -5,7 +5,8 @@ namespace SOPRO.Application.Models.Reporting.MatrixCatalog;
 /// <summary>
 /// Documento de "Catálogo de Matrices" neutral y ya resuelto. Representa la
 /// semántica del reporte (no celdas ni direcciones A1):
-///   - Título con sufijo según filtro (APU/BÁSICOS/CUADRILLAS).
+///   - Título visible (<see cref="Title"/>) y título documental
+///     (<see cref="MetadataTitle"/>, para Info.Title del PDF).
 ///   - Nombre del proyecto (ambos goldens de N7-18a lo muestran: el PDF con un
 ///     párrafo explícito y el Excel en el encabezado de plantilla).
 ///   - Encabezado y pie con textos de la plantilla y campos dinámicos resueltos
@@ -19,8 +20,14 @@ public sealed class MatrixCatalogReportDocument
     private readonly ReadOnlyCollection<MatrixCatalogPageElement> _headerElements;
     private readonly ReadOnlyCollection<MatrixCatalogPageElement> _footerElements;
 
-    /// <summary>Título del documento (con sufijo de filtro aplicado).</summary>
+    /// <summary>Título visible del documento (sin sufijo si hay TextoTitulo configurado).</summary>
     public string Title { get; }
+
+    /// <summary>
+    /// Título documental (metadatos): el legacy conserva el sufijo del filtro en
+    /// <c>Info.Title</c> del PDF incluso cuando el título visible lo descarta.
+    /// </summary>
+    public string MetadataTitle { get; }
 
     /// <summary>Intención visual neutral del título.</summary>
     public MatrixCatalogTitleStyle TitleStyle { get; }
@@ -56,11 +63,13 @@ public sealed class MatrixCatalogReportDocument
         MatrixCatalogZoneSet footer,
         IEnumerable<MatrixCatalogMatrix> matrices,
         string projectName = "",
+        string? metadataTitle = null,
         IEnumerable<MatrixCatalogPageElement>? headerElements = null,
         IEnumerable<MatrixCatalogPageElement>? footerElements = null,
         MatrixCatalogPageHeights? pageHeights = null)
     {
         Title = title ?? string.Empty;
+        MetadataTitle = metadataTitle ?? Title;
         TitleStyle = titleStyle ?? throw new ArgumentNullException(nameof(titleStyle));
         ProjectName = projectName ?? string.Empty;
         Header = header;

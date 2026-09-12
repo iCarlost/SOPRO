@@ -39,6 +39,7 @@ internal sealed class MatrixCatalogReportModelBuilder
         var template = settings.Template ?? MatrixCatalogTemplate.Vacia;
 
         var title = ResolverTitulo(settings.FiltroTitulo, settings.TitleOptions);
+        var metadataTitle = ResolverTituloDocumental(settings.FiltroTitulo, settings.TitleOptions);
         var titleStyle = BuildTitleStyle(settings.TitleOptions);
 
         var header = ResolverFranja(
@@ -73,6 +74,7 @@ internal sealed class MatrixCatalogReportModelBuilder
             footer,
             matricesModel,
             settings.Project.Nombre,
+            metadataTitle,
             headerElements,
             footerElements,
             template.Heights ?? MatrixCatalogPageHeights.Default);
@@ -123,14 +125,28 @@ internal sealed class MatrixCatalogReportModelBuilder
         if (!string.IsNullOrWhiteSpace(options?.Text))
             return options!.Text!;
 
-        return filtroTitulo switch
-        {
-            "APU" => DefaultFallbackTitle + " (APU)",
-            "Básicos" => DefaultFallbackTitle + " (BÁSICOS)",
-            "Cuadrillas" => DefaultFallbackTitle + " (CUADRILLAS)",
-            _ => DefaultFallbackTitle
-        };
+        return DefaultFallbackTitle + ResolverSufijoFiltro(filtroTitulo);
     }
+
+    /// <summary>
+    /// Título documental (metadatos, <c>Info.Title</c> del PDF): el legacy
+    /// (<c>GeneradorPdfCatalogoMatrices.ObtenerTituloCatalogo</c>) conserva el sufijo del
+    /// filtro sobre el texto base (configurado o fallback) SIEMPRE, incluso cuando el título
+    /// visible lo descarta. (Dictamen Oracle N7-18c, 2º NO-GO.)
+    /// </summary>
+    private static string ResolverTituloDocumental(string? filtroTitulo, MatrixCatalogTitleOptions? options)
+    {
+        var baseTitle = string.IsNullOrWhiteSpace(options?.Text) ? DefaultFallbackTitle : options!.Text!;
+        return baseTitle + ResolverSufijoFiltro(filtroTitulo);
+    }
+
+    private static string ResolverSufijoFiltro(string? filtroTitulo) => filtroTitulo switch
+    {
+        "APU" => " (APU)",
+        "Básicos" => " (BÁSICOS)",
+        "Cuadrillas" => " (CUADRILLAS)",
+        _ => string.Empty
+    };
 
     private static MatrixCatalogTitleStyle BuildTitleStyle(MatrixCatalogTitleOptions? options)
     {

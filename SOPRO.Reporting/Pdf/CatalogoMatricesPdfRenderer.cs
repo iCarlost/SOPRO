@@ -29,25 +29,21 @@ public sealed class CatalogoMatricesPdfRenderer
     private static readonly double[] BaseColumnCm = { 1.2, 3.0, 12.4, 2.0, 2.6, 3.0, 3.0 };
 
     /// <summary>
-    /// Cultura usada por el render en este render. Por defecto la cultura
-    /// ambiente (comportamiento legacy: CurrentCulture en los ToString de
-    /// formato); se hace explícita y observable para que la API no dependa de
-    /// forma implícita del hilo (dictamen Oracle N7-18c).
-    /// </summary>
-    private CultureInfo _culture = CultureInfo.CurrentCulture;
-
-    /// <summary>
     /// Renderiza el documento a bytes PDF. El parámetro <paramref name="culture"/>
     /// controla el formateo numérico (Cantidad "0.00000", Costo/Importe "#,##0.00");
     /// si es null se usa <see cref="CultureInfo.CurrentCulture"/> (paridad legacy).
+    /// La cultura se resuelve en una VARIABLE LOCAL del flujo de render (se propaga
+    /// por parámetro a los métodos de escritura); no hay estado mutable en la
+    /// instancia, así que llamadas concurrentes sobre el mismo renderer son
+    /// independientes (dictamen Oracle N7-18c).
     /// </summary>
     public byte[] Render(MatrixCatalogReportDocument document, CultureInfo? culture = null)
     {
         if (document == null) throw new ArgumentNullException(nameof(document));
-        _culture = culture ?? CultureInfo.CurrentCulture;
+        var cultura = culture ?? CultureInfo.CurrentCulture;
 
         var doc = new Document();
-        doc.Info.Title = document.Title ?? "Catálogo de Matrices";
+        doc.Info.Title = document.MetadataTitle ?? "Catálogo de Matrices";
         DefinirEstilos(doc);
 
         var orientation = ReportPageLayoutHelper.DetermineAutoOrientation(
@@ -85,7 +81,7 @@ public sealed class CatalogoMatricesPdfRenderer
 
         EscribirHeader(section, document, headerLibre, headerHeightCm);
         EscribirFooter(section, document, footerLibre, footerHeightCm);
-        EscribirCuerpo(section, document);
+        EscribirCuerpo(section, document, cultura);
 
         using var ms = new MemoryStream();
         var renderer = new PdfDocumentRenderer { Document = doc };
@@ -213,7 +209,7 @@ public sealed class CatalogoMatricesPdfRenderer
     }
 
     // ── Cuerpo ──────────────────────────────────────────────────────────────
-    private void EscribirCuerpo(Section section, MatrixCatalogReportDocument document)
+    private void EscribirCuerpo(Section section, MatrixCatalogReportDocument document, CultureInfo cultura)
     {
         var pTitle = section.AddParagraph(document.Title ?? string.Empty, "CatalogoMatricesTitle");
         pTitle.Format.Alignment = MParagraphAlignment.Center;
@@ -251,11 +247,11 @@ public sealed class CatalogoMatricesPdfRenderer
 
             foreach (var comp in matriz.Components)
             {
-                EscribirFilaComponente(table, comp, filaAlternada);
+                EscribirFilaComponente(table, comp, filaAlternada, cultura);
                 filaAlternada = !filaAlternada;
             }
 
-            EscribirFilaSuma(table, matriz.DirectCost);
+            EscribirFilaSuma(table, matriz.DirectCost, cultura);
             EscribirFilaSeparacion(table);
             filaAlternada = false;
         }
@@ -310,7 +306,7 @@ public sealed class CatalogoMatricesPdfRenderer
         AgregarTexto(row.Cells[6], string.Empty, MParagraphAlignment.Right, bold: false);
     }
 
-    private void EscribirFilaComponente(Table table, MatrixCatalogComponent comp, bool alt)
+    private void EscribirFilaComponente(Table table, MatrixCatalogComponent comp, bool alt, CultureInfo cultura)
     {
         var row = table.AddRow();
         row.HeightRule = RowHeightRule.AtLeast;
@@ -323,12 +319,12 @@ public sealed class CatalogoMatricesPdfRenderer
         AgregarTexto(row.Cells[1], comp.Key ?? string.Empty, MParagraphAlignment.Left, false);
         AgregarTexto(row.Cells[2], comp.Description ?? string.Empty, MParagraphAlignment.Left, false);
         AgregarTexto(row.Cells[3], comp.Unit ?? string.Empty, MParagraphAlignment.Center, false);
-        AgregarTexto(row.Cells[4], comp.Quantity.ToString("0.00000", _culture), MParagraphAlignment.Right, false);
-        AgregarTexto(row.Cells[5], comp.UnitCost.ToString("#,##0.00", _culture), MParagraphAlignment.Right, false);
-        AgregarTexto(row.Cells[6], comp.Amount.ToString("#,##0.00", _culture), MParagraphAlignment.Right, false);
+        AgregarTexto(row.Cells[4], comp.Quantity.ToString("0.00000", cultura), MParagraphAlignment.Right, false);
+        AgregarTexto(row.Cells[5], comp.UnitCost.ToString("#,##0.00", cultura), MParagraphAlignment.Right, false);
+        AgregarTexto(row.Cells[6], comp.Amount.ToString("#,##0.00", cultura), MParagraphAlignment.Right, false);
     }
 
-    private void EscribirFilaSuma(Table table, decimal total)
+    private void EscribirFilaSuma(Table table, decimal total, CultureInfo cultura)
     {
         var row = table.AddRow();
         row.HeightRule = RowHeightRule.AtLeast;
@@ -341,7 +337,7 @@ public sealed class CatalogoMatricesPdfRenderer
 
         row.Cells[0].MergeRight = 5;
         AgregarTexto(row.Cells[0], "Suma", MParagraphAlignment.Right, true);
-        AgregarTexto(row.Cells[6], total.ToString("#,##0.00", _culture), MParagraphAlignment.Right, true);
+        AgregarTexto(row.Cells[6], total.ToString("#,##0.00", cultura), MParagraphAlignment.Right, true);
     }
 
     private static void EscribirFilaSeparacion(Table table)

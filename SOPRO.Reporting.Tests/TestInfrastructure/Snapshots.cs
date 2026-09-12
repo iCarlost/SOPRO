@@ -39,13 +39,13 @@ internal static class Snapshots
         {
             sanity(ruta);
             Directory.CreateDirectory(Path.GetDirectoryName(ruta)!);
-if (File.Exists(ruta))
+            if (File.Exists(ruta))
             {
                 var existente = JsonNode.Parse(File.ReadAllText(ruta))!;
                 var actualNuevo = JsonNode.Parse(actualJson)!;
                 if (!existente.IsDeepEqual(actualNuevo))
                     Assert.Fail(
-                        "Regeneración rechazada: '{goldenFileName}' ya existe y el contenido nuevo " +
+                        $"Regeneración rechazada: '{goldenFileName}' ya existe y el contenido nuevo " +
                         "difiere del golden versionado. Elimine/renombre el artefacto y vuelva " +
                         $"a regenerar explicitamente con {GoldenPaths.RegenerateEnvVar}=1." +
                         $"{Environment.NewLine}{PrimeraDiferencia(existente, actualNuevo, goldenFileName)}");

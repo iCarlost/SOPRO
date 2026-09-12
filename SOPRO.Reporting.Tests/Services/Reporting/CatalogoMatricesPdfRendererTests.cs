@@ -13,9 +13,11 @@ namespace SOPRO.Reporting.Tests.Services.Reporting;
 /// <summary>
 /// Paridad N7-18c del renderer PDF neutral contra los goldens legacy N7-18a.
 ///
-/// Igual que el generador vintage, el renderer formatea números con
-/// ToString("#,##0.00") sensible a CurrentCulture: los tests fijan cultura
-/// invariante antes de renderizar (el golden se generó así).
+/// Los tests entregan la cultura de forma EXPLÍCITA a la API
+/// (<see cref="CultureInfo.InvariantCulture"/>, con la que se generó el golden);
+/// el resultado es idéntico sin importar la cultura ambiente del hilo
+/// (dictamen Oracle N7-18c). La cultura se propaga por parámetro, sin estado
+/// mutable en el renderer.
 ///
 /// El contrato de paridad es la comparación de bytes NORMALIZADOS (mismo
 /// <see cref="PdfNormalizador"/> que los tests legacy): sha256 del PDF
@@ -27,7 +29,6 @@ public class CatalogoMatricesPdfRendererTests
     [TestMethod]
     public void CatalogoMatricesPdf_Sintetico_NormalizadoEsDeterminista()
     {
-        SetInvariantCulture();
         using var fixture = new SinteticoCatalogoFixture();
         var renderer = new CatalogoMatricesPdfRenderer();
         var doc = BuildDocument(fixture.Proyecto, fixture.DbPath, fixture.Matrices.Select(m => m.Id), filtroTitulo: "");
@@ -58,7 +59,6 @@ public class CatalogoMatricesPdfRendererTests
     [TestMethod]
     public void CatalogoMatricesPdf_Sintetico_HashParidadLegacy()
     {
-        SetInvariantCulture();
         using var fixture = new SinteticoCatalogoFixture();
         var tmp = TempPdf("sintetico");
         try
@@ -89,7 +89,6 @@ public class CatalogoMatricesPdfRendererTests
     [TestMethod]
     public void CatalogoMatricesPdf_***REMOVED***_HashParidadLegacy_CubrePlantillaLibre()
     {
-        SetInvariantCulture();
         using var fixture = new RealCatalogoFixture();
         fixture.AssertPlantillaSinFechaImpresion();
 
@@ -161,19 +160,47 @@ public class CatalogoMatricesPdfRendererTests
         }
     }
 
-    private static void SetInvariantCulture()
+    [TestMethod]
+    public void CatalogoMatricesPdf_TituloVisibleYDocumental_ConservanElSufijoLegacy()
     {
-        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
-        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        using var fixture = new SinteticoCatalogoFixture();
+
+        var doc = BuildDocument(
+            fixture.Proyecto, fixture.DbPath, fixture.Matrices.Select(m => m.Id),
+            filtroTitulo: "APU",
+            titleOptions: new MatrixCatalogTitleOptions("CATÁLOGO PERSONALIZADO", null, null, null, null, null));
+
+        Assert.AreEqual("CATÁLOGO PERSONALIZADO", doc.Title,
+            "El título visible descarta el sufijo cuando hay TextoTitulo (paridad legacy).");
+        Assert.AreEqual("CATÁLOGO PERSONALIZADO (APU)", doc.MetadataTitle,
+            "El título documental conserva el sufijo sobre el texto configurado (Info.Title legacy).");
+
+        var tmp = TempPdf("titulo-documental");
+        try
+        {
+            byte[] bytes = new CatalogoMatricesPdfRenderer().Render(doc, CultureInfo.InvariantCulture);
+            File.WriteAllBytes(tmp, bytes);
+
+            var normalizado = PdfNormalizador.Normalizar(tmp, "titulo-documental", "seeds-sintetico");
+            var m = System.Text.Json.JsonSerializer
+                .Deserialize<PdfManifestData>(normalizado.ManifestJson)!;
+            Assert.AreEqual("CATÁLOGO PERSONALIZADO (APU)", m.Titulo,
+                "Info.Title del PDF lleva el título documental (con sufijo).");
+        }
+        finally
+        {
+            Borrar(tmp);
+        }
     }
 
     private static MatrixCatalogReportDocument BuildDocument(
-        SOPRO.Core.Entities.Proyecto proyecto, string dbPath, IEnumerable<int> ids, string filtroTitulo)
+        SOPRO.Core.Entities.Proyecto proyecto, string dbPath, IEnumerable<int> ids, string filtroTitulo,
+        MatrixCatalogTitleOptions? titleOptions = null)
     {
         var session = ProjectSessionInfo.Create(
             ProjectRef.FromEntity(proyecto), dbPath, null, proyecto.DecimalesImporte);
         var result = new BuildMatrixCatalogReport(new ProjectDbContextFactory())
-            .Execute(session, new BuildMatrixCatalogReportRequest(ids.ToList(), filtroTitulo, null), CancellationToken.None)
+            .Execute(session, new BuildMatrixCatalogReportRequest(ids.ToList(), filtroTitulo, titleOptions), CancellationToken.None)
             .GetAwaiter().GetResult();
         Assert.IsTrue(result.IsSuccess, result.Error?.Message ?? "sin mensaje");
         return result.Value!;
