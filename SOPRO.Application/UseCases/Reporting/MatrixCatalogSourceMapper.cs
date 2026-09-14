@@ -186,19 +186,6 @@ internal static class MatrixCatalogSourceMapper
         imageFileName: e.ImagenNombreOrigen ?? "",
         imageMimeType: e.ImagenMimeType ?? "");
 
-    public static MatrixCatalogTitleOptions? MapearOpcionesTitulo(ConfiguracionTituloReporte? cfg)
-    {
-        if (cfg == null) return null;
-
-        return new MatrixCatalogTitleOptions(
-            Text: cfg.TextoTitulo,
-            FontName: cfg.NombreFuente,
-            Size: cfg.TamanoFuente,
-            Bold: cfg.Negrita,
-            Italic: cfg.Cursiva,
-            TextColorHex: cfg.ColorTexto);
-    }
-
     private static MatrixCatalogZoneData Zona(string tipo, string contenido, string fuente, float tamaño, bool negrita, bool cursiva, string alineacion)
         => new(
             Tipo: tipo ?? "Texto",
