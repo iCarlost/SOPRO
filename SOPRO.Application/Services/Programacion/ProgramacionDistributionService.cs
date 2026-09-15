@@ -31,6 +31,12 @@ namespace SOPRO.Application.Services
 
     public sealed class ProgramacionDistributionService
     {
+        private readonly TimeProvider _timeProvider;
+
+        public ProgramacionDistributionService(TimeProvider? timeProvider = null)
+        {
+            _timeProvider = timeProvider ?? TimeProvider.System;
+        }
         // ════════════════════════════════════════════════════════════════════════
         // DISTRIBUCIÓN UNIFORME POR DÍAS HÁBILES
         // ════════════════════════════════════════════════════════════════════════
@@ -162,7 +168,7 @@ namespace SOPRO.Application.Services
             actividad.CantidadProgramada            = actividad.CantidadTotal;
             actividad.ImporteProgramado             = importeTotal; // consistente con suma de periodos
             actividad.AvanceProgramadoPorcentaje    = actividad.CantidadTotal == 0m ? 0m : 100m;
-            actividad.FechaModificacion             = DateTime.Now;
+            actividad.FechaModificacion             = _timeProvider.GetLocalNow().DateTime;
             context.SaveChanges();
         }
 
@@ -202,14 +208,14 @@ namespace SOPRO.Application.Services
             var rangoInicioBatch = actividades
                 .Where(a => a.FechaInicioProgramada.HasValue)
                 .Select(a => a.FechaInicioProgramada!.Value.Date)
-                .DefaultIfEmpty(DateTime.Today)
+                .DefaultIfEmpty(_timeProvider.GetLocalNow().Date)
                 .Min();
             var rangoFinBatch = actividades
                 .Where(a => a.FechaFinProgramada.HasValue)
                 .Select(a => a.FechaFinProgramada!.Value.Date)
-                .DefaultIfEmpty(DateTime.Today.AddYears(1))
+                .DefaultIfEmpty(_timeProvider.GetLocalNow().Date.AddYears(1))
                 .Max();
-            var cacheBatch = new CalendarioCache(calendarioBatch, rangoInicioBatch, rangoFinBatch);
+            var cacheBatch = new CalendarioCache(calendarioBatch, rangoInicioBatch, rangoFinBatch, _timeProvider);
 
             // Calcular y acumular distribuciones para cada actividad sin SaveChanges intermedio
             foreach (var actividad in actividades)
@@ -307,7 +313,7 @@ namespace SOPRO.Application.Services
                 actividad.CantidadProgramada         = actividad.CantidadTotal;
                 actividad.ImporteProgramado          = importeTotal;
                 actividad.AvanceProgramadoPorcentaje = actividad.CantidadTotal == 0m ? 0m : 100m;
-                actividad.FechaModificacion          = DateTime.Now;
+            actividad.FechaModificacion          = _timeProvider.GetLocalNow().DateTime;
             }
 
             // Un solo SaveChanges para todo el batch
@@ -344,7 +350,7 @@ namespace SOPRO.Application.Services
                 actividad.CantidadProgramada         = 0m;
                 actividad.ImporteProgramado          = 0m;
                 actividad.AvanceProgramadoPorcentaje = 0m;
-                actividad.FechaModificacion          = DateTime.Now;
+            actividad.FechaModificacion          = _timeProvider.GetLocalNow().DateTime;
                 context.SaveChanges();
                 return;
             }
@@ -409,7 +415,7 @@ namespace SOPRO.Application.Services
                 ? 0m
                 : engine.RoundPercentage(
                     (actividad.CantidadProgramada / actividad.CantidadTotal) * 100m);
-            actividad.FechaModificacion             = DateTime.Now;
+            actividad.FechaModificacion             = _timeProvider.GetLocalNow().DateTime;
             context.SaveChanges();
         }
 

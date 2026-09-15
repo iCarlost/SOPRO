@@ -33,7 +33,7 @@ namespace SOPRO.Application.Services.Programacion
                 .Select(a => new ActivityNetworkActivityInput(
                     a.Id,
                     a.Orden,
-                    Math.Max(1, a.DuracionDiasHabiles),
+                    a.EsHito ? 1 : Math.Max(1, a.DuracionDiasHabiles),
                     a.FechaInicioProgramada.HasValue
                         ? CalendarioCache.SanitizarFecha(a.FechaInicioProgramada.Value.Date)
                         : (DateTime?)null))

@@ -7,9 +7,17 @@ namespace SOPRO.Application.Services
 {
     public sealed class ProgramacionPersistenceService
     {
+        private readonly TimeProvider _timeProvider;
         private readonly ProgramacionValidationService _validationService = new();
-        private readonly ProgramacionCalculationService _calculationService = new();
-        private readonly ProgramacionDistributionService _distributionService = new();
+        private readonly ProgramacionCalculationService _calculationService;
+        private readonly ProgramacionDistributionService _distributionService;
+
+        public ProgramacionPersistenceService(TimeProvider? timeProvider = null)
+        {
+            _timeProvider = timeProvider ?? TimeProvider.System;
+            _calculationService = new ProgramacionCalculationService(_timeProvider);
+            _distributionService = new ProgramacionDistributionService(_timeProvider);
+        }
 
         public (bool Ok, string Error, int? ActividadId) SaveActivity(SOPROContext context, ActivityEditDto dto)
         {
@@ -17,6 +25,7 @@ namespace SOPRO.Application.Services
             if (!validation.Ok)
                 return (false, validation.Error, null);
 
+            using var transaction = context.Database.BeginTransaction();
             ActividadProgramada actividad;
             if (dto.Id.HasValue)
             {
@@ -51,7 +60,7 @@ namespace SOPRO.Application.Services
             actividad.Nivel = dto.Nivel;
             actividad.Orden = dto.Orden;
             actividad.MetodoDistribucion = dto.MetodoDistribucion;
-            actividad.FechaModificacion = DateTime.Now;
+            actividad.FechaModificacion = _timeProvider.GetLocalNow().DateTime;
 
             context.SaveChanges();
 
@@ -77,6 +86,7 @@ namespace SOPRO.Application.Services
 
             _calculationService.RecalculateProgram(context, actividad.ProgramaObraId);
 
+            transaction.Commit();
             return (true, string.Empty, actividad.Id);
         }
 
@@ -89,6 +99,18 @@ namespace SOPRO.Application.Services
             if (actividad.EsResumen)
                 return (false, "Los agrupadores no admiten dependencias directas. Captura dependencias en conceptos.");
 
+            var idsPrograma = context.ActividadesProgramadas
+                .Where(a => a.ProgramaObraId == actividad.ProgramaObraId)
+                .Select(a => a.Id)
+                .ToHashSet();
+            if (deps.Any(d => d.ActividadDestinoId != actividadId
+                || !idsPrograma.Contains(d.ActividadOrigenId)
+                || d.ActividadOrigenId == d.ActividadDestinoId))
+                return (false, "Todas las dependencias deben pertenecer al mismo programa y apuntar a la actividad seleccionada.");
+            if (deps.GroupBy(d => d.ActividadOrigenId).Any(g => g.Count() > 1))
+                return (false, "No se puede capturar más de una dependencia del mismo origen.");
+
+            using var transaction = context.Database.BeginTransaction();
             var actuales = context.DependenciasActividad.Where(d => d.ActividadDestinoId == actividadId).ToList();
             context.DependenciasActividad.RemoveRange(actuales);
 
@@ -120,11 +142,22 @@ namespace SOPRO.Application.Services
             }
 
             _calculationService.RecalculateProgram(context, programaObraId);
+            transaction.Commit();
             return (true, string.Empty);
         }
 
         public (bool Ok, string Error, int? CalendarioId) SaveCalendar(SOPROContext context, CalendarEditDto dto)
         {
+            if (string.IsNullOrWhiteSpace(dto.Nombre))
+                return (false, "El nombre del calendario es obligatorio.", null);
+            if (!dto.Lunes && !dto.Martes && !dto.Miercoles && !dto.Jueves
+                && !dto.Viernes && !dto.Sabado && !dto.Domingo
+                && !dto.Excepciones.Any(x => x.Tipo == TipoExcepcionCalendario.LaborableEspecial && x.Fecha != default))
+                return (false, "El calendario debe tener al menos un día laborable.", null);
+            if (dto.HoraFin <= dto.HoraInicio)
+                return (false, "La hora fin debe ser posterior a la hora inicio.", null);
+
+            using var transaction = context.Database.BeginTransaction();
             CalendarioLaboral calendario;
             if (dto.Id.HasValue)
             {
@@ -172,6 +205,7 @@ namespace SOPRO.Application.Services
             }
 
             context.SaveChanges();
+            transaction.Commit();
             return (true, string.Empty, calendario.Id);
         }
     }

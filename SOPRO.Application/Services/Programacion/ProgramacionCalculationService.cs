@@ -11,6 +11,12 @@ namespace SOPRO.Application.Services
     public sealed class ProgramacionCalculationService
     {
         private const int MaxDuracionDiasHabiles = 36500;
+        private readonly TimeProvider _timeProvider;
+
+        public ProgramacionCalculationService(TimeProvider? timeProvider = null)
+        {
+            _timeProvider = timeProvider ?? TimeProvider.System;
+        }
         public void RecalculateProgram(SOPROContext context, int programaObraId)
         {
             var programa = context.ProgramasObra
@@ -27,29 +33,32 @@ namespace SOPRO.Application.Services
             var calendario = programa.CalendarioLaboral;
             var actividades = programa.Actividades.ToList();
             var actividadesNoResumen = actividades.Where(a => !a.EsResumen).OrderBy(a => a.Orden).ToList();
-            var fechaBasePrograma = CalendarioCache.SanitizarFecha(programa.FechaInicioPrograma);
+            var fechaBasePrograma = CalendarioCache.SanitizarFecha(programa.FechaInicioPrograma, _timeProvider);
 
             // Construir caché del calendario una sola vez para el recálculo de actividad y agrupadores.
             // Evita los loops día a día en CalculateFinishDate, CalculateBusinessDaysInclusive, etc.
             var rangoInicio = actividadesNoResumen
                 .Where(a => a.FechaInicioProgramada.HasValue)
-                .Select(a => CalendarioCache.SanitizarFecha(a.FechaInicioProgramada!.Value.Date))
+                .Select(a => CalendarioCache.SanitizarFecha(a.FechaInicioProgramada!.Value.Date, _timeProvider))
                 .DefaultIfEmpty(fechaBasePrograma)
                 .Min();
             var rangoFin = actividadesNoResumen
                 .Where(a => a.FechaFinProgramada.HasValue)
-                .Select(a => CalendarioCache.SanitizarFecha(a.FechaFinProgramada!.Value.Date))
+                .Select(a => CalendarioCache.SanitizarFecha(a.FechaFinProgramada!.Value.Date, _timeProvider))
                 .DefaultIfEmpty(fechaBasePrograma.AddYears(2))
                 .Max();
             var cache = new CalendarioCache(calendario, rangoInicio, rangoFin);
 
+            // Recalcular primero duración y fecha final de cada actividad (pueden cambiar por
+            // rendimiento diario o por captura). Debe ocurrir antes de la red para que la ruta
+            // crítica y las fechas que se persisten no se basen en duraciones/fechas obsoletas.
             foreach (var actividad in actividadesNoResumen)
             {
                 var proyectoPresente = programa.Proyecto != null;
                 var engine = proyectoPresente
                     ? CalculationEngineFactory.FromProyecto(programa.Proyecto!)
                     : new SoproCalculationEngine(2, 2, 4);
-                RecalculateActivityInternal(actividad, cache, engine, proyectoPresente);
+                RecalculateActivityInternal(actividad, cache, engine, proyectoPresente, _timeProvider);
             }
 
             // Delegar la red de actividades y la ruta crítica al calculador puro.
@@ -72,24 +81,24 @@ namespace SOPRO.Application.Services
                 actividad.FechaFinTardia = resultado.LateFinishDate;
                 actividad.HolguraDias = resultado.SlackDays;
                 actividad.RutaCritica = resultado.IsCritical;
-                actividad.FechaModificacion = DateTime.Now;
+                actividad.FechaModificacion = _timeProvider.GetLocalNow().DateTime;
             }
 
-            RecalcularAgrupadores(actividades, cache);
+            RecalcularAgrupadores(actividades, cache, _timeProvider);
 
             programa.FechaInicioPrograma = programa.Actividades
                 .Where(a => !a.EsResumen && a.FechaInicioProgramada.HasValue)
                 .OrderBy(a => a.FechaInicioProgramada)
-                .Select(a => CalendarioCache.SanitizarFecha(a.FechaInicioProgramada!.Value.Date))
+                .Select(a => CalendarioCache.SanitizarFecha(a.FechaInicioProgramada!.Value.Date, _timeProvider))
                 .DefaultIfEmpty(fechaBasePrograma)
                 .First();
             programa.FechaFinPrograma = programa.Actividades
                 .Where(a => !a.EsResumen && a.FechaFinProgramada.HasValue)
                 .OrderByDescending(a => a.FechaFinProgramada)
-                .Select(a => CalendarioCache.SanitizarFecha(a.FechaFinProgramada!.Value.Date))
+                .Select(a => CalendarioCache.SanitizarFecha(a.FechaFinProgramada!.Value.Date, _timeProvider))
                 .DefaultIfEmpty(fechaBasePrograma)
                 .First();
-            programa.FechaModificacion = DateTime.Now;
+            programa.FechaModificacion = _timeProvider.GetLocalNow().DateTime;
 
             context.SaveChanges();
         }
@@ -107,8 +116,8 @@ namespace SOPRO.Application.Services
                 return;
 
             var calAct = actividad.ProgramaObra?.CalendarioLaboral;
-            var fechaIniAct = CalendarioCache.SanitizarFecha(actividad.FechaInicioProgramada?.Date ?? DateTime.Today);
-            var fechaFinAct = CalendarioCache.SanitizarFecha(actividad.FechaFinProgramada?.Date ?? fechaIniAct.AddYears(1));
+            var fechaIniAct = CalendarioCache.SanitizarFecha(actividad.FechaInicioProgramada?.Date ?? _timeProvider.GetLocalNow().Date, _timeProvider);
+            var fechaFinAct = CalendarioCache.SanitizarFecha(actividad.FechaFinProgramada?.Date ?? fechaIniAct.AddYears(1), _timeProvider);
             if (fechaFinAct < fechaIniAct)
                 fechaFinAct = fechaIniAct;
             var cacheAct = new CalendarioCache(calAct, fechaIniAct, fechaFinAct);
@@ -117,7 +126,7 @@ namespace SOPRO.Application.Services
             var engine = proyectoPresente
                 ? CalculationEngineFactory.FromProyecto(proyecto!)
                 : new SoproCalculationEngine(2, 2, 4);
-            RecalculateActivityInternal(actividad, cacheAct, engine, proyectoPresente);
+            RecalculateActivityInternal(actividad, cacheAct, engine, proyectoPresente, _timeProvider);
             context.SaveChanges();
         }
 
@@ -174,7 +183,7 @@ namespace SOPRO.Application.Services
             return IsWorkingDay(programa?.CalendarioLaboral, date.Value.Date);
         }
 
-        private static void RecalcularAgrupadores(List<ActividadProgramada> actividades, CalendarioCache cache)
+        private static void RecalcularAgrupadores(List<ActividadProgramada> actividades, CalendarioCache cache, TimeProvider timeProvider)
         {
             if (actividades.Count == 0)
                 return;
@@ -230,7 +239,7 @@ namespace SOPRO.Application.Services
                 resumen.RendimientoDiario = 0m;
                 resumen.FrentesTrabajo = 0;
                 resumen.AvanceProgramadoPorcentaje = 0m;
-                resumen.FechaModificacion = DateTime.Now;
+                resumen.FechaModificacion = timeProvider.GetLocalNow().DateTime;
             }
         }
 
@@ -259,7 +268,7 @@ namespace SOPRO.Application.Services
                 WorkingCalendarAdapter.ToWorkingCalendar(calendario), finish, duracionDiasHabiles);
         }
 
-        internal static void RecalculateActivityInternal(ActividadProgramada actividad, CalendarioCache cache, SoproCalculationEngine engine, bool proyectoPresente)
+        internal static void RecalculateActivityInternal(ActividadProgramada actividad, CalendarioCache cache, SoproCalculationEngine engine, bool proyectoPresente, TimeProvider? timeProvider = null)
         {
             if (actividad.CantidadTotal > 0)
             {
@@ -299,7 +308,7 @@ namespace SOPRO.Application.Services
             actividad.CantidadProgramada = actividad.CantidadTotal;
             actividad.ImporteProgramado = actividad.ImporteTotal;
             actividad.AvanceProgramadoPorcentaje = actividad.CantidadTotal <= 0 ? 0 : 100;
-            actividad.FechaModificacion = DateTime.Now;
+            actividad.FechaModificacion = (timeProvider ?? TimeProvider.System).GetLocalNow().DateTime;
         }
 
         private static DateTime? CalculateFinishDate(CalendarioLaboral? calendario, DateTime? start, int duracionDiasHabiles)

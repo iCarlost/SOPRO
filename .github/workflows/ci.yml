@@ -163,7 +163,7 @@ jobs:
           path: .artifacts/packages
 
       - name: Restore consumer from local feed only
-        run: dotnet restore consumers/Sopro.Calculation.Consumer/Sopro.Calculation.Consumer.csproj --nologo
+        run: dotnet restore consumers/Sopro.Calculation.Consumer/Sopro.Calculation.Consumer.csproj --configfile consumers/nuget.config --packages "$RUNNER_TEMP/nuget-global" --force --nologo
 
       - name: Build consumer without project reference
         run: dotnet build consumers/Sopro.Calculation.Consumer/Sopro.Calculation.Consumer.csproj --configuration Release --no-restore --nologo

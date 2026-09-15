@@ -331,6 +331,54 @@ public class ProgramacionCalculationServiceTests
         Assert.AreEqual(0.03m, actualizada.ImporteTotal);
     }
 
+    [TestMethod]
+    public void RecalculateProgram_RecalculaDuracionAntesDeLaRed_NoPersisteDuracionObsoleta()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var proyecto = CrearProyectoConPrecisiones("N7 orden red", 2, 2, 4);
+        context.Proyectos.Add(proyecto);
+        context.SaveChanges();
+
+        var programa = new ProgramaObra
+        {
+            ProyectoId = proyecto.Id,
+            Nombre = "Programa orden red",
+            FechaInicioPrograma = new DateTime(2026, 1, 5),
+            Activo = true
+        };
+        context.ProgramasObra.Add(programa);
+        context.SaveChanges();
+
+        // Duración capturada 0 con cantidad y rendimiento diario: RecalculateActivityInternal
+        // debe recalcularla a 10 días hábiles ANTES de calcular la red. Si la red se calcula
+        // primero, la duración (0 → 1 día) y la fecha final obsoletas se persisten.
+        var actividad = new ActividadProgramada
+        {
+            ProgramaObraId = programa.Id,
+            EsResumen = false,
+            Descripcion = "Actividad con duración derivada",
+            CantidadTotal = 10m,
+            RendimientoDiario = 1m,
+            FrentesTrabajo = 1,
+            FechaInicioProgramada = new DateTime(2026, 1, 5),
+            DuracionDiasHabiles = 0,
+            MetodoDistribucion = MetodoDistribucionActividad.Uniforme
+        };
+        context.ActividadesProgramadas.Add(actividad);
+        context.SaveChanges();
+
+        new ProgramacionCalculationService().RecalculateProgram(context, programa.Id);
+
+        var actualizada = context.ActividadesProgramadas.Find(actividad.Id)!;
+        var finEsperado = new ProgramacionCalculationService()
+            .CalculateFinishDate(context, programa.Id, actividad.FechaInicioProgramada, 10);
+
+        Assert.AreEqual(10, actualizada.DuracionDiasHabiles,
+            "La duración persistida debe venir del recálculo previo a la red, no de la duración obsoleta.");
+        Assert.AreEqual(finEsperado!.Value.Date, actualizada.FechaFinProgramada!.Value.Date,
+            "La fecha final debe corresponder a los 10 días hábiles recalculados antes de la red.");
+    }
+
     private static ActividadProgramada CrearActividadRedondeo() => new()
     {
         EsResumen = false,

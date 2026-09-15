@@ -23,6 +23,7 @@ namespace SOPRO.Application.Services
                     Actividades = p.Actividades.Count()
                 })
                 .OrderBy(p => p.Nombre)
+                .ThenBy(p => p.Id)
                 .ToList();
         }
 

@@ -1,6 +1,7 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Globalization;
 using SOPRO.Application.Services.Programacion;
+using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Tests.TestInfrastructure;
 
@@ -121,6 +122,27 @@ public sealed class CalendarioCharacterizationTests
             CalendarioCache.SanitizarFecha(DateTime.MinValue));
         Assert.AreEqual(DateTime.Today.Date,
             CalendarioCache.SanitizarFecha(DateTime.MaxValue));
+    }
+
+    [TestMethod]
+    public void FechasExtremas_UsanRelojInyectadoYLasEtiquetasNoDependenDeLaCulturaActual()
+    {
+        var reloj = new RelojFijo(new DateTimeOffset(2031, 7, 14, 12, 0, 0, TimeSpan.Zero));
+
+        Assert.AreEqual(new DateTime(2031, 7, 14),
+            CalendarioCache.SanitizarFecha(DateTime.MinValue, reloj));
+
+        var culturaAnterior = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+            Assert.AreEqual("julio 2031", ProgramacionPeriodHelper.BuildLabel(
+                1, new DateTime(2031, 7, 1), new DateTime(2031, 7, 31), TipoPeriodoPrograma.Mes));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culturaAnterior;
+        }
     }
 
     [DataTestMethod]
@@ -544,5 +566,10 @@ public sealed class CalendarioCharacterizationTests
             DayOfWeek.Sunday => calendario.Domingo,
             _ => false
         };
+    }
+
+    private sealed class RelojFijo(DateTimeOffset ahora) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => ahora;
     }
 }
