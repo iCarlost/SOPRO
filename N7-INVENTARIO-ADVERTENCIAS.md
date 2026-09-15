@@ -76,7 +76,7 @@ lectura. Los goldens son la referencia congelada de compatibilidad.
 - Capturar y documentar el baseline sanitizado.
 - No ejecutar build, restore, test ni modificación de código productivo.
 - No modificar CI ni `PLAN-01`.
-- No commit ni push.
+- Preservar el baseline histórico como no reproducible; el usuario aceptó el cierre GO y la publicación.
 
 ## Baseline 0.2 — auditoría de builds
 
@@ -150,5 +150,6 @@ por hash SHA-256 y por una ruta lógica sanitizada, sin rutas personales:
   produjo `421/446`; queda una limitación de reproducibilidad histórica.
 - Los hashes de goldens y del fixture real consignados arriba son controles de
   integridad, no una autorización para editar esos artefactos.
-- El cierre documental no declara GO global de N7: la evidencia contradictoria
-  del baseline histórico impide presentarlo como una comparación reproducible.
+- El baseline histórico `421/446` permanece como dato no reproducible y no se
+  presenta como comparación reproducible. El usuario aceptó el cierre GO de N7 y
+  la publicación.
