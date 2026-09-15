@@ -8,8 +8,16 @@ namespace SOPRO.Application.Services
 {
     public sealed class ProgramacionGenerationService
     {
-        private readonly ProgramacionCalculationService _calculationService = new();
-        private readonly ProgramacionDistributionService _distributionService = new();
+        private readonly TimeProvider _timeProvider;
+        private readonly ProgramacionCalculationService _calculationService;
+        private readonly ProgramacionDistributionService _distributionService;
+
+        public ProgramacionGenerationService(TimeProvider? timeProvider = null)
+        {
+            _timeProvider = timeProvider ?? TimeProvider.System;
+            _calculationService = new ProgramacionCalculationService(_timeProvider);
+            _distributionService = new ProgramacionDistributionService(_timeProvider);
+        }
 
         public ProgramGenerationResult GenerateFromBudget(SOPROContext context, int proyectoId, DateTime fechaInicio, TipoPeriodoPrograma tipoPeriodo)
         {
@@ -168,21 +176,21 @@ namespace SOPRO.Application.Services
                 .Where(a => !a.EsResumen && a.FechaInicioProgramada.HasValue && a.FechaFinProgramada.HasValue)
                 .ToList();
 
-            var fechaBasePrograma = CalendarioCache.SanitizarFecha(programa.FechaInicioPrograma);
+            var fechaBasePrograma = CalendarioCache.SanitizarFecha(programa.FechaInicioPrograma, _timeProvider);
 
             var inicio = hojas.Count > 0
-                ? CalendarioCache.SanitizarFecha(hojas.Min(a => a.FechaInicioProgramada!.Value.Date))
+                ? CalendarioCache.SanitizarFecha(hojas.Min(a => a.FechaInicioProgramada!.Value.Date), _timeProvider)
                 : fechaBasePrograma;
 
             var fin = hojas.Count > 0
-                ? CalendarioCache.SanitizarFecha(hojas.Max(a => a.FechaFinProgramada!.Value.Date))
+                ? CalendarioCache.SanitizarFecha(hojas.Max(a => a.FechaFinProgramada!.Value.Date), _timeProvider)
                 : inicio;
 
             programa.FechaInicioPrograma = inicio;
             programa.FechaFinPrograma = fin;
             programa.TipoPeriodo = tipoPeriodo;
             programa.DuracionPeriodoDias = GetDaysByPeriod(tipoPeriodo);
-            programa.FechaModificacion = DateTime.Now;
+            programa.FechaModificacion = _timeProvider.GetLocalNow().DateTime;
             context.SaveChanges();
 
             return ReplacePeriods(context, programaObraId, inicio, fin, tipoPeriodo);

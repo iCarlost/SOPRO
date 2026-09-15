@@ -7,9 +7,18 @@ namespace SOPRO.Application.Services
 {
     public sealed class ProgramacionSynchronizationService
     {
-        private readonly ProgramacionGenerationService _generationService = new();
-        private readonly ProgramacionCalculationService _calculationService = new();
-        private readonly ProgramacionDistributionService _distributionService = new();
+        private readonly TimeProvider _timeProvider;
+        private readonly ProgramacionGenerationService _generationService;
+        private readonly ProgramacionCalculationService _calculationService;
+        private readonly ProgramacionDistributionService _distributionService;
+
+        public ProgramacionSynchronizationService(TimeProvider? timeProvider = null)
+        {
+            _timeProvider = timeProvider ?? TimeProvider.System;
+            _generationService = new ProgramacionGenerationService(_timeProvider);
+            _calculationService = new ProgramacionCalculationService(_timeProvider);
+            _distributionService = new ProgramacionDistributionService(_timeProvider);
+        }
 
         public ProgramSyncResult SyncFromBudget(SOPROContext context, int proyectoId)
         {
@@ -24,7 +33,7 @@ namespace SOPRO.Application.Services
 
             if (programa == null)
             {
-                var fechaInicio = proyecto.FechaInicio == default ? DateTime.Today : proyecto.FechaInicio.Date;
+                var fechaInicio = proyecto.FechaInicio == default ? _timeProvider.GetLocalNow().Date : proyecto.FechaInicio.Date;
                 var generated = _generationService.GenerateFromBudget(context, proyectoId, fechaInicio, TipoPeriodoPrograma.Semana);
                 return generated.Success
                     ? ProgramSyncResult.Ok(generated.Message, generated.ProgramaObraId, generated.ActividadesGeneradas, generated.PeriodosGenerados)
@@ -38,7 +47,7 @@ namespace SOPRO.Application.Services
                 .ToList();
 
             // Base saneada: un programa legacy puede tener FechaInicioPrograma = default
-            var fechaBasePrograma = CalendarioCache.SanitizarFecha(programa.FechaInicioPrograma);
+            var fechaBasePrograma = CalendarioCache.SanitizarFecha(programa.FechaInicioPrograma, _timeProvider);
 
             var actividadesExistentes = context.ActividadesProgramadas
                 .Where(a => a.ProgramaObraId == programa.Id)
@@ -91,7 +100,7 @@ namespace SOPRO.Application.Services
                         EsManual = false,
                         FrentesTrabajo = 1,
                         MetodoDistribucion = MetodoDistribucionActividad.Uniforme,
-                        FechaCreacion = DateTime.Now,
+                        FechaCreacion = _timeProvider.GetLocalNow().DateTime,
                     };
                     context.ActividadesProgramadas.Add(actividad);
                     nuevos++;
@@ -106,7 +115,7 @@ namespace SOPRO.Application.Services
                 actividad.CantidadTotal = concepto.EsAgrupador ? 0m : concepto.Cantidad;
                 actividad.PrecioUnitario = concepto.EsAgrupador ? 0m : concepto.PrecioUnitario;
                 actividad.ImporteTotal = concepto.EsAgrupador ? 0m : concepto.ImporteTotal;
-                actividad.FechaModificacion = DateTime.Now;
+                    actividad.FechaModificacion = _timeProvider.GetLocalNow().DateTime;
 
                 if (concepto.EsAgrupador)
                 {
@@ -168,8 +177,8 @@ namespace SOPRO.Application.Services
 
             var programa = context.ProgramasObra.FirstOrDefault(p => p.ProyectoId == proyectoId && p.Activo);
             var fechaInicio = programa != null
-                ? CalendarioCache.SanitizarFecha(programa.FechaInicioPrograma)
-                : (proyecto.FechaInicio == default ? DateTime.Today : proyecto.FechaInicio.Date);
+                ? CalendarioCache.SanitizarFecha(programa.FechaInicioPrograma, _timeProvider)
+                : (proyecto.FechaInicio == default ? _timeProvider.GetLocalNow().Date : proyecto.FechaInicio.Date);
             var tipoPeriodo = programa?.TipoPeriodo ?? TipoPeriodoPrograma.Semana;
 
             var deleteResult = DeleteProgram(context, proyectoId, includeCalendars: false);

@@ -1,10 +1,12 @@
 using SOPRO.Application.DTOs.Programacion;
 using SOPRO.Core.Entities;
+using System.Globalization;
 
 namespace SOPRO.Application.Services;
 
 public static class ProgramacionPeriodHelper
 {
+    private static readonly CultureInfo LabelCulture = CultureInfo.GetCultureInfo("es-MX");
     public static DateTime AlignStart(DateTime fecha, TipoPeriodoPrograma tipoPeriodo)
     {
         fecha = fecha.Date;
@@ -63,7 +65,7 @@ public static class ProgramacionPeriodHelper
             TipoPeriodoPrograma.Dia => $"Día {numero:00} - {inicio:dd/MM/yyyy}",
             TipoPeriodoPrograma.Semana => $"Semana {numero:00} - {inicio:dd/MM} a {fin:dd/MM}",
             TipoPeriodoPrograma.Quincena => $"Quincena {numero:00} - {inicio:dd/MM} a {fin:dd/MM}",
-            TipoPeriodoPrograma.Mes => $"{inicio:MMMM yyyy}",
+            TipoPeriodoPrograma.Mes => inicio.ToString("MMMM yyyy", LabelCulture),
             _ => $"Periodo {numero:00}"
         };
 

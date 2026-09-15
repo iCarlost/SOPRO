@@ -126,6 +126,7 @@ namespace SOPRO.Application.Services.Programacion
                     FechaInicioProgramada = a.FechaInicioProgramada,
                     FechaFinProgramada    = a.FechaFinProgramada
                 })
+                .OrderBy(a => a.Id)
                 .ToList();
 
             if (actividades.Count == 0) return result;
@@ -157,10 +158,8 @@ namespace SOPRO.Application.Services.Programacion
                                       .Select(g => g.First())
                                       .ToDictionary(m => m.Id);
 
-            foreach (var mat in matrizPorId.Values)
-                foreach (var comp in mat.Componentes.Where(c => c.AuxiliarId.HasValue))
-                    if (matrizPorId.TryGetValue(comp.AuxiliarId!.Value, out var aux))
-                        comp.Auxiliar = aux;
+            matrizPorId = InsumosEntitySnapshotAdapter.CloneAndLink(matrizPorId.Values)
+                .ToDictionary(m => m.Id);
 
             var actividadConcepto = actividades.ToDictionary(
                 a => a.Id, a => a.ConceptoPresupuestoId!.Value);
@@ -175,6 +174,8 @@ namespace SOPRO.Application.Services.Programacion
                     d.CantidadProgramada,
                     d.ImporteProgramado
                 })
+                .OrderBy(d => d.PeriodoProgramaId)
+                .ThenBy(d => d.ActividadProgramadaId)
                 .ToList();
 
             var rangosPorInsumo = ConstruirRangosPorInsumo(actividades, conceptosInfo, matrizPorId, tipo);
@@ -246,7 +247,8 @@ namespace SOPRO.Application.Services.Programacion
                     }
 
                     ExplotarMatrizEnPeriodo(engine, matriz, importePeriodo,
-                        cantProgramada, periodoId, tipo, temporal);
+                        cantProgramada, periodoId, tipo, temporal,
+                        new HashSet<int>(), new List<int>());
 
                     // Rastrear último periodo con importe por insumo
                     foreach (var insumoId in temporal.Keys)
@@ -437,10 +439,18 @@ namespace SOPRO.Application.Services.Programacion
             decimal importeBase,    // importe del periodo a distribuir
             decimal cantidadBase,   // cantidad del concepto en el periodo (para física %MO)
             int periodoId, ProgramaInsumoTipo tipo,
-            Dictionary<int, InsumoAcum> acums)
+            Dictionary<int, InsumoAcum> acums,
+            HashSet<int> activeMatrices,
+            List<int> matrixPath)
         {
             if (matriz?.Componentes == null || matriz.Componentes.Count == 0) return;
+            if (!activeMatrices.Add(matriz.Id))
+                throw new InvalidOperationException(
+                    $"Ciclo de matrices detectado en Programa de insumos: {FormatPath(matrixPath, matriz.Id)}.");
+            matrixPath.Add(matriz.Id);
 
+            try
+            {
             // [N7-3] Importes unitarios por la ruta canónica compartida.
             var importesUnitarios = MatrixComponentCalculationService
                 .ImportesUnitarios(matriz.Componentes, engine.AmountDecimals);
@@ -508,9 +518,16 @@ namespace SOPRO.Application.Services.Programacion
 
                     case TipoComponenteMatriz.Auxiliar when comp.Auxiliar != null:
                         ExplotarMatrizEnPeriodo(engine, comp.Auxiliar, impComp, cantFis,
-                                               periodoId, tipo, acums);
+                                               periodoId, tipo, acums,
+                                               activeMatrices, matrixPath);
                         break;
                 }
+            }
+            }
+            finally
+            {
+                matrixPath.RemoveAt(matrixPath.Count - 1);
+                activeMatrices.Remove(matriz.Id);
             }
         }
 
@@ -525,7 +542,8 @@ namespace SOPRO.Application.Services.Programacion
             ProgramaInsumoTipo tipo)
         {
             var resultado = new Dictionary<int, decimal>();
-            ExplotarCanonicoRecursivo(engine, matriz, importeBase, cantidadBase, tipo, resultado);
+            ExplotarCanonicoRecursivo(engine, matriz, importeBase, cantidadBase, tipo, resultado,
+                new HashSet<int>(), new List<int>());
             return resultado;
         }
 
@@ -533,10 +551,18 @@ namespace SOPRO.Application.Services.Programacion
             SoproCalculationEngine engine, Matriz matriz,
             decimal importeBase, decimal cantidadBase,
             ProgramaInsumoTipo tipo,
-            Dictionary<int, decimal> resultado)
+            Dictionary<int, decimal> resultado,
+            HashSet<int> activeMatrices,
+            List<int> matrixPath)
         {
             if (matriz?.Componentes == null || matriz.Componentes.Count == 0) return;
+            if (!activeMatrices.Add(matriz.Id))
+                throw new InvalidOperationException(
+                    $"Ciclo de matrices detectado en Programa de insumos: {FormatPath(matrixPath, matriz.Id)}.");
+            matrixPath.Add(matriz.Id);
 
+            try
+            {
             // [N7-3] Importes unitarios por la ruta canónica compartida.
             var importesUnitarios = MatrixComponentCalculationService
                 .ImportesUnitarios(matriz.Componentes, engine.AmountDecimals);
@@ -582,9 +608,16 @@ namespace SOPRO.Application.Services.Programacion
 
                     case TipoComponenteMatriz.Auxiliar when comp.Auxiliar != null:
                         ExplotarCanonicoRecursivo(engine, comp.Auxiliar, impComp,
-                            cantidadBase * comp.Cantidad, tipo, resultado);
+                            cantidadBase * comp.Cantidad, tipo, resultado,
+                            activeMatrices, matrixPath);
                         break;
                 }
+            }
+            }
+            finally
+            {
+                matrixPath.RemoveAt(matrixPath.Count - 1);
+                activeMatrices.Remove(matriz.Id);
             }
         }
 
@@ -700,7 +733,7 @@ namespace SOPRO.Application.Services.Programacion
                 var inicio = act.FechaInicioProgramada ?? DateTime.MinValue;
                 var fin    = act.FechaFinProgramada    ?? inicio;
 
-                foreach (var insumoId in ObtenerInsumoIds(matriz, tipo))
+                foreach (var insumoId in ObtenerInsumoIds(matriz, tipo, new HashSet<int>(), new List<int>()))
                 {
                     if (result.TryGetValue(insumoId, out var rango))
                         result[insumoId] = (inicio < rango.Item1 ? inicio : rango.Item1,
@@ -725,7 +758,7 @@ namespace SOPRO.Application.Services.Programacion
                 if (!conceptosInfo.TryGetValue(act.ConceptoPresupuestoId.Value, out var info)) continue;
                 if (!matrizPorId.TryGetValue(info.MatrizId, out var matriz)) continue;
 
-                foreach (var insumoId in ObtenerInsumoIds(matriz, tipo))
+                foreach (var insumoId in ObtenerInsumoIds(matriz, tipo, new HashSet<int>(), new List<int>()))
                 {
                     if (!result.ContainsKey(insumoId))
                         result[insumoId] = new List<string>();
@@ -737,8 +770,16 @@ namespace SOPRO.Application.Services.Programacion
             return result;
         }
 
-        private static IEnumerable<int> ObtenerInsumoIds(Matriz matriz, ProgramaInsumoTipo tipo)
+        private static IEnumerable<int> ObtenerInsumoIds(
+            Matriz matriz, ProgramaInsumoTipo tipo,
+            HashSet<int> activeMatrices, List<int> matrixPath)
         {
+            if (!activeMatrices.Add(matriz.Id))
+                throw new InvalidOperationException(
+                    $"Ciclo de matrices detectado al construir el indice de insumos: {FormatPath(matrixPath, matriz.Id)}.");
+            matrixPath.Add(matriz.Id);
+            try
+            {
             foreach (var comp in matriz.Componentes)
             {
                 if (tipo == ProgramaInsumoTipo.Materiales
@@ -763,9 +804,18 @@ namespace SOPRO.Application.Services.Programacion
 
                 else if (comp.TipoComponente == TipoComponenteMatriz.Auxiliar
                     && comp.Auxiliar != null)
-                    foreach (var id in ObtenerInsumoIds(comp.Auxiliar, tipo))
+                    foreach (var id in ObtenerInsumoIds(comp.Auxiliar, tipo, activeMatrices, matrixPath))
                         yield return id;
             }
+            }
+            finally
+            {
+                matrixPath.RemoveAt(matrixPath.Count - 1);
+                activeMatrices.Remove(matriz.Id);
+            }
         }
+
+        private static string FormatPath(IReadOnlyList<int> path, int repeated)
+            => string.Join(" -> ", path.Concat(new[] { repeated }));
     }
 }

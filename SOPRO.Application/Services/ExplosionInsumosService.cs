@@ -65,7 +65,7 @@ namespace SOPRO.Application.Services
                 return new ExplosionCalculationResult();
 
             // Cargar TODAS las matrices del proyecto con sus navegaciones en una sola query
-            var todasMatrices = context.Matrices
+            var todasMatricesEf = context.Matrices
                 .Include(m => m.Componentes).ThenInclude(c => c.Material)
                 .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
                 .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
@@ -82,20 +82,9 @@ namespace SOPRO.Application.Services
                 .AsNoTracking()
                 .ToList();
 
+            var todasMatrices = InsumosEntitySnapshotAdapter.CloneAndLink(todasMatricesEf);
+
             var matrizPorId = todasMatrices.ToDictionary(m => m.Id);
-
-            // Resolver referencias de auxiliares anidados
-            foreach (var mat in todasMatrices)
-                foreach (var comp in mat.Componentes)
-                    if (comp.AuxiliarId.HasValue &&
-                        matrizPorId.TryGetValue(comp.AuxiliarId.Value, out var aux))
-                        comp.Auxiliar = aux;
-
-            // Asignar matrices a conceptos
-            foreach (var concepto in conceptos)
-                if (concepto.MatrizId.HasValue &&
-                    matrizPorId.TryGetValue(concepto.MatrizId.Value, out var mat))
-                    concepto.Matriz = mat;
 
             // ── Acumuladores por tipo de insumo ──────────────────────────────────
             var materiales   = new Dictionary<int, InsumoAcum>();
@@ -105,7 +94,9 @@ namespace SOPRO.Application.Services
 
             foreach (var concepto in conceptos)
             {
-                if (concepto.Matriz == null) continue;
+                if (!concepto.MatrizId.HasValue ||
+                    !matrizPorId.TryGetValue(concepto.MatrizId.Value, out var matriz))
+                    continue;
 
                 // Importe del concepto con precisión de pantalla
                 decimal importeConcepto = engine.Multiply(
@@ -113,7 +104,8 @@ namespace SOPRO.Application.Services
 
                 if (importeConcepto == 0m) continue;
 
-                ExplotarMatriz(engine, concepto.Matriz, importeConcepto, concepto.Cantidad,
+                ExplotarMatriz(engine, matriz, importeConcepto, concepto.Cantidad,
+                               new HashSet<int>(), new List<int>(),
                                materiales, manoObra, maquinaria, herramientas);
             }
 
@@ -159,13 +151,21 @@ namespace SOPRO.Application.Services
             Matriz matriz,
             decimal importeBase,       // importe del concepto (o auxiliar padre) a distribuir
             decimal cantidadBase,      // cantidad del concepto (para acumular cantidad física)
+            HashSet<int> activeMatrices,
+            List<int> matrixPath,
             Dictionary<int, InsumoAcum> materiales,
             Dictionary<int, InsumoAcum> manoObra,
             Dictionary<int, InsumoAcum> maquinaria,
             Dictionary<int, InsumoAcum> herramientas)
         {
             if (matriz?.Componentes == null || matriz.Componentes.Count == 0) return;
+            if (!activeMatrices.Add(matriz.Id))
+                throw new InvalidOperationException(
+                    $"Ciclo de matrices detectado en Explosión: {FormatPath(matrixPath, matriz.Id)}.");
+            matrixPath.Add(matriz.Id);
 
+            try
+            {
             // ── Paso 1: recalcular los importes unitarios de cada componente
             //           con la ruta canónica del grafo (N7-3)                    ────
             var importesUnitarios = MatrixComponentCalculationService
@@ -223,11 +223,21 @@ namespace SOPRO.Application.Services
                         // Recursión: el auxiliar recibe su porción del importe
                         // cantidadFisica pasa como cantidadBase para el nivel siguiente
                         ExplotarMatriz(engine, comp.Auxiliar, importeComp, cantidadFisica,
+                                       activeMatrices, matrixPath,
                                        materiales, manoObra, maquinaria, herramientas);
                         break;
                 }
             }
+            }
+            finally
+            {
+                matrixPath.RemoveAt(matrixPath.Count - 1);
+                activeMatrices.Remove(matriz.Id);
+            }
         }
+
+        private static string FormatPath(List<int> path, int repeated)
+            => string.Join(" -> ", path.Concat(new[] { repeated }));
 
         // ════════════════════════════════════════════════════════════════════════
         // ACUMULADOR DE INSUMOS

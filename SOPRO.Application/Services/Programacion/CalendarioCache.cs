@@ -26,8 +26,9 @@ namespace SOPRO.Application.Services.Programacion
         // Días hábiles ordenados para AddWorkingDays/SubtractWorkingDays
         private readonly DateTime[] _dias;
 
+        private readonly TimeProvider _timeProvider;
         private static readonly CalendarioCache _fallback =
-            new CalendarioCache(null, new DateTime(2000, 1, 1), new DateTime(2099, 12, 31));
+            new CalendarioCache(null, new DateTime(2000, 1, 1), new DateTime(2099, 12, 31), TimeProvider.System);
 
         public static CalendarioCache Fallback => _fallback;
 
@@ -38,20 +39,21 @@ namespace SOPRO.Application.Services.Programacion
         /// Normaliza una fecha al día actual si su expansión con MargenDias no es representable
         /// (p. ej. DateTime.MinValue/MaxValue materializado desde datos históricos corruptos).
         /// </summary>
-        internal static DateTime SanitizarFecha(DateTime date)
+        internal static DateTime SanitizarFecha(DateTime date, TimeProvider? timeProvider = null)
         {
             var d = date.Date;
             if (d < DateTime.MinValue.Date.AddDays(MargenDias) || d > DateTime.MaxValue.Date.AddDays(-MargenDias))
-                return DateTime.Today.Date;
+                return (timeProvider ?? TimeProvider.System).GetLocalNow().Date;
             return d;
         }
 
-        public CalendarioCache(CalendarioLaboral? calendario, DateTime rangoInicio, DateTime rangoFin)
+        public CalendarioCache(CalendarioLaboral? calendario, DateTime rangoInicio, DateTime rangoFin, TimeProvider? timeProvider = null)
         {
+            _timeProvider = timeProvider ?? TimeProvider.System;
             // Ampliar el rango para cubrir AddWorkingDays con desfases grandes.
             // Fechas default/corruptas (MinValue/MaxValue) se normalizan para no desbordar.
-            var inicioBase = SanitizarFecha(rangoInicio);
-            var finBase    = SanitizarFecha(rangoFin);
+            var inicioBase = SanitizarFecha(rangoInicio, _timeProvider);
+            var finBase    = SanitizarFecha(rangoFin, _timeProvider);
             if (finBase < inicioBase)
                 finBase = inicioBase.AddDays(MargenDias);
 
