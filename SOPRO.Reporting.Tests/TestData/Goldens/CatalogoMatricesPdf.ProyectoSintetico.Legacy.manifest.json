@@ -1,0 +1,11 @@
+{
+  "Schema": "sopro.catalogo-matrices.pdf.manifest.1",
+  "Escenario": "proyecto-sintetico",
+  "FuenteDatos": "proyecto-sintetico-vial-demo",
+  "Generador": "GeneradorPdfCatalogoMatrices",
+  "Titulo": "CATÁLOGO DE MATRICES",
+  "Paginas": 2,
+  "AnchoPt": 792,
+  "AltoPt": 612,
+  "TamanoBytes": 66378
+}

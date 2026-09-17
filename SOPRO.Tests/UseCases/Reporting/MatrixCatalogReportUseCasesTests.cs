@@ -22,8 +22,8 @@ namespace SOPRO.Tests.UseCases.Reporting;
 ///   - orden ordinal por clave PESE a la entrada barajada.
 ///   - inmutabilidad real (ReadOnlyCollection, copia defensiva, sin mutar input).
 ///   - reloj explícito y cultura invariante para {fecha_impresion}.
-///   - puente N7-18a: 30.015 / 30.01 / 3.001 (sintético) y ***REMOVED*** /
-///     ***REMOVED*** / 7 matrices (proyecto real). NO compara celdas ni hashes:
+///   - puente N7-18a: 30.015 / 30.01 / 3.001 (sintético) y 5504.600535 /
+///     84475.768482 / 7 matrices (proyecto sintético). NO compara celdas ni hashes:
 ///     eso es N7-18c cuando exista SOPRO.Reporting.
 /// </summary>
 [TestClass]
@@ -464,13 +464,13 @@ public class MatrixCatalogReportUseCasesTests
         Assert.IsNull(MatrixCatalogTitleOptionsMapper.FromLegacy(null));
     }
 
-    // ─────────────────── Integración: proyecto real (SQLite) ────────────────
+    // ─────────────────── Integración: proyecto sintético (SQLite) ───────────
 
     [TestMethod]
-    public void Execute_***REMOVED***_Las7MatricesConAritmeticaCruda()
+    public void Execute_ProyectoSintetico_Las7MatricesConAritmeticaCruda()
     {
-        using var copia = new Copia***REMOVED***();
-        var session = LeerSessionReal(copia.DbPath);
+        using var copia = new CopiaProyectoSintetico();
+        var session = LeerSessionSintetica(copia.DbPath);
         var factory = new ProjectDbContextFactory();
         var useCase = new BuildMatrixCatalogReport(factory);
 
@@ -490,21 +490,21 @@ public class MatrixCatalogReportUseCasesTests
             doc.Matrices.Select(m => m.Key).ToArray());
 
         var cu001 = doc.Matrices.Single(m => m.Key == "CU001.");
-        Assert.AreEqual(***REMOVED***m, cu001.TotalMo, "totalMO crudo de la cuadrilla (SalarioReal de MO002).");
+        Assert.AreEqual(5504.600535m, cu001.TotalMo, "totalMO crudo de la cuadrilla (SalarioReal de MO002).");
 
         var m1 = doc.Matrices.Single(m => m.Key == "M-1");
         var retro = m1.Components.Single(c => c.Key == "RETRO235");
         Assert.AreEqual(MatrixCatalogComponentKind.Maquinaria, retro.Kind);
         Assert.AreEqual("H", retro.Prefix);
-        Assert.AreEqual(2202.65m, retro.UnitCost, "CostoHorario de RETRO235.");
-        Assert.AreEqual(***REMOVED***m, retro.Amount, "importe crudo 5.47884 × 2202.65.");
+        Assert.AreEqual(15418.55m, retro.UnitCost, "CostoHorario de RETRO235.");
+        Assert.AreEqual(84475.768482m, retro.Amount, "importe crudo 5.47884 × 15418.55.");
     }
 
     [TestMethod]
-    public void Execute_***REMOVED***_IdsDuplicadosEInexistentes_ComportamientoLegacy()
+    public void Execute_ProyectoSintetico_IdsDuplicadosEInexistentes_ComportamientoLegacy()
     {
-        using var copia = new Copia***REMOVED***();
-        var session = LeerSessionReal(copia.DbPath);
+        using var copia = new CopiaProyectoSintetico();
+        var session = LeerSessionSintetica(copia.DbPath);
         var useCase = new BuildMatrixCatalogReport(new ProjectDbContextFactory());
 
         var ids = LeerIdsMatrices(copia.DbPath);
@@ -521,8 +521,8 @@ public class MatrixCatalogReportUseCasesTests
     [TestMethod]
     public void Execute_IdsVacios_DocumentoSinMatricesPeroConTitulo()
     {
-        using var copia = new Copia***REMOVED***();
-        var session = LeerSessionReal(copia.DbPath);
+        using var copia = new CopiaProyectoSintetico();
+        var session = LeerSessionSintetica(copia.DbPath);
         var useCase = new BuildMatrixCatalogReport(new ProjectDbContextFactory());
 
         var result = useCase.Execute(session, new BuildMatrixCatalogReportRequest(Array.Empty<int>()), CancellationToken.None).GetAwaiter().GetResult();
@@ -815,10 +815,10 @@ public class MatrixCatalogReportUseCasesTests
     }
 
     [TestMethod]
-    public void Execute_***REMOVED***_CargaLosElementosLibresYLasAlturas()
+    public void Execute_ProyectoSintetico_CargaLosElementosLibresYLasAlturas()
     {
-        using var copia = new Copia***REMOVED***();
-        var session = LeerSessionReal(copia.DbPath);
+        using var copia = new CopiaProyectoSintetico();
+        var session = LeerSessionSintetica(copia.DbPath);
         var useCase = new BuildMatrixCatalogReport(new ProjectDbContextFactory());
 
         var result = useCase.Execute(
@@ -829,39 +829,39 @@ public class MatrixCatalogReportUseCasesTests
         Assert.IsTrue(result.IsSuccess, result.Error?.Message ?? "sin mensaje");
         var doc = result.Value!;
 
-        Assert.AreEqual(4, doc.HeaderElements.Count, "encabezado libre real: 4 elementos.");
-        Assert.AreEqual(2, doc.FooterElements.Count, "pie libre real: 2 elementos.");
+        Assert.AreEqual(4, doc.HeaderElements.Count, "encabezado libre sintético: 4 elementos.");
+        Assert.AreEqual(2, doc.FooterElements.Count, "pie libre sintético: 2 elementos.");
         Assert.IsTrue(doc.HeaderElements.All(e => e.Zone == MatrixCatalogPageZone.Encabezado));
         Assert.IsTrue(doc.FooterElements.All(e => e.Zone == MatrixCatalogPageZone.PieDePagina));
 
         var imagen = doc.HeaderElements.Single(e => e.Kind == MatrixCatalogPageElementKind.Imagen);
-        Assert.IsTrue(imagen.ImageBytes.Count > 0, "la imagen del encabezado real trae bytes.");
+        Assert.IsTrue(imagen.ImageBytes.Count > 0, "la imagen del encabezado sintético trae bytes.");
         Assert.IsFalse(string.IsNullOrEmpty(imagen.ImageFileName));
         Assert.IsFalse(string.IsNullOrEmpty(imagen.ImageMimeType));
 
         Assert.AreEqual(1, doc.FooterElements.Count(e =>
             e.Content.Contains("{pagina}", StringComparison.OrdinalIgnoreCase)));
-        Assert.AreEqual(1, doc.FooterElements.Count(e => e.Content == "***REMOVED***"),
-            "el pie resuelve {autorizo} con el valor del proyecto real.");
+        Assert.AreEqual(1, doc.FooterElements.Count(e => e.Content == "AUTORIDAD DEMO"),
+            "el pie resuelve {autorizo} con el valor del proyecto sintético.");
 
         Assert.AreEqual(new MatrixCatalogPageHeights(60, 229, 40, 170), doc.PageHeights);
     }
 
     // ─────────────────────────── Infraestructura ────────────────────────────
 
-    private sealed class Copia***REMOVED*** : IDisposable
+    private sealed class CopiaProyectoSintetico : IDisposable
     {
-        private const string DbFileName = "***REMOVED***.db";
+        private const string DbFileName = "proyecto-sintetico-vial-demo.db";
 
-        public Copia***REMOVED***()
+        public CopiaProyectoSintetico()
         {
             var sourcePath = Path.Combine(AppContext.BaseDirectory, "TestData", DbFileName);
             if (!File.Exists(sourcePath))
-                throw new FileNotFoundException($"BD real no encontrada: {sourcePath}", sourcePath);
+                throw new FileNotFoundException($"BD sintética no encontrada: {sourcePath}", sourcePath);
 
-            DbPath = Path.Combine(Path.GetTempPath(), $"sopro_matrixcatalog_real_{Guid.NewGuid():N}.db");
+            DbPath = Path.Combine(Path.GetTempPath(), $"sopro_matrixcatalog_sintetico_{Guid.NewGuid():N}.db");
             File.Copy(sourcePath, DbPath, overwrite: true);
-            // Copia inmutable, igual que ***REMOVED***.
+            // Copia inmutable, igual que ProyectoSinteticoFixture.
             File.SetAttributes(DbPath, FileAttributes.ReadOnly);
         }
 
@@ -915,7 +915,7 @@ public class MatrixCatalogReportUseCasesTests
         return ProjectSessionInfo.Create(ProjectRef.FromEntity(proyecto), dbPath, null, proyecto.DecimalesImporte);
     }
 
-    private static ProjectSessionInfo LeerSessionReal(string dbPath)
+    private static ProjectSessionInfo LeerSessionSintetica(string dbPath)
     {
         using var lectura = new SOPROContext(dbPath);
         var proyecto = lectura.Proyectos.AsNoTracking().First();

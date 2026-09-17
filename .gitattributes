@@ -1,0 +1,30 @@
+# Marca de binarios para el candidato publico (Fase 3.2).
+# `binary` expande a `-text -diff -merge`: Git nunca normaliza fin de linea
+# ni intenta fusionar/diffear estos artefactos.
+
+# Ejecutables e instaladores
+*.exe    binary
+*.dll    binary
+*.pdb    binary
+*.nupkg  binary
+*.snupkg binary
+
+# Recursos graficos
+*.ico    binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.bmp    binary
+*.ttf    binary
+*.woff   binary
+*.woff2  binary
+
+# Firma y claves
+*.pfx    binary
+*.snk    binary
+
+# Datos SQLite (incluye WAL/SHM)
+*.db     binary
+*.db-wal binary
+*.db-shm binary

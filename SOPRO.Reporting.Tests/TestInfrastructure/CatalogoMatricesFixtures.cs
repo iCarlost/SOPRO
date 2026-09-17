@@ -5,28 +5,28 @@ using SOPRO.Data.Context;
 namespace SOPRO.Reporting.Tests.TestInfrastructure;
 
 /// <summary>
-/// Fixture del proyecto real de regresión. Se hace una copia temporal escribible de la BD
-/// real ("***REMOVED***") para que el generador la lea igual
-/// que en producción. La plantilla real NO contiene {fecha_impresion}, por lo que su salida
+/// Fixture del proyecto sintético de regresión (100% sintético). Se hace una copia temporal
+/// escribible de la BD sintética ("PROYECTO SINTETICO VIAL DEMO") para que el generador la lea
+/// igual que en producción. La plantilla no contiene {fecha_impresion}, por lo que su salida
 /// es determinista; se valida con una comprobación explícita.
 /// </summary>
-internal sealed class RealCatalogoFixture : IDisposable
+internal sealed class ProyectoSinteticoCatalogoFixture : IDisposable
 {
-    public RealCatalogoFixture()
+    public ProyectoSinteticoCatalogoFixture()
     {
         var sourcePath = Path.Combine(AppContext.BaseDirectory, "TestData",
-            "***REMOVED***.db");
+            "proyecto-sintetico-vial-demo.db");
         if (!File.Exists(sourcePath))
-            throw new FileNotFoundException($"BD real no encontrada: {sourcePath}", sourcePath);
+            throw new FileNotFoundException($"BD sintética no encontrada: {sourcePath}", sourcePath);
 
-        DbPath = Path.Combine(Path.GetTempPath(), $"sopro_real_catalogo_{Guid.NewGuid():N}.db");
+        DbPath = Path.Combine(Path.GetTempPath(), $"sopro_sintetico_catalogo_{Guid.NewGuid():N}.db");
         File.Copy(sourcePath, DbPath, overwrite: true);
 
         Context = new SOPROContext(DbPath);
         Plantilla = Context.PlantillasReporte.FirstOrDefault()
-            ?? throw new InvalidOperationException("El proyecto real no tiene plantilla de reporte.");
+            ?? throw new InvalidOperationException("El proyecto sintético no tiene plantilla de reporte.");
         Proyecto = Context.Proyectos.First()
-            ?? throw new InvalidOperationException("El proyecto real no tiene proyecto.");
+            ?? throw new InvalidOperationException("El proyecto sintético no tiene proyecto.");
         Matrices = Context.Matrices.AsNoTracking().ToList();
     }
 
@@ -37,7 +37,7 @@ internal sealed class RealCatalogoFixture : IDisposable
     public string DbPath { get; }
 
     /// <summary>
-    /// La plantilla real no debe resolver {fecha_impresion}; si un día la trae, el golden
+    /// La plantilla no debe resolver {fecha_impresion}; si un día la trae, el golden
     /// dejaría de ser determinista y el fixture debe fallar en lugar de enmascarar la fecha.
     /// </summary>
     public void AssertPlantillaSinFechaImpresion()
@@ -48,7 +48,7 @@ internal sealed class RealCatalogoFixture : IDisposable
             Plantilla.PiePaginaCenContenido ?? "", Plantilla.PiePaginaDerContenido ?? "");
         if (joined.Contains("{fecha_impresion}", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException(
-                "La plantilla del proyecto real usa {fecha_impresion}; el golden deja de ser determinista.");
+                "La plantilla del proyecto sintético usa {fecha_impresion}; el golden deja de ser determinista.");
     }
 
     public void Dispose()
@@ -253,6 +253,6 @@ internal sealed class SinteticoCatalogoFixture : IDisposable
     public void Dispose()
     {
         Context.Dispose();
-        RealCatalogoFixture.TryDelete(DbPath);
+        ProyectoSinteticoCatalogoFixture.TryDelete(DbPath);
     }
 }

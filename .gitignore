@@ -417,9 +417,41 @@ FodyWeavers.xsd
 *.msm
 *.msp
 
-# Deepwork session state (git-local)
-.slim/deepwork/
+# ==========================================================================
+# Candidato publico: higiene del arbol fuente (Fase 3.2)
+# Fuente: docs/open-source/decision-record.md secciones 2 y 4;
+#         docs/open-source/sanitization-manifest.md secciones 3.1-3.4.
+# Nota: excluir aqui no desrastrea lo ya rastreado; la purga real
+# (git rm --cached) ocurre en Fase 3.1/4.
+# ==========================================================================
 
-# SQLite WAL/SHM artefacts generados por los tests sobre la BD real
+# Estado local de herramientas de agente (jamas publico)
+.bob/
+.opencode/
+.ignore
+.slim/
+
+# Datos reales y artefactos SQLite (decision-record seccion 2)
+*.db
 *.db-wal
 *.db-shm
+
+# Excepcion: el fixture sintetico es un .db rastreado por diseno (Fase 3.1).
+# Un clon limpio y la CI lo necesitan para ejecutar la suite de regresion.
+!SOPRO.Tests/TestData/proyecto-sintetico-vial-demo.db
+
+# Instaladores: viven solo como assets de SOPRO-Releases (decision-record seccion 4)
+installer/*.exe
+
+# Secretos y material de firma
+*.pfx
+*.snk
+*.key
+*.pem
+*.env
+*.publishsettings
+
+# Artefactos generados fuera de bin/obj
+.artifacts/
+TestResults/
+publish/

@@ -16,16 +16,112 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  repository-hygiene:
+    name: Forbidden files and ignore rules
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # Gate del candidato publico: el arbol rastreado no debe contener datos
+      # reales, instaladores, herramientas locales ni secretos. Falla hasta que
+      # la purga (Fase 3.1/4) ejecute `git rm --cached` sobre lo ya rastreado.
+      - name: Detect forbidden files in the tracked tree
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          patterns=(
+            '(^|/)\.bob/'
+            '(^|/)\.opencode/'
+            '(^|/)\.slim/'
+            '(^|/)\.ignore$'
+            '(^|/)installer/.*\.exe$'
+            '\.db$'
+            '\.db-wal$'
+            '\.db-shm$'
+            '\.pfx$'
+            '\.snk$'
+            '\.key$'
+            '\.pem$'
+            '\.env$'
+            '\.publishsettings$'
+            '(^|/)bin/'
+            '(^|/)obj/'
+            '(^|/)TestResults/'
+            '(^|/)publish/'
+            '(^|/)\.artifacts/'
+            '(^|/)Goldens/.*\.Real\.'
+          )
+
+          forbidden="$(IFS='|'; echo "${patterns[*]}")"
+
+          # Exencion exacta: el fixture sintetico es un .db rastreado por diseno
+          # (Fase 3.1). Sin el, un clon limpio/CI no ejecuta la suite de regresion.
+          # El resto de .db, goldens Real e instaladores siguen prohibidos hasta
+          # que la purga (Fase 4.2) los retire de todos los refs.
+          exempt="SOPRO.Tests/TestData/proyecto-sintetico-vial-demo.db"
+
+          violations="$(git ls-files | grep -v -x -F -- "$exempt" | grep -E "$forbidden" || true)"
+
+          if [ -n "$violations" ]; then
+            while IFS= read -r file; do
+              echo "::error file=$file::Prohibited file tracked: $file"
+            done <<< "$violations"
+            echo "El arbol rastreado contiene archivos prohibidos; completa la purga antes de publicar."
+            exit 1
+          fi
+
+          echo "OK: no se detectan archivos prohibidos en el arbol rastreado."
+
+      - name: Verify .gitignore excludes local tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in .bob .opencode .ignore .slim; do
+            if git check-ignore -q -- "$path"; then
+              echo "OK: .gitignore excluye '$path'"
+            else
+              echo "::error::.gitignore debe excluir '$path'"
+              exit 1
+            fi
+          done
+
+      - name: Verify required files are not ignored
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            AGENTS.md
+            SOPRO.sln
+            README.md
+            build-release.ps1
+            installer/SOPRO-InnoSetup.iss
+            SOPRO.Calculation/SOPRO.Calculation.csproj
+          )
+          for path in "${required[@]}"; do
+            if git check-ignore -q -- "$path"; then
+              echo "::error::'$path' no debe estar ignorado"
+              exit 1
+            fi
+          done
+          echo "OK: archivos requeridos no estan ignorados"
+
   solution-build:
     name: Solution build and tests
     runs-on: windows-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: 10.0.400
 
@@ -51,10 +147,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: 10.0.400
 
@@ -76,10 +174,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: 10.0.400
 
@@ -134,7 +234,7 @@ jobs:
           if ($dependencies.Count -ne 0) { throw "Runtime dependencies are not allowed." }
 
       - name: Upload validated private artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: SOPRO.Calculation-0.1.0
           path: |
@@ -149,15 +249,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: 10.0.400
 
       - name: Download validated package artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: SOPRO.Calculation-0.1.0
           path: .artifacts/packages

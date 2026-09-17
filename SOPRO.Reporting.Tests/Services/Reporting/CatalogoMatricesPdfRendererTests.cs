@@ -87,13 +87,13 @@ public class CatalogoMatricesPdfRendererTests
     }
 
     [TestMethod]
-    public void CatalogoMatricesPdf_***REMOVED***_HashParidadLegacy_CubrePlantillaLibre()
+    public void CatalogoMatricesPdf_ProyectoSintetico_HashParidadLegacy_CubrePlantillaLibre()
     {
-        using var fixture = new RealCatalogoFixture();
+        using var fixture = new ProyectoSinteticoCatalogoFixture();
         fixture.AssertPlantillaSinFechaImpresion();
 
-        // Ruta central de 78f801c: el escenario real usa la plantilla libre (elementos),
-        // imagen QR, las cuatro alturas de franja y campos de página. Se verifica la
+        // Ruta central de 78f801c: el escenario sintético usa la plantilla libre (elementos),
+        // imagen, las cuatro alturas de franja y campos de página. Se verifica la
         // PROYECCIÓN al documento neutral ANTES de comparar el hash, para que esta paridad
         // ejerza explícitamente el camino libre (dictamen Oracle N7-18c).
         var plantilla = fixture.Context.PlantillasReporte.AsNoTracking().First();
@@ -105,11 +105,11 @@ public class CatalogoMatricesPdfRendererTests
             .OrderBy(e => e.ZOrder).ThenBy(e => e.Id).ToList();
 
         Assert.IsTrue(elementosHeader.Count > 0,
-            "El escenario real debe ejercer el camino de elementos libres del encabezado.");
+            "El escenario sintético debe ejercer el camino de elementos libres del encabezado.");
         Assert.IsTrue(elementosFooter.Count > 0,
-            "El escenario real debe ejercer el camino de elementos libres del pie.");
+            "El escenario sintético debe ejercer el camino de elementos libres del pie.");
         Assert.IsTrue(elementosObj.Any(e => e.Tipo == "Imagen" && e.ImagenBytes is { Length: > 0 }),
-            "El encabezado libre real lleva la imagen QR embebida (bytes).");
+            "El encabezado libre sintético lleva una imagen embebida (bytes).");
 
         var doc = BuildDocument(fixture.Proyecto, fixture.DbPath, fixture.Matrices.Select(m => m.Id), filtroTitulo: "Todos");
 
@@ -126,7 +126,7 @@ public class CatalogoMatricesPdfRendererTests
             doc.FooterElements.Select(e => e.X).ToList(),
             "El orden (ZOrder, Id) de los elementos del pie es definitivo.");
         Assert.IsTrue(doc.HeaderElements.Any(e => e.Kind == MatrixCatalogPageElementKind.Imagen && e.ImageBytes.Count > 0),
-            "La imagen QR viaja al documento neutral como bytes inmutables.");
+            "La imagen viaja al documento neutral como bytes inmutables.");
         Assert.IsTrue(doc.FooterElements.Any(e => e.Content.Contains("{pagina}", StringComparison.OrdinalIgnoreCase)),
             "El campo de página del pie libre queda sin resolver para el medio.");
 
@@ -135,22 +135,22 @@ public class CatalogoMatricesPdfRendererTests
         Assert.AreEqual(plantilla.PiePaginaAltura, doc.PageHeights.FooterHeight, "PiePaginaAltura se proyecta.");
         Assert.AreEqual(plantilla.AlturaPieDmm, doc.PageHeights.FooterHeightDmm, "AlturaPieDmm se proyecta.");
 
-        var tmp = TempPdf("real");
+        var tmp = TempPdf("proyecto-sintetico");
         try
         {
             byte[] bytes = new CatalogoMatricesPdfRenderer().Render(doc, CultureInfo.InvariantCulture);
             File.WriteAllBytes(tmp, bytes);
 
             var normalizado = PdfNormalizador.Normalizar(
-                tmp, "proyecto-real", "***REMOVED***");
+                tmp, "proyecto-sintetico", "proyecto-sintetico-vial-demo");
 
-            Snapshots.AssertSha256("CatalogoMatricesPdf.Real.Legacy.sha256", normalizado.Sha256, "proyecto real");
-            Snapshots.AssertOrRegenerar("CatalogoMatricesPdf.Real.Legacy.manifest.json",
+            Snapshots.AssertSha256("CatalogoMatricesPdf.ProyectoSintetico.Legacy.sha256", normalizado.Sha256, "proyecto sintético");
+            Snapshots.AssertOrRegenerar("CatalogoMatricesPdf.ProyectoSintetico.Legacy.manifest.json",
                 normalizado.ManifestJson, rutaGolden =>
                 {
                     var m = System.Text.Json.JsonSerializer
                         .Deserialize<PdfManifestData>(normalizado.ManifestJson)!;
-                    Assert.IsTrue(m.Paginas >= 1, "El reporte real debe tener al menos una página.");
+                    Assert.IsTrue(m.Paginas >= 1, "El reporte sintético debe tener al menos una página.");
                     Console.WriteLine($"Golden regenerado: {rutaGolden}");
                 });
         }

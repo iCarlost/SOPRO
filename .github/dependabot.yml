@@ -1,0 +1,19 @@
+# Mantiene actualizadas las dependencias del candidato publico (Fase 3.2).
+# El ecosistema github-actions tambien actualiza los SHA fijados en los workflows.
+version: 2
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"

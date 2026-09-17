@@ -1,0 +1,26 @@
+# Default owners for everything in the repo
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Arquitectura y decisiones tecnicas
+*.md @iCarlost
+
+# Motor de calculo
+SOPRO.Calculation/ @iCarlost
+
+# Casos de uso y contratos
+SOPRO.Application/ @iCarlost
+
+# Persistencia
+SOPRO.Data/ @iCarlost
+
+# Reporting
+SOPRO.Reporting/ @iCarlost
+SOPRO.Reporting.Tests/ @iCarlost
+
+# UI
+SOPRO.WinForms/ @iCarlost
+
+# CI/CD y release
+.github/ @iCarlost
+build-release.ps1 @iCarlost
+installer/ @iCarlost

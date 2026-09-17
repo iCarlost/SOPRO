@@ -177,7 +177,7 @@ N3 y N4 pueden avanzar en paralelo con N1 y N2 siempre que no alteren los mismos
 1. Confirmar y conservar el descubrimiento de los 63 tests actuales.
 2. Crear un manifiesto de escenarios dorados.
 3. Congelar el escenario sintético oficial.
-4. Congelar el proyecto real `***REMOVED***.db` mediante snapshot canónico.
+4. Congelar el escenario sintético `proyecto-sintetico-vial-demo.db` mediante snapshot canónico.
 5. Caracterizar los dos constructores, 15 métodos y `DesglosePrecios`.
 6. Añadir pruebas directas para `RecalculoGlobalService` y `PricePropagationService`.
 7. Caracterizar preview con conceptos y preview de referencia con y sin `Proyecto`.

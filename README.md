@@ -1,87 +1,42 @@
-# 🏗️ SOPRO — Sistema de Presupuestación de Obra Pública
+# SOPRO
 
-![CI](https://github.com/iCarlost/SOPRO/actions/workflows/ci.yml/badge.svg)
-![Licencia](https://img.shields.io/badge/Licencia-MIT-blue.svg)
+Sistema de Presupuestacion de Obra Publica.
 
-## 📌 Descripción
+[![CI](https://github.com/iCarlost/SOPRO/actions/workflows/ci.yml/badge.svg)](https://github.com/iCarlost/SOPRO/actions)
+[![License: MIT](https://img.shields.io/badge/Licencia-MIT-blue.svg)](LICENSE)
 
-SOPRO es una aplicación de escritorio desarrollada en C# (.NET) orientada a la presupuestación de obra pública mediante análisis de precios unitarios (APU).
+## Descripcion
 
-> **Estado de distribución:** el repositorio de código fuente es privado. Los instaladores publicados en `SOPRO-Releases` son un canal separado y no implican que el código fuente o futuros paquetes internos sean públicos.
+SOPRO es una aplicacion de escritorio desarrollada en C# (.NET 8) para la presupuestacion de obra publica mediante analisis de precios unitarios (APU).
 
-El sistema integra en un solo entorno:
+El sistema integra:
 
-* Presupuesto de obra
-* Matrices de precios unitarios
-* Explosión de insumos
-* Programa de obra (Gantt y Curva S)
-* Análisis financiero
+- Presupuesto de obra
+- Matrices de precios unitarios
+- Explosion de insumos
+- Programa de obra (Gantt y Curva S)
+- Analisis financiero
+- Reportes en PDF y Excel
 
----
-
-## 🧠 Arquitectura
-
-La implementación actual sigue una arquitectura por capas:
+## Arquitectura
 
 ```
-SOPRO.Core        → Entidades
-SOPRO.Application → Lógica de negocio
-SOPRO.Data        → Persistencia (SQLite)
-SOPRO.WinForms    → Interfaz de usuario
+SOPRO.Calculation  -> Motor de calculo independiente
+SOPRO.Core         -> Entidades
+SOPRO.Application  -> Casos de uso y contratos
+SOPRO.Data         -> Persistencia (SQLite / EF Core)
+SOPRO.Reporting    -> Generadores PDF y Excel
+SOPRO.WinForms     -> Interfaz de usuario
 ```
 
-### ⚠️ Reglas de arquitectura
+### Reglas
 
-* No duplicar lógica ni mover lógica de negocio a la UI
-* Los proyectos o dependencias estructurales nuevos requieren una decisión arquitectónica documentada
-* El motor de cálculo debe ser único y consumirse a través de la ruta canónica
-* La UI no debe acceder directamente a persistencia en los módulos desacoplados
-* Los cambios de estructura no deben alterar resultados contables sin una decisión explícita
+- No duplicar logica ni mover logica de negocio a la UI.
+- El motor de calculo debe ser unico y consumirse via la ruta canonica.
+- Los proyectos nuevos o inversiones de dependencia requieren un ADR aprobado.
+- Las decisiones arquitectonicas estan documentadas en [ADR-001](ADR-001-ARQUITECTURA-OBJETIVO.md).
 
-### Arquitectura objetivo y planes internos
-
-La evolución planificada hacia un motor reutilizable y una UI WPF está documentada internamente en:
-
-* [ADR-001: Arquitectura objetivo](ADR-001-ARQUITECTURA-OBJETIVO.md)
-* [Plan 01: Desacoplamiento del núcleo y la aplicación](PLAN-01-DESACOPLAMIENTO-NUCLEO-APLICACION.md)
-* [Plan 02: Migración modular de WinForms a WPF](PLAN-02-MIGRACION-WINFORMS-WPF.md)
-
----
-
-## ⚙️ Tecnologías
-
-* C# / .NET 8
-* WinForms
-* SQLite
-* EF Core
-* ClosedXML (Excel)
-* PDFsharp / MigraDoc (PDF)
-
----
-
-## 📊 Módulos principales
-
-* Presupuesto
-* Matrices (APU)
-* Explosión de insumos
-* Programa de obra
-* Financiamiento
-* Reportes
-
----
-
-## 🧮 Motor de cálculo
-
-El sistema utiliza un motor de cálculo centralizado que:
-
-* Aplica precisión de pantalla
-* Maneja redondeos controlados
-* Calcula importes y precios unitarios
-* Soporta insumos tipo `%MO`
-
----
-
-## 🛠️ Compilar desde el código
+## Compilar
 
 Requisitos: [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (Windows).
 
@@ -90,87 +45,56 @@ dotnet restore SOPRO.sln
 dotnet build SOPRO.sln -c Release
 ```
 
-## 🧪 Pruebas
-
-El proyecto incluye pruebas unitarias en `SOPRO.Tests`:
+## Pruebas
 
 ```powershell
-dotnet test SOPRO.sln
+dotnet test SOPRO.sln -c Release
 ```
 
-Las pruebas cubren cálculo de importes, motor de cálculo, redondeo, `%MO` e invariantes del sistema.
+## Empaquetado
 
----
-
-## 📦 Publicar una release
-
-1. Actualizar versión en `SOPRO.WinForms.csproj` e `installer/SOPRO-InnoSetup.iss`.
+1. Actualizar la version en `SOPRO.WinForms.csproj` y `installer/SOPRO-InnoSetup.iss`.
 2. Ejecutar el script de empaquetado (requiere [Inno Setup 6](https://jrsoftware.org/isdl.php)):
 
 ```powershell
-.\build-release.ps1 -Version 1.6.0
+.\build-release.ps1 -Version X.Y.Z
 ```
 
-3. Crear el release en GitHub y adjuntar `SOPRO-Setup-<versión>.exe`.
+3. Crear el release en GitHub y adjuntar `SOPRO-Setup-<version>.exe`.
 
-La app consulta las actualizaciones desde el repositorio de instaladores (`iCarlost/SOPRO-Releases`), por lo que cada versión distribuida debe publicarse allí con su etiqueta `vX.Y.Z`. Este canal de binarios es independiente de la visibilidad privada del repositorio fuente.
+La aplicacion consulta actualizaciones desde `iCarlost/SOPRO-Releases`. Cada version distribuida debe publicarse ahi con su etiqueta `vX.Y.Z`.
 
----
+## Persistencia
 
-## 📁 Persistencia
+- Base de datos: SQLite (.db), un archivo por proyecto.
+- Esquema gestionado por `SchemaManager`.
 
-* Base de datos: SQLite (.db)
-* Un archivo por proyecto
-* Manejo de esquema mediante SchemaManager
-
----
-
-## 📦 Versionado
-
-Ejemplo:
+## Versionado
 
 ```
-v1.4.3
+v1.6.0
 ```
 
-* Cambios funcionales → minor
-* Correcciones → patch
-* Cambios estructurales → major
+- Cambios funcionales: minor
+- Correcciones: patch
+- Cambios estructurales: major
 
----
+## Contribuciones
 
-## ⚠️ Consideraciones importantes
+Lee [CONTRIBUTING.md](CONTRIBUTING.md) antes de enviar un cambio. Toda contribucion comienza con un Issue.
 
-* No romper compatibilidad de cálculo
-* Mantener consistencia entre módulos
-* Respetar precisión de pantalla
-* Validar cambios con pruebas unitarias
+## Seguridad
 
----
+Para reportar vulnerabilidades, consulta [SECURITY.md](SECURITY.md). Utiliza el canal de **Private Vulnerability Reporting** de GitHub.
 
-## 🚀 Flujo de desarrollo
+## Soporte
 
-1. Realizar cambios
-2. Ejecutar pruebas
-3. Validar comportamiento
-4. Actualizar versión
-5. Generar instalador
-6. Publicar en releases
+Consulta [SUPPORT.md](SUPPORT.md). El soporte es best-effort sobre la ultima version estable.
 
----
-
-## 🤝 Contribuciones
-
-Consulta [CONTRIBUTING.md](CONTRIBUTING.md) antes de enviar un Pull Request.
-
----
-
-## ⚖️ Licencia
+## Licencia
 
 SOPRO se distribuye bajo la licencia **MIT**. Ver [LICENSE](LICENSE).
 
----
+La licencia MIT aplica al codigo fuente y documentacion tecnica del repositorio. **No cubre** el nombre comercial "SOPRO", logotipos, identidad visual, emblemas, iconos, plantillas ni contenido editorial. Los recursos de terceros conservan sus licencias originales (ver [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)).
 
-## 👤 Autor
-
-Carlos Pérez
+El nombre "SOPRO" es utilizado bajo responsabilidad del titular del repositorio. Esta licencia no concede derechos exclusivos de marca ni exime al usuario de verificar la disponibilidad y compatibilidad de marcas registradas en su jurisdiccion.

@@ -69,11 +69,11 @@ public class CatalogoMatricesExcelRendererTests
     }
 
     [TestMethod]
-    public void CatalogoMatricesExcel_***REMOVED***_ParidadConGoldenLegacy()
+    public void CatalogoMatricesExcel_ProyectoSintetico_ParidadConGoldenLegacy()
     {
-        using var fixture = new RealCatalogoFixture();
+        using var fixture = new ProyectoSinteticoCatalogoFixture();
         fixture.AssertPlantillaSinFechaImpresion();
-        var tmp = TempXlsx("real");
+        var tmp = TempXlsx("proyecto-sintetico");
         try
         {
             var doc = BuildDocument(fixture.Proyecto, fixture.DbPath, fixture.Matrices.Select(m => m.Id), filtroTitulo: "Todos");
@@ -81,12 +81,12 @@ public class CatalogoMatricesExcelRendererTests
             File.WriteAllBytes(tmp, bytes);
 
             var snap = XlsxSemanticSnapshot.Of(
-                tmp, "proyecto-real", "***REMOVED***",
+                tmp, "proyecto-sintetico", "proyecto-sintetico-vial-demo",
                 fixture.Matrices.OrderBy(m => m.Clave).Select(m => m.Clave),
                 "test-directo");
 
-            Snapshots.AssertOrRegenerar("CatalogoMatricesExcel.Real.Legacy.json",
-                Snapshots.ToJson(snap), rutaGolden => SanityReal(snap, rutaGolden));
+            Snapshots.AssertOrRegenerar("CatalogoMatricesExcel.ProyectoSintetico.Legacy.json",
+                Snapshots.ToJson(snap), rutaGolden => SanityProyectoSintetico(snap, rutaGolden));
         }
         finally
         {
@@ -99,7 +99,7 @@ public class CatalogoMatricesExcelRendererTests
         File.WriteAllBytes(tmp, bytes);
         return XlsxSemanticSnapshot.Of(
             tmp, escenario,
-            escenario == "sintetico" ? "seeds-sintetico" : "***REMOVED***",
+            escenario == "sintetico" ? "seeds-sintetico" : "proyecto-sintetico-vial-demo",
             IEnumerableClaves(fixture),
             "test-directo");
     }
@@ -107,7 +107,7 @@ public class CatalogoMatricesExcelRendererTests
     private static IEnumerable<string> IEnumerableClaves(object fixture)
     {
         if (fixture is SinteticoCatalogoFixture f1) return f1.Matrices.OrderBy(m => m.Clave).Select(m => m.Clave);
-        if (fixture is RealCatalogoFixture f2) return f2.Matrices.OrderBy(m => m.Clave).Select(m => m.Clave);
+        if (fixture is ProyectoSinteticoCatalogoFixture f2) return f2.Matrices.OrderBy(m => m.Clave).Select(m => m.Clave);
         return Array.Empty<string>();
     }
 
@@ -140,11 +140,11 @@ public class CatalogoMatricesExcelRendererTests
         Console.WriteLine($"Golden regenerado: {rutaGolden}");
     }
 
-    private static void SanityReal(XlsxSemanticSnapshot snap, string rutaGolden)
+    private static void SanityProyectoSintetico(XlsxSemanticSnapshot snap, string rutaGolden)
     {
-        Assert.IsTrue(snap.Celdas.Any(c => c.T == "num" && c.V == "***REMOVED***"),
-            "La cuadrilla real CU001 debe guardar el SalarioReal crudo ***REMOVED*** del MO.");
-        Assert.AreEqual(7, snap.Matrices.Count, "El proyecto real tiene 7 matrices.");
+        Assert.IsTrue(snap.Celdas.Any(c => c.T == "num" && c.V == "5504.600535"),
+            "La cuadrilla CU001 del proyecto sintético debe guardar el SalarioReal crudo 5504.600535 del MO.");
+        Assert.AreEqual(7, snap.Matrices.Count, "El proyecto sintético tiene 7 matrices.");
         Console.WriteLine($"Golden regenerado: {rutaGolden}");
     }
 

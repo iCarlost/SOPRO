@@ -26,7 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\SOPRO.Tests\TestData\***REMOVED***.db" Link="TestData\***REMOVED***.db">
+    <None Include="..\SOPRO.Tests\TestData\proyecto-sintetico-vial-demo.db" Link="TestData\proyecto-sintetico-vial-demo.db">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="TestData\Goldens\*.json">

@@ -148,7 +148,7 @@ Antes de generar instalador:
 
 ### Siguiente evolución recomendada
 
-Cuando se tenga un proyecto real estable de SOPRO, se puede crear un caso de regresión con sus totales reales:
+Cuando se tenga un escenario estable de SOPRO, se puede crear un caso de regresión con sus totales:
 
 - Costo directo total
 - Total de materiales
@@ -159,24 +159,24 @@ Cuando se tenga un proyecto real estable de SOPRO, se puede crear un caso de reg
 - Curva S final
 - Financiamiento final
 
-Ese caso real debe quedar congelado como prueba de regresión institucional.
+Ese caso debe quedar congelado como prueba de regresión institucional.
 
-## Suite de regresión con proyecto real
+## Suite de regresión con proyecto sintético
 
 Se agregó el archivo de prueba:
 
-`Services/***REMOVED***/***REMOVED******REMOVED***RegressionTests.cs`
+`Services/RegresionSintetica/ProyectoSinteticoRegressionTests.cs`
 
-Este bloque usa una copia del proyecto real:
+Este bloque usa una copia del proyecto sintético (100% sintético, sin datos reales):
 
-`TestData/***REMOVED***.db`
+`TestData/proyecto-sintetico-vial-demo.db`
 
-No modifica el archivo original; cada prueba crea una copia temporal. La finalidad es congelar resultados reales del proyecto para detectar regresiones antes de liberar versiones nuevas.
+No modifica el archivo original; cada prueba crea una copia temporal. La finalidad es congelar resultados del escenario representativo para detectar regresiones antes de liberar versiones nuevas.
 
 Valores congelados principales:
 
-- Costo directo terminal: ***REMOVED***
-- Importe total terminal: ***REMOVED***
+- Costo directo terminal: 4,454,847.92
+- Importe total terminal: 5,457,326.28
 - Conceptos terminales: 6
 - Matrices: 7
 - Componentes de matriz: 11

@@ -27,26 +27,26 @@ Composición del APU: material (1×$60) + oficial (1×$30) + cabo `%MO` (0.10×$
 
 ---
 
-## 2. Escenario real congelado: ***REMOVED***
+## 2. Escenario sintético congelado: PROYECTO SINTETICO VIAL DEMO
 
-Snapshot canónico: `SOPRO.Tests\TestData\***REMOVED***.db`, abierto en copia de solo lectura por `***REMOVED***.OpenReadOnlyCopy`.
+Snapshot canónico: `SOPRO.Tests\TestData\proyecto-sintetico-vial-demo.db`, abierto en copia de solo lectura por `ProyectoSinteticoFixture.OpenReadOnlyCopy`. Es un escenario 100% sintético (sin nombres, convocantes, precios ni datos de cliente reales); sustituye al antiguo escenario real en la Fase 3.1 de saneamiento.
 
 | Concepto | Valor congelado | Evidencia |
 |---|---|---|
-| Configuración | Acumulables, Decimales 4/2/4 | `***REMOVED***_DebeConservarConfiguracionYTotalesBase` |
+| Configuración | Acumulables, Decimales 4/2/4 | `ProyectoSintetico_DebeConservarConfiguracionYTotalesBase` |
 | Dimensiones | 11 conceptos, 6 terminales, 7 matrices, 11 componentes | Ídem |
-| CD terminales | `***REMOVED***` | Ídem |
-| Importe terminales | `***REMOVED***` | Ídem |
-| Capítulo PRELIMINARES | `***REMOVED***` | `***REMOVED***_DebeConservarTotalesPorCapitulo` |
-| Capítulo LIMPIEZA DE ***REMOVED*** | `***REMOVED***` | Ídem |
-| Capítulo ACARREOS | `***REMOVED***` | Ídem |
-| Capítulo LIMPIEZA | `***REMOVED***` | Ídem |
-| Explosión | CD presupuesto = CD total = `***REMOVED***` | `***REMOVED***_ExplosionDebeReconciliar...` |
-| Programa de obra | 12 periodos, 11 actividades, 6 terminales, 55 distribuciones; suma importe `***REMOVED***`, cantidad `49,102.53`, % `600.00` | `***REMOVED***_ProgramaObraDebeConservar...` |
-| Programa de insumos | Suma importes = `***REMOVED***` | `***REMOVED***_ProgramaInsumosDebeReconciliar...` |
-| Financiamiento | Anticipo 30%, 13 filas, AnticipoRecibido `***REMOVED***`, Egresos `***REMOVED***`, Estimación `***REMOVED***`, Saldo mínimo `***REMOVED***` | `***REMOVED***_FinanciamientoDebeConservarFlujoCongelado` |
-| Snapshot semántico ampliado | 112 líneas normalizadas en 11 secciones: `PR` proyecto (modo, precisiones 4/2/4, porcentajes y FSR), `C` conceptos (11, con padre canónico, Orden, Unidad y matriz asignada), `M` matrices (7), `X` componentes (11, con insumo/cantidad/rendimiento/importe), `IM`/`IMO`/`IMAQ`/`IHER` insumos base (9), `A` actividades terminales (6), `P` periodos (12), `D` distribuciones (55) | `***REMOVED***_SnapshotSemanticoNormalizado_DebeMantenerseCongelado` |
-| Sensibilidad del snapshot | Mutar un precio de insumo altera la sección `IM`; mutar el importe persistido del componente altera la sección `X` (ambas mutaciones se aplican y verifican explícitamente) | `***REMOVED***_SnapshotSemantico_DetectaMutacionDePrecioEnInsumo` |
+| CD terminales | `4,454,847.92` | Ídem |
+| Importe terminales | `5,457,326.28` | Ídem |
+| Capítulo PRELIMINARES | `281,983.52` | `ProyectoSintetico_DebeConservarTotalesPorCapitulo` |
+| Capítulo LIMPIEZA DE TERRENO | `1,001,979.87` | Ídem |
+| Capítulo ACARREOS | `3,716,486.89` | Ídem |
+| Capítulo LIMPIEZA | `456,876.00` | Ídem |
+| Explosión | CD presupuesto = CD total = `4,454,847.92` | `ProyectoSintetico_ExplosionDebeReconciliar...` |
+| Programa de obra | 12 periodos, 11 actividades, 6 terminales, 55 distribuciones; suma importe `5,457,326.28`, cantidad `49,102.53`, % `600.00` | `ProyectoSintetico_ProgramaObraDebeConservar...` |
+| Programa de insumos | Suma importes = `4,454,847.92` | `ProyectoSintetico_ProgramaInsumosDebeReconciliar...` |
+| Financiamiento | Anticipo 30%, 13 filas, AnticipoRecibido `1,637,197.87`, Egresos `4,890,977.49`, Estimación `5,457,326.28`, Saldo mínimo `89,674.34` | `ProyectoSintetico_FinanciamientoDebeConservarFlujoCongelado` |
+| Snapshot semántico ampliado | 112 líneas normalizadas en 11 secciones: `PR` proyecto (modo, precisiones 4/2/4, porcentajes y FSR), `C` conceptos (11, con padre canónico, Orden, Unidad y matriz asignada), `M` matrices (7), `X` componentes (11, con insumo/cantidad/rendimiento/importe), `IM`/`IMO`/`IMAQ`/`IHER` insumos base (9), `A` actividades terminales (6), `P` periodos (12), `D` distribuciones (55) | `ProyectoSintetico_SnapshotSemanticoNormalizado_DebeMantenerseCongelado` |
+| Sensibilidad del snapshot | Mutar un precio de insumo altera la sección `IM`; mutar el importe persistido del componente altera la sección `X` (ambas mutaciones se aplican y verifican explícitamente) | `ProyectoSintetico_SnapshotSemantico_DetectaMutacionDePrecioEnInsumo` |
 
 Regla de normalización de snapshots: nunca excluir valores económicos, jerarquía, precisión ni flags funcionales; normalizar solo IDs técnicos, timestamps, rutas y orden de filas.
 
@@ -70,7 +70,7 @@ Entradas inválidas (`null`, JSON vacío/inválido, salario ≤ 0) devuelven `nu
 
 - **Cultura:** los formatos del motor consultan `CurrentCulture` en cada llamada; los tests de formato usan `CultureScope` con cultura clonada/controlada (`MotorCalculoSoproFormattingTests`) o culturas con separadores realmente distintos (`es-MX` coma de millar / `de-DE` coma decimal) para detectar un cacheo de cultura (`MotorCalculoSoproEdgeCaseTests`).
 - **BD:** `TestDbFactory` crea una SQLite temporal única por prueba (`%TEMP%\sopro_tests_{guid}.db`), con `EnsureDeleted` + `EnsureCreated`. Las pruebas de persistencia cierran el contexto y reabren la misma ruta (`%TEMP%\sopro_persist_{guid}.db`).
-- **Proyecto real:** cada test opera sobre una copia de solo lectura en `%TEMP%` (atributo `ReadOnly` + `Mode=ReadOnly`); el `.db` fuente es inmutable y cualquier escritura accidental falla (`***REMOVED***_CopiaInmutable_DebeRechazarEscrituras`).
+- **Proyecto sintético:** cada test opera sobre una copia de solo lectura en `%TEMP%` (atributo `ReadOnly` + `Mode=ReadOnly`); el `.db` fuente es inmutable y cualquier escritura accidental falla (`ProyectoSintetico_CopiaInmutable_DebeRechazarEscrituras`).
 - **Precisión y orden:** los escenarios fijan DecimalesCantidad/Importe/Porcentaje y porcentajes de proyecto; el motor de la fachada usa `MidpointRounding.AwayFromZero`.
 - **Reloj:** el reloj NO es fuente de determinismo económico. `FechaModificacion` se escribe con `DateTime.Now` en `RecalculoGlobalService` (conceptos hoja, agrupadores y actividades) y es un campo de auditoría: ningún escenario dorado congelado depende del valor del reloj, solo de la aritmética del motor.
 
@@ -97,7 +97,7 @@ Mutaciones caracterizadas: `EsCostoCalculado = true` y `FechaCalculoCosto` dentr
 | Escenario | Propietario | Estado |
 |---|---|---|
 | CasoOficial001 (sintético) | ***REMOVED*** | Congelado |
-| ***REMOVED*** | ***REMOVED*** + QA contable | Congelado |
+| PROYECTO SINTETICO VIAL DEMO (sintético) | ***REMOVED*** + QA contable | Congelado |
 | Goldens FSR | ***REMOVED*** | Congelado |
 | Golden Costo Horario (legacy Core) | ***REMOVED*** | Congelado |
 
@@ -112,7 +112,7 @@ Composición (34 tests en 6 clases; filtro `FullyQualifiedName~` por clase):
 | Clase | Tests | Escenario |
 |---|---|---|
 | `SuiteValidacionOficialSoproTests` | 4 | CasoOficial001 sintético |
-| `***REMOVED******REMOVED***RegressionTests` | 10 | Proyecto real + snapshot semántico |
+| `ProyectoSinteticoRegressionTests` | 10 | Proyecto sintético + snapshot semántico |
 | `RecalculoGlobalServiceTests` | 7 | Determinismo y corrupción/restauración del recálculo |
 | `PersistenciaRecalculoYPropagacionTests` | 3 | Persistencia al reabrir la BD |
 | `FsrCalculationServiceTests` | 4 | Goldens FSR |
@@ -121,7 +121,7 @@ Composición (34 tests en 6 clases; filtro `FullyQualifiedName~` por clase):
 Comando reproducible (filtro completo usado en las diez pasadas):
 
 ```text
-dotnet test SOPRO.sln --no-restore --no-build --filter "FullyQualifiedName~SuiteValidacionOficialSoproTests|FullyQualifiedName~***REMOVED******REMOVED***RegressionTests|FullyQualifiedName~FsrCalculationServiceTests|FullyQualifiedName~MaquinariaCostoHorarioLegacyTests|FullyQualifiedName~RecalculoGlobalServiceTests|FullyQualifiedName~PersistenciaRecalculoYPropagacionTests"
+dotnet test SOPRO.sln --no-restore --no-build --filter "FullyQualifiedName~SuiteValidacionOficialSoproTests|FullyQualifiedName~ProyectoSinteticoRegressionTests|FullyQualifiedName~FsrCalculationServiceTests|FullyQualifiedName~MaquinariaCostoHorarioLegacyTests|FullyQualifiedName~RecalculoGlobalServiceTests|FullyQualifiedName~PersistenciaRecalculoYPropagacionTests"
 ```
 
 Resultado: 10 ejecuciones consecutivas el 2026-08-11 (34/34 superados, 0 errores, 0 omitidos en cada una; ~3 s por pasada). Resultados idénticos en las 10 pasadas → determinismo confirmado.

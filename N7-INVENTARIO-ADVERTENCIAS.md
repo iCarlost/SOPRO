@@ -48,10 +48,10 @@ No modificar durante N7-0.1:
 - `.github/workflows/ci.yml`
 - `PLAN-01-DESACOPLAMIENTO-NUCLEO-APLICACION.md`
 - `SOPRO.Reporting.Tests/TestData/Goldens/`
-- `SOPRO.Tests/TestData/***REMOVED***.db`
+- `SOPRO.Tests/TestData/proyecto-sintetico-vial-demo.db`
 - Artefactos generados: `bin/`, `obj/`, `TestResults/`, `publish/`
 
-El fixture real es inmutable; las pruebas deben usar copias temporales de solo
+El fixture sintético es inmutable; las pruebas deben usar copias temporales de solo
 lectura. Los goldens son la referencia congelada de compatibilidad.
 
 ### Hashes SHA-256 de goldens
@@ -59,17 +59,17 @@ lectura. Los goldens son la referencia congelada de compatibilidad.
 | Ruta relativa | SHA-256 |
 |---|---|
 | `SOPRO.Reporting.Tests/TestData/Goldens/CatalogoMatricesExcel.Legacy.json` | `c4a7b0b8dd2cff703605486b54d3ec27289116b5fc98e07483513a6382b27b6c` |
-| `SOPRO.Reporting.Tests/TestData/Goldens/CatalogoMatricesExcel.Real.Legacy.json` | `9eed3c08028a11668012ef5f3ade63095b1297d0305e0ef3d78810daa05e458b` |
+| `SOPRO.Reporting.Tests/TestData/Goldens/CatalogoMatricesExcel.ProyectoSintetico.Legacy.json` | `53831d4f4db9b67774721886efb5cee47b3453abb3c491f18066fe950021928f` |
 | `SOPRO.Reporting.Tests/TestData/Goldens/CatalogoMatricesPdf.Legacy.manifest.json` | `bf63fbc1488887459b41bca62a6559f492385a6950dce0d411b608e0a388c79e` |
 | `SOPRO.Reporting.Tests/TestData/Goldens/CatalogoMatricesPdf.Legacy.sha256` | `6897154dc6157cb0ca8a09666aab24033777f362087bfcf7359654a7691fbb02` |
-| `SOPRO.Reporting.Tests/TestData/Goldens/CatalogoMatricesPdf.Real.Legacy.manifest.json` | `fed9914ad04b29d89840296b453c55dd91186f5fde5ea9db2aea72057f238478` |
-| `SOPRO.Reporting.Tests/TestData/Goldens/CatalogoMatricesPdf.Real.Legacy.sha256` | `5b111e1a6b7b27fd5e7633424b3ed44941753d799581cb65cf6655db920c8c70` |
+| `SOPRO.Reporting.Tests/TestData/Goldens/CatalogoMatricesPdf.ProyectoSintetico.Legacy.manifest.json` | `312004292d8c4f20f9244a3f0abd79a4a192eefb4c3d0ec49b4ec9b8214240ab` |
+| `SOPRO.Reporting.Tests/TestData/Goldens/CatalogoMatricesPdf.ProyectoSintetico.Legacy.sha256` | `214afff8cf856011a219f9bdbea578098c247c9810db0644488a91c3447b915f` |
 
-### Hash SHA-256 del fixture real
+### Hash SHA-256 del fixture sintético
 
 | Ruta relativa | SHA-256 |
 |---|---|
-| `SOPRO.Tests/TestData/***REMOVED***.db` | `e79e19476c1377ccbf74499091ebd8779186756dac43c2917215b7c42365729e` |
+| `SOPRO.Tests/TestData/proyecto-sintetico-vial-demo.db` | `92c1e7520145a7e34236b668d2f425afbc432a0dcb20d806e6b20a90bdc6a272` |
 
 ## Alcance de 0.1
 
