@@ -2,7 +2,7 @@
 
 Sistema de Presupuestacion de Obra Publica.
 
-[![CI](https://github.com/iCarlost/SOPRO/actions/workflows/ci.yml/badge.svg)](https://github.com/iCarlost/SOPRO/actions)
+[![CI](https://github.com/iCarlost/SOPRO-public-candidate/actions/workflows/ci.yml/badge.svg)](https://github.com/iCarlost/SOPRO-public-candidate/actions)
 [![License: MIT](https://img.shields.io/badge/Licencia-MIT-blue.svg)](LICENSE)
 
 ## Descripcion
@@ -34,7 +34,6 @@ SOPRO.WinForms     -> Interfaz de usuario
 - No duplicar logica ni mover logica de negocio a la UI.
 - El motor de calculo debe ser unico y consumirse via la ruta canonica.
 - Los proyectos nuevos o inversiones de dependencia requieren un ADR aprobado.
-- Las decisiones arquitectonicas estan documentadas en [ADR-001](ADR-001-ARQUITECTURA-OBJETIVO.md).
 
 ## Compilar
 

@@ -79,7 +79,7 @@ namespace SOPRO.WinForms.Forms
             catch
             {
                 // La verificación de actualizaciones no debe impedir que SOPRO abra.
-                // Puede fallar por falta de internet, GitHub no disponible o repositorio privado sin autenticación.
+                // Puede fallar por falta de internet, GitHub no disponible o falta de autenticación.
             }
         }
 

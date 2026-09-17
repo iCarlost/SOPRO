@@ -99,7 +99,7 @@ public class RecalculoGlobalServiceTests
         Assert.AreEqual(2, resultado.DistribucionesActualizadas);
         Assert.IsTrue(resultado.ProgramaActualizado);
 
-        // ⚠️ DIVERGENCIA DOCUMENTADA (ver N0-TABLA-DECISIONES-DIVERGENCIAS.md):
+        // ⚠️ DIVERGENCIA DOCUMENTADA:
         // La Fase 5 recalcula con los porcentajes existentes (40/60 → 400/600), pero la
         // Fase 6 (RecalcularProgramaObra) ELIMINA esas distribuciones y regenera una
         // distribución UNIFORME por días hábiles (50/50 → 500/500). Por eso el estado
@@ -215,7 +215,7 @@ public class RecalculoGlobalServiceTests
                 "La cantidad por periodo no depende de DecimalesPorcentaje.");
         }
 
-        // Divergencia documentada (N0-TABLA-DECISIONES-DIVERGENCIAS.md, fila 18):
+        // Divergencia documentada (decision de compatibilidad 18):
         // DecimalesPorcentaje NO participa en la cascada económica.
         // El campo PorcentajeProgramado es el MISMO valor decimal en ambos motores
         // (50.0000m == 50m); la diferencia solo es visible en el formato.

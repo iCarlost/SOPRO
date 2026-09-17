@@ -14,7 +14,7 @@
     <PackageTags>calculation;pricing;construction;screen-precision</PackageTags>
     <Description>Nucleo de calculo SOPRO desacoplado: aritmetica con precision de pantalla, cascada de porcentajes y distribucion temporal con ajuste de residuo. Cero dependencias runtime; cero tipos SOPRO en la API publica; API publica en ingles.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>Initial private preview of the standalone calculation engine.</PackageReleaseNotes>
+    <PackageReleaseNotes>Initial preview of the standalone calculation engine.</PackageReleaseNotes>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <DebugType>portable</DebugType>
     <IncludeSymbols>true</IncludeSymbols>

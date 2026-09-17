@@ -95,7 +95,6 @@ jobs:
         run: |
           set -euo pipefail
           required=(
-            AGENTS.md
             SOPRO.sln
             README.md
             build-release.ps1

@@ -10,7 +10,7 @@ namespace SOPRO.WinForms.Services
 {
     /// <summary>
     /// Consulta el último release publicado de SOPRO en GitHub.
-    /// Nota: para repositorios privados, GitHub requiere autenticación; en ese caso la consulta puede responder 404/401.
+    /// Nota: si el origen de actualizaciones no es público, GitHub puede requerir autenticación y responder 404/401.
     /// </summary>
     public sealed class GitHubUpdateService
     {
@@ -32,7 +32,7 @@ namespace SOPRO.WinForms.Services
             {
                 return UpdateCheckResult.Unavailable(
                     $"GitHub respondió {(int)response.StatusCode} {response.ReasonPhrase}. " +
-                    "Si el repositorio es privado, la verificación automática requiere un origen público de actualizaciones o autenticación.");
+                    "Si el origen de actualizaciones no es público, la verificación automática requiere autenticación.");
             }
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);

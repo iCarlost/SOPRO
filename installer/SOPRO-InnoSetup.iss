@@ -23,8 +23,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=.
 OutputBaseFilename=SOPRO-Setup-{#MyAppVersion}
 UninstallDisplayIcon={app}\{#MyAppExeName}
-; Si el icono no está junto al .iss, deja esta línea comentada
-;SetupIconFile=***REMOVED***
+; El icono del instalador es opcional: configura SetupIconFile solo si el .ico esta junto al .iss.
 ChangesAssociations=no
 CloseApplications=yes
 CloseApplicationsFilter={#MyAppExeName}

@@ -22,7 +22,6 @@ No se aceptan Pull Requests sin un Issue asociado abierto o aprobado.
 - El motor de calculo debe ser unico; no crear rutas paralelas de calculo.
 - No romper la compatibilidad de calculo ni la precision de pantalla.
 - Nuevos proyectos, capas o inversiones de dependencia requieren un ADR aprobado.
-- Las excepciones aprobadas estan en `ADR-001-ARQUITECTURA-OBJETIVO.md`.
 - WinForms y WPF consumen los mismos casos de uso; no se permiten rutas paralelas de persistencia o calculo.
 - Ningun cambio debe publicar codigo, paquetes o simbolos en servicios publicos sin aprobacion explicita.
 

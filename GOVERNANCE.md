@@ -8,9 +8,7 @@ SOPRO es mantenido por CEPM. El titular del repositorio toma las decisiones fina
 
 Los cambios estructurales, nuevas capas, proyectos o inversiones de dependencia requieren un **Architecture Decision Record (ADR)** aprobado antes de implementarse.
 
-Los ADRs existentes estan documentados en la raiz del repositorio:
-
-- [ADR-001: Arquitectura objetivo](ADR-001-ARQUITECTURA-OBJETIVO.md)
+Los ADRs se registran como parte del proceso de revision de los cambios estructurales.
 
 ## Modelo de contribuciones
 
@@ -33,7 +31,7 @@ Los maintainers revisan los PRs buscando:
 
 ## Release
 
-El proceso de release esta documentado en [README.md](README.md) y en `AGENTS.md`.
+El proceso de release esta documentado en [README.md](README.md).
 
 ## Seguridad
 

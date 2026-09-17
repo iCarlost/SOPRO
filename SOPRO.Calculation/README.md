@@ -8,7 +8,7 @@ procesa.
 - **Cero dependencias runtime** (solo BCL).
 - **Cero tipos SOPRO en la API publica** (nada de `SOPRO.Core`, `SOPRO.Application`,
   EF ni SQLite).
-- **Distribucion:** paquete privado de preview, version `0.1.0`.
+- **Distribucion:** paquete de preview, version `0.1.0`.
 - Superficie publica minima (hallazgo 2): `CalculationPrecision`,
   `SoproCalculationEngine`, `DirectCostLine`, `PricePercentageInput`,
   `PriceBreakdown` y el enum `PercentageCalculationMode`. El slice de matrices
@@ -119,7 +119,7 @@ DateTime fin = Sopro.Calculation.Calendar.WorkingCalendarCalculator.CalculateFin
     calendario, new DateTime(2026, 1, 5), 5)!.Value;
 ```
 
-## Semantica preservada (decisiones N0, `N0-TABLA-DECISIONES-DIVERGENCIAS.md`)
+## Semantica preservada (decisiones de compatibilidad)
 
 - Decimales negativos se normalizan a cero (fila 7).
 - `Multiply` redondea el P.U. pero no la cantidad (fila 2).
@@ -169,7 +169,7 @@ DateTime fin = Sopro.Calculation.Calendar.WorkingCalendarCalculator.CalculateFin
 - Consumidor fuera de la solucion: `dotnet pack` a un feed local + app de consola
   externa que restaura desde ese feed.
 
-## Empaquetado privado (Gate N6)
+## Empaquetado
 
 Desde la raiz del repositorio:
 
