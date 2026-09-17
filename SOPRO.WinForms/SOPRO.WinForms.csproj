@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="ClosedXML" Version="0.102.2" />
+    <PackageReference Include="ClosedXML" Version="0.105.1" />
     <PackageReference Include="PDFsharp-MigraDoc-GDI" Version="6.2.4" />
   </ItemGroup>
 
