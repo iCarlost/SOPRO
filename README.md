@@ -2,7 +2,7 @@
 
 Sistema de Presupuestacion de Obra Publica.
 
-[![CI](https://github.com/iCarlost/SOPRO-public-candidate/actions/workflows/ci.yml/badge.svg)](https://github.com/iCarlost/SOPRO-public-candidate/actions)
+[![CI](https://github.com/iCarlost/SOPRO/actions/workflows/ci.yml/badge.svg)](https://github.com/iCarlost/SOPRO/actions)
 [![License: MIT](https://img.shields.io/badge/Licencia-MIT-blue.svg)](LICENSE)
 
 ## Descripcion
