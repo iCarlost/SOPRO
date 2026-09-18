@@ -81,5 +81,79 @@ namespace SOPRO.Reporting.Tests.TestInfrastructure
             Assert.ThrowsException<InvalidDataException>(() =>
                 PdfNormalizador.NeutralizarNoDeterminismoResidual(Encoding.Latin1.GetBytes(input)));
         }
+
+        // ── Offset de zona del diccionario Info (paridad CI) ────────────────────
+
+        [TestMethod]
+        public void CanonicalizaOffsetDeZonaDeCreationDateYModDateDelInfo()
+        {
+            var input = PdfMinimo(
+                "/CreationDate(D:20000101000000+00'00')",
+                "/ModDate(D:20000101000000+00'00')");
+
+            var patched = Encoding.Latin1.GetString(
+                PdfNormalizador.NeutralizarNoDeterminismoResidual(Encoding.Latin1.GetBytes(input)));
+
+            StringAssert.Contains(patched, "/CreationDate(D:20000101000000-07'00')");
+            StringAssert.Contains(patched, "/ModDate(D:20000101000000-07'00')");
+            Assert.IsFalse(patched.Contains("+00'00'", StringComparison.Ordinal),
+                "No debe quedar ningún offset no canónico en el Info.");
+        }
+
+        [TestMethod]
+        public void DejaIntactoElOffsetFueraDeLosCamposDelInfo()
+        {
+            // El Info válido fija el offset canónico en sus campos; los señuelos con la MISMA
+            // clave en otro objeto y el MISMO literal en contenido de página deben quedar intactos.
+            var input = PdfMinimo(
+                "/CreationDate(D:20000101000000+00'00')",
+                "/ModDate(D:20000101000000+00'00')",
+                "3 0 obj\n<</CreationDate(D:20000101000000+00'00')>>\nendobj\n"
+                + "4 0 obj\n<</Length 34>>\nstream\nBT (D:20000101000000+00'00') Tj ET\nendstream\nendobj\n");
+
+            var patched = Encoding.Latin1.GetString(
+                PdfNormalizador.NeutralizarNoDeterminismoResidual(Encoding.Latin1.GetBytes(input)));
+
+            StringAssert.Contains(patched, "/CreationDate(D:20000101000000-07'00')");
+            StringAssert.Contains(patched, "/ModDate(D:20000101000000-07'00')");
+            StringAssert.Contains(patched, "3 0 obj\n<</CreationDate(D:20000101000000+00'00')>>");
+            StringAssert.Contains(patched, "BT (D:20000101000000+00'00') Tj ET");
+        }
+
+        [TestMethod]
+        public void RechazaFormaDesconocidaDeFechaEnElInfo()
+        {
+            var input = PdfMinimo(
+                "/CreationDate(D:20000101000000Z)",
+                "/ModDate(D:20000101000000+00'00')");
+
+            Assert.ThrowsException<InvalidDataException>(() =>
+                PdfNormalizador.NeutralizarNoDeterminismoResidual(Encoding.Latin1.GetBytes(input)));
+        }
+
+        [TestMethod]
+        public void RechazaInfoSinAlgunaDeLasFechas()
+        {
+            var input = PdfMinimo("/CreationDate(D:20000101000000+00'00')", "");
+
+            Assert.ThrowsException<InvalidDataException>(() =>
+                PdfNormalizador.NeutralizarNoDeterminismoResidual(Encoding.Latin1.GetBytes(input)));
+        }
+
+        /// <summary>
+        /// PDF mínimo verosímil: un objeto Info (1 0 obj) referenciado por el trailer y,
+        /// opcionalmente, objetos señuelo adicionales.
+        /// </summary>
+        private static string PdfMinimo(string creationDate, string modDate, string extra = "")
+        {
+            return "%PDF-1.7\n"
+                + "1 0 obj\n<<"
+                + creationDate
+                + "/Producer(PDFsharp 6.2.4-gdi)"
+                + modDate
+                + ">>\nendobj\n"
+                + extra
+                + "trailer\n<</Info 1 0 R/Root 2 0 R/Size 5>>\nstartxref\n0\n%%EOF";
+        }
     }
 }
