@@ -138,24 +138,7 @@ jobs:
         run: dotnet build SOPRO.sln --configuration Release --no-restore --nologo
 
       - name: Run solution tests
-        env:
-          # Instrumentación diagnóstica temporal (paso 2.1): fija el directorio que
-          # PdfCiDiagnosticTests vuelca para que el step de upload lo encuentre.
-          SOPRO_CI_DIAG_DIR: ${{ runner.temp }}/sopro-ci-diag
         run: dotnet test SOPRO.sln --configuration Release --no-build --no-restore --nologo
-
-      # Instrumentación diagnóstica temporal (paso 2.1). Se sube SIEMPRE (if: always())
-      # para capturar la huella incluso cuando fallan los tests de paridad de PDF.
-      # Solo hashes/checksums y PDFs sintéticos; retención corta. Remover junto con
-      # PdfCiDiagnosticTests y PdfNormalizador.NormalizarBytes cuando 2.3 cierre el diagnóstico.
-      - name: Upload PDF CI diagnostics
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: sopro-pdf-ci-diagnostics
-          path: ${{ runner.temp }}/sopro-ci-diag
-          if-no-files-found: ignore
-          retention-days: 1
 
   calculation-tests:
     name: Calculation tests (${{ matrix.os }})

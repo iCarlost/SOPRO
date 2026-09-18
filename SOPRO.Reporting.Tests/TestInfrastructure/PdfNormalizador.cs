@@ -126,26 +126,6 @@ internal static class PdfNormalizador
     }
 
     /// <summary>
-    /// INSTRUMENTACIÓN CI (TEMPORAL): expone los MISMOS bytes normalizados que
-    /// <see cref="Normalizar"/> usa para calcular el hash, sin construir el manifiesto.
-    /// Se usa exclusivamente por <c>PdfCiDiagnosticTests</c> para volcar el PDF normalizado
-    /// como evidencia. No altera el comportamiento de <see cref="Normalizar"/>.
-    /// </summary>
-    internal static byte[] NormalizarBytes(string pdfPath)
-    {
-        using var pdf = PdfReader.Open(pdfPath, PdfDocumentOpenMode.Modify);
-
-        pdf.Info.CreationDate = FechaFija;
-        pdf.Info.ModificationDate = FechaFija;
-        pdf.Internals.FirstDocumentID = FixedDocumentId;
-        pdf.Internals.SecondDocumentID = FixedDocumentId;
-
-        using var ms = new MemoryStream();
-        pdf.Save(ms, false);
-        return NeutralizarNoDeterminismoResidual(ms.ToArray());
-    }
-
-    /// <summary>
     /// Parche concreto y acotado de las cuatro fuentes residuales de no-determinismo (ver resumen
     /// de la clase). Todos los reemplazos conservan la longitud original byte a byte:
     ///   - tags de fuente: solo en entradas /BaseFont y /FontName ("ZWKAGD+" -> "SOPROX+");
