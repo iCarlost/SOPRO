@@ -81,14 +81,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for path in .bob .opencode .ignore .slim; do
-            if git check-ignore -q -- "$path"; then
-              echo "OK: .gitignore excluye '$path'"
+          # En un checkout limpio los directorios locales no existen. Un patron
+          # directory-only ('.bob/') NO casa con el path desnudo inexistente;
+          # se usa un probe interior con --no-index. '.ignore' es patron de archivo.
+          check_ignored() {
+            if git check-ignore -q --no-index -- "$1"; then
+              echo "OK: .gitignore excluye '$1'"
             else
-              echo "::error::.gitignore debe excluir '$path'"
+              echo "::error::.gitignore debe excluir '$1'"
               exit 1
             fi
-          done
+          }
+          check_ignored .bob/__probe__
+          check_ignored .opencode/__probe__
+          check_ignored .slim/__probe__
+          check_ignored .ignore
 
       - name: Verify required files are not ignored
         shell: bash
