@@ -210,7 +210,7 @@ namespace SOPRO.Data.Context
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Clave).IsRequired().HasMaxLength(50);
-                entity.Property(e => e.Descripcion).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Descripcion).IsRequired().HasMaxLength(2000);
                 entity.Property(e => e.Unidad).IsRequired().HasMaxLength(20);
                 entity.Property(e => e.CostoDirecto).HasPrecision(18, 4);
                 
@@ -265,7 +265,7 @@ namespace SOPRO.Data.Context
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Clave).HasMaxLength(50);
-                entity.Property(e => e.Descripcion).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Descripcion).IsRequired().HasMaxLength(2000);
                 entity.Property(e => e.Unidad).HasMaxLength(20); // No es Required, puede ser null en agrupadores
                 
                 entity.Property(e => e.Cantidad).HasPrecision(18, 6);

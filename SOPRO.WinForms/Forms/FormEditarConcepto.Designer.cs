@@ -104,7 +104,7 @@ namespace SOPRO.WinForms.Forms
             // 
             this.txtDescripcion.Font = new System.Drawing.Font("Segoe UI", 10F);
             this.txtDescripcion.Location = new System.Drawing.Point(150, 122);
-            this.txtDescripcion.MaxLength = 500;
+            this.txtDescripcion.MaxLength = 2000;
             this.txtDescripcion.Multiline = true;
             this.txtDescripcion.Name = "txtDescripcion";
             this.txtDescripcion.Size = new System.Drawing.Size(400, 60);

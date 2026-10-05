@@ -925,8 +925,7 @@ namespace SOPRO.WinForms.Forms
             else
             {
                 btnToggleMatrices.Text = "📐 Matrices ▲";
-                var targetHeight = _workspacePanelHeight > 0 ? _workspacePanelHeight : Math.Max(splitContainer.Panel2MinSize, (int)(splitContainer.Height * 0.34));
-                splitContainer.SplitterDistance = Math.Max(splitContainer.Panel1MinSize, splitContainer.Height - targetHeight);
+                AplicarAltoObjetivoWorkspace();
                 ProgramarAsegurarFilaActualVisibleEnPresupuesto();
             }
         }

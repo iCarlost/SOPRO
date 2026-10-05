@@ -16,6 +16,7 @@ namespace SOPRO.WinForms.Forms
         private void InitializeComponent()
         {
             components = new System.ComponentModel.Container();
+            toolTipAcciones = new System.Windows.Forms.ToolTip(components);
             DataGridViewCellStyle dataGridViewCellStyle1 = new DataGridViewCellStyle();
             DataGridViewCellStyle dataGridViewCellStyle2 = new DataGridViewCellStyle();
             panelTop = new Panel();
@@ -61,7 +62,7 @@ namespace SOPRO.WinForms.Forms
             // 
             // panelTop
             // 
-            panelTop.BackColor = Color.FromArgb(156, 39, 176);
+            panelTop.BackColor = Color.FromArgb(31, 78, 121);
             panelTop.Controls.Add(lblTitulo);
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 0);
@@ -78,7 +79,7 @@ namespace SOPRO.WinForms.Forms
             lblTitulo.Name = "lblTitulo";
             lblTitulo.Size = new Size(348, 30);
             lblTitulo.TabIndex = 0;
-            lblTitulo.Text = "📊 SELECCIONAR MATRIZ (APU)";
+            lblTitulo.Text = "SELECCIONAR MATRIZ (APU)";
             // 
             // lblBuscar
             // 
@@ -88,7 +89,7 @@ namespace SOPRO.WinForms.Forms
             lblBuscar.Name = "lblBuscar";
             lblBuscar.Size = new Size(75, 19);
             lblBuscar.TabIndex = 1;
-            lblBuscar.Text = "🔍 Buscar:";
+            lblBuscar.Text = "Buscar:";
             // 
             // txtBuscar
             // 
@@ -154,25 +155,25 @@ namespace SOPRO.WinForms.Forms
             // 
             // colTipo
             // 
-            colTipo.FillWeight = 45F;
+            colTipo.FillWeight = 40F;
             colTipo.HeaderText = "TIPO";
-            colTipo.MinimumWidth = 6;
+            colTipo.MinimumWidth = 52;
             colTipo.Name = "colTipo";
             colTipo.ReadOnly = true;
             // 
             // colClave
             // 
-            colClave.FillWeight = 55F;
+            colClave.FillWeight = 90F;
             colClave.HeaderText = "CLAVE";
-            colClave.MinimumWidth = 6;
+            colClave.MinimumWidth = 90;
             colClave.Name = "colClave";
             colClave.ReadOnly = true;
             // 
             // colDescripcion
             // 
-            colDescripcion.FillWeight = 180F;
+            colDescripcion.FillWeight = 260F;
             colDescripcion.HeaderText = "DESCRIPCIÓN";
-            colDescripcion.MinimumWidth = 6;
+            colDescripcion.MinimumWidth = 240;
             colDescripcion.Name = "colDescripcion";
             colDescripcion.ReadOnly = true;
             // 
@@ -180,9 +181,9 @@ namespace SOPRO.WinForms.Forms
             // 
             dataGridViewCellStyle1.Alignment = DataGridViewContentAlignment.MiddleCenter;
             colUnidad.DefaultCellStyle = dataGridViewCellStyle1;
-            colUnidad.FillWeight = 40F;
+            colUnidad.FillWeight = 45F;
             colUnidad.HeaderText = "UNIDAD";
-            colUnidad.MinimumWidth = 6;
+            colUnidad.MinimumWidth = 64;
             colUnidad.Name = "colUnidad";
             colUnidad.ReadOnly = true;
             // 
@@ -190,25 +191,25 @@ namespace SOPRO.WinForms.Forms
             // 
             dataGridViewCellStyle2.Alignment = DataGridViewContentAlignment.MiddleRight;
             colCosto.DefaultCellStyle = dataGridViewCellStyle2;
-            colCosto.FillWeight = 65F;
+            colCosto.FillWeight = 100F;
             colCosto.HeaderText = "COSTO DIRECTO";
-            colCosto.MinimumWidth = 6;
+            colCosto.MinimumWidth = 110;
             colCosto.Name = "colCosto";
             colCosto.ReadOnly = true;
             // 
             // colOrigen
             // 
-            colOrigen.FillWeight = 50F;
+            colOrigen.FillWeight = 45F;
             colOrigen.HeaderText = "ORIGEN";
-            colOrigen.MinimumWidth = 6;
+            colOrigen.MinimumWidth = 56;
             colOrigen.Name = "colOrigen";
             colOrigen.ReadOnly = true;
             // 
             // colProyecto
             // 
-            colProyecto.FillWeight = 110F;
+            colProyecto.FillWeight = 70F;
             colProyecto.HeaderText = "PROYECTO";
-            colProyecto.MinimumWidth = 6;
+            colProyecto.MinimumWidth = 80;
             colProyecto.Name = "colProyecto";
             colProyecto.ReadOnly = true;
             // 
@@ -216,13 +217,13 @@ namespace SOPRO.WinForms.Forms
             // 
             colFecha.FillWeight = 55F;
             colFecha.HeaderText = "FECHA";
-            colFecha.MinimumWidth = 6;
+            colFecha.MinimumWidth = 70;
             colFecha.Name = "colFecha";
             colFecha.ReadOnly = true;
             // 
             // panelInfo
             // 
-            panelInfo.BackColor = Color.FromArgb(245, 245, 245);
+            panelInfo.BackColor = Color.FromArgb(250, 250, 250);
             panelInfo.BorderStyle = BorderStyle.FixedSingle;
             panelInfo.Controls.Add(lblImporte);
             panelInfo.Controls.Add(lblImporteLabel);
@@ -241,7 +242,7 @@ namespace SOPRO.WinForms.Forms
             // 
             lblImporte.AutoSize = true;
             lblImporte.Font = new Font("Segoe UI", 14F, FontStyle.Bold);
-            lblImporte.ForeColor = Color.FromArgb(46, 125, 50);
+            lblImporte.ForeColor = Color.FromArgb(31, 78, 121);
             lblImporte.Location = new Point(540, 45);
             lblImporte.Name = "lblImporte";
             lblImporte.Size = new Size(61, 25);
@@ -262,7 +263,7 @@ namespace SOPRO.WinForms.Forms
             // 
             lblCostoUnitario.AutoSize = true;
             lblCostoUnitario.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
-            lblCostoUnitario.ForeColor = Color.FromArgb(33, 150, 243);
+            lblCostoUnitario.ForeColor = Color.FromArgb(31, 78, 121);
             lblCostoUnitario.Location = new Point(130, 45);
             lblCostoUnitario.Name = "lblCostoUnitario";
             lblCostoUnitario.Size = new Size(49, 20);
@@ -326,7 +327,7 @@ namespace SOPRO.WinForms.Forms
             // btnAceptar
             // 
             btnAceptar.AutoSize = true;
-            btnAceptar.BackColor = Color.FromArgb(76, 175, 80);
+            btnAceptar.BackColor = Color.FromArgb(31, 78, 121);
             btnAceptar.FlatStyle = FlatStyle.Flat;
             btnAceptar.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
             btnAceptar.ForeColor = Color.White;
@@ -334,28 +335,28 @@ namespace SOPRO.WinForms.Forms
             btnAceptar.Name = "btnAceptar";
             btnAceptar.Size = new Size(123, 40);
             btnAceptar.TabIndex = 9;
-            btnAceptar.Text = "✓ Asignar APU";
+            btnAceptar.Text = "Asignar APU";
             btnAceptar.UseVisualStyleBackColor = false;
             btnAceptar.Click += btnAceptar_Click;
             // 
             // btnEditarMatriz
             // 
-            btnEditarMatriz.BackColor = Color.FromArgb(33, 150, 243);
+            btnEditarMatriz.BackColor = Color.FromArgb(221, 235, 247);
             btnEditarMatriz.Enabled = false;
             btnEditarMatriz.FlatStyle = FlatStyle.Flat;
             btnEditarMatriz.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            btnEditarMatriz.ForeColor = Color.White;
+            btnEditarMatriz.ForeColor = Color.FromArgb(31, 78, 121);
             btnEditarMatriz.Location = new Point(180, 568);
             btnEditarMatriz.Name = "btnEditarMatriz";
             btnEditarMatriz.Size = new Size(150, 40);
             btnEditarMatriz.TabIndex = 10;
-            btnEditarMatriz.Text = "✏ Editar Matriz";
+            btnEditarMatriz.Text = "Editar Matriz";
             btnEditarMatriz.UseVisualStyleBackColor = false;
             btnEditarMatriz.Click += btnEditarMatriz_Click;
             // 
             // btnNuevaMatriz
             // 
-            btnNuevaMatriz.BackColor = Color.FromArgb(76, 175, 80);
+            btnNuevaMatriz.BackColor = Color.FromArgb(31, 78, 121);
             btnNuevaMatriz.FlatStyle = FlatStyle.Flat;
             btnNuevaMatriz.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             btnNuevaMatriz.ForeColor = Color.White;
@@ -363,13 +364,13 @@ namespace SOPRO.WinForms.Forms
             btnNuevaMatriz.Name = "btnNuevaMatriz";
             btnNuevaMatriz.Size = new Size(150, 40);
             btnNuevaMatriz.TabIndex = 11;
-            btnNuevaMatriz.Text = "➕ Nueva Matriz";
+            btnNuevaMatriz.Text = "Nueva Matriz";
             btnNuevaMatriz.UseVisualStyleBackColor = false;
             btnNuevaMatriz.Click += btnNuevaMatriz_Click;
             // 
             // btnCancelar
             // 
-            btnCancelar.BackColor = Color.FromArgb(220, 220, 220);
+            btnCancelar.BackColor = Color.FromArgb(240, 240, 240);
             btnCancelar.FlatStyle = FlatStyle.Flat;
             btnCancelar.Location = new Point(627, 568);
             btnCancelar.Name = "btnCancelar";
@@ -379,6 +380,13 @@ namespace SOPRO.WinForms.Forms
             btnCancelar.UseVisualStyleBackColor = false;
             btnCancelar.Click += btnCancelar_Click;
             // 
+            // toolTipAcciones
+            //
+            toolTipAcciones.SetToolTip(btnNuevaMatriz, "Crear una nueva matriz de APU");
+            toolTipAcciones.SetToolTip(btnEditarMatriz, "Editar la matriz de APU seleccionada");
+            toolTipAcciones.SetToolTip(btnCancelar, "Volver al presupuesto sin asignar");
+            toolTipAcciones.SetToolTip(btnAceptar, "Asignar la matriz seleccionada al concepto");
+            //
             // statusStrip
             // 
             statusStrip.ImageScalingSize = new Size(20, 20);
@@ -477,5 +485,6 @@ namespace SOPRO.WinForms.Forms
         private System.Windows.Forms.ToolStripStatusLabel lblStatus;
         private System.Windows.Forms.ContextMenuStrip ctxProyectoFavorito;
         private System.Windows.Forms.ToolStripMenuItem mnuToggleFavorito;
+        private System.Windows.Forms.ToolTip toolTipAcciones;
     }
 }

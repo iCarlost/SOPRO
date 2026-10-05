@@ -157,7 +157,7 @@ namespace SOPRO.WinForms.Forms
             // txtDescripcion
             // 
             txtDescripcion.Location = new Point(390, 27);
-            txtDescripcion.MaxLength = 500;
+            txtDescripcion.MaxLength = 2000;
             txtDescripcion.Name = "txtDescripcion";
             txtDescripcion.Size = new Size(500, 25);
             txtDescripcion.TabIndex = 3;

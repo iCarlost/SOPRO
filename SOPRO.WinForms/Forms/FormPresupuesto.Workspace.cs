@@ -23,6 +23,13 @@ namespace SOPRO.WinForms.Forms
     /// </summary>
     public partial class FormPresupuesto
     {
+        // Política de alto del workspace APU (Panel2 del split). Única fuente de verdad.
+        // Valores en píxeles de diseño a 96 DPI; se escalan con EscalarPixelesDiseno.
+        private const int AltoMinimoFuncionalApu = 250;    // toolbar (31) + host operativo fuera del modo compacto
+        private const int AltoMinimoDegradadoApu = 150;    // piso duro en ventanas pequeñas (modo compacto)
+        private const double FactorAlturaWorkspace = 0.42; // crecimiento proporcional sobre el alto del split
+        private bool _politicaAltoWorkspaceInicializada;
+        private bool _ajustandoAltoWorkspace;
 
         private void LoadWorkspacePanelState()
         {
@@ -38,10 +45,16 @@ namespace SOPRO.WinForms.Forms
                 }
             }
             catch { }
+
+            InicializarPoliticaAltoWorkspace();
         }
 
         private void SaveWorkspacePanelState()
         {
+            // No persistir alturas fijadas por la política (evita congelar el alto y realimentar Resize).
+            if (_ajustandoAltoWorkspace)
+                return;
+
             try
             {
                 var dir = Path.GetDirectoryName(WorkspacePanelStatePath);
@@ -59,13 +72,133 @@ namespace SOPRO.WinForms.Forms
             catch { }
         }
 
+        /// <summary>
+        /// Escala una medida de diseño (96 DPI) al DPI real del formulario.
+        /// </summary>
+        private int EscalarPixelesDiseno(int pixelesBase)
+        {
+            int dpi = DeviceDpi > 0 ? DeviceDpi : 96;
+            return (int)Math.Ceiling(pixelesBase * dpi / 96d);
+        }
+
+        /// <summary>
+        /// Configura Panel2MinSize escalado por DPI como piso de degradación compacta,
+        /// nunca como mínimo funcional (eso lo resuelve el tope, no el mínimo duro).
+        /// </summary>
+        private void AplicarPanel2MinSizeEscaladoDpi()
+        {
+            int minimoDegradado = EscalarPixelesDiseno(AltoMinimoDegradadoApu);
+            if (splitContainer.Panel2MinSize != minimoDegradado)
+                splitContainer.Panel2MinSize = minimoDegradado;
+        }
+
+        /// <summary>
+        /// Única fuente de la política de alto del workspace APU. Devuelve el alto
+        /// objetivo (px) de Panel2: mínimo funcional escalado por DPI cuando hay
+        /// espacio, crecimiento proporcional con el alto del split y tope que
+        /// reserva Panel1MinSize al presupuesto. En ventanas demasiado pequeñas
+        /// degrada (nunca impone un mínimo imposible).
+        /// </summary>
+        private int CalcularAltoObjetivoWorkspace()
+        {
+            int alturaSplit = splitContainer.Height;
+            if (alturaSplit <= 0)
+                return EscalarPixelesDiseno(AltoMinimoDegradadoApu);
+
+            int separador = Math.Max(0, splitContainer.SplitterWidth);
+            int minimoFuncional = EscalarPixelesDiseno(AltoMinimoFuncionalApu);
+            int pisoDegradado = splitContainer.Panel2MinSize > 0
+                ? splitContainer.Panel2MinSize
+                : EscalarPixelesDiseno(AltoMinimoDegradadoApu);
+
+            // Tope: deja al presupuesto (Panel1) su área mínima.
+            int tope = alturaSplit - splitContainer.Panel1MinSize - separador;
+
+            // Preferencia del usuario si existe; si no, mínimo funcional con
+            // crecimiento proporcional según el alto disponible.
+            int objetivo = _workspacePanelHeight > 0
+                ? _workspacePanelHeight
+                : Math.Max(minimoFuncional, (int)(alturaSplit * FactorAlturaWorkspace));
+
+            // No invadir el área mínima del presupuesto.
+            if (objetivo > tope)
+                objetivo = tope;
+
+            // Ventana pequeña: no forzar el mínimo funcional; bajar hasta el piso
+            // degradado (el modo compacto del panel se encarga del resto).
+            if (objetivo < pisoDegradado)
+                objetivo = Math.Min(pisoDegradado, Math.Max(1, tope));
+
+            return Math.Max(1, objetivo);
+        }
+
+        /// <summary>
+        /// Recalcula y fija el alto del workspace si el panel está expandido,
+        /// sin persistir el valor ni realimentar el evento Resize.
+        /// </summary>
+        private void AplicarAltoObjetivoWorkspace()
+        {
+            if (splitContainer.Panel2Collapsed || splitContainer.Height <= 0)
+                return;
+
+            int minimoCombinado = splitContainer.Panel1MinSize + splitContainer.Panel2MinSize + splitContainer.SplitterWidth;
+            if (splitContainer.Height < minimoCombinado)
+                return; // ventana demasiado pequeña: no forzar una geometría imposible
+
+            int alturaObjetivo = CalcularAltoObjetivoWorkspace();
+            int distancia = splitContainer.Height - alturaObjetivo - splitContainer.SplitterWidth;
+            distancia = Math.Max(splitContainer.Panel1MinSize, distancia);
+
+            if (distancia == splitContainer.SplitterDistance)
+                return;
+
+            _ajustandoAltoWorkspace = true;
+            try
+            {
+                splitContainer.SplitterDistance = distancia;
+            }
+            finally
+            {
+                _ajustandoAltoWorkspace = false;
+            }
+        }
+
+        private void InicializarPoliticaAltoWorkspace()
+        {
+            if (_politicaAltoWorkspaceInicializada)
+                return;
+
+            _politicaAltoWorkspaceInicializada = true;
+            AplicarPanel2MinSizeEscaladoDpi();
+            splitContainer.Resize += SplitContainer_WorkspaceResize;
+            this.Load += (_, __) =>
+            {
+                AplicarPanel2MinSizeEscaladoDpi();
+                if (!splitContainer.Panel2Collapsed)
+                    AplicarAltoObjetivoWorkspace();
+            };
+            this.DpiChanged += (_, __) =>
+            {
+                AplicarPanel2MinSizeEscaladoDpi();
+                if (!splitContainer.Panel2Collapsed)
+                    AplicarAltoObjetivoWorkspace();
+            };
+        }
+
+        private void SplitContainer_WorkspaceResize(object? sender, EventArgs e)
+        {
+            if (_ajustandoAltoWorkspace)
+                return;
+
+            AplicarAltoObjetivoWorkspace();
+        }
+
         private void EnsureWorkspaceExpanded()
         {
             if (splitContainer.Panel2Collapsed)
             {
                 splitContainer.Panel2Collapsed = false;
-                var targetHeight = _workspacePanelHeight > 0 ? _workspacePanelHeight : Math.Max(splitContainer.Panel2MinSize, (int)(splitContainer.Height * 0.34));
-                splitContainer.SplitterDistance = Math.Max(splitContainer.Panel1MinSize, splitContainer.Height - targetHeight);
+                AplicarAltoObjetivoWorkspace();
             }
             btnToggleMatrices.Text = "📐 Matrices ▲";
             ProgramarAsegurarFilaActualVisibleEnPresupuesto();

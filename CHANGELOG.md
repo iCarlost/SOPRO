@@ -21,6 +21,17 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 - LICENSE actualizado con copyright CEPM.
 - THIRD-PARTY-NOTICES.md actualizado con alcance de la licencia.
 
+## [1.7.0] - 2026
+
+### Mejorado
+- Panel APU embebido responsivo: layout declarativo (TableLayoutPanel/FlowLayoutPanel) sin solapes ni controles encimados en laptop.
+- Botones (Agregar / Guardar / Cancelar) con altura natural y textos alineados.
+- Etiqueta "Agregar:" alineada con los botones.
+
+### Cambiado
+- Estilo de selección unificado en los grids (fila azul claro + contorno azul de la celda activa) en presupuesto, matriz embebida y selector APU.
+- Descripciones de matriz y concepto ampliadas hasta 2000 caracteres.
+
 ## [1.6.0] - 2026
 
 ### Nota

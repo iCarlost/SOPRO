@@ -67,6 +67,12 @@ namespace SOPRO.WinForms.Forms
         public event EventHandler? EmbeddedRequestNewMatrix;
         public event EventHandler? EmbeddedRequestEditMatrix;
 
+        /// <summary>
+        /// Se dispara cuando cambia la selección del grid de matrices. El host embebido
+        /// lo usa para sincronizar el estado habilitado de sus comandos.
+        /// </summary>
+        public event EventHandler? MatrixSelectionChanged;
+
         private IWin32Window GetDialogOwner() => FindForm() ?? this;
 
 
@@ -99,6 +105,12 @@ namespace SOPRO.WinForms.Forms
                                       ?? Path.GetFileNameWithoutExtension(_context.DatabasePath);
 
             InitializeComponent();
+            dgvMatrices.AplicarEstiloSOPRO();
+            dgvMatrices.ColumnHeadersHeight = SoproUiMetrics.GridHeaderHeight;
+            ConfigureSelectorColumns();
+            ApplyCorporateVisuals();
+            ApplySelectorGridSelectionStyle();
+            dgvMatrices.SelectionChanged += OnMatrizSelectionChanged;
             ApplyRenderOptimizations();
             InitializeTipoSelector();
             InitializeFavoritosContextMenu();
@@ -115,36 +127,131 @@ namespace SOPRO.WinForms.Forms
 
             CargarMatricesProyectoActual();
             ApplyInitialFilter();
+            SyncActionCommandStates();
         }
 
         // ════════════════════════════════════════════════════════════════════
-        // Inicialización
+        // Apariencia corporativa y sincronización de comandos
         // ════════════════════════════════════════════════════════════════════
 
+        /// <summary>
+        /// Prioriza las columnas del selector APU en anchos de laptop: descripción, unidad y datos
+        /// económicos conservan mayor <see cref="DataGridViewColumn.FillWeight"/> y un ancho mínimo
+        /// legible, mientras que los metadatos secundarios (tipo/origen/proyecto/fecha) usan menor
+        /// peso y un mínimo reducido. Con esto, al estrechar la ventana primero se truncan los
+        /// metadatos (consultables por tooltip) o aparece scroll horizontal, antes que comprimir
+        /// las columnas esenciales.
+        /// </summary>
+        private void ConfigureSelectorColumns()
+        {
+            dgvMatrices.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
 
-        // ════════════════════════════════════════════════════════════════════
-        // ComboBox de proyecto unificado
-        // ════════════════════════════════════════════════════════════════════
+            // Esenciales: descripción y datos económicos con mayor peso y piso de ancho.
+            colDescripcion.FillWeight = 260F;
+            colDescripcion.MinimumWidth = 240;
+            colCosto.FillWeight = 100F;
+            colCosto.MinimumWidth = 110;
+            colClave.FillWeight = 90F;
+            colClave.MinimumWidth = 90;
+            colUnidad.FillWeight = 45F;
+            colUnidad.MinimumWidth = 64;
 
+            // Metadatos secundarios: menor peso y mínimo reducido (truncables con tooltip).
+            colTipo.FillWeight = 40F;
+            colTipo.MinimumWidth = 52;
+            colOrigen.FillWeight = 45F;
+            colOrigen.MinimumWidth = 56;
+            colProyecto.FillWeight = 70F;
+            colProyecto.MinimumWidth = 80;
+            colFecha.FillWeight = 55F;
+            colFecha.MinimumWidth = 70;
 
-        // ════════════════════════════════════════════════════════════════════
-        // Filtro de grid
-        // ════════════════════════════════════════════════════════════════════
+            dgvMatrices.ShowCellToolTips = true;
+            dgvMatrices.CellToolTipTextNeeded += DgvMatrices_CellToolTipTextNeeded;
+        }
 
+        /// <summary>
+        /// Expone el valor completo de la celda como tooltip cuando el ancho de la columna lo
+        /// trunca, de modo que la información secundaria sigue siendo consultable sin ensanchar
+        /// las columnas esenciales.
+        /// </summary>
+        private void DgvMatrices_CellToolTipTextNeeded(object? sender, DataGridViewCellToolTipTextNeededEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0)
+                return;
 
-        // ════════════════════════════════════════════════════════════════════
-        // Selección y cálculo
-        // ════════════════════════════════════════════════════════════════════
+            var valor = Convert.ToString(dgvMatrices.Rows[e.RowIndex].Cells[e.ColumnIndex].Value);
+            e.ToolTipText = string.IsNullOrWhiteSpace(valor) ? string.Empty : valor;
+        }
 
+        /// <summary>
+        /// Iconos vectoriales del sistema SOPRO para los controles propios del selector.
+        /// Se usan los <see cref="SoproIconType"/> disponibles; donde no exista un icono
+        /// semántico se conserva solo texto (nunca emoji).
+        /// </summary>
+        private void ApplyCorporateVisuals()
+        {
+            // La etiqueta "Buscar:" se muestra solo con texto: System.Windows.Forms.Label
+            // no soporta TextImageRelation, por lo que un icono en línea no es viable.
+            btnNuevaMatriz.Image = SoproIconProvider.GetIcon(
+                SoproIconType.Matrices, Color.White, SoproUiMetrics.RibbonGlyphButtonIconSize);
+            btnNuevaMatriz.ImageAlign = ContentAlignment.MiddleLeft;
+            btnNuevaMatriz.TextAlign = ContentAlignment.MiddleCenter;
+            btnNuevaMatriz.TextImageRelation = TextImageRelation.ImageBeforeText;
+        }
 
-        // ════════════════════════════════════════════════════════════════════
-        // Eventos de botones existentes
-        // ════════════════════════════════════════════════════════════════════
+        /// <summary>
+        /// Aplica al grid del selector APU el mismo estilo de selección del panel embebido y
+        /// del presupuesto: fila completa en azul claro y contorno azul de 2px en la celda activa.
+        /// Replica solo el efecto visual, sin usar <c>DgvCeldaHelper</c>.
+        /// </summary>
+        private void ApplySelectorGridSelectionStyle()
+        {
+            dgvMatrices.DefaultCellStyle.SelectionBackColor = System.Drawing.Color.FromArgb(230, 240, 255);
+            dgvMatrices.DefaultCellStyle.SelectionForeColor = System.Drawing.Color.Black;
+            dgvMatrices.CellPainting += DgvMatrices_CellPainting;
+            dgvMatrices.CurrentCellChanged += (s, e) => dgvMatrices.Invalidate();
+        }
 
+        // Contorno azul de 2px sobre la celda activa (replica el estilo del presupuesto).
+        private static void DgvMatrices_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
 
-        // ════════════════════════════════════════════════════════════════════
-        // Persistencia de contexto y cierre
-        // ════════════════════════════════════════════════════════════════════
+            var dgv = (DataGridView)sender!;
+            e.Paint(e.CellBounds, DataGridViewPaintParts.All);
 
+            if (dgv.CurrentCell != null &&
+                e.RowIndex == dgv.CurrentCell.RowIndex &&
+                e.ColumnIndex == dgv.CurrentCell.ColumnIndex)
+            {
+                using var pen = new Pen(Color.FromArgb(0, 120, 215), 2);
+                e.Graphics?.DrawRectangle(pen,
+                    e.CellBounds.Left + 1,
+                    e.CellBounds.Top + 1,
+                    e.CellBounds.Width - 3,
+                    e.CellBounds.Height - 3);
+            }
+
+            e.Handled = true;
+        }
+
+        private void OnMatrizSelectionChanged(object? sender, EventArgs e)
+        {
+            SyncActionCommandStates();
+            MatrixSelectionChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// Sincroniza los comandos propios del selector con la selección del grid:
+        /// Asignar requiere una matriz seleccionada. Editar lo controla el propio
+        /// <c>dgvMatrices_SelectionChanged</c> (depende del origen de la fila).
+        /// </summary>
+        private void SyncActionCommandStates()
+        {
+            bool hasSelection = dgvMatrices.SelectedRows.Count > 0;
+            btnAceptar.Enabled = hasSelection;
+            btnNuevaMatriz.Enabled = true;
+        }
     }
 }
