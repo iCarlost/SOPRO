@@ -1,5 +1,5 @@
 #define MyAppName "SOPRO"
-#define MyAppVersion "1.7.0"
+#define MyAppVersion "1.7.1"
 #define MyAppPublisher "CEPM"
 #define MyAppExeName "SOPRO.WinForms.exe"
 #define MyAppId "SOPRO.WinForms"
@@ -23,7 +23,11 @@ ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=.
 OutputBaseFilename=SOPRO-Setup-{#MyAppVersion}
 UninstallDisplayIcon={app}\{#MyAppExeName}
-; El icono del instalador es opcional: configura SetupIconFile solo si el .ico esta junto al .iss.
+; El icono del instalador es opcional: solo se activa si el asset local
+; SOPRO.WinForms\SOPRO.ico existe (nunca se publica en el repo).
+#if FileExists(AddBackslash(SourcePath) + "..\SOPRO.WinForms\SOPRO.ico")
+SetupIconFile=..\SOPRO.WinForms\SOPRO.ico
+#endif
 ChangesAssociations=no
 CloseApplications=yes
 CloseApplicationsFilter={#MyAppExeName}

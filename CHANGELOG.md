@@ -21,6 +21,11 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 - LICENSE actualizado con copyright CEPM.
 - THIRD-PARTY-NOTICES.md actualizado con alcance de la licencia.
 
+## [1.7.1] - 2026
+
+### Corregido
+- Restaurado el icono de marca en el ejecutable (`SOPRO.WinForms.exe`) y en el instalador. El icono se referencia como asset local (fuera del repositorio publico) y solo se embebe en build cuando esta presente.
+
 ## [1.7.0] - 2026
 
 ### Mejorado

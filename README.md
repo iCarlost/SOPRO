@@ -71,7 +71,7 @@ La aplicacion consulta actualizaciones desde `iCarlost/SOPRO-Releases`. Cada ver
 ## Versionado
 
 ```
-v1.7.0
+v1.7.1
 ```
 
 - Cambios funcionales: minor
