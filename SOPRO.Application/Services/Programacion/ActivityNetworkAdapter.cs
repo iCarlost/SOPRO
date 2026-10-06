@@ -45,7 +45,7 @@ namespace SOPRO.Application.Services.Programacion
                 .Select(d => new ActivityNetworkDependencyInput(
                     d.ActividadOrigenId,
                     d.ActividadDestinoId,
-                    MapType(d.TipoDependencia),
+                    MapType(d.TipoDependencia.Normalizar()),
                     d.DesfaseDias))
                 .ToList();
 

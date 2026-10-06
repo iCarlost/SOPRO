@@ -6,7 +6,7 @@ namespace SOPRO.Application.DTOs.Programacion
     {
         public int ActividadOrigenId { get; set; }
         public int ActividadDestinoId { get; set; }
-        public TipoDependenciaActividad TipoDependencia { get; set; }
+        public TipoDependenciaActividad TipoDependencia { get; set; } = TipoDependenciaActividad.FS;
         public int DesfaseDias { get; set; }
     }
 }

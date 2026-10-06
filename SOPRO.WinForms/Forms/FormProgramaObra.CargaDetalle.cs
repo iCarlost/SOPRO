@@ -287,15 +287,24 @@ namespace SOPRO.WinForms.Forms
                 .Join(_context.ActividadesProgramadas.AsNoTracking(),
                     d => d.ActividadOrigenId,
                     a => a.Id,
-                    (d, a) => new DependenciaEditableRow
+                    (d, a) => new
                     {
                         ActividadOrigenId = a.Id,
-                        Clave = a.Clave,
-                        Descripcion = a.Descripcion,
-                        TipoDependencia = d.TipoDependencia.ToString(),
-                        DesfaseDias = d.DesfaseDias
+                        a.Clave,
+                        a.Descripcion,
+                        d.TipoDependencia,
+                        d.DesfaseDias
                     })
                 .OrderBy(x => x.Clave)
+                .ToList()
+                .Select(x => new DependenciaEditableRow
+                {
+                    ActividadOrigenId = x.ActividadOrigenId,
+                    Clave = x.Clave,
+                    Descripcion = x.Descripcion,
+                    TipoDependencia = x.TipoDependencia.Normalizar().ToString(),
+                    DesfaseDias = x.DesfaseDias
+                })
                 .ToList();
 
             _dependenciasEditables = new BindingList<DependenciaEditableRow>(dependencias);

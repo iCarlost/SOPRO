@@ -1,5 +1,5 @@
 #define MyAppName "SOPRO"
-#define MyAppVersion "1.7.1"
+#define MyAppVersion "1.7.2"
 #define MyAppPublisher "CEPM"
 #define MyAppExeName "SOPRO.WinForms.exe"
 #define MyAppId "SOPRO.WinForms"

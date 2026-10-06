@@ -171,7 +171,8 @@ namespace SOPRO.WinForms.Forms
                 row.Descripcion = string.Empty;
             }
 
-            if (!Enum.TryParse<TipoDependenciaActividad>(row.TipoDependencia, true, out var tipo))
+            if (!Enum.TryParse<TipoDependenciaActividad>(row.TipoDependencia, true, out var tipo)
+                || !Enum.IsDefined(typeof(TipoDependenciaActividad), tipo))
             {
                 row.TipoDependencia = TipoDependenciaActividad.FS.ToString();
             }
@@ -208,7 +209,9 @@ namespace SOPRO.WinForms.Forms
                 {
                     ActividadOrigenId = x.ActividadOrigenId!.Value,
                     ActividadDestinoId = actividad.Id,
-                    TipoDependencia = Enum.TryParse<TipoDependenciaActividad>(x.TipoDependencia, true, out var tipo) ? tipo : TipoDependenciaActividad.FS,
+                    TipoDependencia = Enum.TryParse<TipoDependenciaActividad>(x.TipoDependencia, true, out var tipo)
+                        ? tipo.Normalizar()
+                        : TipoDependenciaActividad.FS,
                     DesfaseDias = Math.Max(0, x.DesfaseDias)
                 })
                 .ToList();

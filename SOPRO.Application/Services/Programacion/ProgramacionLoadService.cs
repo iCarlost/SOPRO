@@ -99,7 +99,7 @@ namespace SOPRO.Application.Services
                         .GroupBy(x => x.ActividadDestinoId)
                         .ToDictionary(
                             g => g.Key,
-                            g => string.Join(", ", g.OrderBy(x => x.Clave).Select(x => $"{x.Clave} {x.TipoDependencia}" + (x.DesfaseDias != 0 ? $" (+{x.DesfaseDias})" : string.Empty)))
+                            g => string.Join(", ", g.OrderBy(x => x.Clave).Select(x => $"{x.Clave} {x.TipoDependencia.Normalizar()}" + (x.DesfaseDias != 0 ? $" (+{x.DesfaseDias})" : string.Empty)))
                         );
 
             foreach (var actividad in programa.Actividades)

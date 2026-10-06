@@ -123,7 +123,7 @@ namespace SOPRO.Application.Services
                 {
                     ActividadOrigenId = dep.ActividadOrigenId,
                     ActividadDestinoId = dep.ActividadDestinoId,
-                    TipoDependencia = dep.TipoDependencia,
+                    TipoDependencia = dep.TipoDependencia.Normalizar(),
                     DesfaseDias = dep.DesfaseDias
                 });
             }

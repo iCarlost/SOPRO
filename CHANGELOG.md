@@ -21,6 +21,11 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 - LICENSE actualizado con copyright CEPM.
 - THIRD-PARTY-NOTICES.md actualizado con alcance de la licencia.
 
+## [1.7.2] - 2026
+
+### Corregido
+- Saneo de tipos de dependencia inválidos en el Programa de obra: los valores fuera de rango (p. ej. 0, procedentes de proyectos externos) se normalizan a "Fin → Inicio" (FS) al cargar, evitando el error que impedía abrir el programa de obra. La normalización es en memoria y no reescribe los datos históricos.
+
 ## [1.7.1] - 2026
 
 ### Corregido
