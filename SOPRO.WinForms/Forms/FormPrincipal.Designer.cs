@@ -40,7 +40,6 @@ namespace SOPRO.WinForms.Forms
             // 
             // panelTop
             // 
-            panelTop.BackColor = Color.FromArgb(51, 51, 76);
             panelTop.Controls.Add(btnAbrirProyecto);
             panelTop.Controls.Add(btnNuevoProyecto);
             panelTop.Controls.Add(lblSubtitle);
@@ -54,11 +53,9 @@ namespace SOPRO.WinForms.Forms
             // btnAbrirProyecto
             // 
             btnAbrirProyecto.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnAbrirProyecto.BackColor = Color.FromArgb(240, 248, 255);
             btnAbrirProyecto.Cursor = Cursors.Hand;
             btnAbrirProyecto.FlatStyle = FlatStyle.Flat;
             btnAbrirProyecto.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
-            btnAbrirProyecto.ForeColor = Color.FromArgb(29, 78, 216);
             btnAbrirProyecto.Location = new Point(688, 27);
             btnAbrirProyecto.Name = "btnAbrirProyecto";
             btnAbrirProyecto.Size = new Size(160, 34);
@@ -70,11 +67,9 @@ namespace SOPRO.WinForms.Forms
             // btnNuevoProyecto
             // 
             btnNuevoProyecto.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnNuevoProyecto.BackColor = Color.FromArgb(29, 78, 216);
             btnNuevoProyecto.Cursor = Cursors.Hand;
             btnNuevoProyecto.FlatStyle = FlatStyle.Flat;
             btnNuevoProyecto.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
-            btnNuevoProyecto.ForeColor = Color.White;
             btnNuevoProyecto.Location = new Point(520, 27);
             btnNuevoProyecto.Name = "btnNuevoProyecto";
             btnNuevoProyecto.Size = new Size(160, 34);
@@ -86,9 +81,7 @@ namespace SOPRO.WinForms.Forms
             // lblSubtitle
             // 
             lblSubtitle.AutoSize = true;
-            lblSubtitle.BackColor = Color.Transparent;
             lblSubtitle.Font = new Font("Segoe UI", 9.5F);
-            lblSubtitle.ForeColor = Color.FromArgb(186, 230, 253);
             lblSubtitle.Location = new Point(26, 60);
             lblSubtitle.Name = "lblSubtitle";
             lblSubtitle.Size = new Size(240, 18);
@@ -98,9 +91,7 @@ namespace SOPRO.WinForms.Forms
             // lblTitle
             // 
             lblTitle.AutoSize = true;
-            lblTitle.BackColor = Color.Transparent;
             lblTitle.Font = new Font("Segoe UI", 26F, FontStyle.Bold);
-            lblTitle.ForeColor = Color.White;
             lblTitle.Location = new Point(24, 10);
             lblTitle.Name = "lblTitle";
             lblTitle.Size = new Size(150, 48);
@@ -109,7 +100,6 @@ namespace SOPRO.WinForms.Forms
             // 
             // panelCenter
             // 
-            panelCenter.BackColor = Color.FromArgb(234, 241, 253);
             panelCenter.Controls.Add(grpRecientes);
             panelCenter.Dock = DockStyle.Fill;
             panelCenter.Location = new Point(0, 88);
@@ -120,11 +110,9 @@ namespace SOPRO.WinForms.Forms
             // 
             // grpRecientes
             // 
-            grpRecientes.BackColor = Color.White;
             grpRecientes.Controls.Add(dgvRecientes);
             grpRecientes.Dock = DockStyle.Fill;
             grpRecientes.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-            grpRecientes.ForeColor = Color.FromArgb(10, 15, 30);
             grpRecientes.Location = new Point(28, 24);
             grpRecientes.Name = "grpRecientes";
             grpRecientes.Size = new Size(818, 384);
@@ -137,15 +125,10 @@ namespace SOPRO.WinForms.Forms
             dgvRecientes.AllowUserToAddRows = false;
             dgvRecientes.AllowUserToDeleteRows = false;
             dgvRecientes.AllowUserToResizeRows = false;
-            dgvRecientes.BackgroundColor = Color.White;
             dgvRecientes.BorderStyle = BorderStyle.None;
             dgvRecientes.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dataGridViewCellStyle1.Alignment = DataGridViewContentAlignment.MiddleLeft;
-            dataGridViewCellStyle1.BackColor = SystemColors.Window;
             dataGridViewCellStyle1.Font = new Font("Segoe UI Semilight", 9.75F, FontStyle.Regular, GraphicsUnit.Point, 0);
-            dataGridViewCellStyle1.ForeColor = SystemColors.ControlText;
-            dataGridViewCellStyle1.SelectionBackColor = SystemColors.Highlight;
-            dataGridViewCellStyle1.SelectionForeColor = SystemColors.HighlightText;
             dataGridViewCellStyle1.WrapMode = DataGridViewTriState.False;
             dgvRecientes.DefaultCellStyle = dataGridViewCellStyle1;
             dgvRecientes.Dock = DockStyle.Fill;
