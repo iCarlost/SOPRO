@@ -1,3 +1,5 @@
+using SOPRO.WinForms.UI.Controls;
+
 namespace SOPRO.WinForms.Forms
 {
     partial class FormPrincipal
@@ -20,8 +22,8 @@ namespace SOPRO.WinForms.Forms
             DataGridViewCellStyle dataGridViewCellStyle1 = new DataGridViewCellStyle();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(FormPrincipal));
             panelTop = new Panel();
-            btnAbrirProyecto = new Button();
-            btnNuevoProyecto = new Button();
+            btnAbrirProyecto = new SoproButton();
+            btnNuevoProyecto = new SoproButton();
             lblSubtitle = new Label();
             lblTitle = new Label();
             panelCenter = new Panel();
@@ -46,82 +48,86 @@ namespace SOPRO.WinForms.Forms
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 0);
             panelTop.Name = "panelTop";
-            panelTop.Size = new Size(874, 80);
+            panelTop.Size = new Size(874, 88);
             panelTop.TabIndex = 0;
             // 
             // btnAbrirProyecto
             // 
             btnAbrirProyecto.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnAbrirProyecto.BackColor = Color.White;
+            btnAbrirProyecto.BackColor = Color.FromArgb(240, 248, 255);
             btnAbrirProyecto.Cursor = Cursors.Hand;
             btnAbrirProyecto.FlatStyle = FlatStyle.Flat;
-            btnAbrirProyecto.Font = new Font("Segoe UI", 9F);
-            btnAbrirProyecto.ForeColor = Color.FromArgb(51, 51, 76);
-            btnAbrirProyecto.Location = new Point(694, 40);
+            btnAbrirProyecto.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+            btnAbrirProyecto.ForeColor = Color.FromArgb(29, 78, 216);
+            btnAbrirProyecto.Location = new Point(688, 27);
             btnAbrirProyecto.Name = "btnAbrirProyecto";
-            btnAbrirProyecto.Size = new Size(150, 30);
+            btnAbrirProyecto.Size = new Size(160, 34);
             btnAbrirProyecto.TabIndex = 3;
-            btnAbrirProyecto.Text = "📂 Abrir Proyecto";
+            btnAbrirProyecto.Text = "Abrir Proyecto";
             btnAbrirProyecto.UseVisualStyleBackColor = false;
             btnAbrirProyecto.Click += BtnAbrirProyecto_Click;
             // 
             // btnNuevoProyecto
             // 
             btnNuevoProyecto.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnNuevoProyecto.BackColor = Color.White;
+            btnNuevoProyecto.BackColor = Color.FromArgb(29, 78, 216);
             btnNuevoProyecto.Cursor = Cursors.Hand;
             btnNuevoProyecto.FlatStyle = FlatStyle.Flat;
-            btnNuevoProyecto.Font = new Font("Segoe UI", 9F);
-            btnNuevoProyecto.ForeColor = Color.FromArgb(51, 51, 76);
-            btnNuevoProyecto.Location = new Point(694, 10);
+            btnNuevoProyecto.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+            btnNuevoProyecto.ForeColor = Color.White;
+            btnNuevoProyecto.Location = new Point(520, 27);
             btnNuevoProyecto.Name = "btnNuevoProyecto";
-            btnNuevoProyecto.Size = new Size(150, 30);
+            btnNuevoProyecto.Size = new Size(160, 34);
             btnNuevoProyecto.TabIndex = 2;
-            btnNuevoProyecto.Text = "➕ Nuevo Proyecto";
+            btnNuevoProyecto.Text = "Nuevo Proyecto";
             btnNuevoProyecto.UseVisualStyleBackColor = false;
             btnNuevoProyecto.Click += BtnNuevoProyecto_Click;
             // 
             // lblSubtitle
             // 
             lblSubtitle.AutoSize = true;
-            lblSubtitle.Font = new Font("Segoe UI", 10F);
-            lblSubtitle.ForeColor = Color.FromArgb(150, 180, 220);
-            lblSubtitle.Location = new Point(20, 52);
+            lblSubtitle.BackColor = Color.Transparent;
+            lblSubtitle.Font = new Font("Segoe UI", 9.5F);
+            lblSubtitle.ForeColor = Color.FromArgb(186, 230, 253);
+            lblSubtitle.Location = new Point(26, 60);
             lblSubtitle.Name = "lblSubtitle";
-            lblSubtitle.Size = new Size(233, 19);
+            lblSubtitle.Size = new Size(240, 18);
             lblSubtitle.TabIndex = 1;
             lblSubtitle.Text = "Software para Presupuestos de Obra";
             // 
             // lblTitle
             // 
             lblTitle.AutoSize = true;
-            lblTitle.Font = new Font("Segoe UI", 24F, FontStyle.Bold);
+            lblTitle.BackColor = Color.Transparent;
+            lblTitle.Font = new Font("Segoe UI", 26F, FontStyle.Bold);
             lblTitle.ForeColor = Color.White;
-            lblTitle.Location = new Point(20, 14);
+            lblTitle.Location = new Point(24, 10);
             lblTitle.Name = "lblTitle";
-            lblTitle.Size = new Size(127, 45);
+            lblTitle.Size = new Size(150, 48);
             lblTitle.TabIndex = 0;
             lblTitle.Text = "SOPRO";
             // 
             // panelCenter
             // 
-            panelCenter.BackColor = Color.FromArgb(240, 240, 240);
+            panelCenter.BackColor = Color.FromArgb(234, 241, 253);
             panelCenter.Controls.Add(grpRecientes);
             panelCenter.Dock = DockStyle.Fill;
-            panelCenter.Location = new Point(0, 80);
+            panelCenter.Location = new Point(0, 88);
             panelCenter.Name = "panelCenter";
-            panelCenter.Padding = new Padding(40);
-            panelCenter.Size = new Size(874, 440);
+            panelCenter.Padding = new Padding(28, 24, 28, 24);
+            panelCenter.Size = new Size(874, 432);
             panelCenter.TabIndex = 1;
             // 
             // grpRecientes
             // 
+            grpRecientes.BackColor = Color.White;
             grpRecientes.Controls.Add(dgvRecientes);
             grpRecientes.Dock = DockStyle.Fill;
             grpRecientes.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-            grpRecientes.Location = new Point(40, 40);
+            grpRecientes.ForeColor = Color.FromArgb(10, 15, 30);
+            grpRecientes.Location = new Point(28, 24);
             grpRecientes.Name = "grpRecientes";
-            grpRecientes.Size = new Size(794, 360);
+            grpRecientes.Size = new Size(818, 384);
             grpRecientes.TabIndex = 0;
             grpRecientes.TabStop = false;
             grpRecientes.Text = "PROYECTOS RECIENTES";
@@ -199,15 +205,15 @@ namespace SOPRO.WinForms.Forms
 
         #endregion
 
-        private System.Windows.Forms.Panel panelTop;
-        private System.Windows.Forms.Label lblTitle;
-        private System.Windows.Forms.Label lblSubtitle;
-        private System.Windows.Forms.Button btnNuevoProyecto;
-        private System.Windows.Forms.Button btnAbrirProyecto;
-        private System.Windows.Forms.Panel panelCenter;
-        private System.Windows.Forms.GroupBox grpRecientes;
-        private System.Windows.Forms.DataGridView dgvRecientes;
-        private System.Windows.Forms.StatusStrip statusStrip;
-        private System.Windows.Forms.ToolStripStatusLabel lblStatus;
+        internal System.Windows.Forms.Panel panelTop;
+        internal System.Windows.Forms.Label lblTitle;
+        internal System.Windows.Forms.Label lblSubtitle;
+        internal SoproButton btnNuevoProyecto;
+        internal SoproButton btnAbrirProyecto;
+        internal System.Windows.Forms.Panel panelCenter;
+        internal System.Windows.Forms.GroupBox grpRecientes;
+        internal System.Windows.Forms.DataGridView dgvRecientes;
+        internal System.Windows.Forms.StatusStrip statusStrip;
+        internal System.Windows.Forms.ToolStripStatusLabel lblStatus;
     }
 }

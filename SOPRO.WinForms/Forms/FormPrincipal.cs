@@ -4,6 +4,7 @@ using SOPRO.Application.Models;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using System;
 using System.Diagnostics;
@@ -58,6 +59,7 @@ namespace SOPRO.WinForms.Forms
             _initialProjectPath = initialProjectPath;
 
             InitializeComponent();
+            SoproTheme.ApplyFormPrincipal(this);
             LoadRecentProjects();
             var version = GetCurrentApplicationVersion();
 

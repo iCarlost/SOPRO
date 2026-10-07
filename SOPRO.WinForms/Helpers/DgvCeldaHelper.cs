@@ -31,9 +31,18 @@ namespace SOPRO.WinForms.Helpers
             public bool ClicoEnRowHeader;
             public bool Inicializado;
             public DataGridViewTextBoxEditingControl? EditorActivo;
+            public Color ColorBorde = ColorBordeCelda;
         }
 
         public static void Aplicar(DataGridView dgv, bool conMenuCopia = true)
+            => Aplicar(dgv, conMenuCopia, ColorSeleccionFila, ColorBordeCelda, mostrarRowHeaders: true);
+
+        /// <summary>
+        /// Variante que permite personalizar los colores de seleccion/borde activo
+        /// y omitir los encabezados de fila, sin alterar el comportamiento por
+        /// defecto que usan las demas pantallas.
+        /// </summary>
+        public static void Aplicar(DataGridView dgv, bool conMenuCopia, Color colorSeleccion, Color colorBorde, bool mostrarRowHeaders)
         {
             if (dgv == null) return;
 
@@ -43,20 +52,25 @@ namespace SOPRO.WinForms.Helpers
                 _estados.Add(dgv, estado);
             }
 
+            estado.ColorBorde = colorBorde;
+
             // Color de selección suave
-            dgv.DefaultCellStyle.SelectionBackColor = ColorSeleccionFila;
+            dgv.DefaultCellStyle.SelectionBackColor = colorSeleccion;
             dgv.DefaultCellStyle.SelectionForeColor = Color.Black;
 
             // Deshabilitar el copiado interno del DataGridView.
             // Si no se hace, en modo edición el grid puede copiar la fila/selección completa.
             dgv.ClipboardCopyMode = DataGridViewClipboardCopyMode.Disable;
 
-            // Habilitar RowHeaders (ancho compacto, estilo limpio)
-            dgv.RowHeadersVisible = true;
-            dgv.RowHeadersWidth   = 20;
-            dgv.RowHeadersDefaultCellStyle.BackColor          = Color.FromArgb(245, 245, 248);
-            dgv.RowHeadersDefaultCellStyle.SelectionBackColor = Color.FromArgb(180, 210, 245);
-            dgv.RowHeadersDefaultCellStyle.SelectionForeColor = Color.Black;
+            if (mostrarRowHeaders)
+            {
+                // Habilitar RowHeaders (ancho compacto, estilo limpio)
+                dgv.RowHeadersVisible = true;
+                dgv.RowHeadersWidth   = 20;
+                dgv.RowHeadersDefaultCellStyle.BackColor          = Color.FromArgb(245, 245, 248);
+                dgv.RowHeadersDefaultCellStyle.SelectionBackColor = Color.FromArgb(180, 210, 245);
+                dgv.RowHeadersDefaultCellStyle.SelectionForeColor = Color.Black;
+            }
 
             if (estado.Inicializado) return;
             estado.Inicializado = true;
@@ -137,7 +151,8 @@ namespace SOPRO.WinForms.Helpers
                 e.RowIndex    == dgv.CurrentCell.RowIndex &&
                 e.ColumnIndex == dgv.CurrentCell.ColumnIndex)
             {
-                using var pen = new Pen(ColorBordeCelda, 2);
+                var borderColor = _estados.TryGetValue(dgv, out var estado) ? estado.ColorBorde : ColorBordeCelda;
+                using var pen = new Pen(borderColor, 2);
                 e.Graphics.DrawRectangle(pen,
                     e.CellBounds.Left + 1,
                     e.CellBounds.Top  + 1,

@@ -1,4 +1,10 @@
+using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Reflection;
+using System.Windows.Forms;
+using SOPRO.WinForms.Forms;
+using SOPRO.WinForms.UI.Controls;
 
 namespace SOPRO.WinForms.Helpers
 {
@@ -75,6 +81,323 @@ namespace SOPRO.WinForms.Helpers
             public static readonly Font GridHeader = new Font(FontFamily, 9F, FontStyle.Bold, GraphicsUnit.Point);
             public static readonly Font Button = new Font(FontFamily, 9.5F, FontStyle.Bold, GraphicsUnit.Point);
             public static readonly Font GroupTitle = new Font(FontFamily, 10F, FontStyle.Bold, GraphicsUnit.Point);
+        }
+
+        // =====================================================================
+        // Aplicacion del tema a FormPrincipal
+        // =====================================================================
+
+        /// <summary>
+        /// Engancha toda la pintura y estilos del tema SOPRO sobre
+        /// <see cref="FormPrincipal"/>: encabezado con gradiente, botones de
+        /// accion, panel central, tarjeta de recientes y barra de estado.
+        /// No modifica la logica ni los manejadores de eventos del formulario.
+        /// </summary>
+        public static void ApplyFormPrincipal(FormPrincipal form)
+        {
+            if (form == null) throw new ArgumentNullException(nameof(form));
+
+            ApplyHeader(form);
+            ApplyCenter(form);
+            ApplyRecentGrid(form);
+            ApplyStatusStrip(form);
+        }
+
+        private static void ApplyHeader(FormPrincipal form)
+        {
+            var panelTop = form.panelTop;
+            var lblTitle = form.lblTitle;
+            var lblSubtitle = form.lblSubtitle;
+            var btnNuevo = form.btnNuevoProyecto;
+            var btnAbrir = form.btnAbrirProyecto;
+
+            EnableDoubleBuffering(panelTop);
+            panelTop.BackColor = Colors.BrandMd;
+            panelTop.Height = SoproUiMetrics.HeaderHeight;
+
+            panelTop.Paint += (_, e) =>
+            {
+                var rect = panelTop.ClientRectangle;
+                if (rect.Width <= 0 || rect.Height <= 0) return;
+
+                using (var brush = new LinearGradientBrush(rect, Colors.BrandMd, Colors.Accent, HeaderGradientAngle))
+                {
+                    e.Graphics.FillRectangle(brush, rect);
+                }
+
+                // Linea inferior de marca (1px).
+                using var pen = new Pen(Colors.Brand);
+                e.Graphics.DrawLine(pen, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
+            };
+
+            lblTitle.AutoSize = true;
+            lblTitle.BackColor = Color.Transparent;
+            lblTitle.Font = Fonts.Title;
+            lblTitle.ForeColor = Colors.Surface;
+            lblTitle.Location = new Point(24, 10);
+
+            lblSubtitle.AutoSize = true;
+            lblSubtitle.BackColor = Color.Transparent;
+            lblSubtitle.Font = Fonts.Subtitle;
+            lblSubtitle.ForeColor = Colors.SubtitleText;
+            lblSubtitle.Location = new Point(26, 60);
+
+            ConfigureHeaderButton(btnNuevo, "Nuevo Proyecto", SoproIconType.Mas, primary: true);
+            ConfigureHeaderButton(btnAbrir, "Abrir Proyecto", SoproIconType.Carpeta, primary: false);
+
+            void LayoutButtons()
+            {
+                if (panelTop.IsDisposed) return;
+
+                const int gap = 8;
+                const int rightPadding = 24;
+                int height = Math.Max(btnNuevo.Height, btnAbrir.Height);
+                int y = Math.Max(0, (panelTop.ClientSize.Height - height) / 2);
+                int abrirX = panelTop.ClientSize.Width - rightPadding - btnAbrir.Width;
+                int nuevoX = abrirX - gap - btnNuevo.Width;
+
+                btnAbrir.Location = new Point(abrirX, y);
+                btnNuevo.Location = new Point(nuevoX, y);
+            }
+
+            panelTop.SizeChanged += (_, __) => LayoutButtons();
+            btnNuevo.SizeChanged += (_, __) => LayoutButtons();
+            btnAbrir.SizeChanged += (_, __) => LayoutButtons();
+            LayoutButtons();
+        }
+
+        private static void ConfigureHeaderButton(SoproButton button, string text, SoproIconType icon, bool primary)
+        {
+            button.Text = text;
+            button.AutoSize = false;
+            button.Cursor = Cursors.Hand;
+            button.FlatStyle = FlatStyle.Flat;
+            button.UseVisualStyleBackColor = false;
+            button.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            button.Font = Fonts.Button;
+
+            button.SoproContentPadding = new Padding(16, 0, 16, 0);
+            button.SoproIconTextSpacing = 8;
+            button.SoproIconSize = 16;
+            button.SoproIcon = icon;
+            button.SoproFixedHeight = 34;
+            button.SoproMinimumAutoWidth = 128;
+
+            if (primary)
+            {
+                button.ForeColor = Colors.Surface;
+                button.BackColor = Colors.BrandMd;
+                button.FlatAppearance.BorderSize = 0;
+                button.FlatAppearance.MouseOverBackColor = Colors.BrandMd;
+                button.FlatAppearance.MouseDownBackColor = Colors.BrandMd;
+            }
+            else
+            {
+                button.ForeColor = Colors.BrandMd;
+                button.BackColor = Colors.SecondaryBg;
+                button.FlatAppearance.BorderSize = 1;
+                button.FlatAppearance.BorderColor = Colors.SurfaceBorder;
+                button.FlatAppearance.MouseOverBackColor = Colors.SecondaryBg;
+                button.FlatAppearance.MouseDownBackColor = Colors.SecondaryBg;
+            }
+
+            // Al final: recalcula ancho/alto deseados segun texto + icono + fuente.
+            button.SoproAutoSizeToContent = true;
+        }
+
+        private static void ApplyCenter(FormPrincipal form)
+        {
+            var panelCenter = form.panelCenter;
+            EnableDoubleBuffering(panelCenter);
+            panelCenter.Padding = new Padding(28, 24, 28, 24);
+            panelCenter.BackColor = Colors.CenterTop;
+
+            panelCenter.Paint += (_, e) =>
+            {
+                var rect = panelCenter.ClientRectangle;
+                if (rect.Width <= 0 || rect.Height <= 0) return;
+
+                using var brush = new LinearGradientBrush(rect, Colors.CenterTop, Colors.CenterBottom, LinearGradientMode.Vertical);
+                e.Graphics.FillRectangle(brush, rect);
+            };
+
+            var grp = form.grpRecientes;
+            EnableDoubleBuffering(grp);
+            grp.BackColor = Colors.Surface;
+            grp.ForeColor = Colors.Ink;
+            grp.Font = Fonts.GroupTitle;
+        }
+
+        private static void ApplyRecentGrid(FormPrincipal form)
+        {
+            var dgv = form.dgvRecientes;
+            if (dgv == null) return;
+
+            dgv.AplicarEstiloSOPRO();
+
+            // Seleccion + borde activo con los tokens del tema, sin encabezados de fila
+            // (variante con sobrecarga: no altera el estilo por defecto de otras vistas).
+            DgvCeldaHelper.Aplicar(dgv, conMenuCopia: false, colorSeleccion: Colors.SelBg, colorBorde: Colors.BrandMd, mostrarRowHeaders: false);
+
+            dgv.GridColor = Colors.GridLine;
+            dgv.BackgroundColor = Colors.Surface;
+            dgv.BorderStyle = BorderStyle.None;
+            dgv.EnableHeadersVisualStyles = false;
+            dgv.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+            dgv.ColumnHeadersHeight = SoproUiMetrics.GridHeaderHeight;
+            dgv.ColumnHeadersDefaultCellStyle.BackColor = Colors.HeaderBg;
+            dgv.ColumnHeadersDefaultCellStyle.ForeColor = Colors.Ink;
+            dgv.ColumnHeadersDefaultCellStyle.SelectionBackColor = Colors.HeaderBg;
+            dgv.ColumnHeadersDefaultCellStyle.SelectionForeColor = Colors.Ink;
+            dgv.ColumnHeadersDefaultCellStyle.Font = Fonts.GridHeader;
+            dgv.DefaultCellStyle.Font = Fonts.GridCell;
+            dgv.DefaultCellStyle.ForeColor = Colors.Ink2;
+            dgv.DefaultCellStyle.BackColor = Colors.Surface;
+            dgv.DefaultCellStyle.SelectionBackColor = Colors.SelBg;
+            dgv.DefaultCellStyle.SelectionForeColor = Colors.Ink;
+            dgv.AlternatingRowsDefaultCellStyle.BackColor = Colors.RowAlt;
+            dgv.AlternatingRowsDefaultCellStyle.SelectionBackColor = Colors.SelBg;
+            dgv.AlternatingRowsDefaultCellStyle.SelectionForeColor = Colors.Ink;
+            dgv.RowHeadersVisible = false;
+
+            StyleDeleteColumn(dgv);
+        }
+
+        private static void StyleDeleteColumn(DataGridView dgv)
+        {
+            // La columna de eliminar se recrea en cada LoadRecentProjects,
+            // por eso la configuracion se reaplica al agregarse la columna.
+            dgv.ColumnAdded += (_, e) =>
+            {
+                if (e.Column == null) return;
+                if (!string.Equals(e.Column.Name, "colEliminar", StringComparison.Ordinal)) return;
+                ConfigureDeleteColumn(e.Column);
+            };
+
+            ConfigureDeleteColumn(dgv.Columns["colEliminar"]);
+
+            int hoverRow = -1;
+            int hoverColumn = -1;
+
+            bool IsDeleteColumn(DataGridView grid, int columnIndex)
+            {
+                var deleteColumn = grid.Columns["colEliminar"];
+                return deleteColumn != null && columnIndex == deleteColumn.Index;
+            }
+
+            dgv.CellMouseEnter += (_, e) =>
+            {
+                if (e.RowIndex < 0 || !IsDeleteColumn(dgv, e.ColumnIndex)) return;
+                hoverRow = e.RowIndex;
+                hoverColumn = e.ColumnIndex;
+                dgv.InvalidateCell(e.ColumnIndex, e.RowIndex);
+            };
+
+            dgv.CellMouseLeave += (_, e) =>
+            {
+                hoverRow = -1;
+                hoverColumn = -1;
+                if (e.RowIndex >= 0 && e.ColumnIndex >= 0)
+                    dgv.InvalidateCell(e.ColumnIndex, e.RowIndex);
+            };
+
+            dgv.CellPainting += (_, e) =>
+            {
+                if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+                if (!IsDeleteColumn(dgv, e.ColumnIndex)) return;
+
+                var graphics = e.Graphics;
+                if (graphics == null) return;
+
+                bool selected = (e.State & DataGridViewElementStates.Selected) == DataGridViewElementStates.Selected;
+                bool hovered = e.RowIndex == hoverRow && e.ColumnIndex == hoverColumn;
+                Color background = selected
+                    ? Colors.SelBg
+                    : hovered
+                        ? Colors.HoverBg
+                        : (e.RowIndex % 2 == 1 ? Colors.RowAlt : Colors.Surface);
+
+                using (var brush = new SolidBrush(background))
+                    graphics.FillRectangle(brush, e.CellBounds);
+
+                using (var line = new Pen(Colors.GridLine))
+                    graphics.DrawLine(line, e.CellBounds.Left, e.CellBounds.Bottom - 1, e.CellBounds.Right - 1, e.CellBounds.Bottom - 1);
+
+                if (dgv.CurrentCell != null &&
+                    dgv.CurrentCell.RowIndex == e.RowIndex &&
+                    dgv.CurrentCell.ColumnIndex == e.ColumnIndex)
+                {
+                    using var border = new Pen(Colors.BrandMd, 2);
+                    graphics.DrawRectangle(border, e.CellBounds.Left + 1, e.CellBounds.Top + 1, e.CellBounds.Width - 3, e.CellBounds.Height - 3);
+                }
+
+                const int glyphSize = 16;
+                Color glyphColor = hovered ? Colors.BrandMd : Colors.GlyphIdle;
+                int glyphX = e.CellBounds.Left + ((e.CellBounds.Width - glyphSize) / 2);
+                int glyphY = e.CellBounds.Top + ((e.CellBounds.Height - glyphSize) / 2);
+
+                using (var glyph = SoproIconProvider.GetIcon(SoproIconType.Papelera, glyphColor, glyphSize))
+                    graphics.DrawImage(glyph, new Rectangle(glyphX, glyphY, glyphSize, glyphSize));
+
+                e.Handled = true;
+            };
+        }
+
+        private static void ConfigureDeleteColumn(DataGridViewColumn? column)
+        {
+            if (column is not DataGridViewButtonColumn buttonColumn) return;
+
+            // Se elimina el emoji: el glifo Papelera se pinta a mano para
+            // poder colorearlo (gris en reposo, azul en hover).
+            buttonColumn.Text = string.Empty;
+            buttonColumn.UseColumnTextForButtonValue = true;
+            buttonColumn.FlatStyle = FlatStyle.Flat;
+        }
+
+        private static void ApplyStatusStrip(FormPrincipal form)
+        {
+            var status = form.statusStrip;
+            if (status != null)
+            {
+                status.BackColor = Colors.HeaderBg;
+                status.ForeColor = Colors.Muted;
+                status.Renderer = new SoproToolStripRenderer();
+            }
+
+            var lblStatus = form.lblStatus;
+            if (lblStatus != null)
+            {
+                lblStatus.ForeColor = Colors.Muted;
+                lblStatus.Font = Fonts.Subtitle;
+            }
+        }
+
+        private static void EnableDoubleBuffering(Control control)
+        {
+            if (control == null) return;
+
+            typeof(Control)
+                .GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.SetValue(control, true, null);
+        }
+
+        /// <summary>
+        /// Renderer minimo que tiñe la StatusStrip con los tokens del tema y le
+        /// dibuja el borde superior de 1px. No afecta a otros ToolStrip.
+        /// </summary>
+        private sealed class SoproToolStripRenderer : ToolStripProfessionalRenderer
+        {
+            protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+            {
+                using var brush = new SolidBrush(Colors.HeaderBg);
+                e.Graphics.FillRectangle(brush, e.AffectedBounds);
+            }
+
+            protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+            {
+                using var pen = new Pen(Colors.SurfaceBorder);
+                e.Graphics.DrawLine(pen, 0, 0, e.ToolStrip.Width, 0);
+            }
         }
     }
 }
