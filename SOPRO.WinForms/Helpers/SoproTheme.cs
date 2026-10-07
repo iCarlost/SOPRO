@@ -199,6 +199,17 @@ namespace SOPRO.WinForms.Helpers
                 button.FlatAppearance.BorderColor = Colors.SurfaceBorder;
                 button.FlatAppearance.MouseOverBackColor = Colors.SecondaryHoverBg;
                 button.FlatAppearance.MouseDownBackColor = Colors.BgBase;
+
+                // El layout interno del Button (FlatStyle.Flat) descuenta 2*BorderSize
+                // del area de contenido. Con el borde de 1px este boton quedaba 2px mas
+                // angosto que el texto en una sola linea: WinForms lo partia en dos
+                // lineas, inflaba la altura medida del bloque texto+imagen y por eso el
+                // icono se centraba mas abajo y el texto se dibujaba hacia arriba.
+                // Se reserva +2 en el espaciado icono-texto (que absorbe el inset fijo
+                // del layout) y se compensa con -2 en el padding horizontal para
+                // conservar exactamente el ancho total ya aprobado del boton.
+                button.SoproContentPadding = new Padding(15, 0, 15, 0);
+                button.SoproIconTextSpacing = 10;
             }
 
             // Al final: recalcula ancho/alto deseados segun texto + icono + fuente.
