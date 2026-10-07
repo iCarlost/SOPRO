@@ -43,6 +43,7 @@ namespace SOPRO.WinForms.Forms
             _context  = context  ?? throw new ArgumentNullException(nameof(context));
             _proyecto = proyecto ?? throw new ArgumentNullException(nameof(proyecto));
             InitializeComponent();
+            SoproTheme.ApplyFormProyecto(this);
             // KeyPreview permite interceptar F9/F10 antes que los controles hijos
             this.KeyPreview = true;
             this.KeyDown += FormProyecto_KeyDown;

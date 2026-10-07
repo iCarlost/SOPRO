@@ -7,43 +7,43 @@ namespace SOPRO.WinForms.Forms
     partial class FormProyecto
     {
         private System.ComponentModel.IContainer components = null;
-        private System.Windows.Forms.Panel panelLeft;
-        private System.Windows.Forms.Panel panelSidebarHeader;
+        internal System.Windows.Forms.Panel panelLeft;
+        internal System.Windows.Forms.Panel panelSidebarHeader;
         private System.Windows.Forms.Button btnToggleSidebar;
-        private System.Windows.Forms.TreeView treeMenu;
-        private System.Windows.Forms.Panel panelTop;
+        internal System.Windows.Forms.TreeView treeMenu;
+        internal System.Windows.Forms.Panel panelTop;
         private System.Windows.Forms.Panel panelRibbon;
         private System.Windows.Forms.Label lblColumna;
-        private System.Windows.Forms.Label lblSepFuente;
+        internal System.Windows.Forms.Label lblSepFuente;
         private System.Windows.Forms.ComboBox cboFuente;
         private System.Windows.Forms.NumericUpDown nudTamano;
         private System.Windows.Forms.Button btnNegrita;
         private System.Windows.Forms.Button btnCursiva;
-        private System.Windows.Forms.Label lblSepEstilo;
-        private SoproButton btnAlinIzq;
-        private SoproButton btnAlinCen;
-        private SoproButton btnAlinDer;
-        private SoproButton btnAlinJus;
-        private SoproButton btnAlinMed;
-        private SoproButton btnAlinAba;
-        private System.Windows.Forms.Label lblSepAlin;
+        internal System.Windows.Forms.Label lblSepEstilo;
+        internal SoproButton btnAlinIzq;
+        internal SoproButton btnAlinCen;
+        internal SoproButton btnAlinDer;
+        internal SoproButton btnAlinJus;
+        internal SoproButton btnAlinMed;
+        internal SoproButton btnAlinAba;
+        internal System.Windows.Forms.Label lblSepAlin;
         private System.Windows.Forms.Button btnColorFondo;
         private System.Windows.Forms.Button btnColorTexto;
-        private System.Windows.Forms.Label  lblSepReporte;
-        private SoproButton btnExcelRibbon;
-        private SoproButton btnPdfRibbon;
-        private SoproButton btnBuscarRibbon;
-        private SoproButton btnWrapRibbon;
-        private SoproButton btnRecalcularRibbon;
-        private SoproButton btnDepurarRibbon;
-        private System.Windows.Forms.Label lblSepGlobal;
-        private SoproButton btnAplicarATodas;
-        private SoproButton btnConsolidarInsumos;
+        internal System.Windows.Forms.Label  lblSepReporte;
+        internal SoproButton btnExcelRibbon;
+        internal SoproButton btnPdfRibbon;
+        internal SoproButton btnBuscarRibbon;
+        internal SoproButton btnWrapRibbon;
+        internal SoproButton btnRecalcularRibbon;
+        internal SoproButton btnDepurarRibbon;
+        internal System.Windows.Forms.Label lblSepGlobal;
+        internal SoproButton btnAplicarATodas;
+        internal SoproButton btnConsolidarInsumos;
         private System.Windows.Forms.ToolTip toolTipRibbon;
         private System.Windows.Forms.ContextMenuStrip cmsRibbonOverflow;
         private System.Windows.Forms.Button btnRibbonMas;
-        private System.Windows.Forms.Label lblTitulo;
-        private System.Windows.Forms.Label lblProyecto;
+        internal System.Windows.Forms.Label lblTitulo;
+        internal System.Windows.Forms.Label lblProyecto;
         private System.Windows.Forms.TabControl tabControl;
 
         protected override void Dispose(bool disposing)
@@ -134,7 +134,6 @@ namespace SOPRO.WinForms.Forms
             // 
             // panelLeft
             // 
-            panelLeft.BackColor = Color.FromArgb(250, 250, 250);
             panelLeft.BorderStyle = BorderStyle.FixedSingle;
             panelLeft.Controls.Add(treeMenu);
             panelLeft.Controls.Add(panelSidebarHeader);
@@ -146,7 +145,6 @@ namespace SOPRO.WinForms.Forms
             // 
             // treeMenu
             // 
-            treeMenu.BackColor = Color.White;
             treeMenu.BorderStyle = BorderStyle.None;
             treeMenu.Dock = DockStyle.Fill;
             treeMenu.Font = new Font("Segoe UI", 10F);
@@ -205,7 +203,6 @@ namespace SOPRO.WinForms.Forms
             // 
             // panelSidebarHeader
             // 
-            panelSidebarHeader.BackColor = Color.FromArgb(240, 240, 243);
             panelSidebarHeader.Controls.Add(btnToggleSidebar);
             panelSidebarHeader.Dock = DockStyle.Top;
             panelSidebarHeader.Location = new Point(0, 0);
@@ -231,7 +228,6 @@ namespace SOPRO.WinForms.Forms
             // 
             // panelTop
             // 
-            panelTop.BackColor = Color.FromArgb(51, 51, 76);
             panelTop.Controls.Add(lblProyecto);
             panelTop.Controls.Add(panelRibbon);
             panelTop.Controls.Add(lblTitulo);
@@ -245,7 +241,6 @@ namespace SOPRO.WinForms.Forms
             // 
             lblProyecto.AutoSize = true;
             lblProyecto.Font = new Font("Segoe UI", 11F);
-            lblProyecto.ForeColor = Color.White;
             lblProyecto.Location = new Point(20, 45);
             lblProyecto.Name = "lblProyecto";
             lblProyecto.Size = new Size(67, 20);
@@ -309,7 +304,6 @@ namespace SOPRO.WinForms.Forms
             // 
             // label2
             // 
-            label2.BackColor = Color.FromArgb(200, 200, 200);
             label2.Location = new Point(858, 8);
             label2.Name = "label2";
             label2.Size = new Size(1, 59);
@@ -317,7 +311,6 @@ namespace SOPRO.WinForms.Forms
             // 
             // label1
             // 
-            label1.BackColor = Color.FromArgb(200, 200, 200);
             label1.Location = new Point(614, 8);
             label1.Name = "label1";
             label1.Size = new Size(1, 59);
@@ -335,7 +328,6 @@ namespace SOPRO.WinForms.Forms
             btnPdfRibbon.Padding = new Padding(6, 0, 6, 0);
             btnPdfRibbon.Size = new Size(28, 24);
             btnPdfRibbon.SoproContentPadding = new Padding(6, 0, 6, 0);
-            btnPdfRibbon.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnPdfRibbon.SoproIcon = Helpers.SoproIconType.Pdf;
             btnPdfRibbon.SoproShowText = false;
             btnPdfRibbon.TabIndex = 19;
@@ -355,7 +347,6 @@ namespace SOPRO.WinForms.Forms
             btnExcelRibbon.Padding = new Padding(6, 0, 6, 0);
             btnExcelRibbon.Size = new Size(28, 24);
             btnExcelRibbon.SoproContentPadding = new Padding(6, 0, 6, 0);
-            btnExcelRibbon.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnExcelRibbon.SoproIcon = Helpers.SoproIconType.Excel;
             btnExcelRibbon.SoproShowText = false;
             btnExcelRibbon.TabIndex = 18;
@@ -376,7 +367,6 @@ namespace SOPRO.WinForms.Forms
             btnDepurarRibbon.Padding = new Padding(8, 0, 10, 0);
             btnDepurarRibbon.Size = new Size(107, 24);
             btnDepurarRibbon.SoproContentPadding = new Padding(8, 0, 10, 0);
-            btnDepurarRibbon.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnDepurarRibbon.SoproIcon = Helpers.SoproIconType.Depurar;
             btnDepurarRibbon.SoproMinimumAutoWidth = 82;
             btnDepurarRibbon.TabIndex = 16;
@@ -399,7 +389,6 @@ namespace SOPRO.WinForms.Forms
             btnRecalcularRibbon.Padding = new Padding(8, 0, 10, 0);
             btnRecalcularRibbon.Size = new Size(107, 24);
             btnRecalcularRibbon.SoproContentPadding = new Padding(8, 0, 10, 0);
-            btnRecalcularRibbon.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnRecalcularRibbon.SoproIcon = Helpers.SoproIconType.Recalcular;
             btnRecalcularRibbon.SoproMinimumAutoWidth = 92;
             btnRecalcularRibbon.TabIndex = 15;
@@ -422,7 +411,6 @@ namespace SOPRO.WinForms.Forms
             btnBuscarRibbon.Padding = new Padding(8, 0, 10, 0);
             btnBuscarRibbon.Size = new Size(104, 24);
             btnBuscarRibbon.SoproContentPadding = new Padding(8, 0, 10, 0);
-            btnBuscarRibbon.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnBuscarRibbon.SoproIcon = Helpers.SoproIconType.Buscar;
             btnBuscarRibbon.SoproMinimumAutoWidth = 74;
             btnBuscarRibbon.TabIndex = 13;
@@ -445,7 +433,6 @@ namespace SOPRO.WinForms.Forms
             btnWrapRibbon.Padding = new Padding(8, 0, 10, 0);
             btnWrapRibbon.Size = new Size(104, 24);
             btnWrapRibbon.SoproContentPadding = new Padding(8, 0, 10, 0);
-            btnWrapRibbon.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnWrapRibbon.SoproIcon = Helpers.SoproIconType.AjustarTexto;
             btnWrapRibbon.SoproMinimumAutoWidth = 86;
             btnWrapRibbon.TabIndex = 14;
@@ -457,7 +444,6 @@ namespace SOPRO.WinForms.Forms
             // 
             // lblSepReporte
             // 
-            lblSepReporte.BackColor = Color.FromArgb(200, 200, 200);
             lblSepReporte.Location = new Point(738, 8);
             lblSepReporte.Name = "lblSepReporte";
             lblSepReporte.Size = new Size(1, 59);
@@ -476,7 +462,6 @@ namespace SOPRO.WinForms.Forms
             btnConsolidarInsumos.Padding = new Padding(8, 0, 10, 0);
             btnConsolidarInsumos.Size = new Size(107, 24);
             btnConsolidarInsumos.SoproContentPadding = new Padding(8, 0, 10, 0);
-            btnConsolidarInsumos.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnConsolidarInsumos.SoproIcon = Helpers.SoproIconType.Consolidar;
             btnConsolidarInsumos.SoproMinimumAutoWidth = 86;
             btnConsolidarInsumos.TabIndex = 29;
@@ -499,7 +484,6 @@ namespace SOPRO.WinForms.Forms
             btnAplicarATodas.Padding = new Padding(8, 0, 10, 0);
             btnAplicarATodas.Size = new Size(107, 24);
             btnAplicarATodas.SoproContentPadding = new Padding(8, 0, 10, 0);
-            btnAplicarATodas.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnAplicarATodas.SoproIcon = Helpers.SoproIconType.AplicarATodas;
             btnAplicarATodas.SoproMinimumAutoWidth = 86;
             btnAplicarATodas.TabIndex = 17;
@@ -511,7 +495,6 @@ namespace SOPRO.WinForms.Forms
             // 
             // lblSepGlobal
             // 
-            lblSepGlobal.BackColor = Color.FromArgb(200, 200, 200);
             lblSepGlobal.Location = new Point(495, 8);
             lblSepGlobal.Name = "lblSepGlobal";
             lblSepGlobal.Size = new Size(1, 59);
@@ -548,7 +531,6 @@ namespace SOPRO.WinForms.Forms
             // 
             // lblSepAlin
             // 
-            lblSepAlin.BackColor = Color.FromArgb(200, 200, 200);
             lblSepAlin.Location = new Point(255, 37);
             lblSepAlin.Name = "lblSepAlin";
             lblSepAlin.Size = new Size(1, 30);
@@ -565,7 +547,6 @@ namespace SOPRO.WinForms.Forms
             btnAlinAba.Name = "btnAlinAba";
             btnAlinAba.Size = new Size(28, 28);
             btnAlinAba.SoproContentPadding = new Padding(0);
-            btnAlinAba.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnAlinAba.SoproIcon = Helpers.SoproIconType.AlinearAbajo;
             btnAlinAba.SoproIconSize = 15;
             btnAlinAba.SoproShowText = false;
@@ -584,7 +565,6 @@ namespace SOPRO.WinForms.Forms
             btnAlinMed.Name = "btnAlinMed";
             btnAlinMed.Size = new Size(28, 28);
             btnAlinMed.SoproContentPadding = new Padding(0);
-            btnAlinMed.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnAlinMed.SoproIcon = Helpers.SoproIconType.AlinearMedio;
             btnAlinMed.SoproIconSize = 15;
             btnAlinMed.SoproShowText = false;
@@ -603,7 +583,6 @@ namespace SOPRO.WinForms.Forms
             btnAlinJus.Name = "btnAlinJus";
             btnAlinJus.Size = new Size(28, 28);
             btnAlinJus.SoproContentPadding = new Padding(0);
-            btnAlinJus.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnAlinJus.SoproIcon = Helpers.SoproIconType.AlinearArriba;
             btnAlinJus.SoproIconSize = 15;
             btnAlinJus.SoproShowText = false;
@@ -622,7 +601,6 @@ namespace SOPRO.WinForms.Forms
             btnAlinDer.Name = "btnAlinDer";
             btnAlinDer.Size = new Size(28, 28);
             btnAlinDer.SoproContentPadding = new Padding(0);
-            btnAlinDer.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnAlinDer.SoproIcon = Helpers.SoproIconType.AlinearDerecha;
             btnAlinDer.SoproIconSize = 15;
             btnAlinDer.SoproShowText = false;
@@ -641,7 +619,6 @@ namespace SOPRO.WinForms.Forms
             btnAlinCen.Name = "btnAlinCen";
             btnAlinCen.Size = new Size(28, 28);
             btnAlinCen.SoproContentPadding = new Padding(0);
-            btnAlinCen.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnAlinCen.SoproIcon = Helpers.SoproIconType.AlinearCentro;
             btnAlinCen.SoproIconSize = 15;
             btnAlinCen.SoproShowText = false;
@@ -660,7 +637,6 @@ namespace SOPRO.WinForms.Forms
             btnAlinIzq.Name = "btnAlinIzq";
             btnAlinIzq.Size = new Size(28, 28);
             btnAlinIzq.SoproContentPadding = new Padding(0);
-            btnAlinIzq.SoproDisabledIconColor = Color.FromArgb(120, 120, 120);
             btnAlinIzq.SoproIcon = Helpers.SoproIconType.AlinearIzquierda;
             btnAlinIzq.SoproIconSize = 15;
             btnAlinIzq.SoproShowText = false;
@@ -670,7 +646,6 @@ namespace SOPRO.WinForms.Forms
             // 
             // lblSepEstilo
             // 
-            lblSepEstilo.BackColor = Color.FromArgb(200, 200, 200);
             lblSepEstilo.Location = new Point(386, 8);
             lblSepEstilo.Name = "lblSepEstilo";
             lblSepEstilo.Size = new Size(1, 59);
@@ -730,7 +705,6 @@ namespace SOPRO.WinForms.Forms
             // 
             // lblSepFuente
             // 
-            lblSepFuente.BackColor = Color.FromArgb(200, 200, 200);
             lblSepFuente.Location = new Point(156, 8);
             lblSepFuente.Name = "lblSepFuente";
             lblSepFuente.Size = new Size(1, 59);
@@ -752,7 +726,6 @@ namespace SOPRO.WinForms.Forms
             // 
             lblTitulo.AutoSize = true;
             lblTitulo.Font = new Font("Segoe UI", 18F, FontStyle.Bold);
-            lblTitulo.ForeColor = Color.White;
             lblTitulo.Location = new Point(20, 10);
             lblTitulo.Name = "lblTitulo";
             lblTitulo.Size = new Size(94, 32);
@@ -809,7 +782,7 @@ namespace SOPRO.WinForms.Forms
 
         #endregion
 
-        private Label label1;
-        private Label label2;
+        internal Label label1;
+        internal Label label2;
     }
 }

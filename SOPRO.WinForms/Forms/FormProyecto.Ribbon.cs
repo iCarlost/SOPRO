@@ -213,7 +213,7 @@ namespace SOPRO.WinForms.Forms
                 var options = showText
                     ? SoproIconButtonOptions.ForRibbonText(iconType, iconSize: iconSize)
                     : SoproIconButtonOptions.ForRibbonGlyph(iconType, iconSize);
-                SoproRibbonButtonStyler.Apply(btn, options, btn.Enabled ? btn.ForeColor : Color.FromArgb(120, 120, 120));
+                SoproRibbonButtonStyler.Apply(btn, options, btn.Enabled ? btn.ForeColor : SoproTheme.Colors.Disabled);
             }
 
             var stateIconType = btn is SoproButton sb && sb.SoproIcon.HasValue ? sb.SoproIcon.Value : iconType;
@@ -424,7 +424,7 @@ namespace SOPRO.WinForms.Forms
             return new RibbonButtonState(null, false, 16, null);
         }
 
-        private Color RibbonBaseColor => panelTop?.BackColor ?? Color.FromArgb(51, 51, 76);
+        private Color RibbonBaseColor => panelTop?.BackColor ?? SoproTheme.Colors.BrandMd;
         private Color RibbonActiveColor => ControlPaint.Light(RibbonBaseColor);
 
         private bool EstaBotonActivo(Button btn)

@@ -58,6 +58,12 @@ namespace SOPRO.WinForms.Helpers
             public static readonly Color GridLine = Color.FromArgb(0xE3, 0xE9, 0xF4);    // #e3e9f4
             public static readonly Color SelBg = Color.FromArgb(0xDB, 0xEA, 0xFE);       // #dbeafe
 
+            // --- Chrome del host (header, sidebar y ribbon) ---
+            public static readonly Color SidebarBg = Color.FromArgb(0xFA, 0xFA, 0xFA);       // 250,250,250
+            public static readonly Color SidebarHeaderBg = Color.FromArgb(0xF0, 0xF0, 0xF3); // 240,240,243
+            public static readonly Color RibbonSeparator = Color.FromArgb(0xC8, 0xC8, 0xC8); // 200,200,200
+            public static readonly Color Disabled = Color.FromArgb(0x78, 0x78, 0x78);        // 120,120,120
+
             // --- Derivados usados por el encabezado y las tarjetas de FormPrincipal ---
             public static readonly Color SubtitleText = Color.FromArgb(0xBA, 0xE6, 0xFD); // #bae6fd
             public static readonly Color HeaderBg = Color.FromArgb(0xF1, 0xF5, 0xFB);     // #f1f5fb
@@ -387,6 +393,89 @@ namespace SOPRO.WinForms.Helpers
             {
                 lblStatus.ForeColor = Colors.Muted;
                 lblStatus.Font = Fonts.Subtitle;
+            }
+        }
+
+        // =====================================================================
+        // Aplicacion del tema a FormProyecto (fase 1: chrome del host)
+        // =====================================================================
+
+        /// <summary>
+        /// Aplica los tokens del tema al chrome del host <see cref="FormProyecto"/>:
+        /// header con gradiente (titulo/proyecto), separadores y color de icono
+        /// deshabilitado del ribbon, y superficies de la barra lateral/arbol.
+        /// No modifica logica, eventos ni geometria del formulario.
+        /// </summary>
+        public static void ApplyFormProyecto(FormProyecto form)
+        {
+            if (form == null) throw new ArgumentNullException(nameof(form));
+
+            ApplyProyectoHeader(form);
+            ApplyProyectoSidebar(form);
+            ApplyProyectoRibbonChrome(form);
+        }
+
+        private static void ApplyProyectoHeader(FormProyecto form)
+        {
+            var panelTop = form.panelTop;
+            var lblTitulo = form.lblTitulo;
+            var lblProyecto = form.lblProyecto;
+
+            EnableDoubleBuffering(panelTop);
+            // RibbonBaseColor deriva de panelTop.BackColor: debe ser BrandMd.
+            panelTop.BackColor = Colors.BrandMd;
+
+            panelTop.Paint += (_, e) =>
+            {
+                var rect = panelTop.ClientRectangle;
+                if (rect.Width <= 0 || rect.Height <= 0) return;
+
+                using (var brush = new LinearGradientBrush(rect, Colors.BrandMd, Colors.Accent, HeaderGradientAngle))
+                {
+                    e.Graphics.FillRectangle(brush, rect);
+                }
+
+                // Linea inferior de marca (1px).
+                using var pen = new Pen(Colors.Brand);
+                e.Graphics.DrawLine(pen, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
+            };
+
+            lblTitulo.BackColor = Color.Transparent;
+            lblTitulo.ForeColor = Colors.Surface;
+            lblProyecto.BackColor = Color.Transparent;
+            lblProyecto.ForeColor = Colors.Surface;
+        }
+
+        private static void ApplyProyectoSidebar(FormProyecto form)
+        {
+            form.panelLeft.BackColor = Colors.SidebarBg;
+            form.panelSidebarHeader.BackColor = Colors.SidebarHeaderBg;
+            form.treeMenu.BackColor = Colors.SidebarBg;
+        }
+
+        private static void ApplyProyectoRibbonChrome(FormProyecto form)
+        {
+            foreach (var separator in new[]
+            {
+                form.label1, form.label2, form.lblSepReporte, form.lblSepGlobal,
+                form.lblSepAlin, form.lblSepEstilo, form.lblSepFuente
+            })
+            {
+                if (separator != null)
+                    separator.BackColor = Colors.RibbonSeparator;
+            }
+
+            foreach (var button in new[]
+            {
+                form.btnPdfRibbon, form.btnExcelRibbon, form.btnDepurarRibbon,
+                form.btnRecalcularRibbon, form.btnBuscarRibbon, form.btnWrapRibbon,
+                form.btnConsolidarInsumos, form.btnAplicarATodas, form.btnAlinAba,
+                form.btnAlinMed, form.btnAlinJus, form.btnAlinDer, form.btnAlinCen,
+                form.btnAlinIzq
+            })
+            {
+                if (button != null)
+                    button.SoproDisabledIconColor = Colors.Disabled;
             }
         }
 

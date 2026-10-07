@@ -218,7 +218,7 @@ namespace SOPRO.WinForms.Forms
 
         private void Abrir(string titulo, Form form, string nodeName)
         {
-            var tab = new TabPage(titulo) { Name = nodeName, BackColor = Color.White };
+            var tab = new TabPage(titulo) { Name = nodeName, BackColor = SoproTheme.Colors.Surface };
             form.TopLevel        = false;
             form.FormBorderStyle = FormBorderStyle.None;
             form.Dock            = DockStyle.Fill;
@@ -232,7 +232,7 @@ namespace SOPRO.WinForms.Forms
             tab.Padding = new Padding(0);
             tab.Margin = new Padding(0);
             tab.UseVisualStyleBackColor = true;
-            tab.BackColor = Color.White;
+            tab.BackColor = SoproTheme.Colors.Surface;
             form.Margin = new Padding(0);
             form.Padding = new Padding(0);
 
