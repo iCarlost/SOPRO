@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Models;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
@@ -20,28 +21,79 @@ namespace SOPRO.WinForms.Forms
         private readonly ProjectLifecycleService _projectLifecycleService;
         private ProjectSession? _currentSession;
 
+        /// <summary>
+        /// Ruta de proyecto solicitada al arrancar (shell / doble clic). Se
+        /// consume una sola vez desde <see cref="Form.Shown"/>, nunca desde el
+        /// constructor, para que la ventana ya exista al abrirla.
+        /// </summary>
+        private string? _initialProjectPath;
+
+        /// <summary>
+        /// Evita repetir la verificación de actualizaciones cuando el arranque
+        /// es directo a un proyecto: se lanza antes de que
+        /// <see cref="FormPrincipal"/> llegue a mostrarse.
+        /// </summary>
+        private bool _startupUpdateCheckStarted;
+
         private SOPROContext? _currentContext => _currentSession?.Context;
         private Proyecto? _currentProject => _currentSession?.Project;
 
-        public FormPrincipal() : this(new ProjectWorkspaceService(), new ProjectLifecycleService(new ProjectWorkspaceService()))
+        public FormPrincipal()
+            : this(new ProjectWorkspaceService(), new ProjectLifecycleService(new ProjectWorkspaceService()), initialProjectPath: null)
         {
         }
 
         public FormPrincipal(ProjectWorkspaceService workspaceService, ProjectLifecycleService projectLifecycleService)
+            : this(workspaceService, projectLifecycleService, initialProjectPath: null)
+        {
+        }
+
+        public FormPrincipal(
+            ProjectWorkspaceService workspaceService,
+            ProjectLifecycleService projectLifecycleService,
+            string? initialProjectPath)
         {
             _workspaceService = workspaceService;
             _projectLifecycleService = projectLifecycleService;
+            _initialProjectPath = initialProjectPath;
 
             InitializeComponent();
             LoadRecentProjects();
             var version = GetCurrentApplicationVersion();
 
             lblStatus.Text = $"Versión actual: {version}";
-            Shown += async (_, __) => await CheckForUpdatesOnStartupAsync();
+            Shown += async (_, __) =>
+            {
+                // Fase 2.2: abre primero el proyecto pedido por el shell (si lo
+                // hay) y luego verifica actualizaciones, sin cambiar el arranque
+                // sin argumentos.
+                OpenInitialProjectIfAny();
+                await CheckForUpdatesOnStartupAsync();
+            };
+        }
+
+        /// <summary>
+        /// Lanza la verificación de actualizaciones al arrancar sin necesidad de
+        /// que <see cref="FormPrincipal"/> se muestre. Se usa en el arranque
+        /// directo a un proyecto (shell / doble clic) para conservar la
+        /// comprobación de actualizaciones del arranque normal.
+        /// </summary>
+        public void StartStartupUpdateCheck()
+        {
+            _ = CheckForUpdatesOnStartupAsync();
         }
 
         private async Task CheckForUpdatesOnStartupAsync()
         {
+            // Una sola comprobación por proceso: en el arranque directo se lanza
+            // antes de que el selector se muestre, y al volver a él no debe repetirse.
+            if (_startupUpdateCheckStarted)
+            {
+                return;
+            }
+
+            _startupUpdateCheckStarted = true;
+
             try
             {
                 var currentVersion = GetCurrentApplicationVersion();
@@ -186,7 +238,7 @@ namespace SOPRO.WinForms.Forms
             using var openDialog = new OpenFileDialog
             {
                 Title = "Abrir Proyecto SOPRO",
-                Filter = "Proyecto SOPRO (*.db)|*.db",
+                Filter = ProjectFileExtensions.BuildFileDialogFilter(),
                 InitialDirectory = _workspaceService.ProjectsFolder
             };
 
@@ -287,7 +339,7 @@ namespace SOPRO.WinForms.Forms
                 MessageBoxIcon.Information);
         }
 
-        private void AbrirProyecto(Proyecto proyecto)
+        private FormProyecto AbrirProyecto(Proyecto proyecto)
         {
             this.Hide();
 
@@ -300,9 +352,51 @@ namespace SOPRO.WinForms.Forms
             };
 
             formProyecto.Show();
+            return formProyecto;
         }
 
-        private void OpenProjectPath(string projectPath)
+        /// <summary>
+        /// Abre el proyecto recibido por línea de comandos, una única vez y
+        /// únicamente desde <see cref="Form.Shown"/>. Ante cualquier fallo
+        /// (ruta inexistente, archivo que no es un proyecto SQLite válido o
+        /// proyecto bloqueado) muestra el error y deja la ventana utilizable.
+        /// </summary>
+        private void OpenInitialProjectIfAny()
+        {
+            var initialPath = _initialProjectPath;
+            _initialProjectPath = null;
+            TryOpenProject(initialPath);
+        }
+
+        /// <summary>
+        /// Abre el proyecto indicado y devuelve su formulario, sin depender de
+        /// que <see cref="FormPrincipal"/> esté visible. Pensado para el arranque
+        /// directo (shell / doble clic): permite abrir el proyecto antes de
+        /// mostrar cualquier ventana. Ante cualquier fallo (ruta inexistente,
+        /// archivo que no es un proyecto SQLite válido o proyecto bloqueado)
+        /// muestra el error recuperable y devuelve <c>null</c>.
+        /// </summary>
+        public FormProyecto? TryOpenProject(string? projectPath)
+        {
+            if (string.IsNullOrWhiteSpace(projectPath))
+            {
+                return null;
+            }
+
+            if (!File.Exists(projectPath))
+            {
+                MessageBox.Show(
+                    $"No se encontró el archivo del proyecto:\n{projectPath}",
+                    "Error al abrir el proyecto",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                return null;
+            }
+
+            return OpenProjectPath(projectPath);
+        }
+
+        private FormProyecto? OpenProjectPath(string projectPath)
         {
             try
             {
@@ -310,7 +404,7 @@ namespace SOPRO.WinForms.Forms
                 // bloquearía la nueva apertura. Se cierra la anterior primero.
                 CloseCurrentSession();
                 _currentSession = _projectLifecycleService.OpenProject(projectPath);
-                AbrirProyecto(_currentProject!);
+                return AbrirProyecto(_currentProject!);
             }
             catch (Exception ex)
             {
@@ -319,6 +413,7 @@ namespace SOPRO.WinForms.Forms
                     "Error",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
+                return null;
             }
         }
 

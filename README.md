@@ -65,13 +65,21 @@ La aplicacion consulta actualizaciones desde `iCarlost/SOPRO-Releases`. Cada ver
 
 ## Persistencia
 
-- Base de datos: SQLite (.db), un archivo por proyecto.
+- Base de datos: SQLite, un archivo por proyecto (extension `.soproproj`; ver [Formato de proyecto](#formato-de-proyecto)).
 - Esquema gestionado por `SchemaManager`.
+
+## Formato de proyecto
+
+Los proyectos SOPRO se guardan en un archivo SQLite con extension **`.soproproj`** (la extension canonica de los proyectos nuevos).
+
+- **Compatibilidad**: los proyectos antiguos en formato `.db` siguen abriéndose; `.sopro` se acepta como alias. No se renombran automaticamente los archivos existentes.
+- **Apertura por doble clic**: tras instalar la aplicacion, los proyectos se pueden abrir con doble clic desde el Explorador. El instalador registra la asociacion por usuario, sin permisos de administrador; el icono mostrado es el de la aplicacion. Al desinstalar se elimina la asociacion, pero se conservan los documentos de proyecto.
+- **Catalogos internos**: el formato de los catalogos (p. ej. el catalogo maestro) no cambia; siguen siendo `.db`.
 
 ## Versionado
 
 ```
-v1.7.2
+v1.8.0
 ```
 
 - Cambios funcionales: minor

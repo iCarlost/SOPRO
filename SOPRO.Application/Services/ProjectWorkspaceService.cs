@@ -1,18 +1,35 @@
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Models;
 
 namespace SOPRO.Application.Services
 {
     public class ProjectWorkspaceService
     {
-        public string SoproFolder { get; } = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "SOPRO");
+        public string SoproFolder { get; }
 
-        public string ProjectsFolder => Path.Combine(SoproFolder, "Proyectos");
+        public string ProjectsFolder { get; }
 
-        public string LocalDataFolder { get; } = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "SOPRO");
+        public string LocalDataFolder { get; }
+
+        /// <summary>
+        /// Constructor por defecto: usa la convención de carpetas del workspace
+        /// (<see cref="WorkspacePaths"/>). No crea directorios por sí solo.
+        /// </summary>
+        public ProjectWorkspaceService()
+            : this(WorkspacePaths.SoproFolder, WorkspacePaths.LocalDataFolder)
+        {
+        }
+
+        /// <summary>
+        /// Seam de rutas para tests y composición: permite apuntar el workspace a
+        /// carpetas temporales sin tocar <c>%USERPROFILE%\Documents\SOPRO</c>.
+        /// </summary>
+        public ProjectWorkspaceService(string soproFolder, string localDataFolder)
+        {
+            SoproFolder = ResolveFolder(soproFolder, nameof(soproFolder));
+            ProjectsFolder = Path.Combine(SoproFolder, "Proyectos");
+            LocalDataFolder = ResolveFolder(localDataFolder, nameof(localDataFolder));
+        }
 
         public void EnsureWorkspaceExists()
         {
@@ -36,8 +53,9 @@ namespace SOPRO.Application.Services
         {
             EnsureWorkspaceExists();
 
-            return Directory.GetFiles(ProjectsFolder, "*.db")
+            return EnumerateProjectFiles(ProjectsFolder)
                 .OrderByDescending(File.GetLastWriteTime)
+                .ThenBy(file => file, StringComparer.OrdinalIgnoreCase)
                 .Take(take)
                 .Select(file => new RecentProjectInfo
                 {
@@ -51,7 +69,26 @@ namespace SOPRO.Application.Services
         public string BuildProjectDatabasePath(string projectName)
         {
             EnsureWorkspaceExists();
-            return Path.Combine(ProjectsFolder, $"{SanitizeFileName(projectName)}.db");
+            return Path.Combine(
+                ProjectsFolder,
+                $"{SanitizeFileName(projectName)}{ProjectFileExtensions.Canonical}");
+        }
+
+        /// <summary>
+        /// Enumera los archivos de proyecto admitidos en <paramref name="folder"/>
+        /// (canónica + legacy + transicional), sin duplicados y en orden estable
+        /// (por ruta, case-insensitive). La lista de patrones proviene de la fuente
+        /// única <see cref="ProjectFileExtensions.GetOpenSearchPatterns"/>.
+        /// </summary>
+        public static IReadOnlyList<string> EnumerateProjectFiles(string folder)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(folder);
+
+            return ProjectFileExtensions.GetOpenSearchPatterns()
+                .SelectMany(pattern => Directory.GetFiles(folder, pattern, SearchOption.TopDirectoryOnly))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         public bool DeleteProjectFile(string projectPath)
@@ -87,6 +124,16 @@ namespace SOPRO.Application.Services
             }
 
             return deleted;
+        }
+
+        private static string ResolveFolder(string folder, string parameterName)
+        {
+            if (string.IsNullOrWhiteSpace(folder))
+            {
+                throw new ArgumentException("La carpeta del workspace no puede estar vacía.", parameterName);
+            }
+
+            return Path.GetFullPath(folder.Trim());
         }
 
         private static string SanitizeFileName(string fileName)

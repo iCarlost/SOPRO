@@ -1,5 +1,5 @@
 #define MyAppName "SOPRO"
-#define MyAppVersion "1.7.2"
+#define MyAppVersion "1.8.0"
 #define MyAppPublisher "CEPM"
 #define MyAppExeName "SOPRO.WinForms.exe"
 #define MyAppId "SOPRO.WinForms"
@@ -28,7 +28,7 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 #if FileExists(AddBackslash(SourcePath) + "..\SOPRO.WinForms\SOPRO.ico")
 SetupIconFile=..\SOPRO.WinForms\SOPRO.ico
 #endif
-ChangesAssociations=no
+ChangesAssociations=yes
 CloseApplications=yes
 CloseApplicationsFilter={#MyAppExeName}
 RestartApplications=no
@@ -47,6 +47,15 @@ Source: "{#MyPublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdi
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+
+[Registry]
+; Asociación de archivos .soproproj (instalación per-user, HKCU).
+; El icono del tipo de archivo se toma del exe embebido (asset no versionado).
+Root: HKCU; Subkey: "Software\Classes\.soproproj"; ValueType: string; ValueName: ""; ValueData: "SOPRO.Project"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.soproproj\OpenWithProgids"; ValueType: string; ValueName: "SOPRO.Project"; ValueData: ""; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\SOPRO.Project"; ValueType: string; ValueName: ""; ValueData: "Proyecto SOPRO"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SOPRO.Project\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\SOPRO.WinForms.exe"",0"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SOPRO.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\SOPRO.WinForms.exe"" ""%1"""; Flags: uninsdeletekey
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Ejecutar {#MyAppName}"; Flags: nowait postinstall skipifsilent unchecked

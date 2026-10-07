@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.DTOs.Insumos;
 using SOPRO.Application.Models;
 using SOPRO.Application.Models.ExternalProjects;
@@ -62,7 +63,7 @@ namespace SOPRO.WinForms.Forms
                 using var dialog = new OpenFileDialog
                 {
                     Title = "Seleccionar proyecto SOPRO",
-                    Filter = "Bases de proyecto SOPRO (*.db;*.sopro)|*.db;*.sopro|Todos los archivos (*.*)|*.*",
+                    Filter = ProjectFileExtensions.BuildFileDialogFilter(),
                     CheckFileExists = true,
                     Multiselect = false
                 };

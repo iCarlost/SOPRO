@@ -21,6 +21,15 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 - LICENSE actualizado con copyright CEPM.
 - THIRD-PARTY-NOTICES.md actualizado con alcance de la licencia.
 
+## [1.8.0] - 2026
+
+### Añadido
+- Extension de proyecto propia `.soproproj`: los proyectos nuevos se crean con esta extension, con compatibilidad `.db` (los existentes siguen abriéndose y `.sopro` se acepta como alias) y apertura de proyectos por doble clic mediante asociacion por usuario (per-user, sin permisos de administrador).
+
+### Corregido
+- Icono del tipo de archivo `.soproproj`: se corrige el registro `DefaultIcon` para que la ruta del ejecutable y el indice de icono queden entrecomillados correctamente, mostrando el icono de la aplicacion en el Explorador.
+- Parpadeo del selector al abrir un proyecto por doble clic: el proyecto se abre antes de mostrar cualquier ventana, evitando el parpadeo de la pantalla de seleccion.
+
 ## [1.7.2] - 2026
 
 ### Corregido

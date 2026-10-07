@@ -87,7 +87,7 @@ namespace SOPRO.Application.Services
                     var currentDirectory = Path.GetDirectoryName(NormalizePath(currentProjectPath));
                     if (!string.IsNullOrWhiteSpace(currentDirectory) && Directory.Exists(currentDirectory))
                     {
-                        foreach (var siblingProject in Directory.GetFiles(currentDirectory, "*.db", SearchOption.TopDirectoryOnly))
+                        foreach (var siblingProject in ProjectWorkspaceService.EnumerateProjectFiles(currentDirectory))
                             UpsertDiscoveredProject(siblingProject, Path.GetFileNameWithoutExtension(siblingProject));
                     }
                 }
