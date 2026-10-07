@@ -274,14 +274,22 @@ namespace SOPRO.WinForms.Helpers
             dgv.ColumnHeadersDefaultCellStyle.SelectionBackColor = Colors.HeaderBg;
             dgv.ColumnHeadersDefaultCellStyle.SelectionForeColor = Colors.Ink;
             dgv.ColumnHeadersDefaultCellStyle.Font = Fonts.GridHeader;
-            dgv.DefaultCellStyle.Font = Fonts.GridCell;
-            dgv.DefaultCellStyle.ForeColor = Colors.Ink2;
-            dgv.DefaultCellStyle.BackColor = Colors.Surface;
-            dgv.DefaultCellStyle.SelectionBackColor = Colors.SelBg;
-            dgv.DefaultCellStyle.SelectionForeColor = Colors.Ink;
-            dgv.AlternatingRowsDefaultCellStyle.BackColor = Colors.RowAlt;
-            dgv.AlternatingRowsDefaultCellStyle.SelectionBackColor = Colors.SelBg;
-            dgv.AlternatingRowsDefaultCellStyle.SelectionForeColor = Colors.Ink;
+            // Patrón read-mutate-assign-back: mutar la propiedad style directamente
+            // se pierde en este runtime (el getter devuelve una copia desechable),
+            // por lo que se reasigna SIEMPRE el objeto style al grid.
+            var baseStyle = dgv.DefaultCellStyle;
+            baseStyle.Font = Fonts.GridCell;
+            baseStyle.ForeColor = Colors.Ink2;
+            baseStyle.BackColor = Colors.Surface;
+            baseStyle.SelectionBackColor = Colors.SelBg;
+            baseStyle.SelectionForeColor = Colors.Ink;
+            dgv.DefaultCellStyle = baseStyle;
+
+            var altStyle = dgv.AlternatingRowsDefaultCellStyle;
+            altStyle.BackColor = Colors.RowAlt;
+            altStyle.SelectionBackColor = Colors.SelBg;
+            altStyle.SelectionForeColor = Colors.Ink;
+            dgv.AlternatingRowsDefaultCellStyle = altStyle;
             dgv.RowHeadersVisible = false;
 
             StyleDeleteColumn(dgv);

@@ -54,17 +54,25 @@ namespace SOPRO.WinForms.Helpers
 
             estado.ColorBorde = colorBorde;
 
-            // Color de selección suave
-            dgv.DefaultCellStyle.SelectionBackColor = colorSeleccion;
-            dgv.DefaultCellStyle.SelectionForeColor = Color.Black;
+            // Color de selección suave.
+            // Patrón read-mutate-assign-back: en este runtime el getter de
+            // DefaultCellStyle devuelve una copia desechable, por lo que mutar la
+            // propiedad directamente se pierde. Hay que reasignar SIEMPRE el objeto
+            // style al grid para que la configuración persista.
+            var baseStyle = dgv.DefaultCellStyle;
+            baseStyle.SelectionBackColor = colorSeleccion;
+            baseStyle.SelectionForeColor = Color.Black;
+            dgv.DefaultCellStyle = baseStyle;
 
-            // Reafirmar la selección en las filas alternas: el zebra
+            // Se aplica el mismo patrón a las filas alternas: el zebra
             // (AlternatingRowsDefaultCellStyle.BackColor) se impone al pintar la
             // fila seleccionada si su SelectionBackColor queda sin definir, por lo
             // que el fondo de selección "alterna". Igualarlo al estilo normal
             // garantiza fondo uniforme pese al zebra.
-            dgv.AlternatingRowsDefaultCellStyle.SelectionBackColor = colorSeleccion;
-            dgv.AlternatingRowsDefaultCellStyle.SelectionForeColor = Color.Black;
+            var altStyle = dgv.AlternatingRowsDefaultCellStyle;
+            altStyle.SelectionBackColor = colorSeleccion;
+            altStyle.SelectionForeColor = Color.Black;
+            dgv.AlternatingRowsDefaultCellStyle = altStyle;
 
             // Deshabilitar el copiado interno del DataGridView.
             // Si no se hace, en modo edición el grid puede copiar la fila/selección completa.
