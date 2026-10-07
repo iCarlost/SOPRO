@@ -58,6 +58,14 @@ namespace SOPRO.WinForms.Helpers
             dgv.DefaultCellStyle.SelectionBackColor = colorSeleccion;
             dgv.DefaultCellStyle.SelectionForeColor = Color.Black;
 
+            // Reafirmar la selección en las filas alternas: el zebra
+            // (AlternatingRowsDefaultCellStyle.BackColor) se impone al pintar la
+            // fila seleccionada si su SelectionBackColor queda sin definir, por lo
+            // que el fondo de selección "alterna". Igualarlo al estilo normal
+            // garantiza fondo uniforme pese al zebra.
+            dgv.AlternatingRowsDefaultCellStyle.SelectionBackColor = colorSeleccion;
+            dgv.AlternatingRowsDefaultCellStyle.SelectionForeColor = Color.Black;
+
             // Deshabilitar el copiado interno del DataGridView.
             // Si no se hace, en modo edición el grid puede copiar la fila/selección completa.
             dgv.ClipboardCopyMode = DataGridViewClipboardCopyMode.Disable;

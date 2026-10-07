@@ -209,6 +209,10 @@ namespace SOPRO.WinForms.Forms
         {
             dgvMatrices.DefaultCellStyle.SelectionBackColor = System.Drawing.Color.FromArgb(230, 240, 255);
             dgvMatrices.DefaultCellStyle.SelectionForeColor = System.Drawing.Color.Black;
+            // Reafirmar la selección en filas alternas para que el zebra no se
+            // imponga sobre el fondo de la fila seleccionada (selección uniforme).
+            dgvMatrices.AlternatingRowsDefaultCellStyle.SelectionBackColor = System.Drawing.Color.FromArgb(230, 240, 255);
+            dgvMatrices.AlternatingRowsDefaultCellStyle.SelectionForeColor = System.Drawing.Color.Black;
             dgvMatrices.CellPainting += DgvMatrices_CellPainting;
             dgvMatrices.CurrentCellChanged += (s, e) => dgvMatrices.Invalidate();
         }

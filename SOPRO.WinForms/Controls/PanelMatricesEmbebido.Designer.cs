@@ -381,6 +381,10 @@ namespace SOPRO.WinForms.Controls
             // en la celda activa, sin tocar el comportamiento de portapapeles del grid.
             _dgvComponentes.DefaultCellStyle.SelectionBackColor = Color.FromArgb(230, 240, 255);
             _dgvComponentes.DefaultCellStyle.SelectionForeColor = Color.Black;
+            // Reafirmar la selección en filas alternas para que el zebra no se
+            // imponga sobre el fondo de la fila seleccionada (selección uniforme).
+            _dgvComponentes.AlternatingRowsDefaultCellStyle.SelectionBackColor = Color.FromArgb(230, 240, 255);
+            _dgvComponentes.AlternatingRowsDefaultCellStyle.SelectionForeColor = Color.Black;
             _dgvComponentes.CellPainting += DgvComponentes_CellPainting;
             _dgvComponentes.CurrentCellChanged += (s, e) => _dgvComponentes.Invalidate();
             // Se conserva la rejilla horizontal mínima del panel (sin líneas verticales).
