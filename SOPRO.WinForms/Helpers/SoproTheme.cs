@@ -188,8 +188,8 @@ namespace SOPRO.WinForms.Helpers
                 button.ForeColor = Colors.Surface;
                 button.BackColor = Colors.BrandMd;
                 button.FlatAppearance.BorderSize = 0;
-                button.FlatAppearance.MouseOverBackColor = Colors.BrandMd;
-                button.FlatAppearance.MouseDownBackColor = Colors.BrandMd;
+                button.FlatAppearance.MouseOverBackColor = Colors.Brand;
+                button.FlatAppearance.MouseDownBackColor = Colors.Brand;
             }
             else
             {
@@ -197,12 +197,15 @@ namespace SOPRO.WinForms.Helpers
                 button.BackColor = Colors.SecondaryBg;
                 button.FlatAppearance.BorderSize = 1;
                 button.FlatAppearance.BorderColor = Colors.SurfaceBorder;
-                button.FlatAppearance.MouseOverBackColor = Colors.SecondaryBg;
-                button.FlatAppearance.MouseDownBackColor = Colors.SecondaryBg;
+                button.FlatAppearance.MouseOverBackColor = Colors.SecondaryHoverBg;
+                button.FlatAppearance.MouseDownBackColor = Colors.BgBase;
             }
 
             // Al final: recalcula ancho/alto deseados segun texto + icono + fuente.
             button.SoproAutoSizeToContent = true;
+
+            // Recorte redondeado (Region) recalculado ante cambios de tamano/DPI.
+            ApplyRoundedCorners(button, SoproUiMetrics.ThemeRadiusPx);
         }
 
         private static void ApplyCenter(FormPrincipal form)
@@ -226,6 +229,10 @@ namespace SOPRO.WinForms.Helpers
             grp.BackColor = Colors.Surface;
             grp.ForeColor = Colors.Ink;
             grp.Font = Fonts.GroupTitle;
+            grp.FlatStyle = FlatStyle.Flat;
+            // Inserta el contenido para dejar visible el borde/glow de la tarjeta.
+            grp.Padding = new Padding(SoproUiMetrics.CardGlowPx, 0, SoproUiMetrics.CardGlowPx, SoproUiMetrics.CardGlowPx);
+            grp.Paint += (_, e) => PaintRecentCard(grp, e.Graphics);
         }
 
         private static void ApplyRecentGrid(FormPrincipal form)
@@ -379,6 +386,76 @@ namespace SOPRO.WinForms.Helpers
             typeof(Control)
                 .GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic)
                 ?.SetValue(control, true, null);
+        }
+
+        /// <summary>
+        /// Pinta el borde de 1px y el resplandor azul sutil de la tarjeta de
+        /// proyectos recientes (sin sombra real ni desenfoque).
+        /// </summary>
+        private static void PaintRecentCard(Control card, Graphics graphics)
+        {
+            var rect = card.ClientRectangle;
+            if (rect.Width < 8 || rect.Height < 8) return;
+
+            int glow = Math.Max(1, SoproUiMetrics.CardGlowPx);
+
+            // Halo azul sutil pegado al borde interno.
+            using (var glowPen = new Pen(Colors.Glow, glow) { Alignment = PenAlignment.Inset })
+                graphics.DrawRectangle(glowPen, 0, 0, rect.Width - 1, rect.Height - 1);
+
+            // Borde de la tarjeta (1px).
+            using var borderPen = new Pen(Colors.SurfaceBorder, 1f) { Alignment = PenAlignment.Inset };
+            graphics.DrawRectangle(borderPen, 1, 1, rect.Width - 3, rect.Height - 3);
+        }
+
+        /// <summary>
+        /// Aplica un recorte redondeado al control y lo recalcula ante cambios
+        /// de tamano o de DPI (AutoScaleMode.Font en 100/125/150%).
+        /// </summary>
+        private static void ApplyRoundedCorners(Control control, int radiusPx)
+        {
+            if (control == null) return;
+
+            void RefreshRegion()
+            {
+                if (control.IsDisposed || control.Width <= 0 || control.Height <= 0) return;
+
+                int radius = ScaleRadius(control, radiusPx);
+                using var path = CreateRoundedPath(new Rectangle(0, 0, control.Width, control.Height), radius);
+                var previous = control.Region;
+                control.Region = new Region(path);
+                previous?.Dispose();
+            }
+
+            control.SizeChanged += (_, __) => RefreshRegion();
+            control.HandleCreated += (_, __) => RefreshRegion();
+            control.DpiChangedAfterParent += (_, __) => RefreshRegion();
+            RefreshRegion();
+        }
+
+        private static int ScaleRadius(Control control, int radiusPx)
+        {
+            int dpi = control.DeviceDpi > 0 ? control.DeviceDpi : 96;
+            float scale = dpi / 96f;
+            return Math.Max(2, (int)Math.Round(radiusPx * scale));
+        }
+
+        private static GraphicsPath CreateRoundedPath(Rectangle bounds, int radius)
+        {
+            var path = new GraphicsPath();
+            int diameter = Math.Max(1, radius * 2);
+            diameter = Math.Min(diameter, Math.Min(bounds.Width, bounds.Height));
+
+            var arc = new Rectangle(bounds.X, bounds.Y, diameter, diameter);
+            path.AddArc(arc, 180, 90);
+            arc.X = bounds.Right - diameter;
+            path.AddArc(arc, 270, 90);
+            arc.Y = bounds.Bottom - diameter;
+            path.AddArc(arc, 0, 90);
+            arc.X = bounds.X;
+            path.AddArc(arc, 90, 90);
+            path.CloseFigure();
+            return path;
         }
 
         /// <summary>
