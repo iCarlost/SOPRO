@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.EntityFrameworkCore;
@@ -427,6 +428,21 @@ namespace SOPRO.WinForms.Forms
         private Color RibbonBaseColor => panelTop?.BackColor ?? SoproTheme.Colors.BrandMd;
         private Color RibbonActiveColor => ControlPaint.Light(RibbonBaseColor);
 
+        private static readonly MethodInfo? SetStyleMethod = typeof(Control).GetMethod(
+            "SetStyle", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        /// <summary>
+        /// Habilita SupportsTransparentBackColor en un control cualquiera vía
+        /// reflexión (mismo patrón que SoproTheme.EnableDoubleBuffering). Es
+        /// necesario para los Button planos del ribbon (Negrita/Cursiva), que no
+        /// son SoproButton y por tanto no heredan ese SetStyle del constructor.
+        /// </summary>
+        private static void HabilitarFondoTransparente(Control control)
+        {
+            if (control == null) return;
+            SetStyleMethod?.Invoke(control, new object[] { ControlStyles.SupportsTransparentBackColor, true });
+        }
+
         private bool EstaBotonActivo(Button btn)
         {
             return GetRibbonButtonState(btn).Active;
@@ -443,7 +459,12 @@ namespace SOPRO.WinForms.Forms
             btn.FlatAppearance.BorderSize = 0;
             btn.FlatAppearance.BorderColor = RibbonBaseColor;
             btn.ForeColor = activo ? Color.White : Color.Silver;
-            btn.BackColor = activo ? RibbonActiveColor : RibbonBaseColor;
+            // En reposo el botón es transparente para fundirse con el gradiente
+            // del header; activo conserva el highlight derivado. Los Button planos
+            // (p. ej. Negrita/Cursiva) necesitan SupportsTransparentBackColor vía
+            // reflexión; SoproButton ya lo habilita en su constructor.
+            HabilitarFondoTransparente(btn);
+            btn.BackColor = activo ? RibbonActiveColor : Color.Transparent;
             btn.FlatAppearance.MouseOverBackColor = activo
                 ? ControlPaint.LightLight(RibbonActiveColor)
                 : ControlPaint.Light(RibbonBaseColor);
