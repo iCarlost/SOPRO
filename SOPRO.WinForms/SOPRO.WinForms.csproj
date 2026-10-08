@@ -6,9 +6,9 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>1.8.0</Version>
-    <AssemblyVersion>1.8.0.0</AssemblyVersion>
-    <FileVersion>1.8.0.0</FileVersion>
+    <Version>1.8.1</Version>
+    <AssemblyVersion>1.8.1.0</AssemblyVersion>
+    <FileVersion>1.8.1.0</FileVersion>
     <!-- Icono de identidad local (asset no publico). Condicional: si el .ico
          no existe (p. ej. CI / clon limpio) el build sigue funcionando. -->
     <ApplicationIcon Condition="Exists('$(MSBuildProjectDirectory)\SOPRO.ico')">SOPRO.ico</ApplicationIcon>
