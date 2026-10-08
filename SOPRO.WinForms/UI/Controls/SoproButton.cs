@@ -137,6 +137,12 @@ namespace SOPRO.WinForms.UI.Controls
 
         public SoproButton()
         {
+            // Permite BackColor = Transparent (p. ej. fundir el botón con el
+            // gradiente del ribbon). No altera el pintado cuando el BackColor es
+            // opaco: los usos existentes renderizan exactamente igual.
+            SetStyle(ControlStyles.SupportsTransparentBackColor, true);
+            DoubleBuffered = true;
+
             FlatStyle = FlatStyle.Flat;
             FlatAppearance.BorderSize = 0;
             TextImageRelation = TextImageRelation.ImageBeforeText;

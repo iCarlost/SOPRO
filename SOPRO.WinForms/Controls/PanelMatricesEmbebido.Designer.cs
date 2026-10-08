@@ -379,8 +379,18 @@ namespace SOPRO.WinForms.Controls
             _dgvComponentes.AplicarEstiloSOPRO();
             // Estilo de selección del presupuesto: fila completa azul claro + contorno azul de 2px
             // en la celda activa, sin tocar el comportamiento de portapapeles del grid.
-            _dgvComponentes.DefaultCellStyle.SelectionBackColor = Color.FromArgb(230, 240, 255);
-            _dgvComponentes.DefaultCellStyle.SelectionForeColor = Color.Black;
+            // Patrón read-mutate-assign-back: el getter devuelve una copia
+            // desechable, así que hay que reasignar el style al grid.
+            var baseStyle = _dgvComponentes.DefaultCellStyle;
+            baseStyle.SelectionBackColor = Color.FromArgb(230, 240, 255);
+            baseStyle.SelectionForeColor = Color.Black;
+            _dgvComponentes.DefaultCellStyle = baseStyle;
+            // Reafirmar la selección en filas alternas para que el zebra no se
+            // imponga sobre el fondo de la fila seleccionada (selección uniforme).
+            var altStyle = _dgvComponentes.AlternatingRowsDefaultCellStyle;
+            altStyle.SelectionBackColor = Color.FromArgb(230, 240, 255);
+            altStyle.SelectionForeColor = Color.Black;
+            _dgvComponentes.AlternatingRowsDefaultCellStyle = altStyle;
             _dgvComponentes.CellPainting += DgvComponentes_CellPainting;
             _dgvComponentes.CurrentCellChanged += (s, e) => _dgvComponentes.Invalidate();
             // Se conserva la rejilla horizontal mínima del panel (sin líneas verticales).

@@ -18,6 +18,9 @@ namespace SOPRO.WinForms.Helpers
         Columnas,
         Matrices,
         Explosion,
-        Consolidar
+        Consolidar,
+        Mas,
+        Carpeta,
+        Papelera
     }
 }

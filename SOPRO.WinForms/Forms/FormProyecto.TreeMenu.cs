@@ -32,7 +32,7 @@ namespace SOPRO.WinForms.Forms
                     tab.Padding = new Padding(0);
                     tab.Margin = new Padding(0);
                     tab.UseVisualStyleBackColor = true;
-                    tab.BackColor = Color.White;
+                    tab.BackColor = SoproTheme.Colors.Surface;
 
                     if (tab.Controls.Count == 0)
                         continue;

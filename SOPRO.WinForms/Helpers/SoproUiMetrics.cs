@@ -38,5 +38,16 @@ namespace SOPRO.WinForms.Helpers
         // Relleno interno de botones de contenido (normal y compacto).
         public static readonly Padding ContentButtonPadding = new Padding(14, 4, 14, 4);
         public static readonly Padding CompactButtonPadding = new Padding(8, 3, 8, 3);
+
+        // --- Metricas de tema (FormPrincipal: encabezado, tarjetas y botones) ---
+
+        // Radio de redondeo (en px logicos) usado por los botones del tema.
+        public const int ThemeRadiusPx = 8;
+
+        // Alto del encabezado superior (header) del tema.
+        public const int HeaderHeight = 88;
+
+        // Grosor (en px) del resplandor sutil pintado en las tarjetas.
+        public const int CardGlowPx = 2;
     }
 }

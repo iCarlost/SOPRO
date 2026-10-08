@@ -78,6 +78,15 @@ namespace SOPRO.WinForms.Helpers
                 case SoproIconType.Consolidar:
                     DrawConsolidar(g, color, size);
                     break;
+                case SoproIconType.Mas:
+                    DrawMas(g, color, size);
+                    break;
+                case SoproIconType.Carpeta:
+                    DrawCarpeta(g, color, size);
+                    break;
+                case SoproIconType.Papelera:
+                    DrawPapelera(g, color, size);
+                    break;
             }
 
             return bmp;
@@ -477,6 +486,93 @@ namespace SOPRO.WinForms.Helpers
                 new Point(size - 8, (size / 2) - 3),
                 new Point(size - 8, (size / 2) + 3)
             });
+
+            g.SmoothingMode = previousSmoothing;
+            g.InterpolationMode = previousInterpolation;
+            g.PixelOffsetMode = previousPixelOffset;
+        }
+
+        private static void DrawMas(Graphics g, Color color, int size)
+        {
+            var previousSmoothing = g.SmoothingMode;
+            var previousInterpolation = g.InterpolationMode;
+            var previousPixelOffset = g.PixelOffsetMode;
+            g.SmoothingMode = SmoothingMode.None;
+            g.InterpolationMode = InterpolationMode.NearestNeighbor;
+            g.PixelOffsetMode = PixelOffsetMode.None;
+
+            using var solid = new SolidBrush(color);
+
+            int thickness = Math.Max(2, size / 5);
+            int margin = Math.Max(3, size / 5);
+            int center = size / 2;
+
+            // Barra horizontal.
+            g.FillRectangle(solid, margin, center - (thickness / 2), size - (margin * 2), thickness);
+            // Barra vertical.
+            g.FillRectangle(solid, center - (thickness / 2), margin, thickness, size - (margin * 2));
+
+            g.SmoothingMode = previousSmoothing;
+            g.InterpolationMode = previousInterpolation;
+            g.PixelOffsetMode = previousPixelOffset;
+        }
+
+        private static void DrawCarpeta(Graphics g, Color color, int size)
+        {
+            var previousSmoothing = g.SmoothingMode;
+            var previousInterpolation = g.InterpolationMode;
+            var previousPixelOffset = g.PixelOffsetMode;
+            g.SmoothingMode = SmoothingMode.None;
+            g.InterpolationMode = InterpolationMode.NearestNeighbor;
+            g.PixelOffsetMode = PixelOffsetMode.None;
+
+            using var pen = new Pen(color, 1f);
+            using var solid = new SolidBrush(color);
+
+            int left = 2;
+            int top = 3;
+            int width = size - 5;
+            int height = size - 8;
+            int tabWidth = Math.Max(4, width / 3);
+
+            // Pestana superior.
+            g.FillRectangle(solid, left, top, tabWidth, 2);
+            // Cuerpo de la carpeta.
+            g.DrawRectangle(pen, left, top + 2, width, height);
+            g.DrawLine(pen, left + 2, top + 5, left + width - 2, top + 5);
+
+            g.SmoothingMode = previousSmoothing;
+            g.InterpolationMode = previousInterpolation;
+            g.PixelOffsetMode = previousPixelOffset;
+        }
+
+        private static void DrawPapelera(Graphics g, Color color, int size)
+        {
+            var previousSmoothing = g.SmoothingMode;
+            var previousInterpolation = g.InterpolationMode;
+            var previousPixelOffset = g.PixelOffsetMode;
+            g.SmoothingMode = SmoothingMode.None;
+            g.InterpolationMode = InterpolationMode.NearestNeighbor;
+            g.PixelOffsetMode = PixelOffsetMode.None;
+
+            using var pen = new Pen(color, 1f);
+            using var solid = new SolidBrush(color);
+
+            int left = 3;
+            int right = size - 4;
+            int lidY = 5;
+
+            // Tapa.
+            g.FillRectangle(solid, left, lidY, right - left + 1, 2);
+            // Asa.
+            g.DrawRectangle(pen, (size / 2) - 2, lidY - 2, 5, 2);
+            // Cuerpo (trapecio).
+            g.DrawLine(pen, left + 1, lidY + 3, left + 2, size - 3);
+            g.DrawLine(pen, right - 1, lidY + 3, right - 2, size - 3);
+            g.DrawLine(pen, left + 2, size - 3, right - 2, size - 3);
+            // Nervios internos.
+            g.DrawLine(pen, (size / 2) - 2, lidY + 4, (size / 2) - 2, size - 4);
+            g.DrawLine(pen, (size / 2) + 1, lidY + 4, (size / 2) + 1, size - 4);
 
             g.SmoothingMode = previousSmoothing;
             g.InterpolationMode = previousInterpolation;
