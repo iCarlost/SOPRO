@@ -110,7 +110,7 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            var colorIcono = btn.Enabled ? btn.ForeColor : SoproTheme.Colors.Disabled;
+            var colorIcono = btn.Enabled ? btn.ForeColor : SoproTheme.Colors.RibbonDisabledIcon;
             var options = state.Options ?? SoproIconButtonOptions.ForRibbonText(state.IconType.Value, iconSize: state.IconSize);
             SoproRibbonButtonStyler.Apply(btn, options, colorIcono);
         }

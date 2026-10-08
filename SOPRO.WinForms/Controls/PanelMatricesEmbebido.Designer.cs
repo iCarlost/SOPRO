@@ -382,13 +382,13 @@ namespace SOPRO.WinForms.Controls
             // Patrón read-mutate-assign-back: el getter devuelve una copia
             // desechable, así que hay que reasignar el style al grid.
             var baseStyle = _dgvComponentes.DefaultCellStyle;
-            baseStyle.SelectionBackColor = Color.FromArgb(230, 240, 255);
+            baseStyle.SelectionBackColor = SoproTheme.Colors.SelBg;
             baseStyle.SelectionForeColor = Color.Black;
             _dgvComponentes.DefaultCellStyle = baseStyle;
             // Reafirmar la selección en filas alternas para que el zebra no se
             // imponga sobre el fondo de la fila seleccionada (selección uniforme).
             var altStyle = _dgvComponentes.AlternatingRowsDefaultCellStyle;
-            altStyle.SelectionBackColor = Color.FromArgb(230, 240, 255);
+            altStyle.SelectionBackColor = SoproTheme.Colors.SelBg;
             altStyle.SelectionForeColor = Color.Black;
             _dgvComponentes.AlternatingRowsDefaultCellStyle = altStyle;
             _dgvComponentes.CellPainting += DgvComponentes_CellPainting;

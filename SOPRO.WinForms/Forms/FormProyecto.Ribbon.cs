@@ -214,7 +214,7 @@ namespace SOPRO.WinForms.Forms
                 var options = showText
                     ? SoproIconButtonOptions.ForRibbonText(iconType, iconSize: iconSize)
                     : SoproIconButtonOptions.ForRibbonGlyph(iconType, iconSize);
-                SoproRibbonButtonStyler.Apply(btn, options, btn.Enabled ? btn.ForeColor : SoproTheme.Colors.Disabled);
+                SoproRibbonButtonStyler.Apply(btn, options, btn.Enabled ? btn.ForeColor : SoproTheme.Colors.RibbonDisabledIcon);
             }
 
             var stateIconType = btn is SoproButton sb && sb.SoproIcon.HasValue ? sb.SoproIcon.Value : iconType;
@@ -280,9 +280,9 @@ namespace SOPRO.WinForms.Forms
             btnRibbonMas.FlatAppearance.BorderSize = 0;
             btnRibbonMas.FlatAppearance.BorderColor = RibbonBaseColor;
             btnRibbonMas.BackColor = RibbonBaseColor;
-            btnRibbonMas.ForeColor = Color.Silver;
-            btnRibbonMas.FlatAppearance.MouseOverBackColor = ControlPaint.Light(RibbonBaseColor);
-            btnRibbonMas.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(RibbonBaseColor);
+            btnRibbonMas.ForeColor = SoproTheme.Colors.RibbonText;
+            btnRibbonMas.FlatAppearance.MouseOverBackColor = SoproTheme.Colors.RibbonHover;
+            btnRibbonMas.FlatAppearance.MouseDownBackColor = SoproTheme.Colors.RibbonDown;
         }
 
         private void ActualizarOverflowRibbon()
@@ -426,7 +426,7 @@ namespace SOPRO.WinForms.Forms
         }
 
         private Color RibbonBaseColor => panelTop?.BackColor ?? SoproTheme.Colors.BrandMd;
-        private Color RibbonActiveColor => ControlPaint.Light(RibbonBaseColor);
+        private Color RibbonActiveColor => SoproTheme.Colors.RibbonActive;
 
         private static readonly MethodInfo? SetStyleMethod = typeof(Control).GetMethod(
             "SetStyle", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -458,19 +458,15 @@ namespace SOPRO.WinForms.Forms
             btn.FlatStyle = FlatStyle.Flat;
             btn.FlatAppearance.BorderSize = 0;
             btn.FlatAppearance.BorderColor = RibbonBaseColor;
-            btn.ForeColor = activo ? Color.White : Color.Silver;
-            // En reposo el botón es transparente para fundirse con el gradiente
-            // del header; activo conserva el highlight derivado. Los Button planos
-            // (p. ej. Negrita/Cursiva) necesitan SupportsTransparentBackColor vía
-            // reflexión; SoproButton ya lo habilita en su constructor.
+            btn.ForeColor = activo ? Color.White : SoproTheme.Colors.RibbonText;
+            // En reposo el botón es transparente para fundirse con el header
+            // solido; activo usa el azul de marca con texto blanco. Los Button
+            // planos (p. ej. Negrita/Cursiva) necesitan SupportsTransparentBackColor
+            // vía reflexión; SoproButton ya lo habilita en su constructor.
             HabilitarFondoTransparente(btn);
             btn.BackColor = activo ? RibbonActiveColor : Color.Transparent;
-            btn.FlatAppearance.MouseOverBackColor = activo
-                ? ControlPaint.LightLight(RibbonActiveColor)
-                : ControlPaint.Light(RibbonBaseColor);
-            btn.FlatAppearance.MouseDownBackColor = activo
-                ? ControlPaint.Dark(RibbonActiveColor)
-                : ControlPaint.Dark(RibbonBaseColor);
+            btn.FlatAppearance.MouseOverBackColor = SoproTheme.Colors.RibbonHover;
+            btn.FlatAppearance.MouseDownBackColor = SoproTheme.Colors.RibbonDown;
 
             AplicarIconoBotonRibbon(btn);
         }
@@ -486,8 +482,8 @@ namespace SOPRO.WinForms.Forms
             btn.Text = texto;
             btn.BackColor = RibbonBaseColor;
             btn.ForeColor = sampleColor;
-            btn.FlatAppearance.MouseOverBackColor = ControlPaint.Light(RibbonBaseColor);
-            btn.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(RibbonBaseColor);
+            btn.FlatAppearance.MouseOverBackColor = SoproTheme.Colors.RibbonHover;
+            btn.FlatAppearance.MouseDownBackColor = SoproTheme.Colors.RibbonDown;
             btn.Image = null;
         }
 

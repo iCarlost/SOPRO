@@ -22,9 +22,6 @@ namespace SOPRO.WinForms.Helpers
         /// <summary>Familia tipografica unica del tema (no se empaquetan fuentes).</summary>
         private const string FontFamily = "Segoe UI";
 
-        /// <summary>Angulo del gradiente del encabezado, en grados (equivalente web: 35deg).</summary>
-        public const float HeaderGradientAngle = 35f;
-
         /// <summary>
         /// Paleta de colores del tema SOPRO. Los valores replican los tokens de
         /// la web (brand, ink, superficies y rejilla).
@@ -35,10 +32,6 @@ namespace SOPRO.WinForms.Helpers
             public static readonly Color Brand = Color.FromArgb(0x1E, 0x40, 0xAF);       // #1e40af
             public static readonly Color BrandMd = Color.FromArgb(0x1D, 0x4E, 0xD8);     // #1d4ed8
             public static readonly Color BrandLt = Color.FromArgb(0x3B, 0x82, 0xF6);     // #3b82f6
-
-            // --- Acento (accent) ---
-            public static readonly Color Accent = Color.FromArgb(0x08, 0x91, 0xB2);      // #0891b2
-            public static readonly Color AccentLt = Color.FromArgb(0x22, 0xD3, 0xEE);    // #22d3ee
 
             // --- Texto (ink) ---
             public static readonly Color Ink = Color.FromArgb(0x0A, 0x0F, 0x1E);         // #0a0f1e
@@ -54,9 +47,9 @@ namespace SOPRO.WinForms.Helpers
             public static readonly Color SurfaceBorder = Color.FromArgb(0xC7, 0xD7, 0xF0); // #c7d7f0
 
             // --- Rejilla (grid) ---
-            public static readonly Color RowAlt = Color.FromArgb(0xF4, 0xF7, 0xFD);      // #f4f7fd
-            public static readonly Color GridLine = Color.FromArgb(0xE3, 0xE9, 0xF4);    // #e3e9f4
-            public static readonly Color SelBg = Color.FromArgb(0xDB, 0xEA, 0xFE);       // #dbeafe
+            public static readonly Color RowAlt = Color.FromArgb(0xF8, 0xFA, 0xFC);      // #f8fafc slate-50
+            public static readonly Color GridLine = Color.FromArgb(0xE2, 0xE8, 0xF0);    // #e2e8f0 slate-200
+            public static readonly Color SelBg = Color.FromArgb(0xDB, 0xEA, 0xFE);       // #dbeafe (unico tinte azul)
 
             // --- Chrome del host (header, sidebar y ribbon) ---
             public static readonly Color SidebarBg = Color.FromArgb(0xFA, 0xFA, 0xFA);       // 250,250,250
@@ -64,16 +57,33 @@ namespace SOPRO.WinForms.Helpers
             public static readonly Color RibbonSeparator = Color.FromArgb(0xC8, 0xC8, 0xC8); // 200,200,200
             public static readonly Color Disabled = Color.FromArgb(0x78, 0x78, 0x78);        // 120,120,120
 
+            // --- Tema "B - Limpio neutro" del chrome del shell ---
+            // Superficies planas neutras para el header, el ribbon y la barra
+            // lateral, compartidas por FormPrincipal y FormProyecto.
+            public static readonly Color HeaderDark = Color.FromArgb(0x1E, 0x29, 0x3B);        // #1e293b slate-800
+            public static readonly Color HeaderBottom = Color.FromArgb(0x0F, 0x17, 0x2A);      // #0f172a slate-900
+            public static readonly Color RibbonText = Color.FromArgb(0xE2, 0xE8, 0xF0);        // #e2e8f0 slate-200
+            public static readonly Color RibbonHover = Color.FromArgb(0x33, 0x41, 0x55);       // #334155 slate-700
+            public static readonly Color RibbonActive = Color.FromArgb(0x1D, 0x4E, 0xD8);      // #1d4ed8 marca
+            public static readonly Color RibbonDown = Color.FromArgb(0x0F, 0x17, 0x2A);        // #0f172a slate-900
+            public static readonly Color RibbonDisabledIcon = Color.FromArgb(0x94, 0xA3, 0xB8); // #94a3b8 slate-400
+            public static readonly Color RibbonSeparatorDark = Color.FromArgb(0x47, 0x55, 0x69); // #475569 slate-600
+            public static readonly Color SidebarBg2 = Color.FromArgb(0xF1, 0xF5, 0xF9);        // #f1f5f9 slate-100
+            public static readonly Color SidebarHeaderBg2 = Color.FromArgb(0xE2, 0xE8, 0xF0);  // #e2e8f0 slate-200
+            public static readonly Color SidebarHairline = Color.FromArgb(0xCB, 0xD5, 0xE1);   // #cbd5e1 slate-300
+            public static readonly Color SidebarText = Color.FromArgb(0x33, 0x41, 0x55);        // #334155 slate-700
+            public static readonly Color SidebarTextGroup = Color.FromArgb(0x0F, 0x17, 0x2A);   // #0f172a slate-900
+            public static readonly Color SidebarActive = Color.FromArgb(0xDB, 0xEA, 0xFE);      // #dbeafe (unico tinte azul)
+
             // --- Derivados usados por el encabezado y las tarjetas de FormPrincipal ---
-            public static readonly Color SubtitleText = Color.FromArgb(0xBA, 0xE6, 0xFD); // #bae6fd
-            public static readonly Color HeaderBg = Color.FromArgb(0xF1, 0xF5, 0xFB);     // #f1f5fb
-            public static readonly Color CenterTop = Color.FromArgb(0xEA, 0xF1, 0xFD);    // #eaf1fd
-            public static readonly Color CenterBottom = Color.FromArgb(0xED, 0xF0, 0xFB); // #edf0fb
-            public static readonly Color SecondaryBg = Color.FromArgb(0xF0, 0xF8, 0xFF);  // #f0f8ff
-            public static readonly Color SecondaryHoverBg = Color.FromArgb(0xF0, 0xF6, 0xFF); // #f0f6ff
+            public static readonly Color SubtitleText = Color.FromArgb(0xCB, 0xD5, 0xE1); // #cbd5e1 slate-300
+            public static readonly Color HeaderBg = Color.FromArgb(0xF1, 0xF5, 0xF9);     // #f1f5f9 slate-100
+            public static readonly Color CenterBg = Color.FromArgb(0xF8, 0xFA, 0xFC);     // #f8fafc slate-50 (fondo del centro)
+            public static readonly Color SecondaryBg = Color.FromArgb(0xF1, 0xF5, 0xF9);  // #f1f5f9 slate-100
+            public static readonly Color SecondaryHoverBg = Color.FromArgb(0xE2, 0xE8, 0xF0); // #e2e8f0 slate-200
             public static readonly Color GlyphIdle = Color.FromArgb(0x8A, 0x94, 0xA6);    // gris icono papelera
             public static readonly Color HoverBg = Color.FromArgb(0xEA, 0xF2, 0xFF);      // hover suave en rejilla
-            public static readonly Color Glow = Color.FromArgb(0x4D, 0x3B, 0x82, 0xF6);   // glow azul (alpha 30%)
+            public static readonly Color Glow = Color.FromArgb(0x18, 0x0F, 0x17, 0x2A);   // #0f172a @ 9% sombra neutra sutil
         }
 
         /// <summary>
@@ -95,7 +105,7 @@ namespace SOPRO.WinForms.Helpers
 
         /// <summary>
         /// Engancha toda la pintura y estilos del tema SOPRO sobre
-        /// <see cref="FormPrincipal"/>: encabezado con gradiente, botones de
+        /// <see cref="FormPrincipal"/>: encabezado solido neutro, botones de
         /// accion, panel central, tarjeta de recientes y barra de estado.
         /// No modifica la logica ni los manejadores de eventos del formulario.
         /// </summary>
@@ -118,7 +128,9 @@ namespace SOPRO.WinForms.Helpers
             var btnAbrir = form.btnAbrirProyecto;
 
             EnableDoubleBuffering(panelTop);
-            panelTop.BackColor = Colors.BrandMd;
+            // Tema "B - Limpio neutro": header solido del mismo tono que el
+            // chrome de FormProyecto (un solo look en toda la app).
+            panelTop.BackColor = Colors.HeaderDark;
             panelTop.Height = SoproUiMetrics.HeaderHeight;
 
             panelTop.Paint += (_, e) =>
@@ -126,13 +138,12 @@ namespace SOPRO.WinForms.Helpers
                 var rect = panelTop.ClientRectangle;
                 if (rect.Width <= 0 || rect.Height <= 0) return;
 
-                using (var brush = new LinearGradientBrush(rect, Colors.BrandMd, Colors.Accent, HeaderGradientAngle))
-                {
+                // Sin gradiente ni angulo: relleno solido del header.
+                using (var brush = new SolidBrush(Colors.HeaderDark))
                     e.Graphics.FillRectangle(brush, rect);
-                }
 
-                // Linea inferior de marca (1px).
-                using var pen = new Pen(Colors.Brand);
+                // Linea inferior de 1px bajo el header.
+                using var pen = new Pen(Colors.HeaderBottom);
                 e.Graphics.DrawLine(pen, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
             };
 
@@ -191,20 +202,22 @@ namespace SOPRO.WinForms.Helpers
 
             if (primary)
             {
+                // PRIMARIO: acento de marca (unico azul de accion) sobre el header oscuro.
                 button.ForeColor = Colors.Surface;
-                button.BackColor = Colors.BrandMd;
+                button.BackColor = Colors.RibbonActive;
                 button.FlatAppearance.BorderSize = 0;
                 button.FlatAppearance.MouseOverBackColor = Colors.Brand;
-                button.FlatAppearance.MouseDownBackColor = Colors.Brand;
+                button.FlatAppearance.MouseDownBackColor = Colors.RibbonDown;
             }
             else
             {
-                button.ForeColor = Colors.BrandMd;
-                button.BackColor = Colors.SecondaryBg;
+                // SECUNDARIO: superficie neutra oscura con hairline slate.
+                button.ForeColor = Colors.RibbonText;
+                button.BackColor = Colors.RibbonHover;
                 button.FlatAppearance.BorderSize = 1;
-                button.FlatAppearance.BorderColor = Colors.SurfaceBorder;
-                button.FlatAppearance.MouseOverBackColor = Colors.SecondaryHoverBg;
-                button.FlatAppearance.MouseDownBackColor = Colors.BgBase;
+                button.FlatAppearance.BorderColor = Colors.RibbonSeparatorDark;
+                button.FlatAppearance.MouseOverBackColor = Colors.RibbonSeparatorDark;
+                button.FlatAppearance.MouseDownBackColor = Colors.RibbonDown;
 
                 // El layout interno del Button (FlatStyle.Flat) descuenta 2*BorderSize
                 // del area de contenido. Con el borde de 1px este boton quedaba 2px mas
@@ -230,16 +243,8 @@ namespace SOPRO.WinForms.Helpers
             var panelCenter = form.panelCenter;
             EnableDoubleBuffering(panelCenter);
             panelCenter.Padding = new Padding(28, 24, 28, 24);
-            panelCenter.BackColor = Colors.CenterTop;
-
-            panelCenter.Paint += (_, e) =>
-            {
-                var rect = panelCenter.ClientRectangle;
-                if (rect.Width <= 0 || rect.Height <= 0) return;
-
-                using var brush = new LinearGradientBrush(rect, Colors.CenterTop, Colors.CenterBottom, LinearGradientMode.Vertical);
-                e.Graphics.FillRectangle(brush, rect);
-            };
+            // Tema "B - Limpio neutro": fondo solido slate-50 (sin gradiente azul).
+            panelCenter.BackColor = Colors.CenterBg;
 
             var grp = form.grpRecientes;
             EnableDoubleBuffering(grp);
@@ -430,21 +435,22 @@ namespace SOPRO.WinForms.Helpers
             var lblProyecto = form.lblProyecto;
 
             EnableDoubleBuffering(panelTop);
-            // RibbonBaseColor deriva de panelTop.BackColor: debe ser BrandMd.
-            panelTop.BackColor = Colors.BrandMd;
+            // Tema "B - Limpio neutro": header solido. RibbonBaseColor deriva de
+            // panelTop.BackColor, por lo que el ribbon sigue fundiendose con el
+            // header (ver RibbonBaseColor => panelTop.BackColor en FormProyecto.Ribbon.cs).
+            panelTop.BackColor = Colors.HeaderDark;
 
             panelTop.Paint += (_, e) =>
             {
                 var rect = panelTop.ClientRectangle;
                 if (rect.Width <= 0 || rect.Height <= 0) return;
 
-                using (var brush = new LinearGradientBrush(rect, Colors.BrandMd, Colors.Accent, HeaderGradientAngle))
-                {
+                // Sin gradiente ni angulo: relleno solido del header.
+                using (var brush = new SolidBrush(Colors.HeaderDark))
                     e.Graphics.FillRectangle(brush, rect);
-                }
 
-                // Linea inferior de marca (1px).
-                using var pen = new Pen(Colors.Brand);
+                // Linea inferior de 1px bajo el header.
+                using var pen = new Pen(Colors.HeaderBottom);
                 e.Graphics.DrawLine(pen, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
             };
 
@@ -456,9 +462,88 @@ namespace SOPRO.WinForms.Helpers
 
         private static void ApplyProyectoSidebar(FormProyecto form)
         {
-            form.panelLeft.BackColor = Colors.SidebarBg;
-            form.panelSidebarHeader.BackColor = Colors.SidebarHeaderBg;
-            form.treeMenu.BackColor = Colors.SidebarBg;
+            var panelLeft = form.panelLeft;
+            var treeMenu = form.treeMenu;
+
+            // Tema "B - Limpio neutro": se sustituye el borde del sistema por una
+            // hairline de 1px del tono de la paleta. Se reserva 1px a la derecha
+            // (padding, sin mover ningun control) para que el treeMenu Dock=Fill
+            // no tape la linea pintada por el panel.
+            panelLeft.BorderStyle = BorderStyle.None;
+            panelLeft.Padding = new Padding(0, 0, 1, 0);
+            panelLeft.BackColor = Colors.SidebarBg2;
+            panelLeft.Paint += (_, e) => PaintSidebarHairline(panelLeft, e.Graphics);
+
+            form.panelSidebarHeader.BackColor = Colors.SidebarHeaderBg2;
+            treeMenu.BackColor = Colors.SidebarBg2;
+            treeMenu.ForeColor = Colors.SidebarText;
+
+            // El arbol se dibuja a mano para usar el unico tinte azul de seleccion
+            // (SidebarActive) con barra de acento, y para distinguir grupos/padres.
+            treeMenu.DrawMode = TreeViewDrawMode.OwnerDrawText;
+            treeMenu.DrawNode += DrawProyectoTreeNode;
+        }
+
+        private static void PaintSidebarHairline(Control panel, Graphics graphics)
+        {
+            var rect = panel.ClientRectangle;
+            if (rect.Width <= 0 || rect.Height <= 0) return;
+
+            int x = rect.Right - 1;
+            using var pen = new Pen(Colors.SidebarHairline);
+            graphics.DrawLine(pen, x, 0, x, rect.Bottom - 1);
+        }
+
+        /// <summary>
+        /// Dibuja el texto del arbol de FormProyecto. En modo OwnerDrawText el
+        /// control nativo pinta el fondo, los glifos +/- y las lineas, mientras
+        /// que aqui solo se personaliza el texto y la banda de seleccion.
+        /// </summary>
+        private static void DrawProyectoTreeNode(object? sender, DrawTreeNodeEventArgs e)
+        {
+            if (sender is not TreeView tree || e.Node is not TreeNode node) return;
+
+            var graphics = e.Graphics;
+            bool selected = (e.State & TreeNodeStates.Selected) != 0;
+            bool isGroup = node.Nodes.Count > 0;
+
+            if (selected)
+            {
+                var row = new Rectangle(0, e.Bounds.Top, tree.ClientSize.Width, e.Bounds.Height);
+                var state = graphics.Save();
+
+                // No pisar el glifo +/- nativo, que vive en la zona de indentacion
+                // a la izquierda de la etiqueta (solo aplica a nodos con hijos).
+                if (isGroup && node.Bounds.Left > 0)
+                {
+                    using var glyphZone = new Region(new Rectangle(0, row.Top, node.Bounds.Left, row.Height));
+                    graphics.SetClip(glyphZone, CombineMode.Exclude);
+                }
+
+                using (var brush = new SolidBrush(Colors.SidebarActive))
+                    graphics.FillRectangle(brush, row);
+
+                graphics.Restore(state);
+
+                // Barra de acento de 3px (escalada por DPI) en el borde izquierdo.
+                int accentWidth = Math.Max(2, (int)Math.Round(3 * (tree.DeviceDpi / 96.0)));
+                using var accent = new SolidBrush(Colors.RibbonActive);
+                graphics.FillRectangle(accent, new Rectangle(0, row.Top, accentWidth, row.Height));
+            }
+
+            var font = node.NodeFont ?? tree.Font;
+            var foreColor = (selected || isGroup) ? Colors.SidebarTextGroup : Colors.SidebarText;
+            // TextRenderer preserva el render de emojis y las metricas DPI igual
+            // que el TreeView nativo (GDI), evitando diferencias de DrawString.
+            TextRenderer.DrawText(
+                graphics,
+                node.Text,
+                font,
+                e.Bounds,
+                foreColor,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+
+            e.DrawDefault = false;
         }
 
         private static void ApplyProyectoRibbonChrome(FormProyecto form)
@@ -470,7 +555,7 @@ namespace SOPRO.WinForms.Helpers
             })
             {
                 if (separator != null)
-                    separator.BackColor = Colors.RibbonSeparator;
+                    separator.BackColor = Colors.RibbonSeparatorDark;
             }
 
             foreach (var button in new[]
@@ -483,7 +568,7 @@ namespace SOPRO.WinForms.Helpers
             })
             {
                 if (button != null)
-                    button.SoproDisabledIconColor = Colors.Disabled;
+                    button.SoproDisabledIconColor = Colors.RibbonDisabledIcon;
             }
         }
 
@@ -497,7 +582,7 @@ namespace SOPRO.WinForms.Helpers
         }
 
         /// <summary>
-        /// Pinta el borde de 1px y el resplandor azul sutil de la tarjeta de
+        /// Pinta el borde de 1px y una sombra neutra sutil de la tarjeta de
         /// proyectos recientes (sin sombra real ni desenfoque).
         /// </summary>
         private static void PaintRecentCard(Control card, Graphics graphics)
@@ -507,7 +592,7 @@ namespace SOPRO.WinForms.Helpers
 
             int glow = Math.Max(1, SoproUiMetrics.CardGlowPx);
 
-            // Halo azul sutil pegado al borde interno.
+            // Sombra neutra sutil pegada al borde interno (antes halo azul).
             using (var glowPen = new Pen(Colors.Glow, glow) { Alignment = PenAlignment.Inset })
                 graphics.DrawRectangle(glowPen, 0, 0, rect.Width - 1, rect.Height - 1);
 

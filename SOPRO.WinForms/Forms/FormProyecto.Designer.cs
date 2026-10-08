@@ -291,7 +291,7 @@ namespace SOPRO.WinForms.Forms
             btnRibbonMas.FlatAppearance.BorderSize = 0;
             btnRibbonMas.FlatStyle = FlatStyle.Flat;
             btnRibbonMas.Font = new Font("Segoe UI Semibold", 11F);
-            btnRibbonMas.ForeColor = Color.Silver;
+            btnRibbonMas.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnRibbonMas.Location = new Point(1280, 24);
             btnRibbonMas.Name = "btnRibbonMas";
             btnRibbonMas.Size = new Size(28, 24);
@@ -321,7 +321,7 @@ namespace SOPRO.WinForms.Forms
             btnPdfRibbon.FlatAppearance.BorderSize = 0;
             btnPdfRibbon.FlatStyle = FlatStyle.Flat;
             btnPdfRibbon.Font = new Font("Segoe UI", 8.5F);
-            btnPdfRibbon.ForeColor = Color.Silver;
+            btnPdfRibbon.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnPdfRibbon.Image = (Image)resources.GetObject("btnPdfRibbon.Image");
             btnPdfRibbon.Location = new Point(864, 39);
             btnPdfRibbon.Name = "btnPdfRibbon";
@@ -340,7 +340,7 @@ namespace SOPRO.WinForms.Forms
             btnExcelRibbon.FlatAppearance.BorderSize = 0;
             btnExcelRibbon.FlatStyle = FlatStyle.Flat;
             btnExcelRibbon.Font = new Font("Segoe UI", 8.5F);
-            btnExcelRibbon.ForeColor = Color.Silver;
+            btnExcelRibbon.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnExcelRibbon.Image = (Image)resources.GetObject("btnExcelRibbon.Image");
             btnExcelRibbon.Location = new Point(864, 9);
             btnExcelRibbon.Name = "btnExcelRibbon";
@@ -359,7 +359,7 @@ namespace SOPRO.WinForms.Forms
             btnDepurarRibbon.FlatAppearance.BorderSize = 0;
             btnDepurarRibbon.FlatStyle = FlatStyle.Flat;
             btnDepurarRibbon.Font = new Font("Segoe UI", 8.5F);
-            btnDepurarRibbon.ForeColor = Color.Silver;
+            btnDepurarRibbon.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnDepurarRibbon.Image = (Image)resources.GetObject("btnDepurarRibbon.Image");
             btnDepurarRibbon.ImageAlign = ContentAlignment.MiddleLeft;
             btnDepurarRibbon.Location = new Point(620, 39);
@@ -381,7 +381,7 @@ namespace SOPRO.WinForms.Forms
             btnRecalcularRibbon.FlatAppearance.BorderSize = 0;
             btnRecalcularRibbon.FlatStyle = FlatStyle.Flat;
             btnRecalcularRibbon.Font = new Font("Segoe UI", 8.5F);
-            btnRecalcularRibbon.ForeColor = Color.Silver;
+            btnRecalcularRibbon.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnRecalcularRibbon.Image = (Image)resources.GetObject("btnRecalcularRibbon.Image");
             btnRecalcularRibbon.ImageAlign = ContentAlignment.MiddleLeft;
             btnRecalcularRibbon.Location = new Point(620, 11);
@@ -403,7 +403,7 @@ namespace SOPRO.WinForms.Forms
             btnBuscarRibbon.FlatAppearance.BorderSize = 0;
             btnBuscarRibbon.FlatStyle = FlatStyle.Flat;
             btnBuscarRibbon.Font = new Font("Segoe UI", 8.5F);
-            btnBuscarRibbon.ForeColor = Color.Silver;
+            btnBuscarRibbon.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnBuscarRibbon.Image = (Image)resources.GetObject("btnBuscarRibbon.Image");
             btnBuscarRibbon.ImageAlign = ContentAlignment.MiddleLeft;
             btnBuscarRibbon.Location = new Point(501, 39);
@@ -425,7 +425,7 @@ namespace SOPRO.WinForms.Forms
             btnWrapRibbon.FlatAppearance.BorderSize = 0;
             btnWrapRibbon.FlatStyle = FlatStyle.Flat;
             btnWrapRibbon.Font = new Font("Segoe UI", 8.5F);
-            btnWrapRibbon.ForeColor = Color.Silver;
+            btnWrapRibbon.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnWrapRibbon.Image = (Image)resources.GetObject("btnWrapRibbon.Image");
             btnWrapRibbon.ImageAlign = ContentAlignment.MiddleLeft;
             btnWrapRibbon.Location = new Point(501, 11);
@@ -454,7 +454,7 @@ namespace SOPRO.WinForms.Forms
             btnConsolidarInsumos.FlatAppearance.BorderSize = 0;
             btnConsolidarInsumos.FlatStyle = FlatStyle.Flat;
             btnConsolidarInsumos.Font = new Font("Segoe UI", 8.5F);
-            btnConsolidarInsumos.ForeColor = Color.Silver;
+            btnConsolidarInsumos.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnConsolidarInsumos.Image = (Image)resources.GetObject("btnConsolidarInsumos.Image");
             btnConsolidarInsumos.ImageAlign = ContentAlignment.MiddleLeft;
             btnConsolidarInsumos.Location = new Point(744, 39);
@@ -476,7 +476,7 @@ namespace SOPRO.WinForms.Forms
             btnAplicarATodas.FlatAppearance.BorderSize = 0;
             btnAplicarATodas.FlatStyle = FlatStyle.Flat;
             btnAplicarATodas.Font = new Font("Segoe UI", 8.5F);
-            btnAplicarATodas.ForeColor = Color.Silver;
+            btnAplicarATodas.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnAplicarATodas.Image = (Image)resources.GetObject("btnAplicarATodas.Image");
             btnAplicarATodas.ImageAlign = ContentAlignment.MiddleLeft;
             btnAplicarATodas.Location = new Point(744, 11);
@@ -541,7 +541,7 @@ namespace SOPRO.WinForms.Forms
             btnAlinAba.FlatAppearance.BorderSize = 0;
             btnAlinAba.FlatStyle = FlatStyle.Flat;
             btnAlinAba.Font = new Font("Segoe UI", 9F);
-            btnAlinAba.ForeColor = Color.Silver;
+            btnAlinAba.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnAlinAba.Image = (Image)resources.GetObject("btnAlinAba.Image");
             btnAlinAba.Location = new Point(457, 9);
             btnAlinAba.Name = "btnAlinAba";
@@ -559,7 +559,7 @@ namespace SOPRO.WinForms.Forms
             btnAlinMed.FlatAppearance.BorderSize = 0;
             btnAlinMed.FlatStyle = FlatStyle.Flat;
             btnAlinMed.Font = new Font("Segoe UI", 9F);
-            btnAlinMed.ForeColor = Color.Silver;
+            btnAlinMed.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnAlinMed.Image = (Image)resources.GetObject("btnAlinMed.Image");
             btnAlinMed.Location = new Point(425, 9);
             btnAlinMed.Name = "btnAlinMed";
@@ -577,7 +577,7 @@ namespace SOPRO.WinForms.Forms
             btnAlinJus.FlatAppearance.BorderSize = 0;
             btnAlinJus.FlatStyle = FlatStyle.Flat;
             btnAlinJus.Font = new Font("Segoe UI", 9F);
-            btnAlinJus.ForeColor = Color.Silver;
+            btnAlinJus.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnAlinJus.Image = (Image)resources.GetObject("btnAlinJus.Image");
             btnAlinJus.Location = new Point(393, 9);
             btnAlinJus.Name = "btnAlinJus";
@@ -595,7 +595,7 @@ namespace SOPRO.WinForms.Forms
             btnAlinDer.FlatAppearance.BorderSize = 0;
             btnAlinDer.FlatStyle = FlatStyle.Flat;
             btnAlinDer.Font = new Font("Segoe UI", 9F);
-            btnAlinDer.ForeColor = Color.Silver;
+            btnAlinDer.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnAlinDer.Image = (Image)resources.GetObject("btnAlinDer.Image");
             btnAlinDer.Location = new Point(457, 38);
             btnAlinDer.Name = "btnAlinDer";
@@ -613,7 +613,7 @@ namespace SOPRO.WinForms.Forms
             btnAlinCen.FlatAppearance.BorderSize = 0;
             btnAlinCen.FlatStyle = FlatStyle.Flat;
             btnAlinCen.Font = new Font("Segoe UI", 9F);
-            btnAlinCen.ForeColor = Color.Silver;
+            btnAlinCen.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnAlinCen.Image = (Image)resources.GetObject("btnAlinCen.Image");
             btnAlinCen.Location = new Point(425, 38);
             btnAlinCen.Name = "btnAlinCen";
@@ -631,7 +631,7 @@ namespace SOPRO.WinForms.Forms
             btnAlinIzq.FlatAppearance.BorderSize = 0;
             btnAlinIzq.FlatStyle = FlatStyle.Flat;
             btnAlinIzq.Font = new Font("Segoe UI", 9F);
-            btnAlinIzq.ForeColor = Color.Silver;
+            btnAlinIzq.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnAlinIzq.Image = (Image)resources.GetObject("btnAlinIzq.Image");
             btnAlinIzq.Location = new Point(393, 38);
             btnAlinIzq.Name = "btnAlinIzq";
@@ -657,7 +657,7 @@ namespace SOPRO.WinForms.Forms
             btnCursiva.FlatAppearance.BorderSize = 0;
             btnCursiva.FlatStyle = FlatStyle.Flat;
             btnCursiva.Font = new Font("Segoe UI", 9F, FontStyle.Italic);
-            btnCursiva.ForeColor = Color.Silver;
+            btnCursiva.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnCursiva.Location = new Point(198, 38);
             btnCursiva.Name = "btnCursiva";
             btnCursiva.Size = new Size(28, 28);
@@ -672,7 +672,7 @@ namespace SOPRO.WinForms.Forms
             btnNegrita.FlatAppearance.BorderSize = 0;
             btnNegrita.FlatStyle = FlatStyle.Flat;
             btnNegrita.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            btnNegrita.ForeColor = Color.Silver;
+            btnNegrita.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
             btnNegrita.Location = new Point(166, 38);
             btnNegrita.Name = "btnNegrita";
             btnNegrita.Size = new Size(28, 28);
