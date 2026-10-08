@@ -61,7 +61,7 @@ public class WorkspaceLockTests
 
         using var candado = WorkspaceLock.Acquire(dbPath);
 
-        var ex = Assert.ThrowsException<WorkspaceLockedException>(
+        var ex = Assert.ThrowsExactly<WorkspaceLockedException>(
             () => WorkspaceLock.Acquire(dbPath));
         StringAssert.Contains(ex.Message, dbPath + ".lock",
             "el error debe identificar el archivo de bloqueo");
@@ -74,7 +74,7 @@ public class WorkspaceLockTests
 
         using (var candado = WorkspaceLock.Acquire(dbPath))
         {
-            Assert.ThrowsException<WorkspaceLockedException>(() => WorkspaceLock.Acquire(dbPath));
+            Assert.ThrowsExactly<WorkspaceLockedException>(() => WorkspaceLock.Acquire(dbPath));
         }
 
         Assert.IsFalse(File.Exists(dbPath + ".lock"), "al liberar el candado se elimina el archivo .lock");
@@ -102,7 +102,7 @@ public class WorkspaceLockTests
         var servicio = CrearServicio();
 
         var sesion = servicio.OpenProject(dbPath);
-        Assert.ThrowsException<WorkspaceLockedException>(() => servicio.OpenProject(dbPath));
+        Assert.ThrowsExactly<WorkspaceLockedException>(() => servicio.OpenProject(dbPath));
 
         servicio.CloseProjectSession(sesion);
 
@@ -120,7 +120,7 @@ public class WorkspaceLockTests
 
         var servicio = CrearServicio();
 
-        Assert.ThrowsException<InvalidOperationException>(() => servicio.OpenProject(dbPath));
+        Assert.ThrowsExactly<InvalidOperationException>(() => servicio.OpenProject(dbPath));
         Assert.IsFalse(File.Exists(dbPath + ".lock"),
             "una apertura fallida no debe dejar el candado retenido");
     }

@@ -115,7 +115,7 @@ public class PricePropagationServiceTests
         });
         context.SaveChanges();
 
-        var exception = Assert.ThrowsException<InvalidOperationException>(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(
             () => PricePropagationService.PropagarMaterial(context, scenario.Cemento.Id, scenario.Proyecto.Id));
 
         StringAssert.Contains(exception.Message, "Ciclo de matrices detectado");
@@ -138,7 +138,7 @@ public class PricePropagationServiceTests
             new ComponenteMatriz { MatrizId = b.Id, TipoComponente = TipoComponenteMatriz.Auxiliar, AuxiliarId = c.Id, Cantidad = 1m });
         context.SaveChanges();
 
-        var exception = Assert.ThrowsException<InvalidOperationException>(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(
             () => PricePropagationService.PropagarManoDeObra(context, scenario.Oficial.Id, scenario.Proyecto.Id));
 
         StringAssert.Contains(exception.Message, "Ciclo de matrices detectado");

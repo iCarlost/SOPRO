@@ -321,12 +321,12 @@ public class MotorDifferentialTests
         {
             var (legacy, nuevo) = Motores(p);
 
-            Assert.ThrowsException<OverflowException>(() => legacy.Multiplicar(decimal.MaxValue, 10m),
+            Assert.ThrowsExactly<OverflowException>(() => legacy.Multiplicar(decimal.MaxValue, 10m),
                 $"legacy Overflow con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
-            Assert.ThrowsException<OverflowException>(() => nuevo.Multiply(decimal.MaxValue, 10m),
+            Assert.ThrowsExactly<OverflowException>(() => nuevo.Multiply(decimal.MaxValue, 10m),
                 $"nuevo Overflow con ({p.Cantidad},{p.Importe},{p.Porcentaje})");
-            Assert.ThrowsException<OverflowException>(() => legacy.Multiplicar(-decimal.MaxValue, 10m));
-            Assert.ThrowsException<OverflowException>(() => nuevo.Multiply(-decimal.MaxValue, 10m));
+            Assert.ThrowsExactly<OverflowException>(() => legacy.Multiplicar(-decimal.MaxValue, 10m));
+            Assert.ThrowsExactly<OverflowException>(() => nuevo.Multiply(-decimal.MaxValue, 10m));
         }
     }
 
@@ -337,8 +337,8 @@ public class MotorDifferentialTests
         {
             var (legacy, nuevo) = Motores(p);
 
-            Assert.ThrowsException<ArgumentNullException>(() => legacy.CalcularPrecioUnitario(1000m, null));
-            Assert.ThrowsException<ArgumentNullException>(() => nuevo.CalculateUnitPrice(1000m, null));
+            Assert.ThrowsExactly<ArgumentNullException>(() => legacy.CalcularPrecioUnitario(1000m, null));
+            Assert.ThrowsExactly<ArgumentNullException>(() => nuevo.CalculateUnitPrice(1000m, null));
         }
     }
 
@@ -348,19 +348,19 @@ public class MotorDifferentialTests
         var legacy = new MotorCalculoSopro(PrecisionExcesiva, PrecisionExcesiva, PrecisionExcesiva);
         var nuevo = new SoproCalculationEngine(PrecisionExcesiva, PrecisionExcesiva, PrecisionExcesiva);
 
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => legacy.RedondearImporte(1.5m));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => nuevo.RoundAmount(1.5m));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => legacy.RedondearCantidad(1.5m));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => nuevo.RoundQuantity(1.5m));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => legacy.RedondearPorcentaje(1.5m));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => nuevo.RoundPercentage(1.5m));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => legacy.Multiplicar(1m, 2m));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => nuevo.Multiply(1m, 2m));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => legacy.CalcularPrecioUnitario(100m, new BudgetPercentageInput()));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => nuevo.CalculateUnitPrice(100m, new PricePercentageInput()));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => legacy.DistribuirImporte(100m, new[] { 1m, 1m }));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => nuevo.DistributeAmount(100m, new[] { 1m, 1m }));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => legacy.SumarImportes(new[] { 1m }));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => nuevo.SumAmounts(new[] { 1m }));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => legacy.RedondearImporte(1.5m));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => nuevo.RoundAmount(1.5m));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => legacy.RedondearCantidad(1.5m));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => nuevo.RoundQuantity(1.5m));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => legacy.RedondearPorcentaje(1.5m));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => nuevo.RoundPercentage(1.5m));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => legacy.Multiplicar(1m, 2m));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => nuevo.Multiply(1m, 2m));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => legacy.CalcularPrecioUnitario(100m, new BudgetPercentageInput()));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => nuevo.CalculateUnitPrice(100m, new PricePercentageInput()));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => legacy.DistribuirImporte(100m, new[] { 1m, 1m }));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => nuevo.DistributeAmount(100m, new[] { 1m, 1m }));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => legacy.SumarImportes(new[] { 1m }));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => nuevo.SumAmounts(new[] { 1m }));
     }
 }

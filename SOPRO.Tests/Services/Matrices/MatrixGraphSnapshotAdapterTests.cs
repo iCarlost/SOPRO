@@ -105,7 +105,7 @@ public class MatrixGraphSnapshotAdapterTests
             TipoComponenteMatriz.Auxiliar
         })
         {
-            var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+            var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
                 MatrixGraphSnapshotAdapter.BuildRootSnapshot(0, new List<ComponenteMatriz>
                 {
                     new() { TipoComponente = tipo, Cantidad = 1m }
@@ -121,7 +121,7 @@ public class MatrixGraphSnapshotAdapterTests
     {
         var mismo = Component(TipoComponenteMatriz.Material, 1m, material: new Material { PrecioUnitario = 2m });
 
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
             MatrixGraphSnapshotAdapter.BuildRootSnapshot(0, new List<ComponenteMatriz> { mismo, mismo }));
 
         StringAssert.Contains(exception.Message, "duplicado");
@@ -132,28 +132,28 @@ public class MatrixGraphSnapshotAdapterTests
     [TestMethod]
     public void RaizNegativa_SeRechaza()
     {
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
             MatrixGraphSnapshotAdapter.BuildRootSnapshot(-1, new List<ComponenteMatriz>()));
     }
 
     [TestMethod]
     public void ComponenteNuloEnLista_SeRechaza()
     {
-        Assert.ThrowsException<InvalidOperationException>(() =>
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
             MatrixGraphSnapshotAdapter.BuildRootSnapshot(0, new List<ComponenteMatriz> { null! }));
     }
 
     [TestMethod]
     public void ListaNula_LanzaArgumentNullException()
     {
-        Assert.ThrowsException<ArgumentNullException>(() =>
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
             MatrixGraphSnapshotAdapter.BuildRootSnapshot(0, null!));
     }
 
     [TestMethod]
     public void TipoComponenteNoSoportado_SeRechaza()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
             MatrixGraphSnapshotAdapter.BuildRootSnapshot(0, new List<ComponenteMatriz>
             {
                 new() { TipoComponente = (TipoComponenteMatriz)99, Cantidad = 1m }

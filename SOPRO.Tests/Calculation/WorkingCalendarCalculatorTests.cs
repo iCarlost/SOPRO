@@ -109,9 +109,9 @@ public sealed class WorkingCalendarCalculatorTests
             Sunday = false
         };
 
-        Assert.ThrowsException<ArgumentException>(() =>
+        Assert.ThrowsExactly<ArgumentException>(() =>
             WorkingCalendarCalculator.IsWorkingDay(calendar, new DateTime(2026, 1, 5)));
-        Assert.ThrowsException<ArgumentException>(() =>
+        Assert.ThrowsExactly<ArgumentException>(() =>
             WorkingCalendarCalculator.CountWorkingDays(calendar,
                 new DateTime(2026, 1, 5), new DateTime(2026, 1, 6)));
     }
@@ -137,13 +137,13 @@ public sealed class WorkingCalendarCalculatorTests
         var calendar = CalendarWithOnlyWorkingExceptions(new DateTime(2026, 1, 10), new DateTime(2026, 1, 20));
         var onlyPastException = CalendarWithOnlyWorkingExceptions(new DateTime(2025, 1, 1));
 
-        Assert.ThrowsException<InvalidOperationException>(() =>
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
             WorkingCalendarCalculator.AddWorkingDaysInclusive(onlyPastException, new DateTime(2026, 1, 1), 0));
-        Assert.ThrowsException<InvalidOperationException>(() =>
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
             WorkingCalendarCalculator.SubtractWorkingDaysInclusive(calendar, new DateTime(2025, 1, 1), 0));
-        Assert.ThrowsException<InvalidOperationException>(() =>
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
             WorkingCalendarCalculator.AddWorkingDaysInclusive(calendar, new DateTime(2026, 1, 10), 2));
-        Assert.ThrowsException<InvalidOperationException>(() =>
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
             WorkingCalendarCalculator.SubtractWorkingDaysInclusive(calendar, new DateTime(2026, 1, 20), 2));
     }
 

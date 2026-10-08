@@ -173,7 +173,7 @@ public class UtilityCalculatorTests
     [TestMethod]
     public void Calculate_NullInput_Throws()
     {
-        Assert.ThrowsException<ArgumentNullException>(
+        Assert.ThrowsExactly<ArgumentNullException>(
             () => UtilityCalculator.Calculate(null!));
     }
 

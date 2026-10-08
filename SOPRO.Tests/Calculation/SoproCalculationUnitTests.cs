@@ -37,7 +37,7 @@ public class SoproCalculationEngineUnitTests
     [TestMethod]
     public void Constructor_ConPrecisionNula_LanzaArgumentNullException()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => new SoproCalculationEngine(null));
+        Assert.ThrowsExactly<ArgumentNullException>(() => new SoproCalculationEngine(null));
     }
 
     [TestMethod]
@@ -126,7 +126,7 @@ public class SoproCalculationEngineUnitTests
     [TestMethod]
     public void CalculateUnitPrice_ConPorcentajesNulos_LanzaArgumentNullException()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => Motor2().CalculateUnitPrice(1000m, null));
+        Assert.ThrowsExactly<ArgumentNullException>(() => Motor2().CalculateUnitPrice(1000m, null));
     }
 }
 
@@ -260,8 +260,8 @@ public class AmountDistributorUnitTests
         var resultado = Motor().DistributeAmount(1000m, new[] { 33m, 33m, 34m });
 
         Assert.IsInstanceOfType<ReadOnlyCollection<decimal>>(resultado);
-        Assert.ThrowsException<NotSupportedException>(() => ((IList<decimal>)resultado).Add(1m));
-        Assert.ThrowsException<NotSupportedException>(() => ((IList<decimal>)resultado).RemoveAt(0));
+        Assert.ThrowsExactly<NotSupportedException>(() => ((IList<decimal>)resultado).Add(1m));
+        Assert.ThrowsExactly<NotSupportedException>(() => ((IList<decimal>)resultado).RemoveAt(0));
     }
 
     [TestMethod]
@@ -287,7 +287,7 @@ public class AmountDistributorUnitTests
         var resultado = Motor().DistributeQuantity(10m, new[] { 1m, 1m });
 
         Assert.IsInstanceOfType<ReadOnlyCollection<decimal>>(resultado);
-        Assert.ThrowsException<NotSupportedException>(() => ((IList<decimal>)resultado)[0] = 5m);
+        Assert.ThrowsExactly<NotSupportedException>(() => ((IList<decimal>)resultado)[0] = 5m);
     }
 }
 

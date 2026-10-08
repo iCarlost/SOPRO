@@ -75,7 +75,7 @@ public sealed class ActivityNetworkCalculatorTests
             new ActivityNetworkDependencyInput(2, 1, ActivityDependencyType.FinishToStart)
         };
 
-        Assert.ThrowsException<InvalidOperationException>(() =>
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
             ActivityNetworkCalculator.Calculate(new ActivityNetworkInput(
                 new DateTime(2026, 1, 5), activities, dependencies)));
     }
@@ -166,19 +166,19 @@ public sealed class ActivityNetworkCalculatorTests
             new ActivityNetworkActivityInput(1, 1, 1),
             new ActivityNetworkActivityInput(1, 2, 1)
         };
-        Assert.ThrowsException<ArgumentException>(() =>
+        Assert.ThrowsExactly<ArgumentException>(() =>
             ActivityNetworkCalculator.Calculate(new ActivityNetworkInput(
                 new DateTime(2026, 1, 5), activities)));
 
         var unknownReference = new ActivityNetworkDependencyInput(
             1, 99, ActivityDependencyType.FinishToStart);
-        Assert.ThrowsException<ArgumentException>(() =>
+        Assert.ThrowsExactly<ArgumentException>(() =>
             ActivityNetworkCalculator.Calculate(new ActivityNetworkInput(
                 new DateTime(2026, 1, 5), new[] { activities[0] }, new[] { unknownReference })));
 
         var invalidType = new ActivityNetworkDependencyInput(
             1, 1, (ActivityDependencyType)99);
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
             ActivityNetworkCalculator.Calculate(new ActivityNetworkInput(
                 new DateTime(2026, 1, 5), new[] { activities[0] }, new[] { invalidType })));
     }

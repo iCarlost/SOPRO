@@ -141,7 +141,7 @@ public class MotorFacadeN2Tests
     {
         var motor = new MotorCalculoSopro(2, 2, 4);
 
-        var ex = Assert.ThrowsException<ArgumentNullException>(
+        var ex = Assert.ThrowsExactly<ArgumentNullException>(
             () => motor.CalcularPrecioUnitario(1000m, null!));
 
         Assert.AreEqual("pct", ex.ParamName);
@@ -150,7 +150,7 @@ public class MotorFacadeN2Tests
     [TestMethod]
     public void Constructor_ConProyectoNulo_PreservaElParamNameLegacy()
     {
-        var ex = Assert.ThrowsException<ArgumentNullException>(
+        var ex = Assert.ThrowsExactly<ArgumentNullException>(
             () => new MotorCalculoSopro(null!));
 
         Assert.AreEqual("proyecto", ex.ParamName);

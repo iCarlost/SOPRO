@@ -134,7 +134,7 @@ public class MaquinariaCostoHorarioCalculatorTests
     [TestMethod]
     public void Calculate_NullInput_ThrowsArgumentNullException()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => HourlyCostCalculator.Calculate(null!));
+        Assert.ThrowsExactly<ArgumentNullException>(() => HourlyCostCalculator.Calculate(null!));
     }
 
     [TestMethod]
@@ -147,7 +147,7 @@ public class MaquinariaCostoHorarioCalculatorTests
             EffectiveHoursPerYear = 1m
         };
 
-        Assert.ThrowsException<OverflowException>(() => HourlyCostCalculator.Calculate(input));
+        Assert.ThrowsExactly<OverflowException>(() => HourlyCostCalculator.Calculate(input));
     }
 
     [TestMethod]
@@ -160,7 +160,7 @@ public class MaquinariaCostoHorarioCalculatorTests
             EffectiveHoursPerShift = 1m
         };
 
-        Assert.ThrowsException<OverflowException>(() => HourlyCostCalculator.Calculate(input));
+        Assert.ThrowsExactly<OverflowException>(() => HourlyCostCalculator.Calculate(input));
     }
 
     [TestMethod]
@@ -176,7 +176,7 @@ public class MaquinariaCostoHorarioCalculatorTests
             EffectiveHoursPerShift = 0m
         };
 
-        Assert.ThrowsException<OverflowException>(() => HourlyCostCalculator.Calculate(input));
+        Assert.ThrowsExactly<OverflowException>(() => HourlyCostCalculator.Calculate(input));
     }
 
     [TestMethod]
@@ -221,7 +221,7 @@ public class MaquinariaCostoHorarioCalculatorTests
             EffectiveHoursPerShift = -1m
         };
 
-        Assert.ThrowsException<OverflowException>(() => HourlyCostCalculator.Calculate(input));
+        Assert.ThrowsExactly<OverflowException>(() => HourlyCostCalculator.Calculate(input));
     }
 
     [TestMethod]
