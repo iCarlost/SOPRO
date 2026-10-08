@@ -96,7 +96,7 @@ public class MatrixComponentUnitImportesTests
         Assert.IsFalse(importes.ContainsKey(sinAuxiliar));
 
         // Contraste: la ruta estricta sí lanza ante navegaciones incompletas.
-        Assert.ThrowsException<InvalidOperationException>(
+        Assert.ThrowsExactly<InvalidOperationException>(
             () => MatrixComponentCalculationService.Recalculate(componentes, 2));
     }
 
@@ -111,7 +111,7 @@ public class MatrixComponentUnitImportesTests
     [TestMethod]
     public void ImportesUnitarios_ListaNula_Lanza()
     {
-        Assert.ThrowsException<ArgumentNullException>(
+        Assert.ThrowsExactly<ArgumentNullException>(
             () => MatrixComponentCalculationService.ImportesUnitarios(null!, 2));
     }
 
@@ -194,7 +194,7 @@ public class MatrixComponentUnitImportesTests
     public void DistribuirImporteProporcional_CostoCero_Lanza()
     {
         var engine = new Sopro.Calculation.SoproCalculationEngine(2, 2, 4);
-        Assert.ThrowsException<ArgumentException>(() =>
+        Assert.ThrowsExactly<ArgumentException>(() =>
             MatrixComponentCalculationService.DistribuirImporteProporcional(
                 engine,
                 new System.Collections.Generic.Dictionary<ComponenteMatriz, decimal>(),

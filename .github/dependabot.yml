@@ -9,6 +9,10 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "deps"
+    groups:
+      mstest:
+        patterns:
+          - "MSTest.*"
 
   - package-ecosystem: "github-actions"
     directory: "/"

@@ -387,7 +387,7 @@ public class MaterialsUseCasesTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             new SaveMaterial(Fabrica).Execute(session, new SaveMaterialRequest(
                 MaterialId: null,
                 Clave: "MAT-NUEVO",
@@ -1591,7 +1591,7 @@ public class MaterialsUseCasesTests
             CreateForPath = p => p == context.DatabasePath ? contextoHook : new SOPROContext(p)
         });
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             save.Execute(session, new SaveMaterialRequest(
                 MaterialId: scenario.Cemento.Id,
                 Clave: scenario.Cemento.Clave,
@@ -1622,7 +1622,7 @@ public class MaterialsUseCasesTests
             CreateForPath = p => p == context.DatabasePath ? contextoHook : new SOPROContext(p)
         });
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             save.Execute(session, new SaveMaterialRequest(
                 MaterialId: scenario.Cemento.Id,
                 Clave: scenario.Cemento.Clave,
@@ -1664,7 +1664,7 @@ public class MaterialsUseCasesTests
             SaveToMaster: true,
             ProjectId: scenario.Proyecto.Id);
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             save.Execute(session, request, cts.Token));
 
         using (var maestro = new SOPROContext(masterDbPath))
@@ -1731,7 +1731,7 @@ public class MaterialsUseCasesTests
             CreateForPath = p => p == context.DatabasePath ? contextoHook : new SOPROContext(p)
         });
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             delete.Execute(session, new DeleteMaterialRequest(scenario.Cemento.Id), cts.Token));
 
         context.ChangeTracker.Clear();

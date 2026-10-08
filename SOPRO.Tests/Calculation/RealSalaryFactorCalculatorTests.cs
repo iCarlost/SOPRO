@@ -326,7 +326,7 @@ public class RealSalaryFactorCalculatorTests
     [TestMethod]
     public void Calculate_NullInput_Throws()
     {
-        Assert.ThrowsException<ArgumentNullException>(
+        Assert.ThrowsExactly<ArgumentNullException>(
             () => RealSalaryFactorCalculator.Calculate(null!));
     }
 
@@ -335,7 +335,7 @@ public class RealSalaryFactorCalculatorTests
     {
         var input = CreateBaseInput() with { MinimumSalary = 0m };
 
-        Assert.ThrowsException<DivideByZeroException>(
+        Assert.ThrowsExactly<DivideByZeroException>(
             () => RealSalaryFactorCalculator.Calculate(input));
     }
 
@@ -348,7 +348,7 @@ public class RealSalaryFactorCalculatorTests
             HoursPerShift = 10m
         };
 
-        Assert.ThrowsException<OverflowException>(
+        Assert.ThrowsExactly<OverflowException>(
             () => RealSalaryFactorCalculator.Calculate(input));
     }
 

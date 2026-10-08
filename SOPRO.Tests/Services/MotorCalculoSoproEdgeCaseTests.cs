@@ -49,7 +49,7 @@ public class MotorCalculoSoproEdgeCaseTests
     {
         var motor = new MotorCalculoSopro(decimalesCantidad: 2, decimalesImporte: 29, decimalesPorcentaje: 4);
 
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => motor.RedondearImporte(1.5m));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => motor.RedondearImporte(1.5m));
     }
 
     [TestMethod]
@@ -57,7 +57,7 @@ public class MotorCalculoSoproEdgeCaseTests
     {
         var motor = new MotorCalculoSopro(decimalesCantidad: 2, decimalesImporte: 2, decimalesPorcentaje: 4);
 
-        Assert.ThrowsException<OverflowException>(() => motor.Multiplicar(decimal.MaxValue, 10m));
+        Assert.ThrowsExactly<OverflowException>(() => motor.Multiplicar(decimal.MaxValue, 10m));
     }
 
     [TestMethod]

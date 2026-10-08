@@ -35,7 +35,7 @@ public class ExternalMatrixImportCycleGuardTests
             (int rootId, int aId, int bId) = CrearCicloExterno(dbPath);
 
             var service = new ExternalMatrixImportService();
-            var exception = Assert.ThrowsException<InvalidOperationException>(() => service.ImportMatrixTree(
+            var exception = Assert.ThrowsExactly<InvalidOperationException>(() => service.ImportMatrixTree(
                 current, proyecto.Id, dbPath, rootId, ExternalMatrixImportConflictPolicy.KeepBothWithTempKey));
 
             StringAssert.Contains(exception.Message, "El grafo externo contiene un ciclo");
@@ -69,7 +69,7 @@ public class ExternalMatrixImportCycleGuardTests
             var (rootId, _, _) = CrearCicloExterno(dbPath);
 
             var service = new ExternalMatrixImportService();
-            var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+            var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
                 service.BuildPreview(current, proyecto.Id, dbPath, rootId));
 
             StringAssert.Contains(exception.Message, "El grafo externo contiene un ciclo");

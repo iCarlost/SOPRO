@@ -233,11 +233,11 @@ public class MatrixCatalogReportUseCasesTests
 
         var matrices = (IList)doc.Matrices;
         Assert.IsTrue(matrices.IsReadOnly);
-        Assert.ThrowsException<NotSupportedException>(() => matrices.Add(doc.Matrices[0]));
+        Assert.ThrowsExactly<NotSupportedException>(() => matrices.Add(doc.Matrices[0]));
 
         var componentes = (IList)doc.Matrices[0].Components;
         Assert.IsTrue(componentes.IsReadOnly);
-        Assert.ThrowsException<NotSupportedException>(() => componentes.Add(null));
+        Assert.ThrowsExactly<NotSupportedException>(() => componentes.Add(null));
     }
 
     [TestMethod]
@@ -259,9 +259,9 @@ public class MatrixCatalogReportUseCasesTests
     {
         var builder = new MatrixCatalogReportModelBuilder();
 
-        Assert.ThrowsException<ArgumentNullException>(() =>
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
             builder.Build(null!, SnapshotsSinteticos(), FechaFija));
-        Assert.ThrowsException<ArgumentNullException>(() =>
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
             builder.Build(new MatrixCatalogReportSettings(ProyectoSintetico(), null, null, null), null!, FechaFija));
     }
 
@@ -658,11 +658,11 @@ public class MatrixCatalogReportUseCasesTests
         Assert.AreEqual(3, request.MatrixIds.Count);
         Assert.AreEqual(1, request.MatrixIds[0]);
         Assert.IsTrue(((ICollection<int>)request.MatrixIds).IsReadOnly, "la copia se envuelve como colección de solo lectura.");
-        Assert.ThrowsException<NotSupportedException>(() => ((ICollection<int>)request.MatrixIds).Add(5));
-        Assert.ThrowsException<InvalidCastException>(() => (int[])request.MatrixIds, "un array crudo no se conserva: el cast al tipo mutable debe fallar.");
-        Assert.ThrowsException<NotSupportedException>(() => ((IList<int>)request.MatrixIds)[0] = 99, "asignar por índice IList<int> también debe rechazarse.");
-        Assert.ThrowsException<InvalidCastException>(() => (List<int>)request.MatrixIds);
-        Assert.ThrowsException<ArgumentNullException>(() => new BuildMatrixCatalogReportRequest(null!));
+        Assert.ThrowsExactly<NotSupportedException>(() => ((ICollection<int>)request.MatrixIds).Add(5));
+        Assert.ThrowsExactly<InvalidCastException>(() => (int[])request.MatrixIds, "un array crudo no se conserva: el cast al tipo mutable debe fallar.");
+        Assert.ThrowsExactly<NotSupportedException>(() => ((IList<int>)request.MatrixIds)[0] = 99, "asignar por índice IList<int> también debe rechazarse.");
+        Assert.ThrowsExactly<InvalidCastException>(() => (List<int>)request.MatrixIds);
+        Assert.ThrowsExactly<ArgumentNullException>(() => new BuildMatrixCatalogReportRequest(null!));
     }
 
     // ─────────────── Elementos libres PDF y alturas (N7-18c f0.5) ────────────
@@ -777,7 +777,7 @@ public class MatrixCatalogReportUseCasesTests
         bytes[0] = 99;
         Assert.AreEqual(1, el.ImageBytes[0]);
         Assert.IsTrue(((ICollection<byte>)el.ImageBytes).IsReadOnly);
-        Assert.ThrowsException<NotSupportedException>(() => ((ICollection<byte>)el.ImageBytes).Add(7));
+        Assert.ThrowsExactly<NotSupportedException>(() => ((ICollection<byte>)el.ImageBytes).Add(7));
     }
 
     [TestMethod]
@@ -800,7 +800,7 @@ public class MatrixCatalogReportUseCasesTests
         Assert.AreEqual(2, doc.HeaderElements.Count, "la colección del documento no retiene listas mutables.");
         Assert.AreEqual(1, doc.FooterElements.Count);
         Assert.IsTrue(((ICollection<MatrixCatalogPageElement>)doc.HeaderElements).IsReadOnly);
-        Assert.ThrowsException<NotSupportedException>(() =>
+        Assert.ThrowsExactly<NotSupportedException>(() =>
             ((ICollection<MatrixCatalogPageElement>)doc.HeaderElements).Add(ElementoNeutral(MatrixCatalogPageZone.Encabezado, "X")));
     }
 

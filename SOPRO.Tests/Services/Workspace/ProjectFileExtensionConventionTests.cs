@@ -50,7 +50,7 @@ public class ProjectFileExtensionConventionTests
     [TestMethod]
     public void GetSearchPattern_ExtensionNoAdmitida_Lanza()
     {
-        Assert.ThrowsException<ArgumentException>(
+        Assert.ThrowsExactly<ArgumentException>(
             () => ProjectFileExtensions.GetSearchPattern(".txt"));
     }
 

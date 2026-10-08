@@ -61,7 +61,7 @@ public class MatrixGraphOrderServiceTests
         var a = Matriz(1, TipoMatriz.APU, 2);
         var b = Matriz(2, TipoMatriz.Basico, 1);
 
-        var exception = Assert.ThrowsException<InvalidOperationException>(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(
             () => MatrixGraphOrderService.OrdenTopologico(new[] { a, b }));
 
         StringAssert.Contains(exception.Message, "Ciclo de matrices detectado");
@@ -73,7 +73,7 @@ public class MatrixGraphOrderServiceTests
     {
         var a = Matriz(5, TipoMatriz.Basico, 5);
 
-        var exception = Assert.ThrowsException<InvalidOperationException>(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(
             () => MatrixGraphOrderService.OrdenTopologico(new[] { a }));
 
         StringAssert.Contains(exception.Message, "5 -> 5");
@@ -85,7 +85,7 @@ public class MatrixGraphOrderServiceTests
         var a = Matriz(7, TipoMatriz.APU);
         var b = Matriz(7, TipoMatriz.Basico);
 
-        var exception = Assert.ThrowsException<InvalidOperationException>(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(
             () => MatrixGraphOrderService.OrdenTopologico(new[] { a, b }));
 
         StringAssert.Contains(exception.Message, "Id 7");
@@ -96,7 +96,7 @@ public class MatrixGraphOrderServiceTests
     {
         var a = Matriz(7, TipoMatriz.APU);
 
-        var exception = Assert.ThrowsException<InvalidOperationException>(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(
             () => MatrixGraphOrderService.OrdenTopologico(new[] { a, a }));
 
         StringAssert.Contains(exception.Message, "duplicada");
@@ -105,7 +105,7 @@ public class MatrixGraphOrderServiceTests
     [TestMethod]
     public void MatrizNula_Lanza()
     {
-        Assert.ThrowsException<InvalidOperationException>(
+        Assert.ThrowsExactly<InvalidOperationException>(
             () => MatrixGraphOrderService.OrdenTopologico(new Matriz[] { null! }));
     }
 
@@ -172,7 +172,7 @@ public class MatrixGraphOrderServiceTests
     [TestMethod]
     public void ColeccionNula_LanzaArgumentNullException()
     {
-        Assert.ThrowsException<ArgumentNullException>(
+        Assert.ThrowsExactly<ArgumentNullException>(
             () => MatrixGraphOrderService.OrdenTopologico(null!));
     }
 

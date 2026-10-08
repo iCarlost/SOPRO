@@ -249,13 +249,13 @@ public sealed class FinancingCalculatorTests
     {
         var result = Calculate(new Scenario(effectiveRate: 12m, tiieRate: 12m, advance: 30m, delay: 1));
 
-        Assert.ThrowsException<NotSupportedException>(() => ((IList<FinancingRowResult>)result.Rows).Add(null!));
+        Assert.ThrowsExactly<NotSupportedException>(() => ((IList<FinancingRowResult>)result.Rows).Add(null!));
     }
 
     [TestMethod]
     public void NullInput_IsRejected()
     {
-        Assert.ThrowsException<ArgumentNullException>(() => FinancingCalculator.Calculate(null!));
+        Assert.ThrowsExactly<ArgumentNullException>(() => FinancingCalculator.Calculate(null!));
     }
 
     private static FinancingResult Calculate(Scenario scenario) =>

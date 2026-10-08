@@ -257,7 +257,7 @@ public sealed class FinancingPreparationCalculatorTests
                 Distribution(0, 1m), Distribution(2, 1m))
         });
 
-        Assert.ThrowsException<ArgumentOutOfRangeException>(calcular);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(calcular);
     }
 
     [TestMethod]
@@ -269,7 +269,7 @@ public sealed class FinancingPreparationCalculatorTests
             Estimate(3, 20m)
         });
 
-        Assert.ThrowsException<ArgumentOutOfRangeException>(calcular);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(calcular);
     }
 
     [TestMethod]
@@ -283,7 +283,7 @@ public sealed class FinancingPreparationCalculatorTests
                 Distribution(0, 1m), Distribution(5, 1m))
         });
 
-        Assert.ThrowsException<ArgumentOutOfRangeException>(calcular);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(calcular);
     }
 
     [TestMethod]
@@ -297,20 +297,20 @@ public sealed class FinancingPreparationCalculatorTests
                 Distribution(-1, 1m))
         });
 
-        Assert.ThrowsException<ArgumentOutOfRangeException>(calcular);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(calcular);
     }
 
     [TestMethod]
     public void PrepareBaseScheduleConNull_LanzaArgumentNull()
     {
-        Assert.ThrowsException<ArgumentNullException>(
+        Assert.ThrowsExactly<ArgumentNullException>(
             () => FinancingPreparationCalculator.PrepareBaseSchedule(null!));
     }
 
     [TestMethod]
     public void ReconcileIndirectCostConNull_LanzaArgumentNull()
     {
-        Assert.ThrowsException<ArgumentNullException>(
+        Assert.ThrowsExactly<ArgumentNullException>(
             () => FinancingPreparationCalculator.ReconcileIndirectCost(null!, officialIndirectCost: 1m, amountDecimals: 2));
     }
 
@@ -399,8 +399,8 @@ public sealed class FinancingPreparationCalculatorTests
     private static void InteropAssertNoSePuedeMutar<T>(System.Collections.Generic.IReadOnlyList<T> readOnly, System.Func<T> factory)
     {
         // Una lista mutable backante sería reconvertible a List<T>; ReadOnlyCollection no lo permite.
-        Assert.ThrowsException<System.InvalidCastException>(() => (System.Collections.Generic.List<T>)readOnly);
-        Assert.ThrowsException<System.NotSupportedException>(
+        Assert.ThrowsExactly<System.InvalidCastException>(() => (System.Collections.Generic.List<T>)readOnly);
+        Assert.ThrowsExactly<System.NotSupportedException>(
             () => ((System.Collections.Generic.ICollection<T>)readOnly).Add(factory()));
     }
 

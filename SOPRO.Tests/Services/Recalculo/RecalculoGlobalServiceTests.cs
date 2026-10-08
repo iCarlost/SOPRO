@@ -127,7 +127,7 @@ public class RecalculoGlobalServiceTests
     {
         using var context = TestDbFactory.CreateContext();
 
-        var ex = Assert.ThrowsException<InvalidOperationException>(
+        var ex = Assert.ThrowsExactly<InvalidOperationException>(
             () => new RecalculoGlobalService().Ejecutar(context, 99999));
 
         StringAssert.Contains(ex.Message, "99999");

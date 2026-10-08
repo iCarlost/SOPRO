@@ -100,7 +100,7 @@ public class MotorCalculoSoproTests
     [TestMethod]
     public void FromProyecto_ProyectoNulo_Lanza()
     {
-        Assert.ThrowsException<ArgumentNullException>(
+        Assert.ThrowsExactly<ArgumentNullException>(
             () => BudgetPercentageInput.FromProyecto(null!));
     }
 
@@ -124,7 +124,7 @@ public class MotorCalculoSoproTests
     [TestMethod]
     public void EngineFactory_FromProyectoNulo_Lanza()
     {
-        Assert.ThrowsException<ArgumentNullException>(
+        Assert.ThrowsExactly<ArgumentNullException>(
             () => CalculationEngineFactory.FromProyecto(null!));
     }
 
@@ -268,7 +268,7 @@ public class MotorCalculoSoproTests
     [TestMethod]
     public void Constructor_ConProyectoNulo_LanzaArgumentNullException()
     {
-        var ex = Assert.ThrowsException<ArgumentNullException>(
+        var ex = Assert.ThrowsExactly<ArgumentNullException>(
             () => new MotorCalculoSopro((Proyecto)null!));
 
         Assert.AreEqual("proyecto", ex.ParamName);
@@ -393,7 +393,7 @@ public class MotorCalculoSoproTests
             decimalesImporte: 2,
             decimalesPorcentaje: 4);
 
-        var ex = Assert.ThrowsException<ArgumentNullException>(
+        var ex = Assert.ThrowsExactly<ArgumentNullException>(
             () => motor.CalcularPrecioUnitario(1000m, null!));
 
         Assert.AreEqual("pct", ex.ParamName);

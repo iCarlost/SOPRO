@@ -54,7 +54,7 @@ namespace SOPRO.Reporting.Tests.TestInfrastructure
                 + "<x:xmpmeta><rdf:RDF><xmp:CreateDate>2026-09-11T08:30:51Z</xmp:CreateDate>"
                 + "</rdf:RDF></x:xmpmeta>\n<?xpacket end=\"w\"?>" + "\nendstream";
 
-            Assert.ThrowsException<InvalidDataException>(() =>
+            Assert.ThrowsExactly<InvalidDataException>(() =>
                 PdfNormalizador.NeutralizarNoDeterminismoResidual(Encoding.Latin1.GetBytes(input)));
         }
 
@@ -66,7 +66,7 @@ namespace SOPRO.Reporting.Tests.TestInfrastructure
                 + "<pdf:Keywords>revision 2026-09-11T08:30:51-07:00</pdf:Keywords>"
                 + "<?xpacket end=\"w\"?>";
 
-            Assert.ThrowsException<InvalidDataException>(() =>
+            Assert.ThrowsExactly<InvalidDataException>(() =>
                 PdfNormalizador.NeutralizarNoDeterminismoResidual(Encoding.Latin1.GetBytes(input)));
         }
 
@@ -78,7 +78,7 @@ namespace SOPRO.Reporting.Tests.TestInfrastructure
                 + "<xmpMM:DocumentID>uuid:45968bee-2f89-44c5-8d09-610e2240e6f6</xmpMM:DocumentID>"
                 + "<?xpacket end=\"w\"?>";
 
-            Assert.ThrowsException<InvalidDataException>(() =>
+            Assert.ThrowsExactly<InvalidDataException>(() =>
                 PdfNormalizador.NeutralizarNoDeterminismoResidual(Encoding.Latin1.GetBytes(input)));
         }
 
@@ -127,7 +127,7 @@ namespace SOPRO.Reporting.Tests.TestInfrastructure
                 "/CreationDate(D:20000101000000Z)",
                 "/ModDate(D:20000101000000+00'00')");
 
-            Assert.ThrowsException<InvalidDataException>(() =>
+            Assert.ThrowsExactly<InvalidDataException>(() =>
                 PdfNormalizador.NeutralizarNoDeterminismoResidual(Encoding.Latin1.GetBytes(input)));
         }
 
@@ -136,7 +136,7 @@ namespace SOPRO.Reporting.Tests.TestInfrastructure
         {
             var input = PdfMinimo("/CreationDate(D:20000101000000+00'00')", "");
 
-            Assert.ThrowsException<InvalidDataException>(() =>
+            Assert.ThrowsExactly<InvalidDataException>(() =>
                 PdfNormalizador.NeutralizarNoDeterminismoResidual(Encoding.Latin1.GetBytes(input)));
         }
 

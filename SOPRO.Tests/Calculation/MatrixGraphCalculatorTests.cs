@@ -101,7 +101,7 @@ public class MatrixGraphCalculatorTests
     [TestMethod]
     public void CicloDirecto_DevuelveRutaDiagnostica()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => Calculate(
             Node(1, MatrixType.Basic,
                 Component(10, 1, MatrixComponentType.Auxiliary, 1m, referencedMatrixId: 1))));
 
@@ -112,7 +112,7 @@ public class MatrixGraphCalculatorTests
     [TestMethod]
     public void CicloIndirecto_DevuelveRutaCompleta()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => Calculate(
             Node(1, MatrixType.Apu,
                 Component(10, 1, MatrixComponentType.Auxiliary, 1m, referencedMatrixId: 2)),
             Node(2, MatrixType.Basic,
@@ -126,7 +126,7 @@ public class MatrixGraphCalculatorTests
     [TestMethod]
     public void NodoFaltante_IdentificaMatrizComponenteReferido()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => Calculate(
             Node(1, MatrixType.Apu,
                 Component(10, 1, MatrixComponentType.Auxiliary, 1m, referencedMatrixId: 99))));
 
@@ -137,7 +137,7 @@ public class MatrixGraphCalculatorTests
     [TestMethod]
     public void NodoDesconectado_ConReferenciaNula_SeRechaza()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => Calculate(
             Node(1, MatrixType.Apu,
                 Component(10, 1, MatrixComponentType.Material, 1m, 10m)),
             Node(2, MatrixType.Basic,
@@ -149,7 +149,7 @@ public class MatrixGraphCalculatorTests
     [TestMethod]
     public void NodoDesconectado_ConReferenciaInexistente_SeRechaza()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => Calculate(
             Node(1, MatrixType.Apu,
                 Component(10, 1, MatrixComponentType.Material, 1m, 10m)),
             Node(2, MatrixType.Basic,
@@ -218,7 +218,7 @@ public class MatrixGraphCalculatorTests
     [TestMethod]
     public void TipoComponenteNoDefinido_SeRechaza()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => Calculate(
             Node(1, MatrixType.Apu,
                 Component(10, 1, (MatrixComponentType)99, 1m, 10m))));
 
@@ -229,7 +229,7 @@ public class MatrixGraphCalculatorTests
     [TestMethod]
     public void TipoMatrizNoDefinido_SeRechazaInclusoSinReferencias()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => Calculate(
             Node(1, MatrixType.Apu,
                 Component(10, 1, MatrixComponentType.Material, 1m, 10m)),
             Node(2, (MatrixType)99,
@@ -242,7 +242,7 @@ public class MatrixGraphCalculatorTests
     [TestMethod]
     public void AuxiliarMarcadoComoPorcentaje_SeRechaza()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => Calculate(
             Node(1, MatrixType.Apu,
                 Component(10, 1, MatrixComponentType.Auxiliary, 1m, isPercentage: true, referencedMatrixId: 2)),
             Node(2, MatrixType.Basic,
@@ -255,7 +255,7 @@ public class MatrixGraphCalculatorTests
     [TestMethod]
     public void PorcentajeEnMaterialOMaquinaria_SeRechaza()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => Calculate(
             Node(1, MatrixType.Apu,
                 Component(10, 1, MatrixComponentType.Material, 1m, 10m, isPercentage: true))));
 
@@ -266,7 +266,7 @@ public class MatrixGraphCalculatorTests
     [TestMethod]
     public void ReferenciaAuxiliarNula_SeDistingueDeNodoFaltante()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => Calculate(
             Node(1, MatrixType.Apu,
                 Component(10, 1, MatrixComponentType.Auxiliary, 1m))));
 
@@ -321,7 +321,7 @@ public class MatrixGraphCalculatorTests
     [TestMethod]
     public void HojaConComponentes_SeRechaza()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => Calculate(
             Node(1, MatrixType.Apu,
                 Component(10, 1, MatrixComponentType.Auxiliary, 1m, referencedMatrixId: 20)),
             new MatrixNodeInput(20, MatrixType.Basic, new[] { Component(20, 1, MatrixComponentType.Material, 1m, 5m) }, 10m)));
@@ -346,7 +346,7 @@ public class MatrixGraphCalculatorTests
     [TestMethod]
     public void HojaApu_SeRechaza()
     {
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => Calculate(
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() => Calculate(
             Node(1, MatrixType.Apu,
                 Component(10, 1, MatrixComponentType.Auxiliary, 1m, referencedMatrixId: 20)),
             new MatrixNodeInput(20, MatrixType.Apu, Array.Empty<MatrixComponentInput>(), 10m)));

@@ -279,7 +279,7 @@ public sealed class CalendarioCharacterizationTests
 
         // Contrato N7-16: el límite de iteraciones legacy truncaba el resultado sin
         // diagnosticar el ciclo; ahora el calculador puro lo rechaza formalmente.
-        Assert.ThrowsException<InvalidOperationException>(() =>
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
             new SOPRO.Application.Services.ProgramacionCalculationService()
                 .RecalculateProgram(context, programa.Id));
 
