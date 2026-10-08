@@ -19,7 +19,7 @@ namespace SOPRO.WinForms.Helpers
     /// </summary>
     public static class DgvCeldaHelper
     {
-        private static readonly Color ColorSeleccionFila = Color.FromArgb(230, 240, 255);
+        private static readonly Color ColorSeleccionFila = SoproTheme.Colors.SelBg;
         private static readonly Color ColorBordeCelda    = Color.FromArgb(0, 120, 215);
 
         // Rastrear si el último clic fue en un RowHeader (por instancia de DGV)
