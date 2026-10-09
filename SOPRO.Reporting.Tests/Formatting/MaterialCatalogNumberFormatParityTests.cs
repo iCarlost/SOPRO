@@ -17,7 +17,8 @@ namespace SOPRO.Reporting.Tests.Formatting;
 /// La "paridad" PDF/Excel es de cadena sólo para los tokens legacy comunes
 /// (N2, "#,##0.0000", C2). Para C4/P2 las cadenas divergen legítimamente
 /// (fidelidad 8afabde) y lo que se verifica es la SEMÁNTICA: en particular que
-/// "C4" NUNCA produzca el símbolo '$' en ninguna ruta (regresión del usuario).
+/// "C4" NUNCA produzca símbolo de moneda alguno ('$' ni el glifo ¤) en ninguna
+/// ruta (regresión del usuario).
 /// </summary>
 [TestClass]
 public class MaterialCatalogNumberFormatParityTests
@@ -63,26 +64,32 @@ public class MaterialCatalogNumberFormatParityTests
     [TestMethod]
     public void TokenC4_NoIntroduceSimboloDeMonedaEnNingunaRuta()
     {
-        // PDF legacy: passthrough literal; Excel legacy: default sin moneda.
-        Assert.AreEqual("C4", ReportNumberFormatMap.ToPdfFormat("C4"));
+        // PDF: numérico de 4 decimales sin símbolo; Excel legacy: default sin moneda.
+        Assert.AreEqual("#,##0.0000", ReportNumberFormatMap.ToPdfFormat("C4"));
         Assert.AreEqual("#,##0.00", ReportNumberFormatMapper.ToExcelFormat("C4"));
         Assert.IsFalse(ReportNumberFormatMap.ToPdfFormat("C4").Contains('$'));
         Assert.IsFalse(ReportNumberFormatMapper.ToExcelFormat("C4").Contains('$'));
+        Assert.IsFalse(ReportNumberFormatMap.ToPdfFormat("C4").Contains('\u00A4'));
+        Assert.IsFalse(ReportNumberFormatMapper.ToExcelFormat("C4").Contains('\u00A4'));
 
         var material = Material(1234.5m);
 
-        // Ruta PDF de materiales (ResolveValue → FormatearNumero con InvariantCulture).
+        // Ruta PDF de materiales (ResolveValue → FormatearNumero con InvariantCulture):
+        // el token 'C4' se mapea a "#,##0.0000", así que se renderiza el número
+        // sin ningún símbolo de moneda.
         var pdf = MaterialCatalogExportResolver.ResolveValue(material, Mapear("C4"));
         Assert.IsFalse(pdf.Contains('$'), "Regresión del usuario: 'C4' no debe mostrar '$'.");
+        Assert.IsFalse(pdf.Contains('\u00A4'), "Regresión del usuario: 'C4' no debe mostrar el glifo ¤.");
         Assert.AreEqual(
-            1234.5m.ToString("C4", CultureInfo.InvariantCulture),
+            1234.5m.ToString("#,##0.0000", CultureInfo.InvariantCulture),
             pdf,
-            "El passthrough de 'C4' se aplica con InvariantCulture (símbolo ¤ genérico).");
+            "La ruta PDF de 'C4' muestra el número sin símbolo de moneda.");
 
         // Ruta Excel.
         var excel = material.PrecioUnitario.ToString(
             ReportNumberFormatMapper.ToExcelFormat("C4"), CultureInfo.InvariantCulture);
         Assert.IsFalse(excel.Contains('$'), "Excel legacy tampoco introduce '$' para 'C4'.");
+        Assert.IsFalse(excel.Contains('\u00A4'), "Excel legacy tampoco introduce el glifo ¤ para 'C4'.");
     }
 
     [TestMethod]

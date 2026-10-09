@@ -66,8 +66,9 @@ public static class MaterialCatalogExportResolver
     /// se traduce por la ruta central <see cref="ReportNumberFormatMap"/> antes de
     /// render. Esta ruta es la del PDF, así que usa
     /// <see cref="ReportNumberFormatMap.ToPdfFormat"/> con
-    /// <see cref="CultureInfo.InvariantCulture"/> (fidelidad legacy: "C4" en
-    /// passthrough produce el símbolo ¤ de la cultura invariante, nunca '$').
+    /// <see cref="CultureInfo.InvariantCulture"/> (fidelidad legacy: los tokens
+    /// monetarios <c>C0/C1/C3/C4</c> se mapean a su equivalente numérico sin símbolo,
+    /// evitando el glifo ¤ de la cultura invariante; <c>C2</c> conserva '$').
     /// </summary>
     public static string ResolveValue(MaterialListItem material, ReportColumnDefinition column)
     {
@@ -133,7 +134,8 @@ public static class MaterialCatalogExportResolver
         var token = string.IsNullOrWhiteSpace(formato) ? FormatoNumericoPredeterminado : formato!.Trim();
         // Ruta central única: el mismo mapeo token→formato .NET que usa Excel
         // (ReportNumberFormatMapper delega en ReportNumberFormatMap). InvariantCulture
-        // reproduce el símbolo ¤ del legacy en el passthrough de "C4" (nunca '$').
+        // garantiza separadores estables y, con los tokens monetarios ya mapeados a
+        // su equivalente numérico, evita el glifo ¤ del passthrough de "C4".
         var fmt = ReportNumberFormatMap.ToPdfFormat(token);
         return valor.ToString(fmt, CultureInfo.InvariantCulture);
     }
@@ -152,10 +154,12 @@ public static class MaterialCatalogExportResolver
 /// la versión publicada (8afabde):
 /// <list type="bullet">
 ///   <item><see cref="ToPdfFormat"/> reproduce la tabla de <c>FormatearDecimal</c>
-///   del PDF legacy: N0/N2/N3/N4/N5/C2 mapeados, vacío → <c>#,##0.00</c> y
-///   cualquier otro token (C4, P2, N1, "#,##0.0000", "0.00", ...) en
-///   <b>passthrough literal</b>. "C4" produce el símbolo ¤ de la cultura
-///   invariante, NUNCA '$'.</item>
+///   del PDF legacy, ampliada para eliminar el glifo de moneda genérico ¤ que
+///   producía el passthrough literal de los tokens monetarios sin símbolo:
+///   N0/N2/N3/N4/N5 y C0/C1/C3/C4 mapeados a su equivalente numérico sin símbolo
+///   (C2 conserva el <c>$#,##0.00</c> publicado), vacío → <c>#,##0.00</c> y
+///   cualquier otro token (P2, N1, "#,##0.0000", "0.00", ...) en
+///   <b>passthrough literal</b>.</item>
 ///   <item><see cref="ToExcelFormat"/> reproduce la tabla de <c>ConvertirFormato</c>
 ///   del Excel legacy: N0/N2/N3/N4/N5/C2/P2 mapeados, vacío → <c>#,##0.00</c>;
 ///   los formatos .NET explícitos (contienen '#','0','.',',','%') en passthrough
@@ -184,9 +188,12 @@ public static class ReportNumberFormatMap
 
     /// <summary>
     /// Traduce un token a la cadena .NET que aplica el renderizador PDF/MigraDoc.
-    /// Reproduce la tabla legacy PDF con passthrough literal para el resto.
+    /// Reproduce la tabla legacy PDF con passthrough literal para el resto. Los
+    /// tokens monetarios sin símbolo (C0/C1/C3/C4) se mapean a su equivalente
+    /// numérico para no emitir el glifo ¤ de la cultura invariante; C2 conserva
+    /// el <c>$#,##0.00</c> publicado.
     /// </summary>
-    /// <param name="formato">Token del contrato ("N0".."N5", "C2", "C4", "P2") o formato .NET explícito.</param>
+    /// <param name="formato">Token del contrato ("N0".."N5", "C0".."C4", "P2") o formato .NET explícito.</param>
     /// <returns>Cadena de formato lista para <c>decimal.ToString</c>.</returns>
     public static string ToPdfFormat(string? formato)
     {
@@ -201,7 +208,11 @@ public static class ReportNumberFormatMap
             "N3" => "#,##0.000",
             "N4" => "#,##0.0000",
             "N5" => "#,##0.00000",
+            "C0" => "#,##0",
+            "C1" => "#,##0.0",
             "C2" => "$#,##0.00",
+            "C3" => "#,##0.000",
+            "C4" => "#,##0.0000",
             // Token no reconocido: passthrough literal (fidelidad legacy PDF).
             _ => token,
         };

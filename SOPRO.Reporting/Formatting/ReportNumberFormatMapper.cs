@@ -15,10 +15,13 @@ namespace SOPRO.Reporting.Formatting;
 ///
 /// La traducción es POR RENDERIZADOR (fidelidad legacy de la versión publicada):
 /// <see cref="ToPdfFormat"/> reproduce la tabla del PDF legacy (N0/N2/N3/N4/N5/C2 +
-/// passthrough literal del resto, por lo que "C4" se aplica con la cultura
-/// invariante y produce ¤, nunca '$') y <see cref="ToExcelFormat"/> la tabla del
+/// passthrough literal del resto). Los tokens monetarios sin símbolo (C0/C1/C3/C4)
+/// se mapean a su equivalente numérico para NO emitir el glifo ¤ de la cultura
+/// invariante ni '$' (p. ej. "C4" → "#,##0.0000"); solo "C2" conserva el símbolo
+/// publicado "$#,##0.00". <see cref="ToExcelFormat"/> reproduce la tabla del
 /// Excel legacy (N0/N2/N3/N4/N5/C2/P2 + passthrough de formatos .NET explícitos +
-/// default <see cref="DefaultFormat"/> sin '$' para el resto de tokens letra).
+/// default <see cref="DefaultFormat"/> sin '$' para el resto de tokens letra, por
+/// lo que "C4" cae en "#,##0.00" sin símbolo de moneda).
 /// <see cref="Map"/> se conserva por compatibilidad y equivale a
 /// <see cref="ToPdfFormat"/>.
 /// Un valor no reconocido se interpreta como formato .NET explícito; un valor
@@ -40,6 +43,9 @@ public static class ReportNumberFormatMapper
 
     /// <summary>
     /// Formato para el renderizador PDF/MigraDoc (tabla legacy PDF + passthrough).
+    /// Los tokens monetarios sin símbolo (C0/C1/C3/C4) se mapean a su equivalente
+    /// numérico (p. ej. "C4" → "#,##0.0000") para no emitir el glifo ¤ ni '$';
+    /// solo "C2" conserva "$#,##0.00".
     /// </summary>
     public static string ToPdfFormat(string? formato) => ReportNumberFormatMap.ToPdfFormat(formato);
 

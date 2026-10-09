@@ -20,8 +20,8 @@ namespace SOPRO.Reporting.Tests.Services.Reporting;
 ///    <see cref="ReportColumnWidthConverter"/> y <see cref="ReportNumberFormatMapper"/>,
 ///    únicas piezas compartidas por los renderizadores. El FORMATO aplicado no se
 ///    compara por igualdad de cadena: la tabla legacy diverge por renderizador
-///    (p. ej. "C4" → passthrough PDF vs. default Excel), así que se verifica su
-///    semántica aparte en <c>AssertFormatosCoinciden</c>.
+///    (p. ej. "C4" → "#,##0.0000" PDF vs. "#,##0.00" Excel), así que se verifica
+///    su semántica aparte en <c>AssertFormatosCoinciden</c>.
 ///
 /// B. Goldens: la proyección semántica se congela en
 ///    <c>TestData/Goldens/piloto-*-columnas.json</c> usando el mecanismo
@@ -161,12 +161,16 @@ public class PilotoReportesColumnasTests
                 continue; // Tokens legacy comunes: misma cadena en PDF y Excel.
 
             // Divergencia legítima por renderizador (fidelidad legacy 8afabde):
-            // p. ej. "C4" → passthrough PDF vs. default Excel. Lo que sí es
-            // invariante es que NINGUNA ruta introduce '$' (salvo C2, que coincide).
+            // p. ej. "C4" → "#,##0.0000" PDF vs. "#,##0.00" Excel. Lo que sí es
+            // invariante es que NINGUNA ruta introduce símbolo de moneda ('$' ni ¤).
             Assert.IsFalse(pdf.Contains('$'),
                 $"'{columna.Identificador}': el formato PDF de '{columna.FormatoNumerico}' no debe introducir '$'.");
             Assert.IsFalse(excel.Contains('$'),
                 $"'{columna.Identificador}': el formato Excel de '{columna.FormatoNumerico}' no debe introducir '$'.");
+            Assert.IsFalse(pdf.Contains('\u00A4'),
+                $"'{columna.Identificador}': el formato PDF de '{columna.FormatoNumerico}' no debe introducir el glifo ¤ (U+00A4).");
+            Assert.IsFalse(excel.Contains('\u00A4'),
+                $"'{columna.Identificador}': el formato Excel de '{columna.FormatoNumerico}' no debe introducir el glifo ¤ (U+00A4).");
         }
     }
 

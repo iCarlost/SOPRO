@@ -7,9 +7,9 @@ namespace SOPRO.Reporting.Tests.Formatting;
 /// Tests de <see cref="ReportNumberFormatMapper"/>: tablas legacy POR RENDERIZADOR
 /// (PDF y Excel divergen), formatos .NET explícitos y valor por defecto.
 ///
-/// Regresión del reporte del usuario (8afabde): el token "C4" NUNCA debe producir
-/// '$'. En PDF se aplica en passthrough con la cultura invariante (¤) y en Excel
-/// cae al default legacy "#,##0.00".
+/// Regresión del reporte del usuario: el token "C4" NUNCA debe producir símbolo
+/// de moneda ('$' ni el glifo ¤). En PDF se mapea a "#,##0.0000" (numérico sin
+/// símbolo) y en Excel cae al default legacy "#,##0.00" (también sin símbolo).
 /// </summary>
 [TestClass]
 public class ReportNumberFormatMapperTests
@@ -22,9 +22,12 @@ public class ReportNumberFormatMapperTests
     [DataRow("N3", "#,##0.000")]
     [DataRow("N4", "#,##0.0000")]
     [DataRow("N5", "#,##0.00000")]
+    [DataRow("C0", "#,##0")]
+    [DataRow("C1", "#,##0.0")]
     [DataRow("C2", "$#,##0.00")]
+    [DataRow("C3", "#,##0.000")]
+    [DataRow("C4", "#,##0.0000")] // monetario sin símbolo (elimina el glifo ¤)
     [DataRow("N1", "N1")]   // passthrough literal (no existe en la tabla legacy PDF)
-    [DataRow("C4", "C4")]   // passthrough literal → ¤ con InvariantCulture, nunca '$'
     public void ToPdfFormat_TokenDelContrato_DevuelveTablaLegacyPdf(string token, string esperado)
     {
         Assert.AreEqual(esperado, ReportNumberFormatMapper.ToPdfFormat(token));
@@ -119,9 +122,14 @@ public class ReportNumberFormatMapperTests
         var pdf = ReportNumberFormatMapper.ToPdfFormat("C4");
 
         Assert.AreEqual("#,##0.00", excel, "Excel legacy coerce 'C4' al default sin moneda.");
+        Assert.AreEqual("#,##0.0000", pdf, "'C4' se mapea a numérico de 4 decimales sin símbolo.");
         Assert.IsFalse(excel.Contains('$'), "El Excel legacy nunca introduce '$' para 'C4'.");
-        Assert.AreEqual("C4", pdf, "'C4' es passthrough literal en la ruta PDF legacy.");
-        Assert.IsFalse(pdf.Contains('$'), "El passthrough de 'C4' no debe contener '$'.");
+        Assert.IsFalse(pdf.Contains('$'), "La ruta PDF de 'C4' no debe contener '$'.");
+        Assert.IsFalse(pdf.Contains('\u00A4'), "La ruta PDF de 'C4' no debe contener el glifo ¤ (U+00A4).");
+        Assert.AreEqual(
+            "1,234.5678",
+            1234.5678m.ToString(pdf, System.Globalization.CultureInfo.InvariantCulture),
+            "La ruta PDF de 'C4' debe renderizar el número sin símbolo de moneda.");
     }
 
     [TestMethod]
