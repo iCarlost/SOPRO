@@ -1,4 +1,4 @@
-using System;
+using SOPRO.Application.Services;
 
 namespace SOPRO.Reporting.Formatting;
 
@@ -7,66 +7,45 @@ namespace SOPRO.Reporting.Formatting;
 /// (<c>ReportColumnDefinition.FormatoNumerico</c>: "N2", "C2", "C4", "P2", ...)
 /// al formato aplicable por los renderizadores.
 ///
-/// Reproduce la tabla de los generadores legacy
-/// (<c>GeneradorExcelPresupuesto.ConvertirFormato</c>,
-/// <c>GeneradorPdfPresupuesto.FormatearDecimal</c> y
-/// <c>FormCatalogoMateriales.ConvertirFormatoExcel</c>): cubre
-/// <c>N0</c>..<c>N5</c>, <c>C0</c>..<c>C4</c> y <c>P0</c>..<c>P3</c>. Para
-/// PDF/MigraDoc y Excel/ClosedXML el formato
-/// resultante coincide (ambos consumen la misma cadena .NET), por lo que se
-/// exponen <see cref="ToPdfFormat"/> y <see cref="ToExcelFormat"/> por claridad
-/// y para permitir divergencias futuras.
-/// Un valor no reconocido se interpreta como formato .NET explícito y se
-/// devuelve tal cual; un valor vacío o nulo cae al formato por defecto
-/// <see cref="DefaultFormat"/> (equivalente a "N2").
+/// La tabla canónica vive en <see cref="ReportNumberFormatMap"/> (SOPRO.Application),
+/// que es la única capa alcanzable tanto por la ruta PDF (resolver de materiales)
+/// como por la ruta Excel, sin crear una referencia circular Application→Reporting
+/// ni duplicar el mapper. Este tipo se conserva como facade estable de la capa
+/// Reporting y delega en dicha tabla única.
+///
+/// La traducción es POR RENDERIZADOR (fidelidad legacy de la versión publicada):
+/// <see cref="ToPdfFormat"/> reproduce la tabla del PDF legacy (N0/N2/N3/N4/N5/C2 +
+/// passthrough literal del resto, por lo que "C4" se aplica con la cultura
+/// invariante y produce ¤, nunca '$') y <see cref="ToExcelFormat"/> la tabla del
+/// Excel legacy (N0/N2/N3/N4/N5/C2/P2 + passthrough de formatos .NET explícitos +
+/// default <see cref="DefaultFormat"/> sin '$' para el resto de tokens letra).
+/// <see cref="Map"/> se conserva por compatibilidad y equivale a
+/// <see cref="ToPdfFormat"/>.
+/// Un valor no reconocido se interpreta como formato .NET explícito; un valor
+/// vacío o nulo cae al formato por defecto <see cref="DefaultFormat"/>
+/// (equivalente a "N2").
 /// </summary>
 public static class ReportNumberFormatMapper
 {
     /// <summary>Formato por defecto para columnas numéricas sin formato ("N2").</summary>
-    public const string DefaultFormat = "#,##0.00";
+    public const string DefaultFormat = ReportNumberFormatMap.DefaultFormat;
 
     /// <summary>
-    /// Devuelve el formato .NET/Excel aplicable a un token del contrato.
+    /// Método de conveniencia histórico: equivale a <see cref="ToPdfFormat"/>.
+    /// Se prefiere <see cref="ToPdfFormat"/>/<see cref="ToExcelFormat"/> explícitos
+    /// porque la tabla ya diverge por renderizador.
     /// </summary>
     /// <param name="formato">Token del contrato ("N0".."N5", "C2", "C4", "P2") o formato .NET explícito.</param>
-    /// <returns>Cadena de formato lista para <c>decimal.ToString</c> o <c>NumberFormat.Format</c>.</returns>
-    public static string Map(string? formato)
-    {
-        if (string.IsNullOrWhiteSpace(formato))
-            return DefaultFormat;
-
-        string token = formato.Trim();
-        return token.ToUpperInvariant() switch
-        {
-            "N0" => "#,##0",
-            "N1" => "#,##0.0",
-            "N2" => "#,##0.00",
-            "N3" => "#,##0.000",
-            "N4" => "#,##0.0000",
-            "N5" => "#,##0.00000",
-            "C0" => "$#,##0",
-            "C1" => "$#,##0.0",
-            "C2" => "$#,##0.00",
-            "C3" => "$#,##0.000",
-            "C4" => "$#,##0.0000",
-            "P0" => "0%",
-            "P1" => "0.0%",
-            "P2" => "0.00%",
-            "P3" => "0.000%",
-            // Formato .NET explícito: se respeta literalmente.
-            _ => token,
-        };
-    }
+    public static string Map(string? formato) => ReportNumberFormatMap.Map(formato);
 
     /// <summary>
-    /// Formato para el renderizador PDF/MigraDoc (misma cadena .NET que
-    /// <see cref="Map"/>).
+    /// Formato para el renderizador PDF/MigraDoc (tabla legacy PDF + passthrough).
     /// </summary>
-    public static string ToPdfFormat(string? formato) => Map(formato);
+    public static string ToPdfFormat(string? formato) => ReportNumberFormatMap.ToPdfFormat(formato);
 
     /// <summary>
-    /// Formato para el renderizador Excel/ClosedXML (misma cadena que
-    /// <see cref="Map"/>).
+    /// Formato para el renderizador Excel/ClosedXML (tabla legacy Excel + default
+    /// seguro sin '$' para tokens no soportados).
     /// </summary>
-    public static string ToExcelFormat(string? formato) => Map(formato);
+    public static string ToExcelFormat(string? formato) => ReportNumberFormatMap.ToExcelFormat(formato);
 }

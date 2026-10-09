@@ -1548,6 +1548,28 @@ public class MaterialsUseCasesTests
         Assert.AreEqual("Maestro", MaterialCatalogExportResolver.ResolveOrigin(maestro));
     }
 
+    [TestMethod]
+    public void MaterialCatalogExportResolver_ColumnasPredeterminadas_UsanFormatoLegacySinMoneda()
+    {
+        // Defecto 2: el fallback de Precio Unitario debe preservar el legacy de
+        // 4 decimales SIN símbolo de moneda (no "C4").
+        var precioDefault = MaterialCatalogExportResolver.DefaultColumns()
+            .Single(c => c.Identificador == "PrecioUnitario");
+
+        Assert.IsTrue(precioDefault.EsNumerica);
+        Assert.AreEqual("#,##0.0000", precioDefault.FormatoNumerico);
+        Assert.AreNotEqual("C4", precioDefault.FormatoNumerico);
+
+        // El snapshot sin configuración persistida usa el mismo fallback.
+        var snapshot = MaterialCatalogExportResolver.BuildSnapshot(0, null, null);
+        var precioSnapshot = snapshot.Columnas.Single(c => c.Identificador == "PrecioUnitario");
+        Assert.AreEqual("#,##0.0000", precioSnapshot.FormatoNumerico);
+
+        // Y el valor renderizado no lleva moneda (paridad con el legacy).
+        var material = new MaterialListItem(1, "M-1", "Descripción", "pza", 60m, string.Empty, OrigenInsumo.Proyecto);
+        Assert.AreEqual("60.0000", MaterialCatalogExportResolver.ResolveValue(material, precioSnapshot));
+    }
+
     private static Proyecto CrearOtroProyecto(SOPRO.Data.Context.SOPROContext context)
     {
         var otroProyecto = new Proyecto

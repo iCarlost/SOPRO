@@ -35,7 +35,7 @@ namespace SOPRO.WinForms.Forms
                 var svc = new Services.ReporteService(_context);
                 var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
                 // Snapshot neutral desde la configuración persistida (no desde el grid).
-                var snapshot = ConstruirSnapshotPresupuesto(svc);
+                var snapshot = ConstruirSnapshotPresupuesto();
 
                 var conceptos = _context.ConceptosPresupuesto
                     .Where(c => c.ProyectoId == _proyecto.Id)
@@ -117,7 +117,7 @@ namespace SOPRO.WinForms.Forms
                 if (dlg.ShowDialog() != DialogResult.OK) return;
 
                 Cursor = Cursors.WaitCursor;
-                var estiloDescripcionApu = ObtenerEstiloDescripcionPresupuestoParaApu(svc);
+                var estiloDescripcionApu = ObtenerEstiloDescripcionPresupuestoParaApu();
                 var gen = new Services.GeneradorPdfAPU(svc, _context);
                 var ruta = gen.Generar(_proyecto, conceptos, plantilla, dlg.FileName, estiloDescripcionApu);
                 Cursor = Cursors.Default;
@@ -148,7 +148,7 @@ namespace SOPRO.WinForms.Forms
                 var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
 
                 // Snapshot neutral desde la configuración persistida (no desde el grid).
-                var snapshot = ConstruirSnapshotPresupuesto(svc);
+                var snapshot = ConstruirSnapshotPresupuesto();
 
                 var conceptos = _context.ConceptosPresupuesto
                     .Where(c => c.ProyectoId == _proyecto.Id)
@@ -199,22 +199,37 @@ namespace SOPRO.WinForms.Forms
         /// partir de la configuración persistida (columnas personalizadas + overlays
         /// de encabezado del reporte). NO lee del <c>DataGridView</c>.
         /// </summary>
-        private Application.Models.Reporting.ReportColumns.ReportColumnSnapshot ConstruirSnapshotPresupuesto(Services.ReporteService svc)
+        private Application.Models.Reporting.ReportColumns.ReportColumnSnapshot ConstruirSnapshotPresupuesto()
         {
             var columnas = _context.ColumnasPersonalizadas
                 .Where(c => c.ProyectoId == _proyecto.Id)
                 .OrderBy(c => c.Orden)
                 .ToList();
 
-            var overlays = svc.ObtenerOCrearColumnas(_proyecto.Id, "Presupuesto");
+            // SOLO LECTURA: la exportación nunca debe inicializar ni persistir la
+            // configuración de columnas/overlays. Si no existe configuración se
+            // pasa lista vacía y el builder aplica sus defaults en memoria.
+            var overlays = ObtenerConfiguracionColumnasSoloLectura("Presupuesto");
 
             return new Application.UseCases.Reporting.PresupuestoReportSnapshotBuilder()
                 .Build(_proyecto.Id, lblTitulo.Text, columnas, overlays);
         }
 
-        private Core.Entities.ConfigColumnaReporte ObtenerEstiloDescripcionPresupuestoParaApu(Services.ReporteService svc)
+        /// <summary>
+        /// Consulta de solo lectura de los overlays de <c>ConfigColumnaReporte</c>
+        /// de un proyecto/tipo. NO crea valores por defecto ni ejecuta
+        /// <c>SaveChanges</c>: exportar un reporte no debe modificar la
+        /// configuración persistida.
+        /// </summary>
+        private List<Core.Entities.ConfigColumnaReporte> ObtenerConfiguracionColumnasSoloLectura(string tipoReporte)
+            => _context.ConfigColumnasReporte
+                .Where(c => c.ProyectoId == _proyecto.Id && c.TipoReporte == tipoReporte)
+                .OrderBy(c => c.Orden)
+                .ToList();
+
+        private Core.Entities.ConfigColumnaReporte ObtenerEstiloDescripcionPresupuestoParaApu()
         {
-            var columnasReporte = svc.ObtenerOCrearColumnas(_proyecto.Id, "Presupuesto");
+            var columnasReporte = ObtenerConfiguracionColumnasSoloLectura("Presupuesto");
             var descripcionReporte = columnasReporte.FirstOrDefault(c => c.NombreInterno == "Descripcion");
 
             if (descripcionReporte == null)
@@ -269,7 +284,7 @@ namespace SOPRO.WinForms.Forms
                 if (dlg.ShowDialog() != DialogResult.OK) return;
 
                 Cursor = Cursors.WaitCursor;
-                var estiloDescripcionApu = ObtenerEstiloDescripcionPresupuestoParaApu(svc);
+                var estiloDescripcionApu = ObtenerEstiloDescripcionPresupuestoParaApu();
                 var gen = new Services.GeneradorExcelAPU(svc, _context);
                 var ruta = gen.Generar(_proyecto, conceptos, plantilla, columnas, dlg.FileName, estiloDescripcionApu);
                 Cursor = Cursors.Default;

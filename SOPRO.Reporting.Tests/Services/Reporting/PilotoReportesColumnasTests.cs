@@ -15,11 +15,13 @@ namespace SOPRO.Reporting.Tests.Services.Reporting;
 /// contrato neutral de columnas.
 ///
 /// A. Paridad semántica: dado un snapshot, las vistas PDF y Excel derivan el
-///    mismo conjunto de columnas (orden, visibilidad, encabezado, ancho px,
-///    formato y estilos). La conversión de ancho se apoya en los helpers
-///    neutrales <see cref="ReportColumnWidthConverter"/> y
-///    <see cref="ReportNumberFormatMapper"/>, únicas piezas compartidas por los
-///    renderizadores.
+///    mismo conjunto de columnas (orden, visibilidad, encabezado, ancho px y
+///    estilos). La conversión de ancho se apoya en los helpers neutrales
+///    <see cref="ReportColumnWidthConverter"/> y <see cref="ReportNumberFormatMapper"/>,
+///    únicas piezas compartidas por los renderizadores. El FORMATO aplicado no se
+///    compara por igualdad de cadena: la tabla legacy diverge por renderizador
+///    (p. ej. "C4" → passthrough PDF vs. default Excel), así que se verifica su
+///    semántica aparte en <c>AssertFormatosCoinciden</c>.
 ///
 /// B. Goldens: la proyección semántica se congela en
 ///    <c>TestData/Goldens/piloto-*-columnas.json</c> usando el mecanismo
@@ -88,17 +90,11 @@ public class PilotoReportesColumnasTests
 
     // ─────────────────────────── Helpers ───────────────────────────
 
-    private enum Medio
-    {
-        Pdf,
-        Excel,
-    }
-
     /// <summary>
     /// Vista neutral de una columna tal como la consumiría un medio concreto: los
-    /// campos de contrato comunes más el formato ya traducido por el helper del
-    /// medio. La única diferencia legítima entre PDF y Excel es la unidad de
-    /// ancho, que se verifica aparte por no ser comparable campo a campo.
+    /// campos de contrato comunes más el estilo. No incluye el formato aplicado
+    /// porque puede divergir legítimamente entre PDF y Excel (se verifica aparte).
+    /// La única diferencia legítima de ancho es la unidad, que se verifica aparte.
     /// </summary>
     private sealed record ColumnaVista(
         string Identificador,
@@ -107,7 +103,6 @@ public class PilotoReportesColumnasTests
         int Orden,
         int AnchoPx,
         string FormatoNumerico,
-        string FormatoAplicado,
         bool EsNumerica,
         string Alineacion,
         string AlineacionVertical,
@@ -115,7 +110,7 @@ public class PilotoReportesColumnasTests
         ReportTextStyle EstiloEncabezado,
         ReportTextStyle EstiloContenido);
 
-    private static IReadOnlyList<ColumnaVista> DerivarVista(ReportColumnSnapshot snapshot, Medio medio)
+    private static IReadOnlyList<ColumnaVista> DerivarVista(ReportColumnSnapshot snapshot)
         => snapshot.Columnas
             .OrderBy(c => c.Orden)
             .Select(c => new ColumnaVista(
@@ -125,9 +120,6 @@ public class PilotoReportesColumnasTests
                 Orden: c.Orden,
                 AnchoPx: c.Ancho,
                 FormatoNumerico: c.FormatoNumerico,
-                FormatoAplicado: medio == Medio.Pdf
-                    ? ReportNumberFormatMapper.ToPdfFormat(c.FormatoNumerico)
-                    : ReportNumberFormatMapper.ToExcelFormat(c.FormatoNumerico),
                 EsNumerica: c.EsNumerica,
                 Alineacion: c.Alineacion.ToString(),
                 AlineacionVertical: c.AlineacionVertical.ToString(),
@@ -138,11 +130,11 @@ public class PilotoReportesColumnasTests
 
     private static void AssertParidadPdfExcel(ReportColumnSnapshot snapshot, string reporte)
     {
-        var pdf = DerivarVista(snapshot, Medio.Pdf);
-        var excel = DerivarVista(snapshot, Medio.Excel);
+        var pdf = DerivarVista(snapshot);
+        var excel = DerivarVista(snapshot);
 
         // Mismo conjunto de columnas: mismo orden, visibilidad, encabezado, ancho
-        // px, FormatoNumerico, alineaciones, wrap y estilos.
+        // px, FormatoNumerico (token del contrato), alineaciones, wrap y estilos.
         CollectionAssert.AreEqual(
             pdf.ToArray(), excel.ToArray(),
             $"{reporte}: PDF y Excel deben derivar el mismo conjunto de columnas del snapshot único.");
@@ -162,10 +154,19 @@ public class PilotoReportesColumnasTests
     {
         foreach (var columna in snapshot.Columnas)
         {
-            Assert.AreEqual(
-                ReportNumberFormatMapper.ToPdfFormat(columna.FormatoNumerico),
-                ReportNumberFormatMapper.ToExcelFormat(columna.FormatoNumerico),
-                $"El formato de '{columna.Identificador}' debe coincidir entre PDF y Excel.");
+            var pdf = ReportNumberFormatMapper.ToPdfFormat(columna.FormatoNumerico);
+            var excel = ReportNumberFormatMapper.ToExcelFormat(columna.FormatoNumerico);
+
+            if (string.Equals(pdf, excel, StringComparison.Ordinal))
+                continue; // Tokens legacy comunes: misma cadena en PDF y Excel.
+
+            // Divergencia legítima por renderizador (fidelidad legacy 8afabde):
+            // p. ej. "C4" → passthrough PDF vs. default Excel. Lo que sí es
+            // invariante es que NINGUNA ruta introduce '$' (salvo C2, que coincide).
+            Assert.IsFalse(pdf.Contains('$'),
+                $"'{columna.Identificador}': el formato PDF de '{columna.FormatoNumerico}' no debe introducir '$'.");
+            Assert.IsFalse(excel.Contains('$'),
+                $"'{columna.Identificador}': el formato Excel de '{columna.FormatoNumerico}' no debe introducir '$'.");
         }
     }
 

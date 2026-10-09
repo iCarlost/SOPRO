@@ -33,7 +33,7 @@ public static class MaterialCatalogExportResolver
         new() { Nombre = "Clave", NombreInterno = "Clave", Visible = true, Orden = 1, AnchoColumna = 110, Alineacion = AlineacionColumna.Centro },
         new() { Nombre = "Descripción", NombreInterno = "Descripcion", Visible = true, Orden = 2, AnchoColumna = 300, Alineacion = AlineacionColumna.Izquierda, WrapTexto = true },
         new() { Nombre = "Unidad", NombreInterno = "Unidad", Visible = true, Orden = 3, AnchoColumna = 80, Alineacion = AlineacionColumna.Centro },
-        new() { Nombre = "Precio Unitario", NombreInterno = "PrecioUnitario", Visible = true, Orden = 4, AnchoColumna = 140, Alineacion = AlineacionColumna.Derecha, FormatoNumerico = "C4" },
+        new() { Nombre = "Precio Unitario", NombreInterno = "PrecioUnitario", Visible = true, Orden = 4, AnchoColumna = 140, Alineacion = AlineacionColumna.Derecha, FormatoNumerico = FormatoNumericoPredeterminado },
         new() { Nombre = "Origen", NombreInterno = "Origen", Visible = true, Orden = 5, AnchoColumna = 80, Alineacion = AlineacionColumna.Centro },
     };
 
@@ -63,7 +63,11 @@ public static class MaterialCatalogExportResolver
     /// <summary>
     /// Resuelve el valor de una celda para una columna neutral. El formato
     /// numérico configurado en la columna (<c>N2</c>, <c>C4</c>, <c>#,##0.0000</c>, ...)
-    /// se propaga tal cual al render.
+    /// se traduce por la ruta central <see cref="ReportNumberFormatMap"/> antes de
+    /// render. Esta ruta es la del PDF, así que usa
+    /// <see cref="ReportNumberFormatMap.ToPdfFormat"/> con
+    /// <see cref="CultureInfo.InvariantCulture"/> (fidelidad legacy: "C4" en
+    /// passthrough produce el símbolo ¤ de la cultura invariante, nunca '$').
     /// </summary>
     public static string ResolveValue(MaterialListItem material, ReportColumnDefinition column)
     {
@@ -126,7 +130,145 @@ public static class MaterialCatalogExportResolver
 
     private static string FormatearNumero(decimal valor, string? formato)
     {
-        var fmt = string.IsNullOrWhiteSpace(formato) ? FormatoNumericoPredeterminado : formato!.Trim();
-        return valor.ToString(fmt, CultureInfo.CurrentCulture);
+        var token = string.IsNullOrWhiteSpace(formato) ? FormatoNumericoPredeterminado : formato!.Trim();
+        // Ruta central única: el mismo mapeo token→formato .NET que usa Excel
+        // (ReportNumberFormatMapper delega en ReportNumberFormatMap). InvariantCulture
+        // reproduce el símbolo ¤ del legacy en el passthrough de "C4" (nunca '$').
+        var fmt = ReportNumberFormatMap.ToPdfFormat(token);
+        return valor.ToString(fmt, CultureInfo.InvariantCulture);
+    }
+}
+
+/// <summary>
+/// Tabla canónica de traducción del token de formato numérico del contrato
+/// ("N2", "C4", "P2", ...) a formato .NET. Vive en Application porque es la única
+/// capa alcanzable tanto por el resolver de materiales (ruta PDF) como por
+/// <c>SOPRO.Reporting.Formatting.ReportNumberFormatMapper</c> (ruta Excel, que
+/// referencia Application). Así se comparte UNA sola tabla entre PDF y Excel sin
+/// crear una referencia circular Application→Reporting ni duplicar el mapper:
+/// el facade de Reporting delega aquí.
+///
+/// La traducción es POR RENDERIZADOR para reproducir con fidelidad el legacy de
+/// la versión publicada (8afabde):
+/// <list type="bullet">
+///   <item><see cref="ToPdfFormat"/> reproduce la tabla de <c>FormatearDecimal</c>
+///   del PDF legacy: N0/N2/N3/N4/N5/C2 mapeados, vacío → <c>#,##0.00</c> y
+///   cualquier otro token (C4, P2, N1, "#,##0.0000", "0.00", ...) en
+///   <b>passthrough literal</b>. "C4" produce el símbolo ¤ de la cultura
+///   invariante, NUNCA '$'.</item>
+///   <item><see cref="ToExcelFormat"/> reproduce la tabla de <c>ConvertirFormato</c>
+///   del Excel legacy: N0/N2/N3/N4/N5/C2/P2 mapeados, vacío → <c>#,##0.00</c>;
+///   los formatos .NET explícitos (contienen '#','0','.',',','%') en passthrough
+///   literal y el resto de tokens letra (C0,C1,C3,C4,N1,P0,P1,P3) caen al default
+///   legacy <c>#,##0.00</c> (seguro para ClosedXML, SIN '$').</item>
+/// </list>
+/// </summary>
+public static class ReportNumberFormatMap
+{
+    /// <summary>Formato por defecto para columnas numéricas sin formato ("N2").</summary>
+    public const string DefaultFormat = "#,##0.00";
+
+    /// <summary>
+    /// Caracteres que delatan un formato .NET/Excel explícito (a diferencia de un
+    /// token mnemónico del contrato como "C4" o "P2").
+    /// </summary>
+    private static readonly char[] SimbolosFormatoNet = { '#', '0', '.', ',', '%' };
+
+    /// <summary>
+    /// Método de conveniencia histórico: equivale a <see cref="ToPdfFormat"/>.
+    /// Se prefiere <see cref="ToPdfFormat"/>/<see cref="ToExcelFormat"/> explícitos
+    /// porque la tabla ya diverge por renderizador.
+    /// </summary>
+    /// <param name="formato">Token del contrato ("N0".."N5", "C2", "C4", "P2") o formato .NET explícito.</param>
+    public static string Map(string? formato) => ToPdfFormat(formato);
+
+    /// <summary>
+    /// Traduce un token a la cadena .NET que aplica el renderizador PDF/MigraDoc.
+    /// Reproduce la tabla legacy PDF con passthrough literal para el resto.
+    /// </summary>
+    /// <param name="formato">Token del contrato ("N0".."N5", "C2", "C4", "P2") o formato .NET explícito.</param>
+    /// <returns>Cadena de formato lista para <c>decimal.ToString</c>.</returns>
+    public static string ToPdfFormat(string? formato)
+    {
+        if (string.IsNullOrWhiteSpace(formato))
+            return DefaultFormat;
+
+        string token = formato.Trim();
+        return token.ToUpperInvariant() switch
+        {
+            "N0" => "#,##0",
+            "N2" => "#,##0.00",
+            "N3" => "#,##0.000",
+            "N4" => "#,##0.0000",
+            "N5" => "#,##0.00000",
+            "C2" => "$#,##0.00",
+            // Token no reconocido: passthrough literal (fidelidad legacy PDF).
+            _ => token,
+        };
+    }
+
+    /// <summary>
+    /// Traduce un token a la cadena de formato que aplica el renderizador
+    /// Excel/ClosedXML. Reproduce la tabla legacy Excel, respeta los formatos .NET
+    /// explícitos y cae al default seguro (sin '$') para tokens letra no soportados.
+    /// </summary>
+    /// <param name="formato">Token del contrato ("N0".."N5", "C2", "C4", "P2") o formato .NET explícito.</param>
+    /// <returns>Cadena de formato lista para <c>NumberFormat.Format</c>.</returns>
+    public static string ToExcelFormat(string? formato)
+    {
+        if (string.IsNullOrWhiteSpace(formato))
+            return DefaultFormat;
+
+        string token = formato.Trim();
+        switch (token.ToUpperInvariant())
+        {
+            case "N0": return "#,##0";
+            case "N2": return "#,##0.00";
+            case "N3": return "#,##0.000";
+            case "N4": return "#,##0.0000";
+            case "N5": return "#,##0.00000";
+            case "C2": return "$#,##0.00";
+            case "P2": return "0.00%";
+        }
+
+        // Formato .NET/Excel explícito (p. ej. "#,##0.0000" de Materiales o "0.00"
+        // de %): se respeta literalmente para que ClosedXML lo interprete. Se
+        // excluyen antes los tokens mnemónicos (letra+dígitos: C0, P0, C4, N1...),
+        // que aunque contengan '0' NO son formatos .NET válidos para Excel legacy.
+        if (EsTokenMnemonic(token))
+            return DefaultFormat;
+
+        if (token.IndexOfAny(SimbolosFormatoNet) >= 0)
+            return token;
+
+        // Resto de tokens no reconocidos: default legacy Excel, sin símbolo de
+        // moneda (evita el '$' que el legacy nunca introdujo aquí).
+        return DefaultFormat;
+    }
+
+    /// <summary>
+    /// Indica si el texto es un token mnemónico del contrato (una o más letras
+    /// seguidas sólo de dígitos: "C0", "C4", "N1", "P2"...), a diferencia de un
+    /// formato .NET/Excel explícito como "#,##0.0000" o "0.00".
+    /// </summary>
+    private static bool EsTokenMnemonic(string token)
+    {
+        if (token.Length < 2)
+            return false;
+
+        int i = 0;
+        while (i < token.Length && char.IsLetter(token[i]))
+            i++;
+
+        if (i == 0 || i == token.Length)
+            return false;
+
+        for (; i < token.Length; i++)
+        {
+            if (!char.IsDigit(token[i]))
+                return false;
+        }
+
+        return true;
     }
 }
