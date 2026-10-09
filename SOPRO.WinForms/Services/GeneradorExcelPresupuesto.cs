@@ -7,14 +7,19 @@ using System.Windows.Forms;
 using ClosedXML.Excel;
 using SOPRO.Core.Entities;
 using SOPRO.WinForms.Services;
+using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Reporting.Columns;
+using SOPRO.Reporting.Formatting;
+using SOPRO.Reporting.Layout;
 
 namespace SOPRO.WinForms.Services
 {
     /// <summary>
     /// Genera el reporte de Presupuesto en formato .xlsx usando ClosedXML.
-    /// Aplica la PlantillaReporte del proyecto (encabezado/pie) y la
-    /// ConfigColumnaReporte (anchos, fuentes, alineaciones, colores).
+    /// Aplica la PlantillaReporte del proyecto (encabezado/pie) y el snapshot
+    /// neutral de columnas (<see cref="ReportColumnSnapshot"/>: anchos, fuentes,
+    /// alineaciones, colores). No depende del grid de la UI.
     /// </summary>
     public class GeneradorExcelPresupuesto
     {
@@ -29,16 +34,20 @@ namespace SOPRO.WinForms.Services
             Proyecto proyecto,
             List<ConceptoPresupuesto> conceptos,
             PlantillaReporte plantilla,
-            List<ConfigColumnaReporte> columnas,
+            ReportColumnSnapshot snapshot,
             string rutaDestino = null,
             decimal factorPU = 1m,
             ConfiguracionTituloReporte? tituloCfg = null)
         {
-            // Columnas visibles ordenadas
-            var cols = columnas
+            // Columnas visibles ordenadas (definición neutral persistida, no el grid).
+            var cols = snapshot.Columnas
                 .Where(c => c.Visible)
                 .OrderBy(c => c.Orden)
                 .ToList();
+
+            // Paridad por defecto con el grid legacy: la columna sintética de
+            // numeración "#" se antepone cuando el snapshot no la define.
+            cols = ReportColumnDefaults.ConPrefijoNumeroPresupuesto(cols);
 
             if (string.IsNullOrEmpty(rutaDestino))
             {
@@ -64,7 +73,7 @@ namespace SOPRO.WinForms.Services
             fila++;
 
             // ── TÍTULOS DE COLUMNAS ───────────────────────────────────────────
-            fila = EscribirTitulosColumnas(ws, cols, fila);
+            fila = EscribirTitulosColumnas(ws, cols, snapshot.EstiloTabla, fila);
             ReporteEncabezadoHelper.ConfigurarFilasRepetidas(ws, 1, fila - 1);
 
             // ── DATOS ─────────────────────────────────────────────────────────
@@ -185,29 +194,28 @@ namespace SOPRO.WinForms.Services
 
         // ── TÍTULOS DE COLUMNAS ───────────────────────────────────────────────
         private int EscribirTitulosColumnas(IXLWorksheet ws,
-                                             List<ConfigColumnaReporte> cols, int fila)
+                                             List<ReportColumnDefinition> cols,
+                                             ReportTableStyle estiloTabla, int fila)
         {
+            var encabezadoDefault = estiloTabla.EstiloEncabezado;
+
             for (int i = 0; i < cols.Count; i++)
             {
                 var col = cols[i];
+                var enc = col.EstiloEncabezado;
                 var cell = ws.Cell(fila, i + 1);
                 cell.Value = col.Encabezado;
 
                 var estilo = cell.Style;
-                estilo.Font.FontName   = col.EncFuente;
-                estilo.Font.FontSize   = col.EncTamaño;
-                estilo.Font.Bold       = col.EncNegrita;
-                estilo.Fill.BackgroundColor = ObtenerColorXL(col.EncColorFondo, "#1565C0");
-                estilo.Font.FontColor       = ObtenerColorXL(col.EncColorTexto, "#000000");
-                estilo.Font.Italic          = col.EncCursiva;
-                estilo.Alignment.Horizontal = col.EncAlineacion switch
-                {
-                    "Derecha"   => XLAlignmentHorizontalValues.Right,
-                    "Izquierda" => XLAlignmentHorizontalValues.Left,
-                    _           => XLAlignmentHorizontalValues.Center,
-                };
+                estilo.Font.FontName   = enc.Fuente;
+                estilo.Font.FontSize   = enc.Tamano;
+                estilo.Font.Bold       = enc.Negrita;
+                estilo.Fill.BackgroundColor = ObtenerColorXL(enc.ColorFondo, encabezadoDefault.ColorFondo ?? "#1565C0");
+                estilo.Font.FontColor       = ObtenerColorXL(enc.ColorFuente, encabezadoDefault.ColorFuente);
+                estilo.Font.Italic          = enc.Cursiva;
+                estilo.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                 estilo.Border.BottomBorder = XLBorderStyleValues.Medium;
-                estilo.Border.BottomBorderColor = ObtenerColorXL(col.EncColorFondo, "#1565C0");
+                estilo.Border.BottomBorderColor = ObtenerColorXL(enc.ColorFondo, encabezadoDefault.ColorFondo ?? "#1565C0");
             }
 
             ws.Row(fila).Height = 18;
@@ -216,7 +224,7 @@ namespace SOPRO.WinForms.Services
 
         // ── CONCEPTO ─────────────────────────────────────────────────────────
         private int EscribirConcepto(IXLWorksheet ws, Proyecto proyecto, ConceptoPresupuesto c,
-                                      List<ConfigColumnaReporte> cols, int fila, int consecutivo,
+                                      List<ReportColumnDefinition> cols, int fila, int consecutivo,
                                       decimal factorPU = 1m)
         {
             // ── SUBTOTAL DE AGRUPADOR ─────────────────────────────────────────
@@ -227,35 +235,30 @@ namespace SOPRO.WinForms.Services
                 for (int i = 0; i < cols.Count; i++)
                 {
                     var col  = cols[i];
+                    var cont = col.EstiloContenido;
                     var cell = ws.Cell(fila, i + 1);
 
-                    if (col.NombreInterno == "Descripcion")
+                    if (col.Identificador == "Descripcion")
                         cell.Value = indent + $"Total {c.Descripcion}:";
-                    else if (col.NombreInterno is "ImporteTotal" or "Importe" or "Subtotal" or "Total")
+                    else if (col.Identificador is "ImporteTotal" or "Importe" or "Subtotal" or "Total")
                     {
                         cell.Value = c.ImporteTotal;
-                        cell.Style.NumberFormat.Format = ConvertirFormato(
-                            string.IsNullOrEmpty(col.FormatoNumero) ? "N2" : col.FormatoNumero);
+                        cell.Style.NumberFormat.Format = ReportNumberFormatMapper.ToExcelFormat(col.FormatoNumerico);
                     }
                     else
                         cell.Value = "";
 
                     // Adoptar exactamente el mismo estilo que la columna configurada
                     var estilo = cell.Style;
-                    estilo.Font.FontName = col.ConFuente;
-                    estilo.Font.FontSize = col.ConTamaño;
+                    estilo.Font.FontName = cont.Fuente;
+                    estilo.Font.FontSize = cont.Tamano;
                     estilo.Font.Bold     = true;
-                    estilo.Font.Italic   = col.ConCursiva;
-                    estilo.Font.FontColor = ObtenerColorXL(col.ConColorTexto, "#000000");
-                    estilo.Alignment.Horizontal = col.ConAlineacion switch
-                    {
-                        "Derecha" => XLAlignmentHorizontalValues.Right,
-                        "Centro"  => XLAlignmentHorizontalValues.Center,
-                        _         => XLAlignmentHorizontalValues.Left,
-                    };
+                    estilo.Font.Italic   = cont.Cursiva;
+                    estilo.Font.FontColor = ObtenerColorXL(cont.ColorFuente, "#000000");
+                    estilo.Alignment.Horizontal = ConvertirAlineacionXL(col.Alineacion);
                     estilo.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-                    estilo.Alignment.WrapText = col.WrapTexto;
-                    if (col.NombreInterno == "Descripcion")
+                    estilo.Alignment.WrapText = col.Wrap;
+                    if (col.Identificador == "Descripcion")
                         estilo.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
 
                     estilo.Fill.BackgroundColor = c.Nivel switch
@@ -280,15 +283,16 @@ namespace SOPRO.WinForms.Services
             for (int i = 0; i < cols.Count; i++)
             {
                 var col  = cols[i];
+                var cont = col.EstiloContenido;
                 var cell = ws.Cell(fila, i + 1);
 
-                object valor = ResolverValorConcepto(c, col.NombreInterno, consecutivo, factorPU, rowDisplay, indent2);
+                object valor = ResolverValorConcepto(c, col.Identificador, consecutivo, factorPU, rowDisplay, indent2);
 
                 if (valor is decimal d)
                 {
                     cell.Value = d;
-                    if (!string.IsNullOrEmpty(col.FormatoNumero))
-                        cell.Style.NumberFormat.Format = ConvertirFormato(col.FormatoNumero);
+                    if (!string.IsNullOrEmpty(col.FormatoNumerico))
+                        cell.Style.NumberFormat.Format = ReportNumberFormatMapper.ToExcelFormat(col.FormatoNumerico);
                 }
                 else
                 {
@@ -296,18 +300,13 @@ namespace SOPRO.WinForms.Services
                 }
 
                 var estilo = cell.Style;
-                estilo.Font.FontName = col.ConFuente;
-                estilo.Font.FontSize = col.ConTamaño;
-                estilo.Font.Bold     = esAgrupador || col.ConNegrita;
-                estilo.Font.Italic   = col.ConCursiva;
-                estilo.Alignment.Horizontal = col.ConAlineacion switch
-                {
-                    "Derecha" => XLAlignmentHorizontalValues.Right,
-                    "Centro"  => XLAlignmentHorizontalValues.Center,
-                    _         => XLAlignmentHorizontalValues.Left,
-                };
+                estilo.Font.FontName = cont.Fuente;
+                estilo.Font.FontSize = cont.Tamano;
+                estilo.Font.Bold     = esAgrupador || cont.Negrita;
+                estilo.Font.Italic   = cont.Cursiva;
+                estilo.Alignment.Horizontal = ConvertirAlineacionXL(col.Alineacion);
                 estilo.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-                estilo.Alignment.WrapText = col.WrapTexto;
+                estilo.Alignment.WrapText = col.Wrap;
 
                 if (esAgrupador)
                 {
@@ -319,9 +318,9 @@ namespace SOPRO.WinForms.Services
                     };
                 }
                 else
-                    estilo.Fill.BackgroundColor = ObtenerColorXL(col.ConColorFondo, "#FFFFFF");
+                    estilo.Fill.BackgroundColor = ObtenerColorXL(cont.ColorFondo, "#FFFFFF");
 
-                estilo.Font.FontColor = ObtenerColorXL(col.ConColorTexto, "#000000");
+                estilo.Font.FontColor = ObtenerColorXL(cont.ColorFuente, "#000000");
                 estilo.Border.BottomBorder      = XLBorderStyleValues.Hair;
                 estilo.Border.BottomBorderColor = XLColor.Gray;
             }
@@ -369,7 +368,7 @@ namespace SOPRO.WinForms.Services
         // ── TOTALES ───────────────────────────────────────────────────────────
         private int EscribirTotales(IXLWorksheet ws, Proyecto proyecto,
                                      List<ConceptoPresupuesto> conceptos,
-                                     List<ConfigColumnaReporte> cols, int fila)
+                                     List<ReportColumnDefinition> cols, int fila)
         {
             // Solo conceptos terminales (no agrupadores)
             var terminales = conceptos.Where(c => !c.EsAgrupador).ToList();
@@ -379,8 +378,8 @@ namespace SOPRO.WinForms.Services
             decimal totalConIVA  = totalImporte + totalIVA;
 
             // Índice de columna ImporteTotal
-            int colImporte = cols.FindIndex(c => c.NombreInterno == "ImporteTotal") + 1;
-            int colDesc    = cols.FindIndex(c => c.NombreInterno == "Descripcion") + 1;
+            int colImporte = cols.FindIndex(c => c.Identificador == "ImporteTotal") + 1;
+            int colDesc    = cols.FindIndex(c => c.Identificador == "Descripcion") + 1;
             if (colDesc < 1) colDesc = 1;
 
             void FilaTotal(string etiqueta, decimal monto, bool negrita, string fondo)
@@ -401,7 +400,7 @@ namespace SOPRO.WinForms.Services
                 {
                     var cMonto = ws.Cell(fila, colImporte);
                     cMonto.Value = monto;
-                    cMonto.Style.NumberFormat.Format = "#,##0.00";
+                    cMonto.Style.NumberFormat.Format = ReportNumberFormatMapper.ToExcelFormat("N2");
                     cMonto.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
                     cMonto.Style.Font.Bold = negrita;
                 }
@@ -455,21 +454,22 @@ namespace SOPRO.WinForms.Services
             ws.Row(fila).Height = p.PiePaginaAltura * 0.75;
         }
 
-        private double CalcularAlturaFila(List<ConfigColumnaReporte> cols, int fila, IXLWorksheet ws, double alturaBase, bool esSubtotal = false)
+        private double CalcularAlturaFila(List<ReportColumnDefinition> cols, int fila, IXLWorksheet ws, double alturaBase, bool esSubtotal = false)
         {
             double altura = alturaBase;
             for (int i = 0; i < cols.Count; i++)
             {
                 var col = cols[i];
-                if (!col.WrapTexto) continue;
+                var cont = col.EstiloContenido;
+                if (!col.Wrap) continue;
 
                 var valor = ws.Cell(fila, i + 1).GetFormattedString();
                 if (string.IsNullOrWhiteSpace(valor)) continue;
 
                 using var font = new Font(
-                    string.IsNullOrWhiteSpace(col.ConFuente) ? "Segoe UI" : col.ConFuente,
-                    Math.Max(8f, col.ConTamaño),
-                    (esSubtotal || col.ConNegrita ? FontStyle.Bold : FontStyle.Regular));
+                    string.IsNullOrWhiteSpace(cont.Fuente) ? "Segoe UI" : cont.Fuente,
+                    Math.Max(8f, cont.Tamano),
+                    (esSubtotal || cont.Negrita ? FontStyle.Bold : FontStyle.Regular));
 
                 int anchoPx = Math.Max(24, col.Ancho - 8);
                 var proposed = new Size(anchoPx, int.MaxValue);
@@ -485,14 +485,12 @@ namespace SOPRO.WinForms.Services
         private static double PixelsToPoints(int pixels) => pixels * 72.0 / 96.0;
 
         // ── ANCHOS ────────────────────────────────────────────────────────────
-        private void AplicarAnchos(IXLWorksheet ws, List<ConfigColumnaReporte> cols)
+        private void AplicarAnchos(IXLWorksheet ws, List<ReportColumnDefinition> cols)
         {
+            double[] anchos = ReportColumnWidthConverter.PxToExcelWidths(
+                cols.Select(c => c.Ancho).ToArray());
             for (int i = 0; i < cols.Count; i++)
-            {
-                // Convertir px → caracteres Excel (aprox 7px por caracter)
-                double ancho = cols[i].Ancho / 7.0;
-                ws.Column(i + 1).Width = Math.Max(ancho, 4);
-            }
+                ws.Column(i + 1).Width = anchos[i];
         }
 
         // ── HELPERS ───────────────────────────────────────────────────────────
@@ -600,16 +598,11 @@ namespace SOPRO.WinForms.Services
             return EsDescendiente(concepto.PadreId.Value, agrupadorId, todos);
         }
 
-        private string ConvertirFormato(string formato) => formato switch
+        private static XLAlignmentHorizontalValues ConvertirAlineacionXL(ReportTextAlignment alineacion) => alineacion switch
         {
-            "N0" => "#,##0",
-            "N2" => "#,##0.00",
-            "N3" => "#,##0.000",
-            "N4" => "#,##0.0000",
-            "N5" => "#,##0.00000",
-            "C2" => "$#,##0.00",
-            "P2" => "0.00%",
-            _    => "#,##0.00"
+            ReportTextAlignment.Derecha => XLAlignmentHorizontalValues.Right,
+            ReportTextAlignment.Centro  => XLAlignmentHorizontalValues.Center,
+            _                           => XLAlignmentHorizontalValues.Left,
         };
 
         private string SanitizarNombre(string nombre)

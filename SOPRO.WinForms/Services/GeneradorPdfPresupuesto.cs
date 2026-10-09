@@ -8,8 +8,12 @@ using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
 using SOPRO.Application.Models.Presupuesto;
+using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
+using SOPRO.Reporting.Columns;
+using SOPRO.Reporting.Formatting;
+using SOPRO.Reporting.Layout;
 using MColor = MigraDoc.DocumentObjectModel.Color;
 using MOrientation = MigraDoc.DocumentObjectModel.Orientation;
 using MParagraphAlignment = MigraDoc.DocumentObjectModel.ParagraphAlignment;
@@ -26,14 +30,18 @@ namespace SOPRO.WinForms.Services
             Proyecto proyecto,
             List<ConceptoPresupuesto> conceptos,
             PlantillaReporte plantilla,
-            List<ConfigColumnaReporte> columnas,
+            ReportColumnSnapshot snapshot,
             string? rutaDestino = null,
             decimal factorPU = 1m,
             ConfiguracionTituloReporte? tituloCfg = null)
         {
-            var cols = columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+            var cols = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
             if (!cols.Any())
                 throw new InvalidOperationException("No hay columnas visibles para exportar.");
+
+            // Paridad por defecto con el grid legacy: la columna sintética de
+            // numeración "#" se antepone cuando el snapshot no la define.
+            cols = ReportColumnDefaults.ConPrefijoNumeroPresupuesto(cols);
 
             if (string.IsNullOrWhiteSpace(rutaDestino))
             {
@@ -47,7 +55,7 @@ namespace SOPRO.WinForms.Services
             DefinirEstilos(doc);
 
             var orientation = ReportPageLayoutHelper.DetermineAutoOrientation(
-                cols.Select(c => (c.NombreInterno ?? c.Encabezado ?? string.Empty, Math.Max(24, c.Ancho))),
+                cols.Select(c => (c.Identificador ?? c.Encabezado ?? string.Empty, Math.Max(24, c.Ancho))),
                 1.0,
                 1.0);
 
@@ -68,7 +76,7 @@ namespace SOPRO.WinForms.Services
 
             ConstruirHeader(section, proyecto, plantilla, headerHeightCm);
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
-            ConstruirTablaPresupuesto(section, proyecto, conceptos, cols, factorPU, tituloCfg);
+            ConstruirTablaPresupuesto(section, proyecto, conceptos, cols, snapshot.EstiloTabla, factorPU, tituloCfg);
 
             var renderer = new PdfDocumentRenderer()
             {
@@ -210,7 +218,7 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private void ConstruirTablaPresupuesto(Section section, Proyecto proyecto, List<ConceptoPresupuesto> conceptos, List<ConfigColumnaReporte> cols, decimal factorPU, ConfiguracionTituloReporte? tituloCfg = null)
+        private void ConstruirTablaPresupuesto(Section section, Proyecto proyecto, List<ConceptoPresupuesto> conceptos, List<ReportColumnDefinition> cols, ReportTableStyle estiloTabla, decimal factorPU, ConfiguracionTituloReporte? tituloCfg = null)
         {
             var titulo = string.IsNullOrWhiteSpace(tituloCfg?.TextoTitulo) ? "PRESUPUESTO" : tituloCfg!.TextoTitulo;
             var pTitle = section.AddParagraph(titulo);
@@ -219,35 +227,40 @@ namespace SOPRO.WinForms.Services
             pTitle.Format.SpaceAfter = Unit.FromCentimeter(0.20);
 
             var table = section.AddTable();
-            table.Format.Font.Name = "Segoe UI";
-            table.Format.Font.Size = 8.2;
+            table.Format.Font.Name = PdfFontHelper.NormalizeFontName(estiloTabla.EstiloContenido.Fuente);
+            table.Format.Font.Size = estiloTabla.EstiloContenido.Tamano;
             table.Rows.LeftIndent = 0;
-            table.Borders.Visible = false;
+            table.Borders.Visible = estiloTabla.Bordes.Visible;
 
-            double availableCm = ReportPageLayoutHelper.GetLetterContentWidthCm(section);
-            double totalPx = Math.Max(1, cols.Sum(c => Math.Max(24, c.Ancho)));
-            foreach (var col in cols)
+            double availableCm = ReportColumnWidthConverter.GetLetterUsableWidthCm(
+                section.PageSetup.Orientation == MOrientation.Landscape);
+            int[] anchosPx = cols.Select(c => c.Ancho).ToArray();
+            double[] anchosCm = ReportColumnWidthConverter.PxToCm(anchosPx, availableCm);
+            for (int i = 0; i < cols.Count; i++)
             {
-                var widthCm = availableCm * Math.Max(24, col.Ancho) / totalPx;
-                var pdfCol = table.AddColumn(Unit.FromCentimeter(widthCm));
-                pdfCol.Format.Alignment = ConvertirAlineacion(col.ConAlineacion);
+                var pdfCol = table.AddColumn(Unit.FromCentimeter(anchosCm[i]));
+                pdfCol.Format.Alignment = ConvertirAlineacion(cols[i].Alineacion);
             }
 
+            var encabezado = estiloTabla.EstiloEncabezado;
             var header = table.AddRow();
             header.HeadingFormat = true;
             header.HeightRule = RowHeightRule.AtLeast;
             header.Height = Unit.FromCentimeter(0.65);
-            header.Shading.Color = MColor.Parse("#1565C0");
-            header.Format.Font.Color = MColor.Parse("#FFFFFF");
-            header.Format.Font.Bold = true;
+            header.Shading.Color = ParseColorSafe(encabezado.ColorFondo, "#1565C0");
+            header.Format.Font.Color = ParseColorSafe(encabezado.ColorFuente, "#FFFFFF");
+            header.Format.Font.Bold = encabezado.Negrita;
             for (int i = 0; i < cols.Count; i++)
             {
+                var col = cols[i];
                 var cell = header.Cells[i];
-                cell.AddParagraph(cols[i].Encabezado ?? string.Empty);
-                cell.Format.Alignment = ConvertirAlineacion(cols[i].EncAlineacion);
-                cell.Format.Font.Name = PdfFontHelper.NormalizeFontName(cols[i].EncFuente);
-                cell.Format.Font.Size = cols[i].EncTamaño <= 0 ? 9 : cols[i].EncTamaño;
-                cell.Format.Font.Italic = cols[i].EncCursiva;
+                cell.AddParagraph(col.Encabezado ?? string.Empty);
+                cell.Format.Alignment = MParagraphAlignment.Center;
+                cell.Format.Font.Name = PdfFontHelper.NormalizeFontName(col.EstiloEncabezado.Fuente);
+                cell.Format.Font.Size = col.EstiloEncabezado.Tamano <= 0 ? 9 : col.EstiloEncabezado.Tamano;
+                cell.Format.Font.Bold = col.EstiloEncabezado.Negrita;
+                cell.Format.Font.Italic = col.EstiloEncabezado.Cursiva;
+                cell.Format.Font.Color = ParseColorSafe(col.EstiloEncabezado.ColorFuente, "#FFFFFF");
                 cell.VerticalAlignment = VerticalAlignment.Center;
                 AplicarBordeInferior(cell, "#C8D0D8", 0.4);
             }
@@ -269,7 +282,7 @@ namespace SOPRO.WinForms.Services
             AgregarTotales(table, proyecto, conceptos, cols);
         }
 
-        private void AgregarFilaConcepto(Table table, Proyecto proyecto, ConceptoPresupuesto c, List<ConfigColumnaReporte> cols, int consecutivo, decimal factorPU)
+        private void AgregarFilaConcepto(Table table, Proyecto proyecto, ConceptoPresupuesto c, List<ReportColumnDefinition> cols, int consecutivo, decimal factorPU)
         {
             var row = table.AddRow();
             row.HeightRule = RowHeightRule.AtLeast;
@@ -297,22 +310,22 @@ namespace SOPRO.WinForms.Services
                 var col = cols[i];
                 var cell = row.Cells[i];
                 cell.VerticalAlignment = VerticalAlignment.Center;
-                var alignment = col.NombreInterno == "Descripcion" ? MParagraphAlignment.Justify : ConvertirAlineacion(col.ConAlineacion);
+                var alignment = col.Identificador == "Descripcion" ? MParagraphAlignment.Justify : ConvertirAlineacion(col.Alineacion);
                 cell.Format.Alignment = alignment;
-                cell.Format.Font.Name = PdfFontHelper.NormalizeFontName(string.IsNullOrWhiteSpace(col.ConFuente) ? "Segoe UI" : col.ConFuente);
-                cell.Format.Font.Size = col.ConTamaño <= 0 ? 8.2 : col.ConTamaño;
-                cell.Format.Font.Bold = c.EsAgrupador || col.ConNegrita;
-                cell.Format.Font.Italic = col.ConCursiva;
-                cell.Format.Font.Color = ParseColorSafe(col.ConColorTexto, "#000000");
+                cell.Format.Font.Name = PdfFontHelper.NormalizeFontName(string.IsNullOrWhiteSpace(col.EstiloContenido.Fuente) ? "Segoe UI" : col.EstiloContenido.Fuente);
+                cell.Format.Font.Size = col.EstiloContenido.Tamano <= 0 ? 8.2f : col.EstiloContenido.Tamano;
+                cell.Format.Font.Bold = c.EsAgrupador || col.EstiloContenido.Negrita;
+                cell.Format.Font.Italic = col.EstiloContenido.Cursiva;
+                cell.Format.Font.Color = ParseColorSafe(col.EstiloContenido.ColorFuente, "#000000");
                 if (!c.EsAgrupador)
-                    cell.Shading.Color = ParseColorSafe(col.ConColorFondo, "#FFFFFF");
+                    cell.Shading.Color = ParseColorSafe(col.EstiloContenido.ColorFondo, "#FFFFFF");
                 var p = cell.AddParagraph();
                 p.Format.Alignment = alignment;
 
-                object valor = ResolverValorConceptoPdf(c, col.NombreInterno, consecutivo, factorPU, rowDisplay, indent);
+                object valor = ResolverValorConceptoPdf(c, col.Identificador, consecutivo, factorPU, rowDisplay, indent);
                 if (valor is decimal d)
                 {
-                    p.AddText(FormatearDecimal(d, col.FormatoNumero));
+                    p.AddText(FormatearDecimal(d, col.FormatoNumerico));
                 }
                 else
                 {
@@ -323,7 +336,7 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private void AgregarFilaSubtotal(Table table, ConceptoPresupuesto c, List<ConfigColumnaReporte> cols)
+        private void AgregarFilaSubtotal(Table table, ConceptoPresupuesto c, List<ReportColumnDefinition> cols)
         {
             var row = table.AddRow();
             row.HeightRule = RowHeightRule.AtLeast;
@@ -336,29 +349,29 @@ namespace SOPRO.WinForms.Services
                 var col = cols[i];
                 var cell = row.Cells[i];
                 cell.VerticalAlignment = VerticalAlignment.Center;
-                cell.Format.Font.Name = PdfFontHelper.NormalizeFontName(string.IsNullOrWhiteSpace(col.ConFuente) ? "Segoe UI" : col.ConFuente);
-                cell.Format.Font.Size = col.ConTamaño <= 0 ? 8.2 : col.ConTamaño;
-                cell.Format.Font.Italic = col.ConCursiva;
-                cell.Format.Font.Color = ParseColorSafe(col.ConColorTexto, "#000000");
-                var alignment = col.NombreInterno == "Descripcion"
+                cell.Format.Font.Name = PdfFontHelper.NormalizeFontName(string.IsNullOrWhiteSpace(col.EstiloContenido.Fuente) ? "Segoe UI" : col.EstiloContenido.Fuente);
+                cell.Format.Font.Size = col.EstiloContenido.Tamano <= 0 ? 8.2f : col.EstiloContenido.Tamano;
+                cell.Format.Font.Italic = col.EstiloContenido.Cursiva;
+                cell.Format.Font.Color = ParseColorSafe(col.EstiloContenido.ColorFuente, "#000000");
+                var alignment = col.Identificador == "Descripcion"
                                 ? MParagraphAlignment.Justify
-                                : ConvertirAlineacion(col.ConAlineacion);
+                                : ConvertirAlineacion(col.Alineacion);
 
                 cell.Format.Alignment = alignment;
 
                 var p = cell.AddParagraph();
                 p.Format.Alignment = alignment;
 
-                if (col.NombreInterno == "Descripcion")
+                if (col.Identificador == "Descripcion")
                     p.AddText($"Total {c.Descripcion}:");
-                else if (col.NombreInterno is "ImporteTotal" or "Importe" or "Subtotal" or "Total")
-                    p.AddText(FormatearDecimal(c.ImporteTotal, string.IsNullOrWhiteSpace(col.FormatoNumero) ? "N2" : col.FormatoNumero));
+                else if (col.Identificador is "ImporteTotal" or "Importe" or "Subtotal" or "Total")
+                    p.AddText(FormatearDecimal(c.ImporteTotal, col.FormatoNumerico));
 
                 AplicarBordeInferior(cell, "#C7D6E5", 0.35);
             }
         }
 
-        private void AgregarTotales(Table table, Proyecto proyecto, List<ConceptoPresupuesto> conceptos, List<ConfigColumnaReporte> cols)
+        private void AgregarTotales(Table table, Proyecto proyecto, List<ConceptoPresupuesto> conceptos, List<ReportColumnDefinition> cols)
         {
             var terminales = conceptos.Where(c => !c.EsAgrupador).ToList();
             decimal subtotal = terminales.Sum(c => c.ImporteTotal);
@@ -370,7 +383,7 @@ namespace SOPRO.WinForms.Services
             AgregarFilaTotal(table, cols, "TOTAL:", total, "#BBDEFB", true, proyecto.PorcentajeIVA);
         }
 
-        private void AgregarFilaTotal(Table table, List<ConfigColumnaReporte> cols, string etiqueta, decimal monto, string fondo, bool negrita, decimal iva)
+        private void AgregarFilaTotal(Table table, List<ReportColumnDefinition> cols, string etiqueta, decimal monto, string fondo, bool negrita, decimal iva)
         {
             var row = table.AddRow();
             row.HeightRule = RowHeightRule.AtLeast;
@@ -382,22 +395,22 @@ namespace SOPRO.WinForms.Services
             {
                 var col = cols[i];
                 var cell = row.Cells[i];
-                cell.Format.Font.Name = PdfFontHelper.NormalizeFontName(string.IsNullOrWhiteSpace(col.ConFuente) ? "Segoe UI" : col.ConFuente);
-                cell.Format.Font.Size = col.ConTamaño <= 0 ? 8.2 : col.ConTamaño;
-                cell.Format.Font.Italic = col.ConCursiva;
-                cell.Format.Font.Color = ParseColorSafe(col.ConColorTexto, "#000000");
-                var alignment = col.NombreInterno == "Descripcion"
+                cell.Format.Font.Name = PdfFontHelper.NormalizeFontName(string.IsNullOrWhiteSpace(col.EstiloContenido.Fuente) ? "Segoe UI" : col.EstiloContenido.Fuente);
+                cell.Format.Font.Size = col.EstiloContenido.Tamano <= 0 ? 8.2f : col.EstiloContenido.Tamano;
+                cell.Format.Font.Italic = col.EstiloContenido.Cursiva;
+                cell.Format.Font.Color = ParseColorSafe(col.EstiloContenido.ColorFuente, "#000000");
+                var alignment = col.Identificador == "Descripcion"
                                  ? MParagraphAlignment.Justify
-                                 : ConvertirAlineacion(col.ConAlineacion);
+                                 : ConvertirAlineacion(col.Alineacion);
 
                 cell.Format.Alignment = alignment;
 
                 var p = cell.AddParagraph();
                 p.Format.Alignment = alignment;
-                if (col.NombreInterno == "Descripcion")
+                if (col.Identificador == "Descripcion")
                     p.AddText(etiqueta);
-                else if (col.NombreInterno is "ImporteTotal" or "Importe" or "Subtotal" or "Total")
-                    p.AddText(FormatearDecimal(monto, string.IsNullOrWhiteSpace(col.FormatoNumero) ? "N2" : col.FormatoNumero));
+                else if (col.Identificador is "ImporteTotal" or "Importe" or "Subtotal" or "Total")
+                    p.AddText(FormatearDecimal(monto, col.FormatoNumerico));
 
                 AplicarBordeInferior(cell, "#BCC9D6", 0.4);
             }
@@ -431,26 +444,22 @@ namespace SOPRO.WinForms.Services
             return valor;
         }
 
-        private static string FormatearDecimal(decimal valor, string formatoNumero)
-        {
-            string formato = formatoNumero switch
-            {
-                "N0" => "#,##0",
-                "N2" => "#,##0.00",
-                "N3" => "#,##0.000",
-                "N4" => "#,##0.0000",
-                "N5" => "#,##0.00000",
-                "C2" => "$#,##0.00",
-                _ => string.IsNullOrWhiteSpace(formatoNumero) ? "#,##0.00" : formatoNumero
-            };
-            return valor.ToString(formato, CultureInfo.InvariantCulture);
-        }
+        private static string FormatearDecimal(decimal valor, string? formatoNumero)
+            => valor.ToString(ReportNumberFormatMapper.ToPdfFormat(formatoNumero), CultureInfo.InvariantCulture);
 
         private static MParagraphAlignment ConvertirAlineacion(string alineacion) => alineacion switch
         {
             "Centro" => MParagraphAlignment.Center,
             "Derecha" => MParagraphAlignment.Right,
             "Justificado" => MParagraphAlignment.Justify,
+            _ => MParagraphAlignment.Left,
+        };
+
+        private static MParagraphAlignment ConvertirAlineacion(ReportTextAlignment alineacion) => alineacion switch
+        {
+            ReportTextAlignment.Centro => MParagraphAlignment.Center,
+            ReportTextAlignment.Derecha => MParagraphAlignment.Right,
+            ReportTextAlignment.Justificado => MParagraphAlignment.Justify,
             _ => MParagraphAlignment.Left,
         };
 
