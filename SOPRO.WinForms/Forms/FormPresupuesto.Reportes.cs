@@ -117,9 +117,10 @@ namespace SOPRO.WinForms.Forms
                 if (dlg.ShowDialog() != DialogResult.OK) return;
 
                 Cursor = Cursors.WaitCursor;
-                var estiloDescripcionApu = ObtenerEstiloDescripcionPresupuestoParaApu();
+                // Snapshot neutral en memoria: el APU no inicializa ni persiste configuración.
+                var snapshot = ConstruirSnapshotApu();
                 var gen = new Services.GeneradorPdfAPU(svc, _context);
-                var ruta = gen.Generar(_proyecto, conceptos, plantilla, dlg.FileName, estiloDescripcionApu);
+                var ruta = gen.Generar(_proyecto, conceptos, plantilla, snapshot, dlg.FileName);
                 Cursor = Cursors.Default;
 
                 if (MessageBox.Show("APUs PDF generados:" + ruta + "¿Abrir ahora?",
@@ -234,27 +235,22 @@ namespace SOPRO.WinForms.Forms
                 .OrderBy(c => c.Orden)
                 .ToList();
 
-        private Core.Entities.ConfigColumnaReporte ObtenerEstiloDescripcionPresupuestoParaApu()
-        {
-            var columnasReporte = ObtenerConfiguracionColumnasSoloLectura("Presupuesto");
-            var descripcionReporte = columnasReporte.FirstOrDefault(c => c.NombreInterno == "Descripcion");
-
-            if (descripcionReporte == null)
-            {
-                descripcionReporte = new Core.Entities.ConfigColumnaReporte
-                {
-                    NombreInterno = "Descripcion",
-                    Encabezado = "Descripción",
-                    ConFuente = "Segoe UI",
-                    ConTamaño = 9f,
-                    ConColorFondo = "#FFFFFF",
-                    ConColorTexto = "#000000",
-                    ConAlineacion = "Izquierda"
-                };
-            }
-
-            return descripcionReporte;
-        }
+        /// <summary>
+        /// Construye el snapshot neutral de columnas del reporte de APU a partir de
+        /// los defaults en memoria (Tipo, Clave, Descripción, Unidad, Cantidad,
+        /// Costo Unit. e Importe). NO inicializa ni persiste configuración de
+        /// columnas y NO lee del <c>DataGridView</c>: exportar un reporte no debe
+        /// modificar la configuración persistida.
+        /// </summary>
+        private Application.Models.Reporting.ReportColumns.ReportColumnSnapshot ConstruirSnapshotApu()
+            => new Application.UseCases.Reporting.ApuReportSnapshotBuilder()
+                .Build(
+                    _proyecto.Id,
+                    _proyecto.Nombre,
+                    columnas: null,
+                    _proyecto.DecimalesCantidad,
+                    _proyecto.DecimalesImporte,
+                    _proyecto.DecimalesPorcentaje);
 
         public void GenerarExcelAPU()
         {
@@ -279,7 +275,8 @@ namespace SOPRO.WinForms.Forms
 
                 var svc = new Services.ReporteService(_context);
                 var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
-                var columnas = svc.ObtenerOCrearColumnas(_proyecto.Id, "APU");
+                // Snapshot neutral en memoria: el APU no inicializa ni persiste configuración.
+                var snapshot = ConstruirSnapshotApu();
 
                 using var dlg = new SaveFileDialog
                 {
@@ -291,9 +288,8 @@ namespace SOPRO.WinForms.Forms
                 if (dlg.ShowDialog() != DialogResult.OK) return;
 
                 Cursor = Cursors.WaitCursor;
-                var estiloDescripcionApu = ObtenerEstiloDescripcionPresupuestoParaApu();
                 var gen = new Services.GeneradorExcelAPU(svc, _context);
-                var ruta = gen.Generar(_proyecto, conceptos, plantilla, columnas, dlg.FileName, estiloDescripcionApu);
+                var ruta = gen.Generar(_proyecto, conceptos, plantilla, snapshot, dlg.FileName);
                 Cursor = Cursors.Default;
 
                 if (MessageBox.Show("APUs generados:\n" + ruta + "\n\n¿Abrir ahora?",
