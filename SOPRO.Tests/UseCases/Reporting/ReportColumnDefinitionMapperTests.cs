@@ -235,7 +235,7 @@ public class ReportColumnDefinitionMapperTests
     }
 
     [TestMethod]
-    public void MapearMaterial_EsMonedaSoloPorTokenC()
+    public void MapearMaterial_EsMonedaPorPrecioUnitarioOTokenC()
     {
         var precioC4 = new ColumnaMaterial
         {
@@ -251,10 +251,19 @@ public class ReportColumnDefinitionMapperTests
             Alineacion = AlineacionColumna.Derecha,
             FormatoNumerico = "#,##0.0000"
         };
+        var otroExplicito = new ColumnaMaterial
+        {
+            NombreInterno = "Extra",
+            Nombre = "Extra",
+            Alineacion = AlineacionColumna.Derecha,
+            FormatoNumerico = "#,##0.0000"
+        };
 
         Assert.IsTrue(ReportColumnDefinitionMapper.MapearMaterial(precioC4).EsMoneda,
             "El token 'C4' de Materiales debe marcar EsMoneda.");
-        Assert.IsFalse(ReportColumnDefinitionMapper.MapearMaterial(precioDefault).EsMoneda,
-            "El default de Materiales '#,##0.0000' NO es moneda.");
+        Assert.IsTrue(ReportColumnDefinitionMapper.MapearMaterial(precioDefault).EsMoneda,
+            "El Precio Unitario es monetario aunque use el default '#,##0.0000' (paridad con el grid).");
+        Assert.IsFalse(ReportColumnDefinitionMapper.MapearMaterial(otroExplicito).EsMoneda,
+            "Otra columna con formato explícito '#,##0.0000' NO es moneda.");
     }
 }

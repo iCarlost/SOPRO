@@ -26,6 +26,16 @@ namespace SOPRO.WinForms.Forms
 
         private void OnDecimalesActualizados_Cat(object sender, EventArgs e)
         {
+            // El emisor (FormDatosProyecto) ya actualizó FormatoHelper con el proyecto
+            // activo; nos aseguramos de que refleje ESTE proyecto y repintamos el grid
+            // para que el Precio Unitario tome los nuevos decimales sin cerrar/reabrir.
+            if (_proyectoId.HasValue)
+            {
+                var proyectoFresco = _context.Proyectos.Find(_proyectoId.Value);
+                if (proyectoFresco != null)
+                    FormatoHelper.EstablecerProyecto(proyectoFresco);
+            }
+
             if (!IsDisposed && IsHandleCreated)
                 BeginInvoke(new Action(() => { if (!IsDisposed) dgvMateriales.Refresh(); }));
         }

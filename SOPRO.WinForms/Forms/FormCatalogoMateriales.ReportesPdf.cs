@@ -73,7 +73,9 @@ namespace SOPRO.WinForms.Forms
                     }
                     : new Proyecto { Nombre = "Materiales" };
                 // Snapshot neutral compartido: misma lista/orden/ancho/formato/estilo que Excel.
-                var snapshot = MaterialCatalogExportResolver.BuildSnapshot(_proyectoId ?? 0, lblTitulo.Text, _columnasConfig);
+                var snapshot = MaterialCatalogExportResolver.BuildSnapshot(
+                    _proyectoId ?? 0, lblTitulo.Text, _columnasConfig,
+                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
                 var tituloCfg = _proyectoId.HasValue
                     ? new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyectoId.Value, ReportTitleModuleKeys.CatalogoMateriales, lblTitulo.Text)
                     : null;

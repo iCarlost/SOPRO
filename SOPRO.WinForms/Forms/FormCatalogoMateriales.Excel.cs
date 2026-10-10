@@ -59,7 +59,9 @@ namespace SOPRO.WinForms.Forms
                     : new Proyecto { Nombre = "Materiales" };
 
                 // ── Snapshot neutral compartido con el PDF ────────────────
-                var snapshot = MaterialCatalogExportResolver.BuildSnapshot(_proyectoId ?? 0, lblTitulo.Text, _columnasConfig);
+                var snapshot = MaterialCatalogExportResolver.BuildSnapshot(
+                    _proyectoId ?? 0, lblTitulo.Text, _columnasConfig,
+                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
                 var estiloTabla = snapshot.EstiloTabla;
                 var colsVis = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
                 if (colsVis.Count == 0)
@@ -126,10 +128,9 @@ namespace SOPRO.WinForms.Forms
                         if (def.EsNumerica && def.Identificador == "PrecioUnitario")
                         {
                             cell.Value = m.PrecioUnitario;
-                            string formato = string.IsNullOrWhiteSpace(def.FormatoNumerico)
-                                ? MaterialCatalogExportResolver.FormatoNumericoPredeterminado
-                                : def.FormatoNumerico;
-                            cell.Style.NumberFormat.Format = ReportNumberFormatMapper.ToExcelFormat(formato);
+                            // Paridad grid↔export: símbolo de moneda de la cultura +
+                            // DecimalesImporte del proyecto (no el token legacy crudo).
+                            cell.Style.NumberFormat.Format = ReportColumnGridFormat.ResolveExcelFormat(def, snapshot);
                         }
                         else
                         {

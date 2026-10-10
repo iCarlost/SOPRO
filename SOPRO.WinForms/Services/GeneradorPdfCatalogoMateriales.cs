@@ -11,6 +11,7 @@ using SOPRO.Core.Entities;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
 using SOPRO.Application.UseCases.Materials;
+using SOPRO.Reporting.Formatting;
 using SOPRO.Reporting.Layout;
 using DrawingFont = System.Drawing.Font;
 using MColor = MigraDoc.DocumentObjectModel.Color;
@@ -80,7 +81,7 @@ namespace SOPRO.WinForms.Services
 
             ConstruirHeader(section, proyecto, plantilla, headerHeightCm);
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
-            ConstruirCuerpo(section, proyecto, materiales, cols, estiloTabla, tituloCfg);
+            ConstruirCuerpo(section, proyecto, materiales, cols, estiloTabla, snapshot, tituloCfg);
 
             var renderer = new PdfDocumentRenderer() { Document = doc };
             renderer.RenderDocument();
@@ -263,6 +264,7 @@ namespace SOPRO.WinForms.Services
             IReadOnlyList<MaterialListItem> materiales,
             IReadOnlyList<ReportColumnDefinition> cols,
             ReportTableStyle estiloTabla,
+            ReportColumnSnapshot snapshot,
             ConfiguracionTituloReporte? tituloCfg)
         {
             var pTitle = section.AddParagraph("CATÁLOGO DE MATERIALES", "CatalogoMaterialesTitle");
@@ -306,7 +308,7 @@ namespace SOPRO.WinForms.Services
             {
                 var row = table.AddRow();
                 var basePoints = 14d;
-                var height = EstimarAlturaFila(cols, table, m, basePoints);
+                var height = EstimarAlturaFila(cols, table, m, snapshot, basePoints);
                 row.HeightRule = RowHeightRule.AtLeast;
                 row.Height = Unit.FromPoint(height);
                 row.Shading.Color = ParseColor(estiloTabla.FilaAlterna.ColorFondoAlterno
@@ -319,7 +321,7 @@ namespace SOPRO.WinForms.Services
                     var cell = row.Cells[i];
                     cell.VerticalAlignment = ConvertirAlineacionVertical(c.AlineacionVertical);
                     cell.Shading.Color = ParseColor(MaterialCatalogExportResolver.ResolveCellBackground(c, estiloTabla, alt));
-                    var p = cell.AddParagraph(ObtenerValor(m, c));
+                    var p = cell.AddParagraph(ObtenerValor(m, c, snapshot));
                     p.Format.Alignment = ConvertirAlineacion(c.Alineacion);
                     p.Format.SpaceAfter = 0;
                     p.Format.SpaceBefore = 0;
@@ -342,14 +344,14 @@ namespace SOPRO.WinForms.Services
                 table.AddColumn(Unit.FromCentimeter(anchosCm[i]));
         }
 
-        private double EstimarAlturaFila(IReadOnlyList<ReportColumnDefinition> cols, Table table, MaterialListItem material, double alturaBase)
+        private double EstimarAlturaFila(IReadOnlyList<ReportColumnDefinition> cols, Table table, MaterialListItem material, ReportColumnSnapshot snapshot, double alturaBase)
         {
             double altura = alturaBase;
             for (int i = 0; i < cols.Count; i++)
             {
                 var col = cols[i];
                 if (!col.Wrap) continue;
-                var texto = ObtenerValor(material, col);
+                var texto = ObtenerValor(material, col, snapshot);
                 if (string.IsNullOrWhiteSpace(texto)) continue;
 
                 var cont = col.EstiloContenido;
@@ -371,8 +373,16 @@ namespace SOPRO.WinForms.Services
             return altura;
         }
 
-        private static string ObtenerValor(MaterialListItem m, ReportColumnDefinition c)
-            => MaterialCatalogExportResolver.ResolveValue(m, c);
+        private static string ObtenerValor(MaterialListItem m, ReportColumnDefinition c, ReportColumnSnapshot snapshot)
+        {
+            // Paridad grid↔export: el Precio Unitario (monetario) se formatea con la
+            // misma regla neutral que el Presupuesto (símbolo de moneda + decimales
+            // de importe). El resto de columnas usa la resolución de texto legacy.
+            if (c.EsNumerica && string.Equals(c.Identificador, "PrecioUnitario", StringComparison.OrdinalIgnoreCase))
+                return ReportColumnGridFormat.FormatearPdf(m.PrecioUnitario, c, snapshot);
+
+            return MaterialCatalogExportResolver.ResolveValue(m, c, snapshot);
+        }
 
         private static MParagraphAlignment ConvertirAlineacion(ReportTextAlignment a) => a switch
         {

@@ -1549,14 +1549,17 @@ public class MaterialsUseCasesTests
     }
 
     [TestMethod]
-    public void MaterialCatalogExportResolver_ColumnasPredeterminadas_UsanFormatoLegacySinMoneda()
+    public void MaterialCatalogExportResolver_ColumnasPredeterminadas_PrecioUnitarioEsMonetario()
     {
-        // Defecto 2: el fallback de Precio Unitario debe preservar el legacy de
-        // 4 decimales SIN símbolo de moneda (no "C4").
+        // El fallback de Precio Unitario conserva el token legacy "#,##0.0000" (no
+        // "C4"), pero la columna es monetaria por NombreInterno: el valor exportado
+        // usa símbolo de moneda y DecimalesImporte, con paridad con el grid.
         var precioDefault = MaterialCatalogExportResolver.DefaultColumns()
             .Single(c => c.Identificador == "PrecioUnitario");
 
         Assert.IsTrue(precioDefault.EsNumerica);
+        Assert.IsTrue(precioDefault.EsMoneda,
+            "El Precio Unitario debe ser monetario (paridad con el grid).");
         Assert.AreEqual("#,##0.0000", precioDefault.FormatoNumerico);
         Assert.AreNotEqual("C4", precioDefault.FormatoNumerico);
 
@@ -1565,9 +1568,12 @@ public class MaterialsUseCasesTests
         var precioSnapshot = snapshot.Columnas.Single(c => c.Identificador == "PrecioUnitario");
         Assert.AreEqual("#,##0.0000", precioSnapshot.FormatoNumerico);
 
-        // Y el valor renderizado no lleva moneda (paridad con el legacy).
+        // El valor renderizado lleva símbolo de moneda + DecimalesImporte (por
+        // defecto 2), igual que el grid.
         var material = new MaterialListItem(1, "M-1", "Descripción", "pza", 60m, string.Empty, OrigenInsumo.Proyecto);
-        Assert.AreEqual("60.0000", MaterialCatalogExportResolver.ResolveValue(material, precioSnapshot));
+        Assert.AreEqual(
+            60m.ToString("C2", System.Globalization.CultureInfo.CurrentCulture),
+            MaterialCatalogExportResolver.ResolveValue(material, precioSnapshot, snapshot));
     }
 
     private static Proyecto CrearOtroProyecto(SOPRO.Data.Context.SOPROContext context)

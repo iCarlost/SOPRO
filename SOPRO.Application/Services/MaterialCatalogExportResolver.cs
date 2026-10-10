@@ -39,16 +39,30 @@ public static class MaterialCatalogExportResolver
 
     /// <summary>
     /// Construye el snapshot neutral de columnas del catálogo de materiales. Es la
-    /// ÚNICA fuente que consumen PDF y Excel (misma visibilidad/orden/ancho/formato).
-    /// Si no llegan columnas se usan las predeterminadas.
+    /// ÚNICA fuente que consumen PDF y Excel (misma visibilidad/orden/ancho/formato
+    /// y mismos decimales del proyecto, para paridad grid↔export). Si no llegan
+    /// columnas se usan las predeterminadas.
     /// </summary>
-    public static ReportColumnSnapshot BuildSnapshot(int proyectoId, string? titulo, IEnumerable<ColumnaMaterial>? columnas)
+    /// <param name="proyectoId">Proyecto dueño del reporte.</param>
+    /// <param name="titulo">Título visible del reporte, si aplica.</param>
+    /// <param name="columnas">Columnas de material persistidas.</param>
+    /// <param name="decimalesCantidad">Decimales de cantidad del proyecto (por defecto 2).</param>
+    /// <param name="decimalesImporte">Decimales de importe del proyecto (por defecto 2).</param>
+    /// <param name="decimalesPorcentaje">Decimales de porcentaje del proyecto (por defecto 4).</param>
+    public static ReportColumnSnapshot BuildSnapshot(
+        int proyectoId,
+        string? titulo,
+        IEnumerable<ColumnaMaterial>? columnas,
+        int decimalesCantidad = 2,
+        int decimalesImporte = 2,
+        int decimalesPorcentaje = 4)
     {
         var fuente = columnas?.Where(c => c != null).ToList();
         if (fuente == null || fuente.Count == 0)
             fuente = ColumnasPredeterminadas.ToList();
 
-        return new MaterialesReportSnapshotBuilder().Build(proyectoId, titulo, fuente);
+        return new MaterialesReportSnapshotBuilder().Build(
+            proyectoId, titulo, fuente, decimalesCantidad, decimalesImporte, decimalesPorcentaje);
     }
 
     /// <summary>
@@ -61,26 +75,43 @@ public static class MaterialCatalogExportResolver
             .ToList();
 
     /// <summary>
-    /// Resuelve el valor de una celda para una columna neutral. El formato
-    /// numérico configurado en la columna (<c>N2</c>, <c>C4</c>, <c>#,##0.0000</c>, ...)
-    /// se traduce por la ruta central <see cref="ReportNumberFormatMap"/> antes de
-    /// render. Esta ruta es la del PDF, así que usa
-    /// <see cref="ReportNumberFormatMap.ToPdfFormat"/> con
-    /// <see cref="CultureInfo.InvariantCulture"/> (fidelidad legacy: los tokens
-    /// monetarios <c>C0/C1/C3/C4</c> se mapean a su equivalente numérico sin símbolo,
-    /// evitando el glifo ¤ de la cultura invariante; <c>C2</c> conserva '$').
+    /// Resuelve el valor de una celda para una columna neutral con PARIDAD con el
+    /// grid. Las columnas monetarias —el Precio Unitario (por <c>NombreInterno</c>)
+    /// o cualquier columna con token <c>C*</c>— se formatean con los decimales de
+    /// importe del proyecto y el símbolo de moneda de la cultura actual, IGUAL que
+    /// <c>FormCatalogoMateriales.DgvMateriales_CellFormatting</c>. El resto de
+    /// columnas conserva la resolución de texto legacy.
+    ///
+    /// La paridad de Precio Unitario NO depende del token: el default de Materiales
+    /// es <c>#,##0.0000</c>, pero el grid lo pinta con símbolo de moneda.
     /// </summary>
-    public static string ResolveValue(MaterialListItem material, ReportColumnDefinition column)
+    /// <param name="material">Fila del catálogo.</param>
+    /// <param name="column">Columna neutral.</param>
+    /// <param name="snapshot">
+    /// Snapshot que aporta los decimales del proyecto. Si es <c>null</c> se usan los
+    /// valores por defecto (2 decimales de importe).
+    /// </param>
+    public static string ResolveValue(
+        MaterialListItem material,
+        ReportColumnDefinition column,
+        ReportColumnSnapshot? snapshot = null)
     {
         ArgumentNullException.ThrowIfNull(material);
         ArgumentNullException.ThrowIfNull(column);
+
+        // Paridad con el grid: Precio Unitario (por NombreInterno) o columna
+        // monetaria (token "C*") → símbolo de moneda + decimales de importe.
+        if (string.Equals(column.Identificador, "PrecioUnitario", StringComparison.OrdinalIgnoreCase)
+            || column.EsMoneda)
+        {
+            return FormatearImporte(material.PrecioUnitario, snapshot?.DecimalesImporte ?? 2);
+        }
 
         return column.Identificador switch
         {
             "Clave" => material.Clave ?? string.Empty,
             "Descripcion" => material.Descripcion ?? string.Empty,
             "Unidad" => material.Unidad ?? string.Empty,
-            "PrecioUnitario" => FormatearNumero(material.PrecioUnitario, column.FormatoNumerico),
             "Origen" => ResolveOrigin(material),
             _ => string.Empty
         };
@@ -129,16 +160,13 @@ public static class MaterialCatalogExportResolver
     public static string ResolveOrigin(MaterialListItem material)
         => material.Origen == OrigenInsumo.Maestro ? "Maestro" : "Proyecto";
 
-    private static string FormatearNumero(decimal valor, string? formato)
-    {
-        var token = string.IsNullOrWhiteSpace(formato) ? FormatoNumericoPredeterminado : formato!.Trim();
-        // Ruta central única: el mismo mapeo token→formato .NET que usa Excel
-        // (ReportNumberFormatMapper delega en ReportNumberFormatMap). InvariantCulture
-        // garantiza separadores estables y, con los tokens monetarios ya mapeados a
-        // su equivalente numérico, evita el glifo ¤ del passthrough de "C4".
-        var fmt = ReportNumberFormatMap.ToPdfFormat(token);
-        return valor.ToString(fmt, CultureInfo.InvariantCulture);
-    }
+    /// <summary>
+    /// Formatea un importe con los decimales indicados y el símbolo de moneda de la
+    /// cultura actual, con la MISMA semántica que el grid
+    /// (<c>pu.ToString($"C{DecimalesImporte}", CultureInfo.CurrentCulture)</c>).
+    /// </summary>
+    private static string FormatearImporte(decimal valor, int decimales)
+        => valor.ToString($"C{decimales}", CultureInfo.CurrentCulture);
 }
 
 /// <summary>

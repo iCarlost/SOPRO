@@ -111,9 +111,12 @@ public static class ReportColumnDefinitionMapper
         ArgumentNullException.ThrowIfNull(columna);
 
         var esNumerica = EsNumericaColumnaMaterial(columna);
-        // ColumnaMaterial no expone TipoDato: la moneda se infiere del token ("C*").
-        // El default de Materiales "#,##0.0000" NO es moneda.
-        var esMoneda = EsMonedaPorPrefijoToken(columna.FormatoNumerico);
+        // ColumnaMaterial no expone TipoDato: la moneda se infiere del NombreInterno
+        // (el Precio Unitario SIEMPRE es monetario, paridad con el grid) o del token
+        // ("C*"). El default de Materiales "#,##0.0000" NO es moneda por sí mismo,
+        // pero el Precio Unitario sí lo es aunque use ese token.
+        var esMoneda = string.Equals(columna.NombreInterno, "PrecioUnitario", StringComparison.OrdinalIgnoreCase)
+                       || EsMonedaPorPrefijoToken(columna.FormatoNumerico);
 
         return new ReportColumnDefinition(
             Identificador: NormalizarIdentificador(columna.NombreInterno),
