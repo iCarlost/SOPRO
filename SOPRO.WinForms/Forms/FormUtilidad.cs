@@ -1,19 +1,22 @@
 using SOPRO.Application.Models.Presupuesto;
+using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Reporting.Formatting;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
 using System;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace SOPRO.WinForms.Forms
 {
     public partial class FormUtilidad : Form, IGridFormato, IRecalculable
     {
-        private readonly DataGridView _gridDummy = new DataGridView { Visible = false };
         private readonly ColumnaPersonalizada _columnaRibbon = new ColumnaPersonalizada
         {
             Nombre = "Utilidad",
@@ -36,7 +39,15 @@ namespace SOPRO.WinForms.Forms
         public static event EventHandler? UtilidadTransferida;
 
 
-        public DataGridView GridPrincipal => _gridDummy;
+        /// <summary>
+        /// La Utilidad es un resumen, no un grid editable: no expone columnas de grid
+        /// que formatear. Exponer <c>null</c> desactiva de forma natural los botones
+        /// del ribbon (mismo criterio que <c>FormFSR</c>) y elimina la dependencia
+        /// semántica del antiguo <c>DataGridView</c> "dummy". El contrato de columnas
+        /// neutral vive en el snapshot que construye
+        /// <see cref="UtilidadReportSnapshotBuilder"/> en memoria.
+        /// </summary>
+        public DataGridView GridPrincipal => null;
         public ColumnaPersonalizada ColumnaSeleccionada => _columnaRibbon;
         public event EventHandler? ColumnaSeleccionadaCambiada;
 
@@ -80,8 +91,9 @@ namespace SOPRO.WinForms.Forms
 
                 Cursor = Cursors.WaitCursor;
                 var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Utilidad, lblTitulo.Text);
+                var snapshot = ConstruirSnapshot();
                 var generador = new GeneradorPdfUtilidad(svcRep);
-                string ruta = generador.Generar(_proyecto, plantilla, preview, _resultado, _columnaRibbon, dlg.FileName, tituloCfg);
+                string ruta = generador.Generar(_proyecto, plantilla, preview, _resultado, snapshot, _columnaRibbon, dlg.FileName, tituloCfg);
                 Cursor = Cursors.Default;
 
                 if (MessageBox.Show("Reporte PDF generado.\n\n¿Abrir ahora?",
@@ -124,6 +136,22 @@ namespace SOPRO.WinForms.Forms
             _columnaRibbon.AlineacionVertical = fmt.AlineacionVertical;
             ColumnaSeleccionadaCambiada?.Invoke(this, EventArgs.Empty);
         }
+
+
+        /// <summary>
+        /// Construye EN MEMORIA el snapshot neutral de columnas del reporte de
+        /// Utilidad (mismos roles, orden, formatos y decimales globales del proyecto).
+        /// Es el ÚNICO contrato que consumen las rutas PDF y Excel, en sustitución del
+        /// antiguo <c>DataGridView</c> "dummy". No lee ni escribe configuración.
+        /// </summary>
+        private ReportColumnSnapshot ConstruirSnapshot()
+            => new UtilidadReportSnapshotBuilder().Build(
+                _proyecto.Id,
+                lblTitulo.Text,
+                columnas: null,
+                FormatoHelper.DecimalesCantidad,
+                FormatoHelper.DecimalesImporte,
+                FormatoHelper.DecimalesPorcentaje);
 
 
         public FormUtilidad(SOPROContext context, Proyecto proyecto)
@@ -229,6 +257,13 @@ namespace SOPRO.WinForms.Forms
                 decimal financiamiento = BudgetPricingService.RoundImporte(_proyecto, preview.MontoFinanciamiento);
                 decimal subtotal = BudgetPricingService.RoundImporte(_proyecto, _resultado.BaseUtilidad);
 
+                // MISMO snapshot neutral que la ruta PDF: formatos, decimales y
+                // símbolo de moneda idénticos entre ambos medios.
+                var snapshot = ConstruirSnapshot();
+                var colBase = ResolverColumna(snapshot, UtilidadReportColumns.Base);
+                var colPorcentaje = ResolverColumna(snapshot, UtilidadReportColumns.Porcentaje);
+                var colImporteFinal = ResolverColumna(snapshot, UtilidadReportColumns.ImporteFinal);
+
                 using var dlg = new SaveFileDialog
                 {
                     Title = "Guardar reporte de utilidad",
@@ -267,16 +302,16 @@ namespace SOPRO.WinForms.Forms
                 int etiquetaCol = 1;
                 int valorCol = 3;
 
-                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "COSTO DIRECTO", costoDirecto);
-                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "COSTO INDIRECTO", costoIndirecto);
-                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "FINANCIAMIENTO", financiamiento);
-                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "SUBTOTAL", subtotal, true, "#FFF2CC", "#C00000");
+                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "COSTO DIRECTO", costoDirecto, colBase, snapshot);
+                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "COSTO INDIRECTO", costoIndirecto, colBase, snapshot);
+                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "FINANCIAMIENTO", financiamiento, colBase, snapshot);
+                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "SUBTOTAL", subtotal, colBase, snapshot, true, "#FFF2CC", "#C00000");
 
                 fila++;
 
-                EscribirFilaParametro(ws, fila++, "Up = Utilidad Propuesta", _resultado.PorcentajeUtilidadBruta / 100m, null, true, "#C6E0B4");
-                EscribirFilaParametro(ws, fila++, "ISR = Impuesto Sobre la Renta", _resultado.Isr / 100m, "SAT");
-                EscribirFilaParametro(ws, fila++, "PTU = Participación de los Trabajadores en la Utilidad", _resultado.Ptu / 100m, "LFT");
+                EscribirFilaParametro(ws, fila++, "Up = Utilidad Propuesta", _resultado.PorcentajeUtilidadBruta / 100m, snapshot, null, true, "#C6E0B4");
+                EscribirFilaParametro(ws, fila++, "ISR = Impuesto Sobre la Renta", _resultado.Isr / 100m, snapshot, "SAT");
+                EscribirFilaParametro(ws, fila++, "PTU = Participación de los Trabajadores en la Utilidad", _resultado.Ptu / 100m, snapshot, "LFT");
 
                 fila++;
 
@@ -286,8 +321,8 @@ namespace SOPRO.WinForms.Forms
                 ws.Cell(fila, 1).Style.Font.FontColor = XLColor.FromHtml("#C00000");
                 ws.Cell(fila, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
 
-                ws.Cell(fila, 4).Value = _resultado.PorcentajeUtilidadBruta / 100m;
-                ws.Cell(fila, 4).Style.NumberFormat.Format = "0.00%";
+                ws.Cell(fila, 4).Value = _resultado.PorcentajeUtilidadNeta / 100m;
+                ws.Cell(fila, 4).Style.NumberFormat.Format = ReportColumnGridFormat.FormatoPorcentajeExcel(snapshot.DecimalesPorcentaje);
                 ws.Cell(fila, 4).Style.Font.Bold = true;
                 ws.Cell(fila, 4).Style.Fill.BackgroundColor = XLColor.FromHtml("#9DC3E6");
                 ws.Cell(fila, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
@@ -306,15 +341,15 @@ namespace SOPRO.WinForms.Forms
                 ws.Cell(fila, 1).Style.Font.FontColor = XLColor.Black;
                 ws.Cell(fila, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#92D050");
                 ws.Cell(fila, 4).Value = _resultado.ImporteUtilidad;
-                ws.Cell(fila, 4).Style.NumberFormat.Format = "$ #,##0.00";
+                ws.Cell(fila, 4).Style.NumberFormat.Format = ReportColumnGridFormat.ResolveExcelFormat(colImporteFinal, snapshot);
                 ws.Cell(fila, 4).Style.Font.Bold = true;
                 ws.Cell(fila, 4).Style.Fill.BackgroundColor = XLColor.FromHtml("#92D050");
                 AplicarBordeCaja(ws.Range(fila, 1, fila, 4));
                 fila += 2;
 
-                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "IMPORTE ISR", _resultado.ImporteIsr);
-                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "IMPORTE PTU", _resultado.ImportePtu);
-                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "UTILIDAD NETA ESTIMADA", _resultado.UtilidadNetaEstimada, true, "#D9EAD3", null);
+                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "IMPORTE ISR", _resultado.ImporteIsr, colImporteFinal, snapshot);
+                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "IMPORTE PTU", _resultado.ImportePtu, colImporteFinal, snapshot);
+                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "UTILIDAD NETA ESTIMADA", _resultado.UtilidadNetaEstimada, colImporteFinal, snapshot, true, "#D9EAD3", null);
 
                 for (int col = 1; col <= totalCols; col++)
                     ws.Column(col).Width = col switch { 1 => 30, 2 => 4, 3 => 18, 4 => 18, 5 => 14, _ => 12 };
@@ -361,7 +396,16 @@ namespace SOPRO.WinForms.Forms
             range.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
         }
 
-        private static void EscribirFilaMoneda(IXLWorksheet ws, int fila, int etiquetaCol, int valorCol, string etiqueta, decimal valor, bool resaltar = false, string? fondo = null, string? colorTexto = null)
+        /// <summary>
+        /// Resuelve la columna neutral del snapshot; si no está, cae a los defaults
+        /// neutrales del reporte (nunca lee un control de UI).
+        /// </summary>
+        private static ReportColumnDefinition ResolverColumna(ReportColumnSnapshot snapshot, string identificador)
+            => UtilidadReportColumns.Buscar(snapshot, identificador)
+               ?? UtilidadReportSnapshotBuilder.DefaultColumns()
+                      .First(c => string.Equals(c.Identificador, identificador, StringComparison.OrdinalIgnoreCase));
+
+        private static void EscribirFilaMoneda(IXLWorksheet ws, int fila, int etiquetaCol, int valorCol, string etiqueta, decimal valor, ReportColumnDefinition columna, ReportColumnSnapshot snapshot, bool resaltar = false, string? fondo = null, string? colorTexto = null)
         {
             ws.Range(fila, etiquetaCol, fila, valorCol - 1).Merge();
             ws.Cell(fila, etiquetaCol).Value = etiqueta;
@@ -369,7 +413,7 @@ namespace SOPRO.WinForms.Forms
             ws.Cell(fila, etiquetaCol).Style.Font.Bold = resaltar;
 
             ws.Cell(fila, valorCol).Value = valor;
-            ws.Cell(fila, valorCol).Style.NumberFormat.Format = "$ #,##0.00";
+            ws.Cell(fila, valorCol).Style.NumberFormat.Format = ReportColumnGridFormat.ResolveExcelFormat(columna, snapshot);
             ws.Cell(fila, valorCol).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             ws.Cell(fila, valorCol).Style.Font.Bold = resaltar;
 
@@ -385,7 +429,7 @@ namespace SOPRO.WinForms.Forms
             AplicarBordeCaja(ws.Range(fila, etiquetaCol, fila, valorCol));
         }
 
-        private static void EscribirFilaParametro(IXLWorksheet ws, int fila, string etiqueta, decimal porcentaje, string? nota = null, bool resaltar = false, string? fondo = null)
+        private static void EscribirFilaParametro(IXLWorksheet ws, int fila, string etiqueta, decimal porcentaje, ReportColumnSnapshot snapshot, string? nota = null, bool resaltar = false, string? fondo = null)
         {
             ws.Range(fila, 1, fila, 3).Merge();
             ws.Cell(fila, 1).Value = etiqueta;
@@ -393,7 +437,7 @@ namespace SOPRO.WinForms.Forms
             ws.Cell(fila, 1).Style.Font.Italic = resaltar;
 
             ws.Cell(fila, 4).Value = porcentaje;
-            ws.Cell(fila, 4).Style.NumberFormat.Format = "0.00%";
+            ws.Cell(fila, 4).Style.NumberFormat.Format = ReportColumnGridFormat.FormatoPorcentajeExcel(snapshot.DecimalesPorcentaje);
             ws.Cell(fila, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             ws.Cell(fila, 4).Style.Font.Bold = true;
 
