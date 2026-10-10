@@ -80,4 +80,35 @@ public sealed record ReportTableStyle(
             ColorFondoAlterno: "#F5F5F5",
             ColorFuente: "#000000"),
         Bordes: new ReportTableBorder(Visible: true, ColorHex: "#DDDDDD", GrosorPuntos: 0.25));
+
+    /// <summary>
+    /// Default neutral COMPARTIDO por los reportes de catálogo (Mano de Obra,
+    /// Herramientas, Maquinaria/Costo Horario, Explosión, Indirectos,
+    /// Financiamiento, Programas de Obra e Insumos). Reproduce el look común del
+    /// catálogo ya validado (encabezado #4A4A6A, bandeado #F5F5F5 y grilla
+    /// #DDDDDD) para que las migraciones de la Fase 1 tengan una única línea base
+    /// mientras se confirma el estilo legacy específico de cada reporte. Es
+    /// aditivo: no altera <see cref="LegacyPresupuesto"/> ni <see cref="LegacyMateriales"/>.
+    /// </summary>
+    public static ReportTableStyle LegacyCatalogo() => new(
+        EstiloEncabezado: new ReportTextStyle(
+            Fuente: "Segoe UI",
+            Tamano: 9f,
+            Negrita: true,
+            Cursiva: false,
+            ColorFuente: "#FFFFFF",
+            ColorFondo: "#4A4A6A",
+            ColorFuenteEncabezado: "#FFFFFF",
+            ColorFondoEncabezado: "#4A4A6A"),
+        EstiloContenido: new ReportTextStyle(
+            Fuente: "Segoe UI",
+            Tamano: 9f,
+            Negrita: false,
+            Cursiva: false,
+            ColorFuente: "#000000",
+            ColorFondo: "#FFFFFF"),
+        FilaAlterna: new ReportRowStyle(
+            ColorFondoAlterno: "#F5F5F5",
+            ColorFuente: "#000000"),
+        Bordes: new ReportTableBorder(Visible: true, ColorHex: "#DDDDDD", GrosorPuntos: 0.25));
 }

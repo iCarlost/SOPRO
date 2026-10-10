@@ -8,6 +8,9 @@ using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
 using SOPRO.Core.Entities;
+using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Reporting.Formatting;
+using SOPRO.Reporting.Layout;
 using DrawingFont = System.Drawing.Font;
 using MColor = MigraDoc.DocumentObjectModel.Color;
 using MOrientation = MigraDoc.DocumentObjectModel.Orientation;
@@ -25,35 +28,32 @@ namespace SOPRO.WinForms.Services
 
         public string Generar(
             Proyecto proyecto,
-            List<Herramienta> herramientas,
+            IReadOnlyList<Herramienta> herramientas,
             PlantillaReporte plantilla,
-            List<ColumnaHerramienta> columnas,
+            ReportColumnSnapshot snapshot,
             string rutaDestino = null,
             ConfiguracionTituloReporte? tituloCfg = null)
         {
             if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
             if (herramientas == null) throw new ArgumentNullException(nameof(herramientas));
             if (plantilla == null) throw new ArgumentNullException(nameof(plantilla));
-            if (columnas == null) throw new ArgumentNullException(nameof(columnas));
+            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
 
-            var cols = columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+            var estiloTabla = snapshot.EstiloTabla;
+            var cols = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
             if (!cols.Any())
             {
-                cols = new List<ColumnaHerramienta>
-                {
-                    new() { Nombre = "Clave", NombreInterno = "Clave", Visible = true, Orden = 1, AnchoColumna = 110, Alineacion = AlineacionColumna.Centro },
-                    new() { Nombre = "Descripción", NombreInterno = "Descripcion", Visible = true, Orden = 2, AnchoColumna = 300, Alineacion = AlineacionColumna.Izquierda, WrapTexto = true },
-                    new() { Nombre = "Unidad", NombreInterno = "Unidad", Visible = true, Orden = 3, AnchoColumna = 80, Alineacion = AlineacionColumna.Centro },
-                    new() { Nombre = "Precio/Porcentaje", NombreInterno = "PrecioUnitario", Visible = true, Orden = 4, AnchoColumna = 150, Alineacion = AlineacionColumna.Derecha },
-                    new() { Nombre = "Origen", NombreInterno = "OrigenDetalle", Visible = true, Orden = 5, AnchoColumna = 180, Alineacion = AlineacionColumna.Izquierda },
-                };
+                cols = HerramientasCatalogExportResolver.DefaultColumns()
+                    .Where(c => c.Visible)
+                    .OrderBy(c => c.Orden)
+                    .ToList();
             }
 
             var doc = new Document();
             DefinirEstilos(doc);
 
             var orientation = ReportPageLayoutHelper.DetermineAutoOrientation(
-                cols.Select(c => (c.NombreInterno ?? c.Nombre ?? string.Empty, Math.Max(24, c.AnchoColumna))),
+                cols.Select(c => (c.Identificador ?? string.Empty, Math.Max(24, c.Ancho))),
                 1.0,
                 1.0);
 
@@ -73,7 +73,7 @@ namespace SOPRO.WinForms.Services
 
             ConstruirHeader(section, proyecto, plantilla, headerHeightCm);
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
-            ConstruirCuerpo(section, proyecto, herramientas, cols, tituloCfg);
+            ConstruirCuerpo(section, proyecto, herramientas, cols, estiloTabla, snapshot, tituloCfg);
 
             var renderer = new PdfDocumentRenderer() { Document = doc };
             renderer.RenderDocument();
@@ -187,7 +187,14 @@ namespace SOPRO.WinForms.Services
                 plantilla.PiePaginaDerAlineacion, true);
         }
 
-        private void ConstruirCuerpo(Section section, Proyecto proyecto, List<Herramienta> items, List<ColumnaHerramienta> cols, ConfiguracionTituloReporte? tituloCfg)
+        private void ConstruirCuerpo(
+            Section section,
+            Proyecto proyecto,
+            IReadOnlyList<Herramienta> items,
+            IReadOnlyList<ReportColumnDefinition> cols,
+            ReportTableStyle estiloTabla,
+            ReportColumnSnapshot snapshot,
+            ConfiguracionTituloReporte? tituloCfg)
         {
             var pTitle = section.AddParagraph("CATÁLOGO DE HERRAMIENTAS", "CatalogoHerramientasTitle");
             ReportTitleStyleHelper.ApplyToParagraph(pTitle, tituloCfg, "CATÁLOGO DE HERRAMIENTAS");
@@ -203,22 +210,24 @@ namespace SOPRO.WinForms.Services
 
             var table = section.AddTable();
             table.Rows.LeftIndent = 0;
-            table.Borders.Width = 0.25;
-            table.Borders.Color = ParseColor("#DDDDDD");
-            AgregarColumnas(table, cols.Select(c => Math.Max(24, c.AnchoColumna)).ToList(), ReportPageLayoutHelper.GetLetterContentWidthCm(section));
+            table.Borders.Visible = estiloTabla.Bordes.Visible;
+            table.Borders.Width = estiloTabla.Bordes.GrosorPuntos;
+            table.Borders.Color = ParseColor(estiloTabla.Bordes.ColorHex);
+            AgregarColumnas(table, cols, section);
 
             var head = table.AddRow();
             head.HeadingFormat = true;
             head.Height = Unit.FromPoint(18);
             head.HeightRule = RowHeightRule.AtLeast;
-            head.Shading.Color = ParseColor("#4A4A6A");
+            head.Shading.Color = ParseColor(estiloTabla.EstiloEncabezado.ColorFondo ?? "#4A4A6A");
             for (int i = 0; i < cols.Count; i++)
             {
+                var enc = cols[i].EstiloEncabezado;
                 var cell = head.Cells[i];
-                var p = cell.AddParagraph(cols[i].Nombre ?? string.Empty);
+                var p = cell.AddParagraph(cols[i].Encabezado ?? string.Empty);
                 p.Format.Alignment = MParagraphAlignment.Center;
-                PdfFontHelper.ApplyFont(p.Format.Font, cols[i].NombreFuente, Math.Max(8, cols[i].TamanoFuente), true, cols[i].Cursiva);
-                p.Format.Font.Color = ParseColor(ReportTitleStyleHelper.StandardTextHex);
+                PdfFontHelper.ApplyFont(p.Format.Font, enc.Fuente, Math.Max(8f, enc.Tamano), enc.Negrita, enc.Cursiva);
+                p.Format.Font.Color = ParseColor(enc.ColorFuente);
                 cell.VerticalAlignment = VerticalAlignment.Center;
             }
 
@@ -227,56 +236,63 @@ namespace SOPRO.WinForms.Services
             {
                 var row = table.AddRow();
                 var basePts = 14d;
-                var height = EstimarAlturaFila(cols, table, item, basePts);
+                var height = EstimarAlturaFila(cols, table, item, snapshot, basePts);
                 row.HeightRule = RowHeightRule.AtLeast;
                 row.Height = Unit.FromPoint(height);
-                row.Shading.Color = ParseColor(alt ? "#F5F5F5" : "#FFFFFF");
-                alt = !alt;
-                var rowColor = alt ? "#F5F5F5" : "#FFFFFF";
+                row.Shading.Color = ParseColor(estiloTabla.FilaAlterna.ColorFondoAlterno
+                    ?? estiloTabla.EstiloContenido.ColorFondo ?? "#FFFFFF");
 
                 for (int i = 0; i < cols.Count; i++)
                 {
                     var c = cols[i];
+                    var cont = c.EstiloContenido;
                     var cell = row.Cells[i];
                     cell.VerticalAlignment = ConvertirAlineacionVertical(c.AlineacionVertical);
-                    cell.Shading.Color = ParseColor(string.IsNullOrWhiteSpace(c.ColorFondo) ? rowColor : c.ColorFondo);
-                    var p = cell.AddParagraph(ObtenerValor(item, c));
+                    cell.Shading.Color = ParseColor(HerramientasCatalogExportResolver.ResolveCellBackground(c, estiloTabla, alt));
+                    var p = cell.AddParagraph(ObtenerValor(item, c, snapshot));
                     p.Format.Alignment = ConvertirAlineacion(c.Alineacion);
                     p.Format.SpaceAfter = 0;
                     p.Format.SpaceBefore = 0;
-                    PdfFontHelper.ApplyFont(p.Format.Font, c.NombreFuente, c.TamanoFuente <= 0 ? 9 : c.TamanoFuente, c.Negrita, c.Cursiva);
-                    p.Format.Font.Color = ParseColor(c.ColorFuente);
+                    PdfFontHelper.ApplyFont(p.Format.Font, cont.Fuente, cont.Tamano <= 0 ? 9 : cont.Tamano, cont.Negrita, cont.Cursiva);
+                    p.Format.Font.Color = ParseColor(cont.ColorFuente);
                 }
+
+                alt = !alt;
             }
         }
 
-        private static void AgregarColumnas(Table table, List<int> widthsPx, double availableCm)
+        private static void AgregarColumnas(Table table, IReadOnlyList<ReportColumnDefinition> cols, Section section)
         {
-            double totalPx = Math.Max(1, widthsPx.Sum(w => Math.Max(24, w)));
-            double assigned = 0;
-            for (int i = 0; i < widthsPx.Count; i++)
-            {
-                double widthCm = (i == widthsPx.Count - 1)
-                    ? Math.Max(1.2, availableCm - assigned)
-                    : Math.Max(1.2, availableCm * Math.Max(24, widthsPx[i]) / totalPx);
-                assigned += widthCm;
-                table.AddColumn(Unit.FromCentimeter(widthCm));
-            }
+            double availableCm = ReportColumnWidthConverter.GetLetterUsableWidthCm(
+                section.PageSetup.Orientation == MOrientation.Landscape);
+            int[] anchosPx = cols.Select(c => c.Ancho).ToArray();
+            double[] anchosCm = ReportColumnWidthConverter.PxToCm(anchosPx, availableCm);
+            for (int i = 0; i < cols.Count; i++)
+                table.AddColumn(Unit.FromCentimeter(anchosCm[i]));
         }
 
-        private double EstimarAlturaFila(List<ColumnaHerramienta> cols, Table table, Herramienta item, double alturaBase)
+        private double EstimarAlturaFila(
+            IReadOnlyList<ReportColumnDefinition> cols,
+            Table table,
+            Herramienta item,
+            ReportColumnSnapshot snapshot,
+            double alturaBase)
         {
             double altura = alturaBase;
             for (int i = 0; i < cols.Count; i++)
             {
                 var col = cols[i];
-                if (!col.WrapTexto) continue;
-                var texto = ObtenerValor(item, col);
+                if (!col.Wrap) continue;
+                var texto = ObtenerValor(item, col, snapshot);
                 if (string.IsNullOrWhiteSpace(texto)) continue;
+
+                var cont = col.EstiloContenido;
                 using var font = new DrawingFont(
-                    PdfFontHelper.NormalizeFontName(col.NombreFuente),
-                    Math.Max(8f, col.TamanoFuente > 0 ? col.TamanoFuente : 9f),
-                    (col.Negrita && col.Cursiva) ? FontStyle.Bold | FontStyle.Italic : col.Negrita ? FontStyle.Bold : col.Cursiva ? FontStyle.Italic : FontStyle.Regular);
+                    PdfFontHelper.NormalizeFontName(cont.Fuente),
+                    Math.Max(8f, cont.Tamano > 0 ? cont.Tamano : 9f),
+                    (cont.Negrita && cont.Cursiva) ? FontStyle.Bold | FontStyle.Italic :
+                    cont.Negrita ? FontStyle.Bold :
+                    cont.Cursiva ? FontStyle.Italic : FontStyle.Regular);
                 var widthPts = table.Columns[i].Width.Point;
                 var widthPx = Math.Max(24, (int)Math.Round(widthPts * 96.0 / 72.0) - 8);
                 var measured = TextRenderer.MeasureText(texto, font, new Size(widthPx, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
@@ -286,18 +302,24 @@ namespace SOPRO.WinForms.Services
             return altura;
         }
 
-        private string ObtenerValor(Herramienta h, ColumnaHerramienta c)
+        /// <summary>
+        /// Resuelve el valor de una celda con paridad grid↔PDF↔Excel. La columna
+        /// Precio/Porcentaje se formatea con el helper neutral
+        /// (<see cref="ReportColumnGridFormat"/>): porcentaje (%MO) con los
+        /// decimales de porcentaje del proyecto, moneda con el símbolo <c>$</c> y
+        /// los decimales de importe. El resto usa la resolución de texto del
+        /// resolver (sin leer celdas del grid).
+        /// </summary>
+        private static string ObtenerValor(Herramienta h, ReportColumnDefinition c, ReportColumnSnapshot snapshot)
         {
-            return c.NombreInterno switch
+            if (HerramientasCatalogExportResolver.EsPrecioUnitario(c))
             {
-                "Clave" => h.Clave ?? string.Empty,
-                "Descripcion" => h.Descripcion ?? string.Empty,
-                "Unidad" => h.Unidad ?? string.Empty,
-                "PrecioUnitario" => h.EsPorcentajeMO ? $"{h.PrecioUnitario:N2}%" : h.PrecioUnitario.ToString("#,##0.00"),
-                "OrigenDetalle" => ImportOriginStampService.BuildOriginDisplay(h.Notas, h.Origen == OrigenInsumo.Maestro ? "Maestro" : "Local"),
-                "Origen" => h.Origen == OrigenInsumo.Maestro ? "Maestro" : "Proyecto",
-                _ => string.Empty
-            };
+                if (h.EsPorcentajeMO)
+                    return ReportColumnGridFormat.FormatearPorcentajePdf(h.PrecioUnitario, snapshot) + "%";
+                return ReportColumnGridFormat.FormatearPdf(h.PrecioUnitario, c, snapshot);
+            }
+
+            return HerramientasCatalogExportResolver.ResolveValue(h, c);
         }
 
         private void EscribirCeldaPlantilla(Cell cell, Proyecto proyecto, PlantillaReporte plantilla,
@@ -342,11 +364,11 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private static MParagraphAlignment ConvertirAlineacion(AlineacionColumna a) => a switch
+        private static MParagraphAlignment ConvertirAlineacion(ReportTextAlignment a) => a switch
         {
-            AlineacionColumna.Centro => MParagraphAlignment.Center,
-            AlineacionColumna.Derecha => MParagraphAlignment.Right,
-            AlineacionColumna.Justificado => MParagraphAlignment.Justify,
+            ReportTextAlignment.Centro => MParagraphAlignment.Center,
+            ReportTextAlignment.Derecha => MParagraphAlignment.Right,
+            ReportTextAlignment.Justificado => MParagraphAlignment.Justify,
             _ => MParagraphAlignment.Left,
         };
 
@@ -361,7 +383,12 @@ namespace SOPRO.WinForms.Services
             };
         }
 
-        private static VerticalAlignment ConvertirAlineacionVertical(int v) => v switch { 0 => VerticalAlignment.Top, 2 => VerticalAlignment.Bottom, _ => VerticalAlignment.Center };
+        private static VerticalAlignment ConvertirAlineacionVertical(ReportVerticalAlignment v) => v switch
+        {
+            ReportVerticalAlignment.Superior => VerticalAlignment.Top,
+            ReportVerticalAlignment.Inferior => VerticalAlignment.Bottom,
+            _ => VerticalAlignment.Center,
+        };
 
         private static MColor ParseColor(string value)
         {

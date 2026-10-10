@@ -266,4 +266,218 @@ public class ReportColumnDefinitionMapperTests
         Assert.IsFalse(ReportColumnDefinitionMapper.MapearMaterial(otroExplicito).EsMoneda,
             "Otra columna con formato explícito '#,##0.0000' NO es moneda.");
     }
+
+    // ───────────── Fase 0: mapeos de los catálogos restantes ─────────────
+
+    [TestMethod]
+    public void MapearManoObra_RolMonetarioPorNombreYEstiloCatalogo()
+    {
+        var salario = new ColumnaManoObra
+        {
+            Nombre = "Salario Base",
+            NombreInterno = "SalarioBase",
+            Orden = 1,
+            AnchoColumna = 90,
+            Alineacion = AlineacionColumna.Derecha,
+            FormatoNumerico = string.Empty,
+        };
+
+        var def = ReportColumnDefinitionMapper.MapearManoObra(salario);
+
+        Assert.AreEqual("SalarioBase", def.Identificador);
+        Assert.IsTrue(def.EsNumerica, "Alineación derecha ⇒ numérica.");
+        Assert.IsTrue(def.EsMoneda, "El Salario Base es un rol monetario canónico.");
+        Assert.AreEqual("#4A4A6A", def.EstiloEncabezado.ColorFondo, "Debe usar el estilo neutral de catálogo.");
+        Assert.AreEqual("#F5F5F5", ReportTableStyle.LegacyCatalogo().FilaAlterna.ColorFondoAlterno);
+    }
+
+    [TestMethod]
+    public void MapearHerramienta_MonedaPorTokenC()
+    {
+        var col = new ColumnaHerramienta
+        {
+            Nombre = "Precio Unitario",
+            NombreInterno = "PrecioUnitario",
+            Orden = 2,
+            AnchoColumna = 110,
+            Alineacion = AlineacionColumna.Derecha,
+            FormatoNumerico = "C4",
+        };
+
+        var def = ReportColumnDefinitionMapper.MapearHerramienta(col);
+
+        Assert.AreEqual("PrecioUnitario", def.Identificador);
+        Assert.IsTrue(def.EsNumerica);
+        Assert.IsTrue(def.EsMoneda, "El token 'C4' marca rol monetario.");
+        Assert.AreEqual("C4", def.FormatoNumerico);
+    }
+
+    [TestMethod]
+    public void MapearMaquinaria_CostoHorarioEsMonetarioYPorcentajeNoLoEs()
+    {
+        var costo = new ColumnaMaquinaria
+        {
+            NombreInterno = "CostoHorario",
+            Nombre = "Costo Horario",
+            Orden = 1,
+            Alineacion = AlineacionColumna.Derecha,
+            FormatoNumerico = string.Empty,
+        };
+        var porcentaje = new ColumnaMaquinaria
+        {
+            NombreInterno = "PorcentajeIndirectos",
+            Nombre = "% Indirectos",
+            Orden = 2,
+            Alineacion = AlineacionColumna.Derecha,
+            FormatoNumerico = "P2",
+        };
+
+        var defCosto = ReportColumnDefinitionMapper.MapearMaquinaria(costo);
+        var defPorc = ReportColumnDefinitionMapper.MapearMaquinaria(porcentaje);
+
+        Assert.IsTrue(defCosto.EsMoneda, "Costo Horario es rol monetario canónico.");
+        Assert.IsFalse(defPorc.EsMoneda, "Un token 'P2' no es moneda.");
+        Assert.IsTrue(defPorc.EsNumerica);
+    }
+
+    [TestMethod]
+    public void MapearExplosion_ImporteEsMonetario()
+    {
+        var importe = new ColumnaExplosion
+        {
+            NombreInterno = "Importe",
+            Nombre = "Importe",
+            Orden = 3,
+            Alineacion = AlineacionColumna.Derecha,
+            FormatoNumerico = string.Empty,
+        };
+
+        var def = ReportColumnDefinitionMapper.MapearExplosion(importe);
+
+        Assert.AreEqual("ImporteTotal", def.Identificador, "El alias Importe se normaliza.");
+        Assert.IsTrue(def.EsMoneda, "Importe es rol monetario canónico.");
+    }
+
+    [TestMethod]
+    public void MapearIndirectos_ImporteTotalEsMonetario()
+    {
+        var col = new ColumnaIndirectos
+        {
+            NombreInterno = "ImporteTotal",
+            Nombre = "Importe total",
+            Orden = 1,
+            Alineacion = AlineacionColumna.Derecha,
+            FormatoNumerico = string.Empty,
+        };
+
+        Assert.IsTrue(ReportColumnDefinitionMapper.MapearIndirectos(col).EsMoneda);
+    }
+
+    [TestMethod]
+    public void MapearFinanciamiento_TotalEsMonetario()
+    {
+        var col = new ColumnaFinanciamiento
+        {
+            NombreInterno = "Total",
+            Nombre = "Total",
+            Orden = 1,
+            Alineacion = AlineacionColumna.Derecha,
+            FormatoNumerico = string.Empty,
+        };
+
+        Assert.IsTrue(ReportColumnDefinitionMapper.MapearFinanciamiento(col).EsMoneda);
+    }
+
+    [TestMethod]
+    public void MapearProgramaObra_ToleraPrefijoColYReconoceRolMonetario()
+    {
+        var importe = new ColumnaProgramaObra
+        {
+            NombreInterno = "colImporte",
+            Nombre = "Importe",
+            Orden = 13,
+            Alineacion = AlineacionColumna.Derecha,
+            FormatoNumerico = string.Empty,
+        };
+        var descripcion = new ColumnaProgramaObra
+        {
+            NombreInterno = "colDescripcion",
+            Nombre = "Descripción",
+            Orden = 3,
+            Alineacion = AlineacionColumna.Izquierda,
+        };
+
+        var defImporte = ReportColumnDefinitionMapper.MapearProgramaObra(importe);
+        var defDesc = ReportColumnDefinitionMapper.MapearProgramaObra(descripcion);
+
+        Assert.AreEqual("colImporte", defImporte.Identificador, "El identificador conserva el nombre interno.");
+        Assert.IsTrue(defImporte.EsMoneda, "El prefijo 'col' no debe impedir el reconocimiento del rol.");
+        Assert.IsFalse(defDesc.EsNumerica);
+        Assert.IsFalse(defDesc.EsMoneda);
+    }
+
+    [TestMethod]
+    public void MapearProgramaInsumos_CantidadEsNumericaNoMonetaria()
+    {
+        var col = new ColumnaProgramaInsumos
+        {
+            NombreInterno = "colCantidad",
+            Nombre = "Cantidad",
+            Orden = 6,
+            Alineacion = AlineacionColumna.Derecha,
+            FormatoNumerico = "N2",
+        };
+
+        var def = ReportColumnDefinitionMapper.MapearProgramaInsumos(col);
+
+        Assert.IsTrue(def.EsNumerica);
+        Assert.IsFalse(def.EsMoneda);
+        Assert.AreEqual("N2", def.FormatoNumerico);
+    }
+
+    // ───────────── Fase 0: reconocimiento común de roles ─────────────
+
+    [TestMethod]
+    public void ReconocimientoDeRoles_ComunATodosLosCatalogos()
+    {
+        Assert.IsTrue(ReportColumnDefinitionMapper.EsRolMonetario("PrecioUnitario", null));
+        Assert.IsTrue(ReportColumnDefinitionMapper.EsRolMonetario("colImporte", null));
+        Assert.IsTrue(ReportColumnDefinitionMapper.EsRolMonetario("Desconocido", "C4"));
+        Assert.IsFalse(ReportColumnDefinitionMapper.EsRolMonetario("Descripcion", "#,##0.0000"));
+
+        Assert.IsTrue(ReportColumnDefinitionMapper.EsRolPorcentaje("PorcentajeIndirectos", null));
+        Assert.IsTrue(ReportColumnDefinitionMapper.EsRolPorcentaje("X", "P2"));
+        Assert.IsFalse(ReportColumnDefinitionMapper.EsRolPorcentaje("ImporteTotal", null));
+
+        Assert.IsTrue(ReportColumnDefinitionMapper.EsRolCantidad("Cantidad", null));
+        Assert.IsTrue(ReportColumnDefinitionMapper.EsRolCantidad("colCantidad", null));
+        Assert.IsTrue(ReportColumnDefinitionMapper.EsRolCantidad("X", "N2"));
+        Assert.IsFalse(ReportColumnDefinitionMapper.EsRolCantidad("Descripcion", null));
+    }
+
+    [TestMethod]
+    public void MapearCatalogo_EsCoherenteConMapearMaterialParaTokenC()
+    {
+        // El núcleo compartido debe producir la MISMA definición neutral (salvo
+        // que el predicado monetario difiere): token 'C4' ⇒ monetaria en ambos.
+        var material = ReportColumnDefinitionMapper.MapearMaterial(new ColumnaMaterial
+        {
+            NombreInterno = "Extra",
+            Nombre = "Extra",
+            Orden = 1,
+            Alineacion = AlineacionColumna.Derecha,
+            FormatoNumerico = "C4",
+        });
+        var manoObra = ReportColumnDefinitionMapper.MapearManoObra(new ColumnaManoObra
+        {
+            NombreInterno = "Extra",
+            Nombre = "Extra",
+            Orden = 1,
+            Alineacion = AlineacionColumna.Derecha,
+            FormatoNumerico = "C4",
+        });
+
+        Assert.AreEqual(material, manoObra,
+            "Con los mismos campos y un token 'C4', ambos catálogos deben coincidir.");
+    }
 }

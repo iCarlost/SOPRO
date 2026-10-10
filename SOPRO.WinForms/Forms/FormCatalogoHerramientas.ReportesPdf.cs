@@ -26,11 +26,43 @@ namespace SOPRO.WinForms.Forms
             return true;
         }
 
+        /// <summary>
+        /// Obtiene las herramientas a exportar desde el DOMINIO (contexto EF),
+        /// aplicando los mismos filtros que la vista (proyecto activo + búsqueda +
+        /// solo del proyecto / solo importados). NO lee
+        /// <c>dgvHerramientas.DataSource</c> ni ninguna propiedad del grid: la
+        /// exportación deja de depender del estado visual del DataGridView.
+        /// </summary>
+        private List<Herramienta> ObtenerHerramientasParaExportar()
+        {
+            IQueryable<Herramienta> query = _context.Herramientas;
+
+            if (_proyectoId.HasValue)
+                query = query.Where(h => h.ProyectoId == _proyectoId.Value);
+
+            if (!string.IsNullOrWhiteSpace(txtBuscar.Text))
+            {
+                var term = txtBuscar.Text.Trim().ToLower();
+                query = query.Where(h =>
+                    h.Clave.ToLower().Contains(term) ||
+                    h.Descripcion.ToLower().Contains(term));
+            }
+
+            var lista = query.OrderBy(h => h.Clave).ToList();
+
+            if (chkSoloProyecto.Checked)
+                lista = lista.Where(h => string.IsNullOrWhiteSpace(ImportOriginStampService.ExtractProjectName(h.Notas))).ToList();
+            else if (chkSoloMaestros.Checked)
+                lista = lista.Where(h => !string.IsNullOrWhiteSpace(ImportOriginStampService.ExtractProjectName(h.Notas))).ToList();
+
+            return lista;
+        }
+
         public void GenerarPdfCatalogoHerramientas()
         {
             try
             {
-                var herramientas = dgvHerramientas.DataSource as List<Herramienta>;
+                var herramientas = ObtenerHerramientasParaExportar();
                 if (herramientas == null || !herramientas.Any())
                 {
                     MessageBox.Show("No hay herramientas para exportar.", "Sin datos",
@@ -53,12 +85,17 @@ namespace SOPRO.WinForms.Forms
                 Proyecto proyecto = _proyectoId.HasValue
                     ? _context.Proyectos.Find(_proyectoId.Value)
                     : new Proyecto { Nombre = "Herramientas" };
-                var colsVis = _columnasConfig.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+
+                // Snapshot neutral compartido: misma lista/orden/ancho/formato/estilo
+                // que el exportador Excel (no se leen columnas ni estilos del grid).
+                var snapshot = HerramientasCatalogExportResolver.BuildSnapshot(
+                    _proyectoId ?? 0, lblTitulo.Text, _columnasConfig,
+                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
                 var tituloCfg = _proyectoId.HasValue
                     ? new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyectoId.Value, ReportTitleModuleKeys.CatalogoHerramientas, lblTitulo.Text)
                     : null;
                 var generador = new GeneradorPdfCatalogoHerramientas(svcRep);
-                var ruta = generador.Generar(proyecto, herramientas, plantilla, colsVis, dlg.FileName, tituloCfg);
+                var ruta = generador.Generar(proyecto, herramientas, plantilla, snapshot, dlg.FileName, tituloCfg);
                 Cursor = Cursors.Default;
 
                 if (MessageBox.Show("Catálogo PDF exportado.¿Desea abrir el archivo?",

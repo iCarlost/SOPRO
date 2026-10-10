@@ -1,0 +1,263 @@
+{
+  "Schema": "sopro.costo-horario-columnas.1",
+  "TipoReporte": "Maquinaria",
+  "ProyectoId": 7,
+  "Titulo": "Catálogo de Maquinaria Sintético",
+  "Columnas": [
+    {
+      "Identificador": "Clave",
+      "Encabezado": "Clave",
+      "Visible": true,
+      "Orden": 0,
+      "Ancho": 110,
+      "Formato": "",
+      "EsNumerica": false,
+      "Alineacion": "Centro",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "Descripcion",
+      "Encabezado": "Descripción",
+      "Visible": true,
+      "Orden": 1,
+      "Ancho": 320,
+      "Formato": "",
+      "EsNumerica": false,
+      "Alineacion": "Izquierda",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "PotenciaNominal",
+      "Encabezado": "Potencia (HP)",
+      "Visible": true,
+      "Orden": 2,
+      "Ancho": 100,
+      "Formato": "N2",
+      "EsNumerica": true,
+      "Alineacion": "Derecha",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "Combustible",
+      "Encabezado": "Combustible",
+      "Visible": true,
+      "Orden": 3,
+      "Ancho": 100,
+      "Formato": "",
+      "EsNumerica": false,
+      "Alineacion": "Centro",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "CostoHorario",
+      "Encabezado": "Costo Horario",
+      "Visible": true,
+      "Orden": 4,
+      "Ancho": 120,
+      "Formato": "#,##0.00",
+      "EsNumerica": true,
+      "Alineacion": "Derecha",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "TipoCosto",
+      "Encabezado": "Tipo",
+      "Visible": true,
+      "Orden": 5,
+      "Ancho": 80,
+      "Formato": "",
+      "EsNumerica": false,
+      "Alineacion": "Centro",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "Origen",
+      "Encabezado": "Origen",
+      "Visible": true,
+      "Orden": 6,
+      "Ancho": 80,
+      "Formato": "",
+      "EsNumerica": false,
+      "Alineacion": "Centro",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    }
+  ],
+  "EstiloTabla": {
+    "Encabezado": {
+      "Fuente": "Segoe UI",
+      "Tamano": 9,
+      "Negrita": true,
+      "Cursiva": false,
+      "ColorFuente": "#FFFFFF",
+      "ColorFondo": "#4A4A6A",
+      "ColorFuenteEncabezado": "#FFFFFF",
+      "ColorFondoEncabezado": "#4A4A6A"
+    },
+    "Contenido": {
+      "Fuente": "Segoe UI",
+      "Tamano": 9,
+      "Negrita": false,
+      "Cursiva": false,
+      "ColorFuente": "#000000",
+      "ColorFondo": "#FFFFFF",
+      "ColorFuenteEncabezado": null,
+      "ColorFondoEncabezado": null
+    },
+    "FilaAlterna": {
+      "ColorFondoAlterno": "#F5F5F5",
+      "ColorFuente": "#000000"
+    },
+    "Bordes": {
+      "Visible": true,
+      "ColorHex": "#DDDDDD",
+      "GrosorPuntos": 0.25
+    }
+  }
+}

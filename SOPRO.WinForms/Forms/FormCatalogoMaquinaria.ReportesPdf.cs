@@ -12,6 +12,7 @@ using System.Linq;
 using System.Windows.Forms;
 using ClosedXML.Excel;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
@@ -58,8 +59,12 @@ namespace SOPRO.WinForms.Forms
                 var tituloCfg = _proyectoId.HasValue
                     ? new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyectoId.Value, ReportTitleModuleKeys.CatalogoMaquinaria, lblTitulo.Text)
                     : null;
+                // Snapshot neutral compartido: misma lista/orden/ancho/formato/estilo que Excel.
+                var snapshot = new CostoHorarioReportSnapshotBuilder().Build(
+                    _proyectoId ?? 0, lblTitulo.Text, _columnasConfig,
+                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
                 var generador = new GeneradorPdfCostoHorario(svcRep);
-                var ruta = generador.Generar(proyecto, _listaActual, plantilla, dlg.FileName, tituloCfg);
+                var ruta = generador.Generar(proyecto, _listaActual, plantilla, snapshot, dlg.FileName, tituloCfg);
                 Cursor = Cursors.Default;
 
                 if (MessageBox.Show($"Reporte PDF generado con {_listaActual.Count} análisis de costo horario.\n\n¿Desea abrir el archivo?",

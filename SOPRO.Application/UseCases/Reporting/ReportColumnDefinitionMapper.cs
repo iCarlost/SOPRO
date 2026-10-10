@@ -34,6 +34,42 @@ public static class ReportColumnDefinitionMapper
 
     private static readonly ReportTableStyle PresupuestoDefault = ReportTableStyle.LegacyPresupuesto();
     private static readonly ReportTableStyle MaterialesDefault = ReportTableStyle.LegacyMateriales();
+    private static readonly ReportTableStyle CatalogoDefault = ReportTableStyle.LegacyCatalogo();
+
+    /// <summary>
+    /// Nombres internos canónicos que denotan un rol monetario/importe en los
+    /// catálogos, aunque su token no empiece por 'C'. Es el reconocimiento COMÚN
+    /// que comparten los reportes de catálogo (Mano de Obra, Herramientas,
+    /// Maquinaria/Costo Horario, Explosión, Indirectos, Financiamiento y
+    /// Programas). Se compara sin distinguir mayúsculas y tolerando el prefijo de
+    /// grid <c>col</c> de los Programas. El token "C*" sigue siendo la señal
+    /// universal y tiene prioridad.
+    /// </summary>
+    private static readonly HashSet<string> NombresMonetariosCatalogo = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "PrecioUnitario", "PrecioUnitarioFinal", "Importe", "ImporteTotal", "ImporteMensual",
+        "SalarioBase", "SalarioReal", "CostoHorario", "CostoUnitario", "CostoDirecto",
+        "CostoDirectoUnitario", "CostoTotal", "Total", "Subtotal",
+    };
+
+    /// <summary>
+    /// Nombres internos canónicos que denotan un rol de porcentaje en los
+    /// catálogos (el token "P*" sigue siendo la señal universal).
+    /// </summary>
+    private static readonly HashSet<string> NombresPorcentajeCatalogo = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Porcentaje", "PorcentajeIndirectos", "PorcentajeFinanciamiento", "PorcentajeUtilidad",
+        "PctIndirectosCentral", "PctIndirectosCampo", "TasaPeriodo", "TasaInteres",
+    };
+
+    /// <summary>
+    /// Nombres internos canónicos que denotan un rol de cantidad en los catálogos
+    /// (el token "N*" sigue siendo la señal universal).
+    /// </summary>
+    private static readonly HashSet<string> NombresCantidadCatalogo = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Cantidad", "Rendimiento", "RendimientoDiario",
+    };
 
     /// <summary>
     /// Indica si un nombre interno corresponde a una columna interna que nunca
@@ -61,6 +97,65 @@ public static class ReportColumnDefinitionMapper
     {
         if (!string.IsNullOrWhiteSpace(formato)) return formato!.Trim();
         return esNumerica ? "N2" : string.Empty;
+    }
+
+    /// <summary>
+    /// Reconocimiento COMÚN de tokens de formato del contrato, compartido por el
+    /// mapper (mapeo) y por <c>ReportColumnGridFormat</c> (resolución de formato).
+    /// Un token es una letra inicial ("C", "N", "P") que marca el rol; los
+    /// formatos .NET explícitos ("#,##0.0000", "0.00") no lo son.
+    /// </summary>
+    public static bool EsTokenMonetario(string? formato) => EsTokenInicial(formato, 'C');
+
+    /// <summary>Token de cantidad ("N*").</summary>
+    public static bool EsTokenCantidad(string? formato) => EsTokenInicial(formato, 'N');
+
+    /// <summary>Token de porcentaje ("P*").</summary>
+    public static bool EsTokenPorcentaje(string? formato) => EsTokenInicial(formato, 'P');
+
+    /// <summary>
+    /// Reconocimiento COMÚN del rol monetario/importe: token "C*" o nombre interno
+    /// canónico del catálogo. Es la regla que las 11 migraciones reutilizan para
+    /// decidir <c>ReportColumnDefinition.EsMoneda</c>.
+    /// </summary>
+    public static bool EsRolMonetario(string? nombreInterno, string? formatoNumerico)
+        => EsTokenMonetario(formatoNumerico) || EsRolMonetarioPorNombre(nombreInterno);
+
+    /// <summary>Reconocimiento COMÚN del rol de porcentaje: token "P*" o nombre canónico.</summary>
+    public static bool EsRolPorcentaje(string? nombreInterno, string? formatoNumerico)
+        => EsTokenPorcentaje(formatoNumerico) || EsRolPorcentajePorNombre(nombreInterno);
+
+    /// <summary>Reconocimiento COMÚN del rol de cantidad: token "N*" o nombre canónico.</summary>
+    public static bool EsRolCantidad(string? nombreInterno, string? formatoNumerico)
+        => EsTokenCantidad(formatoNumerico) || EsRolCantidadPorNombre(nombreInterno);
+
+    private static bool EsRolMonetarioPorNombre(string? nombreInterno)
+        => NombresMonetariosCatalogo.Contains(SinPrefijoCol(nombreInterno));
+
+    private static bool EsRolPorcentajePorNombre(string? nombreInterno)
+        => NombresPorcentajeCatalogo.Contains(SinPrefijoCol(nombreInterno));
+
+    private static bool EsRolCantidadPorNombre(string? nombreInterno)
+        => NombresCantidadCatalogo.Contains(SinPrefijoCol(nombreInterno));
+
+    /// <summary>
+    /// Normaliza el nombre para el reconocimiento de rol: recorta espacios y
+    /// descarta el prefijo de grid <c>col</c> (p. ej. <c>colImporte</c> →
+    /// <c>Importe</c>), sin afectar el identificador neutral.
+    /// </summary>
+    private static string SinPrefijoCol(string? nombreInterno)
+    {
+        var id = (nombreInterno ?? string.Empty).Trim();
+        if (id.Length > 3 && id.StartsWith("col", StringComparison.OrdinalIgnoreCase))
+            id = id[3..];
+        return id;
+    }
+
+    private static bool EsTokenInicial(string? formato, char inicial)
+    {
+        if (string.IsNullOrWhiteSpace(formato)) return false;
+        var token = formato!.Trim();
+        return token.Length > 0 && (token[0] == inicial || token[0] == char.ToLowerInvariant(inicial));
     }
 
     /// <summary>
@@ -105,18 +200,185 @@ public static class ReportColumnDefinitionMapper
     /// <summary>
     /// Mapea una columna del Catálogo de Materiales. La entidad es la única
     /// fuente; el encabezado usa el default neutral <see cref="ReportTableStyle.LegacyMateriales"/>.
+    /// El Precio Unitario es monetario aunque su token sea el default
+    /// "#,##0.0000" (paridad con el grid). Se conserva EXACTAMENTE la semántica
+    /// del piloto: token "C*" o <c>PrecioUnitario</c>.
     /// </summary>
     public static ReportColumnDefinition MapearMaterial(ColumnaMaterial columna)
     {
         ArgumentNullException.ThrowIfNull(columna);
+        return MapearCatalogo(
+            Proyectar(
+                nombreInterno: columna.NombreInterno,
+                nombre: columna.Nombre,
+                visible: columna.Visible,
+                orden: columna.Orden,
+                ancho: columna.AnchoColumna,
+                alineacion: columna.Alineacion,
+                formatoNumerico: columna.FormatoNumerico,
+                nombreFuente: columna.NombreFuente,
+                tamanoFuente: columna.TamanoFuente,
+                colorFuente: columna.ColorFuente,
+                colorFondo: columna.ColorFondo,
+                negrita: columna.Negrita,
+                cursiva: columna.Cursiva,
+                wrapTexto: columna.WrapTexto,
+                alineacionVertical: columna.AlineacionVertical),
+            MaterialesDefault,
+            EsRolMonetarioPorNombreMaterial);
+    }
 
-        var esNumerica = EsNumericaColumnaMaterial(columna);
-        // ColumnaMaterial no expone TipoDato: la moneda se infiere del NombreInterno
-        // (el Precio Unitario SIEMPRE es monetario, paridad con el grid) o del token
-        // ("C*"). El default de Materiales "#,##0.0000" NO es moneda por sí mismo,
-        // pero el Precio Unitario sí lo es aunque use ese token.
-        var esMoneda = string.Equals(columna.NombreInterno, "PrecioUnitario", StringComparison.OrdinalIgnoreCase)
-                       || EsMonedaPorPrefijoToken(columna.FormatoNumerico);
+    // ─────────── Catálogos restantes (Fase 0): Mano de Obra, Herramientas, ───────────
+    // ─────────── Maquinaria/Costo Horario, Explosión, Indirectos,          ───────────
+    // ─────────── Financiamiento y Programas de Obra/Insumos.              ───────────
+    // Todas las entidades de catálogo comparten la misma forma; comparten un único
+    // núcleo de mapeo (<see cref="MapearCatalogo"/>) y el reconocimiento COMÚN de
+    // roles (<see cref="EsRolMonetario"/>). El estilo neutral es
+    // <see cref="ReportTableStyle.LegacyCatalogo"/> (línea base; cada reporte podrá
+    // fijar su estilo legacy específico en su propia migración).
+
+    /// <summary>Mapea una columna del catálogo de Mano de Obra.</summary>
+    public static ReportColumnDefinition MapearManoObra(ColumnaManoObra columna)
+    {
+        ArgumentNullException.ThrowIfNull(columna);
+        return MapearCatalogo(
+            Proyectar(
+                nombreInterno: columna.NombreInterno, nombre: columna.Nombre, visible: columna.Visible,
+                orden: columna.Orden, ancho: columna.AnchoColumna, alineacion: columna.Alineacion,
+                formatoNumerico: columna.FormatoNumerico, nombreFuente: columna.NombreFuente,
+                tamanoFuente: columna.TamanoFuente, colorFuente: columna.ColorFuente,
+                colorFondo: columna.ColorFondo, negrita: columna.Negrita, cursiva: columna.Cursiva,
+                wrapTexto: columna.WrapTexto, alineacionVertical: columna.AlineacionVertical),
+            CatalogoDefault,
+            EsRolMonetarioPorNombre);
+    }
+
+    /// <summary>Mapea una columna del catálogo de Herramientas.</summary>
+    public static ReportColumnDefinition MapearHerramienta(ColumnaHerramienta columna)
+    {
+        ArgumentNullException.ThrowIfNull(columna);
+        return MapearCatalogo(
+            Proyectar(
+                nombreInterno: columna.NombreInterno, nombre: columna.Nombre, visible: columna.Visible,
+                orden: columna.Orden, ancho: columna.AnchoColumna, alineacion: columna.Alineacion,
+                formatoNumerico: columna.FormatoNumerico, nombreFuente: columna.NombreFuente,
+                tamanoFuente: columna.TamanoFuente, colorFuente: columna.ColorFuente,
+                colorFondo: columna.ColorFondo, negrita: columna.Negrita, cursiva: columna.Cursiva,
+                wrapTexto: columna.WrapTexto, alineacionVertical: columna.AlineacionVertical),
+            CatalogoDefault,
+            EsRolMonetarioPorNombre);
+    }
+
+    /// <summary>Mapea una columna del catálogo de Maquinaria/Costo Horario.</summary>
+    public static ReportColumnDefinition MapearMaquinaria(ColumnaMaquinaria columna)
+    {
+        ArgumentNullException.ThrowIfNull(columna);
+        return MapearCatalogo(
+            Proyectar(
+                nombreInterno: columna.NombreInterno, nombre: columna.Nombre, visible: columna.Visible,
+                orden: columna.Orden, ancho: columna.AnchoColumna, alineacion: columna.Alineacion,
+                formatoNumerico: columna.FormatoNumerico, nombreFuente: columna.NombreFuente,
+                tamanoFuente: columna.TamanoFuente, colorFuente: columna.ColorFuente,
+                colorFondo: columna.ColorFondo, negrita: columna.Negrita, cursiva: columna.Cursiva,
+                wrapTexto: columna.WrapTexto, alineacionVertical: columna.AlineacionVertical),
+            CatalogoDefault,
+            EsRolMonetarioPorNombre);
+    }
+
+    /// <summary>Mapea una columna del módulo Explosión de Insumos (y reutilizable por APU).</summary>
+    public static ReportColumnDefinition MapearExplosion(ColumnaExplosion columna)
+    {
+        ArgumentNullException.ThrowIfNull(columna);
+        return MapearCatalogo(
+            Proyectar(
+                nombreInterno: columna.NombreInterno, nombre: columna.Nombre, visible: columna.Visible,
+                orden: columna.Orden, ancho: columna.AnchoColumna, alineacion: columna.Alineacion,
+                formatoNumerico: columna.FormatoNumerico, nombreFuente: columna.NombreFuente,
+                tamanoFuente: columna.TamanoFuente, colorFuente: columna.ColorFuente,
+                colorFondo: columna.ColorFondo, negrita: columna.Negrita, cursiva: columna.Cursiva,
+                wrapTexto: columna.WrapTexto, alineacionVertical: columna.AlineacionVertical),
+            CatalogoDefault,
+            EsRolMonetarioPorNombre);
+    }
+
+    /// <summary>Mapea una columna del módulo Cálculo de Indirectos.</summary>
+    public static ReportColumnDefinition MapearIndirectos(ColumnaIndirectos columna)
+    {
+        ArgumentNullException.ThrowIfNull(columna);
+        return MapearCatalogo(
+            Proyectar(
+                nombreInterno: columna.NombreInterno, nombre: columna.Nombre, visible: columna.Visible,
+                orden: columna.Orden, ancho: columna.AnchoColumna, alineacion: columna.Alineacion,
+                formatoNumerico: columna.FormatoNumerico, nombreFuente: columna.NombreFuente,
+                tamanoFuente: columna.TamanoFuente, colorFuente: columna.ColorFuente,
+                colorFondo: columna.ColorFondo, negrita: columna.Negrita, cursiva: columna.Cursiva,
+                wrapTexto: columna.WrapTexto, alineacionVertical: columna.AlineacionVertical),
+            CatalogoDefault,
+            EsRolMonetarioPorNombre);
+    }
+
+    /// <summary>Mapea una columna del módulo Financiamiento (y reutilizable por Utilidad).</summary>
+    public static ReportColumnDefinition MapearFinanciamiento(ColumnaFinanciamiento columna)
+    {
+        ArgumentNullException.ThrowIfNull(columna);
+        return MapearCatalogo(
+            Proyectar(
+                nombreInterno: columna.NombreInterno, nombre: columna.Nombre, visible: columna.Visible,
+                orden: columna.Orden, ancho: columna.AnchoColumna, alineacion: columna.Alineacion,
+                formatoNumerico: columna.FormatoNumerico, nombreFuente: columna.NombreFuente,
+                tamanoFuente: columna.TamanoFuente, colorFuente: columna.ColorFuente,
+                colorFondo: columna.ColorFondo, negrita: columna.Negrita, cursiva: columna.Cursiva,
+                wrapTexto: columna.WrapTexto, alineacionVertical: columna.AlineacionVertical),
+            CatalogoDefault,
+            EsRolMonetarioPorNombre);
+    }
+
+    /// <summary>Mapea una columna del Programa de Obra.</summary>
+    public static ReportColumnDefinition MapearProgramaObra(ColumnaProgramaObra columna)
+    {
+        ArgumentNullException.ThrowIfNull(columna);
+        return MapearCatalogo(
+            Proyectar(
+                nombreInterno: columna.NombreInterno, nombre: columna.Nombre, visible: columna.Visible,
+                orden: columna.Orden, ancho: columna.AnchoColumna, alineacion: columna.Alineacion,
+                formatoNumerico: columna.FormatoNumerico, nombreFuente: columna.NombreFuente,
+                tamanoFuente: columna.TamanoFuente, colorFuente: columna.ColorFuente,
+                colorFondo: columna.ColorFondo, negrita: columna.Negrita, cursiva: columna.Cursiva,
+                wrapTexto: columna.WrapTexto, alineacionVertical: columna.AlineacionVertical),
+            CatalogoDefault,
+            EsRolMonetarioPorNombre);
+    }
+
+    /// <summary>Mapea una columna del Programa de Insumos.</summary>
+    public static ReportColumnDefinition MapearProgramaInsumos(ColumnaProgramaInsumos columna)
+    {
+        ArgumentNullException.ThrowIfNull(columna);
+        return MapearCatalogo(
+            Proyectar(
+                nombreInterno: columna.NombreInterno, nombre: columna.Nombre, visible: columna.Visible,
+                orden: columna.Orden, ancho: columna.AnchoColumna, alineacion: columna.Alineacion,
+                formatoNumerico: columna.FormatoNumerico, nombreFuente: columna.NombreFuente,
+                tamanoFuente: columna.TamanoFuente, colorFuente: columna.ColorFuente,
+                colorFondo: columna.ColorFondo, negrita: columna.Negrita, cursiva: columna.Cursiva,
+                wrapTexto: columna.WrapTexto, alineacionVertical: columna.AlineacionVertical),
+            CatalogoDefault,
+            EsRolMonetarioPorNombre);
+    }
+
+    /// <summary>
+    /// Núcleo compartido de mapeo de una columna de catálogo. Aplica la
+    /// normalización neutral común y decide <c>EsMoneda</c> con el predicado de
+    /// rol monetario del reporte. Es privado: la superficie pública son los
+    /// overloads por entidad, para no acoplar a los reportes a una estructura.
+    /// </summary>
+    private static ReportColumnDefinition MapearCatalogo(
+        ColumnaCatalogo columna,
+        ReportTableStyle estilo,
+        Func<string?, bool> esMonedaPorNombre)
+    {
+        var esNumerica = EsNumericaCatalogo(columna.FormatoNumerico, columna.Alineacion);
+        var esMoneda = esMonedaPorNombre(columna.NombreInterno)
+                       || EsTokenMonetario(columna.FormatoNumerico);
 
         return new ReportColumnDefinition(
             Identificador: NormalizarIdentificador(columna.NombreInterno),
@@ -124,7 +386,7 @@ public static class ReportColumnDefinitionMapper
             Visible: columna.Visible,
             Orden: columna.Orden,
             Ancho: columna.AnchoColumna,
-            EstiloEncabezado: MaterialesDefault.EstiloEncabezado,
+            EstiloEncabezado: estilo.EstiloEncabezado,
             EstiloContenido: ConstruirEstiloContenido(
                 fuente: columna.NombreFuente,
                 tamano: columna.TamanoFuente,
@@ -132,7 +394,7 @@ public static class ReportColumnDefinitionMapper
                 cursiva: columna.Cursiva,
                 colorFuente: columna.ColorFuente,
                 colorFondo: columna.ColorFondo,
-                defecto: MaterialesDefault.EstiloContenido),
+                defecto: estilo.EstiloContenido),
             Alineacion: NormalizarAlineacion(columna.Alineacion, esNumerica),
             AlineacionVertical: NormalizarAlineacionVertical(columna.AlineacionVertical),
             Wrap: columna.WrapTexto,
@@ -144,27 +406,80 @@ public static class ReportColumnDefinitionMapper
     }
 
     /// <summary>
-    /// Indica si el token de formato denota moneda: empieza por 'C' (p. ej. "C2",
-    /// "C4"), sin distinguir mayúsculas. Los formatos numéricos explícitos
-    /// ("#,##0.0000", "0.00") y los tokens "N*"/"P*" no son moneda.
+    /// El Precio Unitario del catálogo de Materiales SIEMPRE es monetario (paridad
+    /// con el grid), aunque su token sea el default "#,##0.0000".
     /// </summary>
-    private static bool EsMonedaPorPrefijoToken(string? formato)
-    {
-        if (string.IsNullOrWhiteSpace(formato)) return false;
-        var token = formato!.Trim();
-        return token[0] == 'C' || token[0] == 'c';
-    }
+    private static bool EsRolMonetarioPorNombreMaterial(string? nombreInterno)
+        => string.Equals(nombreInterno, "PrecioUnitario", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Campos compartidos por todas las entidades de columna de catálogo.</summary>
+    private readonly record struct ColumnaCatalogo(
+        string? NombreInterno,
+        string? Nombre,
+        bool Visible,
+        int Orden,
+        int AnchoColumna,
+        AlineacionColumna Alineacion,
+        string? FormatoNumerico,
+        string? NombreFuente,
+        int TamanoFuente,
+        string? ColorFuente,
+        string? ColorFondo,
+        bool Negrita,
+        bool Cursiva,
+        bool WrapTexto,
+        int AlineacionVertical);
+
+    private static ColumnaCatalogo Proyectar(
+        string? nombreInterno,
+        string? nombre,
+        bool visible,
+        int orden,
+        int ancho,
+        AlineacionColumna alineacion,
+        string? formatoNumerico,
+        string? nombreFuente,
+        int tamanoFuente,
+        string? colorFuente,
+        string? colorFondo,
+        bool negrita,
+        bool cursiva,
+        bool wrapTexto,
+        int alineacionVertical)
+        => new(
+            NombreInterno: nombreInterno,
+            Nombre: nombre,
+            Visible: visible,
+            Orden: orden,
+            AnchoColumna: ancho,
+            Alineacion: alineacion,
+            FormatoNumerico: formatoNumerico,
+            NombreFuente: nombreFuente,
+            TamanoFuente: tamanoFuente,
+            ColorFuente: colorFuente,
+            ColorFondo: colorFondo,
+            Negrita: negrita,
+            Cursiva: cursiva,
+            WrapTexto: wrapTexto,
+            AlineacionVertical: alineacionVertical);
+
+    /// <summary>
+    /// Indica si el token de formato denota moneda: empieza por 'C' (p. ej. "C2",
+    /// "C4"), sin distinguir mayúsculas. Delega en el reconocimiento común
+    /// <see cref="EsTokenMonetario"/>.
+    /// </summary>
+    private static bool EsMonedaPorPrefijoToken(string? formato) => EsTokenMonetario(formato);
 
     private static bool EsNumerica(TipoDatoColumna tipo)
         => tipo is TipoDatoColumna.Numerico or TipoDatoColumna.Moneda or TipoDatoColumna.Porcentaje;
 
     /// <summary>
-    /// Las columnas de material no exponen <c>TipoDato</c>: se infiere lo numérico
+    /// Las columnas de catálogo no exponen <c>TipoDato</c>: se infiere lo numérico
     /// del formato persistido o de la alineación derecha.
     /// </summary>
-    private static bool EsNumericaColumnaMaterial(ColumnaMaterial columna)
-        => !string.IsNullOrWhiteSpace(columna.FormatoNumerico)
-           || columna.Alineacion == AlineacionColumna.Derecha;
+    private static bool EsNumericaCatalogo(string? formatoNumerico, AlineacionColumna alineacion)
+        => !string.IsNullOrWhiteSpace(formatoNumerico)
+           || alineacion == AlineacionColumna.Derecha;
 
     private static ReportTextStyle ConstruirEstiloContenido(
         string? fuente,

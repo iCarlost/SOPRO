@@ -12,6 +12,7 @@ using System.Linq;
 using System.Windows.Forms;
 using ClosedXML.Excel;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
@@ -52,7 +53,11 @@ namespace SOPRO.WinForms.Forms
                 var tituloCfg = _proyectoId.HasValue
                     ? new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyectoId.Value, ReportTitleModuleKeys.CatalogoMaquinaria, lblTitulo.Text)
                     : null;
-                GeneradorExcelCostoHorario.Generar(wb, _listaActual, proyecto, plantilla, svcRep, tituloCfg);
+                // Snapshot neutral compartido con el PDF (misma lista/orden/ancho/formato/estilo).
+                var snapshot = new CostoHorarioReportSnapshotBuilder().Build(
+                    _proyectoId ?? 0, lblTitulo.Text, _columnasConfig,
+                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+                GeneradorExcelCostoHorario.Generar(wb, _listaActual, proyecto, plantilla, snapshot, svcRep, tituloCfg);
                 wb.SaveAs(dlg.FileName);
 
                 if (MessageBox.Show(
