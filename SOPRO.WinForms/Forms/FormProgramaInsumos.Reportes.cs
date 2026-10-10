@@ -1,6 +1,7 @@
 ﻿using SOPRO.Application.DTOs.Programacion;
 using SOPRO.Application.DTOs.Programacion.Insumos;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Application.Services.Programacion;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -57,11 +58,15 @@ namespace SOPRO.WinForms.Forms
                     return false;
 
                 Cursor = Cursors.WaitCursor;
+                var builder = new ProgramaInsumosReportSnapshotBuilder();
+                var snapshot = builder.Build(_proyecto, tituloReporte, _actual, MapearVistaReporte(VistaActual()));
+                var datos = builder.ConstruirDatos(_actual, ganttModel);
                 var generador = new Services.GeneradorExcelProgramaInsumos(svc);
                 var ruta = generador.Generar(
                     _proyecto,
                     plantilla,
-                    dgvProgramaInsumos,
+                    snapshot,
+                    datos,
                     ganttModel,
                     _ganttControl.VisualSettings,
                     _ganttControl.FooterDisplayMode,
@@ -152,5 +157,15 @@ namespace SOPRO.WinForms.Forms
             }
             ColumnaSeleccionadaCambiada?.Invoke(this, EventArgs.Empty);
         }
+
+        private VistaProgramaInsumos VistaActual()
+            => cboVista.ComboBox.SelectedItem is VistaProgramaInsumos vista ? vista : VistaProgramaInsumos.Cantidades;
+
+        private static ProgramaInsumosVista MapearVistaReporte(VistaProgramaInsumos vista) => vista switch
+        {
+            VistaProgramaInsumos.Importes => ProgramaInsumosVista.Importes,
+            VistaProgramaInsumos.Mixto => ProgramaInsumosVista.Mixto,
+            _ => ProgramaInsumosVista.Cantidades
+        };
     }
 }

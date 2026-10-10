@@ -4,7 +4,9 @@ using System.Drawing;
 using System.Windows.Forms;
 using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.DTOs.Programacion;
+using SOPRO.Application.Models.Reporting.Programa;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.WinForms.Helpers;
@@ -59,11 +61,15 @@ namespace SOPRO.WinForms.Forms
                     return;
 
                 Cursor = Cursors.WaitCursor;
+                var builder = new ProgramaObraReportSnapshotBuilder();
+                var snapshot = builder.Build(_proyecto, tituloReporte, _columnasConfig);
+                ProgramaReportData datos = builder.ConstruirDatos(_actividades, ganttModel);
                 var generador = new Services.GeneradorExcelProgramaObra(svc);
                 var ruta = generador.Generar(
                     _proyecto,
                     plantilla,
-                    dgvActividades,
+                    snapshot,
+                    datos,
                     ganttModel,
                     _ganttControl.VisualSettings,
                     _ganttControl.FooterDisplayMode,
@@ -113,11 +119,15 @@ namespace SOPRO.WinForms.Forms
                     return;
 
                 Cursor = Cursors.WaitCursor;
+                var builder = new ProgramaObraReportSnapshotBuilder();
+                var snapshot = builder.Build(_proyecto, tituloReporte, _columnasConfig);
+                ProgramaReportData datos = builder.ConstruirDatos(_actividades, _ganttControl.RenderModel);
                 var generador = new Services.GeneradorPdfProgramaObra(svc);
                 var ruta = generador.Generar(
                     _proyecto,
                     plantilla,
-                    dgvActividades,
+                    snapshot,
+                    datos,
                     _ganttControl.RenderModel,
                     _ganttControl.VisualSettings,
                     tituloReporte,

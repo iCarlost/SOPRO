@@ -1,6 +1,10 @@
 using ClosedXML.Excel;
 using SOPRO.Application.DTOs.Programacion;
+using SOPRO.Application.Models.Reporting.Programa;
+using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Core.Entities;
+using SOPRO.Reporting.Formatting;
+using SOPRO.Reporting.Layout;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Models;
 using System.Drawing;
@@ -31,7 +35,8 @@ namespace SOPRO.WinForms.Services
             string tituloReporte,
             string prefijoArchivo,
             string? rutaDestino = null,
-            ConfiguracionTituloReporte? tituloCfg = null)
+            ConfiguracionTituloReporte? tituloCfg = null,
+            IReadOnlyList<ProgramaPeriodColumn>? periodos = null)
         {
             ArgumentNullException.ThrowIfNull(proyecto);
             ArgumentNullException.ThrowIfNull(plantilla);
@@ -55,8 +60,9 @@ namespace SOPRO.WinForms.Services
             using var wb = new XLWorkbook();
             var ws = wb.Worksheets.Add("Programa");
 
+            var periodosExport = periodos ?? ProgramaPeriodColumn.FromEscala(ganttModel.Escala);
             int timelineColStart = columnas.Count + 1;
-            int numCols = columnas.Count + Math.Max(1, ganttModel.Escala.Count);
+            int numCols = columnas.Count + Math.Max(1, periodosExport.Count);
             int fila = 1;
             fila = ReporteEncabezadoHelper.EscribirEncabezado(ws, plantilla, proyecto, numCols, fila, _svc);
 
@@ -78,7 +84,8 @@ namespace SOPRO.WinForms.Services
             int headerTopRow = fila;
             int headerBottomRow = fila + 1;
             EscribirEncabezadosIzquierda(ws, columnas, headerTopRow, headerBottomRow);
-            EscribirEncabezadoTimeline(ws, ganttModel, timelineColStart, headerTopRow, headerBottomRow);
+            var estiloEncabezado = columnas.Count > 0 ? columnas[0].EstiloEncabezado : null;
+            EscribirEncabezadoTimeline(ws, periodosExport, estiloEncabezado, timelineColStart, headerTopRow, headerBottomRow);
             fila += 2;
             ReporteEncabezadoHelper.ConfigurarFilasRepetidas(ws, 1, fila - 1);
             int filaInicioDatos = fila;
@@ -192,26 +199,86 @@ namespace SOPRO.WinForms.Services
             return rutaDestino;
         }
 
-        protected static List<ProgramaExcelColumnExport> CapturarColumnasVisibles(DataGridView grid)
+        /// <summary>
+        /// Proyecta las columnas visibles del snapshot neutral a las columnas que
+        /// exporta el layout Excel. Los estilos (fuente, color, alineación, wrap)
+        /// salen del contrato, no de la cuadrícula viva.
+        /// </summary>
+        protected static List<ProgramaExcelColumnExport> MapearColumnas(ReportColumnSnapshot snapshot)
         {
-            return grid.Columns.Cast<DataGridViewColumn>()
-                .Where(c => c.Visible && c.Name != "colDummy")
-                .OrderBy(c => c.DisplayIndex)
+            ArgumentNullException.ThrowIfNull(snapshot);
+            return snapshot.Columnas
+                .Where(c => c.Visible)
+                .OrderBy(c => c.Orden)
                 .Select(c => new ProgramaExcelColumnExport
                 {
-                    Name = c.Name,
-                    HeaderText = c.HeaderText,
-                    Width = c.Width,
-                    FontName = c.DefaultCellStyle.Font?.FontFamily.Name ?? c.InheritedStyle.Font?.FontFamily.Name ?? "Segoe UI",
-                    FontSize = c.DefaultCellStyle.Font?.Size ?? c.InheritedStyle.Font?.Size ?? 9f,
-                    Bold = c.DefaultCellStyle.Font?.Bold ?? c.InheritedStyle.Font?.Bold ?? false,
-                    Italic = c.DefaultCellStyle.Font?.Italic ?? c.InheritedStyle.Font?.Italic ?? false,
-                    ForeColor = TryGetColor(c.DefaultCellStyle.ForeColor, XLColor.Black),
-                    BackColor = TryGetColor(c.DefaultCellStyle.BackColor, XLColor.White),
-                    Alignment = ConvertAlignment(c.DefaultCellStyle.Alignment),
-                    WrapText = c.DefaultCellStyle.WrapMode == DataGridViewTriState.True
+                    Name = c.Identificador,
+                    HeaderText = c.Encabezado ?? string.Empty,
+                    Width = c.Ancho,
+                    FontName = c.EstiloContenido.Fuente,
+                    FontSize = c.EstiloContenido.Tamano,
+                    Bold = c.EstiloContenido.Negrita,
+                    Italic = c.EstiloContenido.Cursiva,
+                    ForeColor = ExcelColorHelper.SafeFromHtml(c.EstiloContenido.ColorFuente, "#000000"),
+                    BackColor = ExcelColorHelper.SafeFromHtml(c.EstiloContenido.ColorFondo, "#FFFFFF"),
+                    Alignment = ConvertAlignment(c.Alineacion),
+                    WrapText = c.Wrap,
+                    EstiloEncabezado = c.EstiloEncabezado
                 })
                 .ToList();
+        }
+
+        /// <summary>
+        /// Materializa las filas de exportación desde el modelo neutral: los valores
+        /// numéricos se formatean con el contrato compartido
+        /// (<see cref="ReportColumnGridFormat"/>: '$' + decimales del proyecto) y los
+        /// textos ya vienen materializados en el modelo.
+        /// </summary>
+        protected static List<ProgramaExcelRowExport> MapearFilas(
+            ProgramaReportData datos,
+            ReportColumnSnapshot snapshot)
+        {
+            ArgumentNullException.ThrowIfNull(datos);
+            ArgumentNullException.ThrowIfNull(snapshot);
+
+            var columnas = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+            var resultado = new List<ProgramaExcelRowExport>();
+
+            foreach (var fila in datos.Filas)
+            {
+                var valores = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                var rawValores = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var col in columnas)
+                {
+                    if (fila.TryObtenerNumero(col.Identificador, out var numero))
+                    {
+                        valores[col.Identificador] = ReportColumnGridFormat.FormatearPdf(numero, col, snapshot);
+                        rawValores[col.Identificador] = numero;
+                        rawValores[col.Encabezado] = numero;
+                    }
+                    else
+                    {
+                        var texto = fila.ObtenerTexto(col.Identificador);
+                        if (texto != null)
+                            valores[col.Identificador] = texto;
+                    }
+                }
+
+                resultado.Add(new ProgramaExcelRowExport
+                {
+                    ItemId = fila.ItemId,
+                    Valores = valores,
+                    RawValores = rawValores,
+                    Inicio = fila.Inicio,
+                    Fin = fila.Fin,
+                    EsCritica = fila.EsCritica,
+                    EsResumen = fila.EsResumen,
+                    SegmentosFinancieros = fila.SegmentosFinancieros
+                });
+            }
+
+            return resultado;
         }
 
         protected static void EscribirEncabezadosIzquierda(IXLWorksheet ws, List<ProgramaExcelColumnExport> columnas, int rowTop, int rowBottom)
@@ -222,20 +289,20 @@ namespace SOPRO.WinForms.Services
                 var range = ws.Range(rowTop, i + 1, rowBottom, i + 1);
                 range.Merge();
                 range.Value = col.HeaderText;
-                AplicarEstiloEncabezado(range);
+                AplicarEstiloEncabezado(range, col.EstiloEncabezado);
             }
         }
 
-        protected static void EscribirEncabezadoTimeline(IXLWorksheet ws, GanttRenderModel model, int timelineColStart, int rowTop, int rowBottom)
+        protected static void EscribirEncabezadoTimeline(IXLWorksheet ws, IReadOnlyList<ProgramaPeriodColumn> periodos, ReportTextStyle? estiloEncabezado, int timelineColStart, int rowTop, int rowBottom)
         {
             var index = 0;
-            while (index < model.Escala.Count)
+            while (index < periodos.Count)
             {
-                var current = model.Escala[index];
-                var group = current.GrupoEtiqueta ?? string.Empty;
+                var current = periodos[index];
+                var group = current.Grupo ?? string.Empty;
                 int start = timelineColStart + index;
                 int end = start;
-                while (index + 1 < model.Escala.Count && string.Equals(model.Escala[index + 1].GrupoEtiqueta, group, StringComparison.OrdinalIgnoreCase))
+                while (index + 1 < periodos.Count && string.Equals(periodos[index + 1].Grupo, group, StringComparison.OrdinalIgnoreCase))
                 {
                     index++;
                     end = timelineColStart + index;
@@ -243,16 +310,16 @@ namespace SOPRO.WinForms.Services
                 var groupRange = ws.Range(rowTop, start, rowTop, end);
                 groupRange.Merge();
                 groupRange.Value = group;
-                AplicarEstiloEncabezado(groupRange);
+                AplicarEstiloEncabezado(groupRange, estiloEncabezado);
                 index++;
             }
 
-            for (int i = 0; i < model.Escala.Count; i++)
+            for (int i = 0; i < periodos.Count; i++)
             {
                 var cell = ws.Cell(rowBottom, timelineColStart + i);
-                cell.Value = model.Escala[i].Etiqueta;
+                cell.Value = periodos[i].Etiqueta;
                 var range = ws.Range(rowBottom, timelineColStart + i, rowBottom, timelineColStart + i);
-                AplicarEstiloEncabezado(range);
+                AplicarEstiloEncabezado(range, estiloEncabezado);
             }
             ws.Row(rowTop).Height = 20;
             ws.Row(rowBottom).Height = 22;
@@ -307,15 +374,15 @@ namespace SOPRO.WinForms.Services
             return -1;
         }
 
-        protected static void AplicarEstiloEncabezado(IXLRange range)
+        protected static void AplicarEstiloEncabezado(IXLRange range, ReportTextStyle? estilo)
         {
-            range.Style.Font.FontName = "Segoe UI";
-            range.Style.Font.FontSize = 9;
-            range.Style.Font.Bold = true;
+            range.Style.Font.FontName = string.IsNullOrWhiteSpace(estilo?.Fuente) ? "Segoe UI" : estilo!.Fuente;
+            range.Style.Font.FontSize = estilo != null && estilo.Tamano > 0 ? estilo.Tamano : 9;
+            range.Style.Font.Bold = estilo?.Negrita ?? true;
             range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             range.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-            range.Style.Fill.BackgroundColor = XLColor.FromHtml("#1565C0");
-            range.Style.Font.FontColor = XLColor.White;
+            range.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(estilo?.ColorFondo, "#1565C0");
+            range.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(estilo?.ColorFuente, "#FFFFFF");
             range.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             range.Style.Border.OutsideBorderColor = XLColor.White;
             range.Style.Alignment.WrapText = true;
@@ -339,7 +406,7 @@ namespace SOPRO.WinForms.Services
         protected static void ConfigurarColumnasGrid(IXLWorksheet ws, List<ProgramaExcelColumnExport> columnas)
         {
             for (int i = 0; i < columnas.Count; i++)
-                ws.Column(i + 1).Width = PixelsToExcelWidth(columnas[i].Width);
+                ws.Column(i + 1).Width = ReportColumnWidthConverter.PxToExcelWidth(columnas[i].Width);
         }
 
         protected static void ConfigurarColumnasTimeline(IXLWorksheet ws, GanttRenderModel ganttModel, int timelineColStart, int timelineCellWidth)
@@ -509,27 +576,12 @@ namespace SOPRO.WinForms.Services
             return string.Concat(valor.Select(c => invalids.Contains(c) ? '_' : c));
         }
 
-        private static XLColor TryGetColor(Color color, XLColor fallback)
-        {
-            if (color.IsEmpty) return fallback;
-            // XLColor.FromColor puede fallar con colores nombrados ("White", "Black", etc.)
-            // en algunas versiones de ClosedXML. Convertimos siempre a hex ARGB explícito.
-            try
-            {
-                return XLColor.FromArgb(color.A, color.R, color.G, color.B);
-            }
-            catch
-            {
-                return fallback;
-            }
-        }
-
-        private static XLAlignmentHorizontalValues ConvertAlignment(DataGridViewContentAlignment alignment)
+        private static XLAlignmentHorizontalValues ConvertAlignment(ReportTextAlignment alignment)
         {
             return alignment switch
             {
-                DataGridViewContentAlignment.BottomCenter or DataGridViewContentAlignment.MiddleCenter or DataGridViewContentAlignment.TopCenter => XLAlignmentHorizontalValues.Center,
-                DataGridViewContentAlignment.BottomRight or DataGridViewContentAlignment.MiddleRight or DataGridViewContentAlignment.TopRight => XLAlignmentHorizontalValues.Right,
+                ReportTextAlignment.Centro => XLAlignmentHorizontalValues.Center,
+                ReportTextAlignment.Derecha => XLAlignmentHorizontalValues.Right,
                 _ => XLAlignmentHorizontalValues.Left
             };
         }
@@ -547,6 +599,7 @@ namespace SOPRO.WinForms.Services
             public XLColor BackColor { get; set; } = XLColor.White;
             public XLAlignmentHorizontalValues Alignment { get; set; } = XLAlignmentHorizontalValues.Left;
             public bool WrapText { get; set; }
+            public ReportTextStyle? EstiloEncabezado { get; set; }
         }
 
         protected sealed class ProgramaExcelRowExport

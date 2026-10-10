@@ -3,15 +3,22 @@ using PdfSharp.Drawing;
 using PdfSharp.Drawing.Layout;
 using PdfSharp.Pdf;
 using SOPRO.Application.DTOs.Programacion;
+using SOPRO.Application.Models.Reporting.Programa;
+using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Core.Entities;
+using SOPRO.Reporting.Formatting;
 using SOPRO.WinForms.Models;
 using SOPRO.WinForms.Helpers;
-using System.Windows.Forms;
 using DrawingColor = System.Drawing.Color;
 using DrawingFont = System.Drawing.Font;
 
 namespace SOPRO.WinForms.Services
 {
+    /// <summary>
+    /// Genera el reporte PDF del Programa de Obra a partir del contrato neutral:
+    /// snapshot de columnas + filas materializadas + <see cref="GanttRenderModel"/>.
+    /// No recibe ni lee la cuadrícula viva.
+    /// </summary>
     public sealed class GeneradorPdfProgramaObra
     {
         private readonly ReporteService _svc;
@@ -21,7 +28,7 @@ namespace SOPRO.WinForms.Services
             _svc = svc;
         }
 
-        private sealed class ProgramaPdfColumn
+        internal sealed class ProgramaPdfColumn
         {
             public string Name { get; set; } = string.Empty;
             public string HeaderText { get; set; } = string.Empty;
@@ -32,15 +39,14 @@ namespace SOPRO.WinForms.Services
             public bool Italic { get; set; }
             public DrawingColor ForeColor { get; set; } = DrawingColor.Black;
             public DrawingColor BackColor { get; set; } = DrawingColor.White;
-            public DataGridViewContentAlignment Alignment { get; set; } = DataGridViewContentAlignment.MiddleLeft;
+            public ReportTextAlignment Alignment { get; set; } = ReportTextAlignment.Izquierda;
             public bool WrapText { get; set; }
         }
 
-        private sealed class ProgramaPdfRow
+        internal sealed class ProgramaPdfRow
         {
             public int? ItemId { get; set; }
             public Dictionary<string, string> Valores { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-            public Dictionary<string, object?> RawValores { get; set; } = new(StringComparer.OrdinalIgnoreCase);
             public DateTime? Inicio { get; set; }
             public DateTime? Fin { get; set; }
             public bool EsCritica { get; set; }
@@ -62,21 +68,57 @@ namespace SOPRO.WinForms.Services
         public string Generar(
             Proyecto proyecto,
             PlantillaReporte plantilla,
-            DataGridView grid,
+            ReportColumnSnapshot snapshot,
+            ProgramaReportData datos,
             GanttRenderModel ganttModel,
             GanttVisualSettings ganttVisualSettings,
             string tituloReporte,
             string? rutaDestino = null,
             ConfiguracionTituloReporte? tituloCfg = null)
         {
+            ArgumentNullException.ThrowIfNull(snapshot);
+            ArgumentNullException.ThrowIfNull(datos);
+
+            var columnas = MapearColumnas(snapshot);
+            var filas = MapearFilas(datos, snapshot);
+            return GenerarCore(proyecto, plantilla, columnas, filas, datos.Periodos, ganttModel, ganttVisualSettings, tituloReporte, rutaDestino, tituloCfg);
+        }
+
+        /// <summary>
+        /// Sobrecarga interna para el Programa de Insumos (migración 4.2 diferida):
+        /// recibe las columnas y filas ya capturadas por el llamador. No recibe el grid.
+        /// </summary>
+        internal string Generar(
+            Proyecto proyecto,
+            PlantillaReporte plantilla,
+            List<ProgramaPdfColumn> columnas,
+            List<ProgramaPdfRow> filas,
+            IReadOnlyList<ProgramaPeriodColumn>? periodos,
+            GanttRenderModel ganttModel,
+            GanttVisualSettings ganttVisualSettings,
+            string tituloReporte,
+            string? rutaDestino = null,
+            ConfiguracionTituloReporte? tituloCfg = null)
+            => GenerarCore(proyecto, plantilla, columnas, filas, periodos, ganttModel, ganttVisualSettings, tituloReporte, rutaDestino, tituloCfg);
+
+        private string GenerarCore(
+            Proyecto proyecto,
+            PlantillaReporte plantilla,
+            List<ProgramaPdfColumn> columnas,
+            List<ProgramaPdfRow> filas,
+            IReadOnlyList<ProgramaPeriodColumn>? periodos,
+            GanttRenderModel ganttModel,
+            GanttVisualSettings ganttVisualSettings,
+            string tituloReporte,
+            string? rutaDestino,
+            ConfiguracionTituloReporte? tituloCfg)
+        {
             ArgumentNullException.ThrowIfNull(proyecto);
             ArgumentNullException.ThrowIfNull(plantilla);
-            ArgumentNullException.ThrowIfNull(grid);
             ArgumentNullException.ThrowIfNull(ganttModel);
             ArgumentNullException.ThrowIfNull(ganttVisualSettings);
 
-            var columnas = CapturarColumnasVisibles(grid);
-            var filas = ObtenerFilas(grid, ganttModel);
+            var periodosExport = periodos ?? ProgramaPeriodColumn.FromEscala(ganttModel.Escala);
             if (columnas.Count == 0)
                 throw new InvalidOperationException("No hay columnas visibles para exportar.");
             if (filas.Count == 0)
@@ -120,7 +162,7 @@ namespace SOPRO.WinForms.Services
 
                 double y = layout.BodyTop;
                 y = DrawReportHeading(gfx, layout, y, proyecto, ganttModel, tituloReporte, resources, tituloCfg);
-                var bands = DrawTimelineHeaders(gfx, layout, y, ganttModel, columnas, resources);
+                var bands = DrawTimelineHeaders(gfx, layout, y, periodosExport, columnas, resources);
                 y = bands.BodyTop;
 
                 while (rowIndex < filas.Count)
@@ -365,68 +407,64 @@ namespace SOPRO.WinForms.Services
             public List<double> LeftWidths { get; set; } = new();
         }
 
-        private static List<ProgramaPdfColumn> CapturarColumnasVisibles(DataGridView grid)
+        private static List<ProgramaPdfColumn> MapearColumnas(ReportColumnSnapshot snapshot)
         {
-            return grid.Columns.Cast<DataGridViewColumn>()
-                .Where(c => c.Visible && c.Name != "colDummy")
-                .OrderBy(c => c.DisplayIndex)
+            ArgumentNullException.ThrowIfNull(snapshot);
+            return snapshot.Columnas
+                .Where(c => c.Visible)
+                .OrderBy(c => c.Orden)
                 .Select(c => new ProgramaPdfColumn
                 {
-                    Name = c.Name,
-                    HeaderText = c.HeaderText,
-                    WidthPx = c.Width,
-                    FontName = c.DefaultCellStyle.Font?.FontFamily.Name ?? c.InheritedStyle.Font?.FontFamily.Name ?? "Segoe UI",
-                    FontSize = c.DefaultCellStyle.Font?.Size ?? c.InheritedStyle.Font?.Size ?? 9f,
-                    Bold = c.DefaultCellStyle.Font?.Bold ?? c.InheritedStyle.Font?.Bold ?? false,
-                    Italic = c.DefaultCellStyle.Font?.Italic ?? c.InheritedStyle.Font?.Italic ?? false,
-                    ForeColor = ResolveColor(c.DefaultCellStyle.ForeColor, DrawingColor.Black),
-                    BackColor = ResolveColor(c.DefaultCellStyle.BackColor, DrawingColor.White),
-                    Alignment = c.DefaultCellStyle.Alignment,
-                    WrapText = c.DefaultCellStyle.WrapMode == DataGridViewTriState.True
+                    Name = c.Identificador,
+                    HeaderText = c.Encabezado ?? string.Empty,
+                    WidthPx = c.Ancho,
+                    FontName = c.EstiloContenido.Fuente,
+                    FontSize = c.EstiloContenido.Tamano,
+                    Bold = c.EstiloContenido.Negrita,
+                    Italic = c.EstiloContenido.Cursiva,
+                    ForeColor = ParseColor(c.EstiloContenido.ColorFuente, DrawingColor.Black),
+                    BackColor = ParseColor(c.EstiloContenido.ColorFondo, DrawingColor.White),
+                    Alignment = c.Alineacion,
+                    WrapText = c.Wrap
                 })
                 .ToList();
         }
 
-        private static List<ProgramaPdfRow> ObtenerFilas(DataGridView grid, GanttRenderModel gantt)
+        private static List<ProgramaPdfRow> MapearFilas(ProgramaReportData datos, ReportColumnSnapshot snapshot)
         {
-            var filasGantt = gantt.Filas.ToDictionary(x => x.Id);
+            ArgumentNullException.ThrowIfNull(datos);
+            ArgumentNullException.ThrowIfNull(snapshot);
+
+            var columnas = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
             var resultado = new List<ProgramaPdfRow>();
-            foreach (DataGridViewRow row in grid.Rows)
+
+            foreach (var fila in datos.Filas)
             {
-                if (row.IsNewRow || !row.Visible)
-                    continue;
-
-                int? id = null;
-                if (row.DataBoundItem is ActivityGridRowDto actividad)
-                    id = actividad.Id;
-                else if (row.Tag is int tagId)
-                    id = tagId;
-
-                filasGantt.TryGetValue(id ?? -1, out var filaGantt);
                 var valores = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                var rawValores = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-                foreach (DataGridViewCell cell in row.Cells)
+                foreach (var col in columnas)
                 {
-                    var col = grid.Columns[cell.ColumnIndex];
-                    if (!col.Visible || col.Name == "colDummy")
-                        continue;
-                    valores[col.Name] = Convert.ToString(cell.FormattedValue, CultureInfo.CurrentCulture) ?? string.Empty;
-                    rawValores[col.Name] = cell.Value;
-                    rawValores[col.HeaderText] = cell.Value;
+                    if (fila.TryObtenerNumero(col.Identificador, out var numero))
+                        valores[col.Identificador] = ReportColumnGridFormat.FormatearPdf(numero, col, snapshot);
+                    else
+                    {
+                        var texto = fila.ObtenerTexto(col.Identificador);
+                        if (texto != null)
+                            valores[col.Identificador] = texto;
+                    }
                 }
 
                 resultado.Add(new ProgramaPdfRow
                 {
-                    ItemId = id,
+                    ItemId = fila.ItemId,
                     Valores = valores,
-                    RawValores = rawValores,
-                    Inicio = filaGantt?.Inicio,
-                    Fin = filaGantt?.Fin,
-                    EsCritica = filaGantt?.EsCritica ?? false,
-                    EsResumen = filaGantt?.EsResumen ?? false,
-                    SegmentosFinancieros = filaGantt?.SegmentosFinancieros ?? new List<GanttPeriodSegmentDto>()
+                    Inicio = fila.Inicio,
+                    Fin = fila.Fin,
+                    EsCritica = fila.EsCritica,
+                    EsResumen = fila.EsResumen,
+                    SegmentosFinancieros = fila.SegmentosFinancieros
                 });
             }
+
             return resultado;
         }
 
@@ -534,7 +572,7 @@ namespace SOPRO.WinForms.Services
             return y + 18;
         }
 
-        private TimelineBands DrawTimelineHeaders(XGraphics gfx, PageLayout layout, double y, GanttRenderModel ganttModel, List<ProgramaPdfColumn> columnas, DrawResources resources)
+        private TimelineBands DrawTimelineHeaders(XGraphics gfx, PageLayout layout, double y, IReadOnlyList<ProgramaPeriodColumn> periodos, List<ProgramaPdfColumn> columnas, DrawResources resources)
         {
             var leftWidths = CalculateProtectedLeftWidths(columnas);
             double leftDesired = leftWidths.Sum();
@@ -566,14 +604,13 @@ namespace SOPRO.WinForms.Services
                 x += w;
             }
 
-            var escala = ganttModel.Escala;
-            double cellW = bands.TimelineWidth / escala.Count;
+            double cellW = bands.TimelineWidth / Math.Max(1, periodos.Count);
             int idx = 0;
-            while (idx < escala.Count)
+            while (idx < periodos.Count)
             {
-                var grupo = escala[idx].GrupoEtiqueta ?? string.Empty;
+                var grupo = periodos[idx].Grupo ?? string.Empty;
                 int end = idx;
-                while (end + 1 < escala.Count && string.Equals(escala[end + 1].GrupoEtiqueta, grupo, StringComparison.OrdinalIgnoreCase))
+                while (end + 1 < periodos.Count && string.Equals(periodos[end + 1].Grupo, grupo, StringComparison.OrdinalIgnoreCase))
                     end++;
                 var rect = new XRect(bands.TimelineX + idx * cellW, y, (end - idx + 1) * cellW, 14);
                 gfx.DrawRectangle(resources.HeaderBrush, rect);
@@ -581,12 +618,12 @@ namespace SOPRO.WinForms.Services
                 gfx.DrawString(grupo, resources.HeaderCellBoldFont, XBrushes.Black, rect, XStringFormats.Center);
                 idx = end + 1;
             }
-            for (int i = 0; i < escala.Count; i++)
+            for (int i = 0; i < periodos.Count; i++)
             {
                 var rect = new XRect(bands.TimelineX + i * cellW, y + 14, cellW, 14);
                 gfx.DrawRectangle(resources.HeaderBrush, rect);
                 gfx.DrawRectangle(resources.GridPen, rect);
-                gfx.DrawString(escala[i].Etiqueta, resources.HeaderCellFont, XBrushes.Black, rect, XStringFormats.Center);
+                gfx.DrawString(periodos[i].Etiqueta, resources.HeaderCellFont, XBrushes.Black, rect, XStringFormats.Center);
             }
             return bands;
         }
@@ -1044,18 +1081,25 @@ namespace SOPRO.WinForms.Services
             return result;
         }
 
-        private static DrawingColor ResolveColor(DrawingColor color, DrawingColor fallback)
+        private static DrawingColor ParseColor(string? hex, DrawingColor fallback)
         {
-            if (color.IsEmpty || color.A == 0) return fallback;
-            return color;
+            if (string.IsNullOrWhiteSpace(hex)) return fallback;
+            try
+            {
+                return System.Drawing.ColorTranslator.FromHtml(hex.Trim());
+            }
+            catch
+            {
+                return fallback;
+            }
         }
 
-        private static XParagraphAlignment ConvertAlignment(DataGridViewContentAlignment alignment)
+        private static XParagraphAlignment ConvertAlignment(ReportTextAlignment alignment)
         {
             return alignment switch
             {
-                DataGridViewContentAlignment.BottomCenter or DataGridViewContentAlignment.MiddleCenter or DataGridViewContentAlignment.TopCenter => XParagraphAlignment.Center,
-                DataGridViewContentAlignment.BottomRight or DataGridViewContentAlignment.MiddleRight or DataGridViewContentAlignment.TopRight => XParagraphAlignment.Right,
+                ReportTextAlignment.Centro => XParagraphAlignment.Center,
+                ReportTextAlignment.Derecha => XParagraphAlignment.Right,
                 _ => XParagraphAlignment.Left
             };
         }

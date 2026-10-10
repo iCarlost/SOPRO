@@ -1,6 +1,7 @@
 ﻿using SOPRO.Application.DTOs.Programacion;
 using SOPRO.Application.DTOs.Programacion.Insumos;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Application.Services.Programacion;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -51,11 +52,15 @@ namespace SOPRO.WinForms.Forms
                     return;
 
                 Cursor = Cursors.WaitCursor;
+                var builder = new ProgramaInsumosReportSnapshotBuilder();
+                var snapshot = builder.Build(_proyecto, tituloReporte, _actual, MapearVistaReporte(VistaActual()));
+                var datos = builder.ConstruirDatos(_actual, ganttModel);
                 var generador = new Services.GeneradorPdfProgramaInsumos(svc);
                 var ruta = generador.Generar(
                     _proyecto,
                     plantilla,
-                    dgvProgramaInsumos,
+                    snapshot,
+                    datos,
                     ganttModel,
                     _ganttControl.VisualSettings,
                     tituloReporte,
