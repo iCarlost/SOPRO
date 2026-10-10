@@ -1,16 +1,29 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using ClosedXML.Excel;
+using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
+using SOPRO.Reporting.Formatting;
+using SOPRO.Reporting.Layout;
 
 namespace SOPRO.WinForms.Services
 {
     /// <summary>
-    /// Genera el reporte de Cálculo de Indirectos en formato .xlsx.
-    /// Incluye encabezado/pie de PlantillaReporte, dos secciones
-    /// (Oficina Central y Campo) y resumen final con porcentajes.
+    /// Genera el reporte de Cálculo de Indirectos en formato .xlsx. Consume el
+    /// MISMO <see cref="ReportColumnSnapshot"/> neutral que la ruta PDF
+    /// (visibilidad, orden, encabezado, ancho, alineación, wrap, estilo y formato
+    /// numérico) y resuelve los valores del dominio con
+    /// <see cref="IndirectosExportResolver"/>. Incluye encabezado/pie de
+    /// PlantillaReporte, dos secciones (Oficina Central y Campo) y resumen final
+    /// con porcentajes; preserva la jerarquía grupo/concepto y los subtotales.
+    ///
+    /// Los importes usan el símbolo '$' + decimales de importe del proyecto y los
+    /// porcentajes los decimales de porcentaje, vía <see cref="ReportColumnGridFormat"/>,
+    /// corrigiendo la divergencia histórica entre PDF y Excel.
     /// </summary>
     public class GeneradorExcelIndirectos
     {
@@ -24,10 +37,15 @@ namespace SOPRO.WinForms.Services
             List<GrupoIndirecto> gruposCampo,
             ConfiguracionIndirectos config,
             PlantillaReporte plantilla,
-            List<ColumnaIndirectos> columnas,
+            ReportColumnSnapshot snapshot,
             string rutaDestino = null,
             ConfiguracionTituloReporte? tituloCfg = null)
         {
+            if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
+            if (config == null) throw new ArgumentNullException(nameof(config));
+            if (plantilla == null) throw new ArgumentNullException(nameof(plantilla));
+            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
+
             if (string.IsNullOrEmpty(rutaDestino))
             {
                 var carpeta = Path.Combine(
@@ -38,7 +56,9 @@ namespace SOPRO.WinForms.Services
                     $"Indirectos_{Sanitizar(proyecto.Nombre)}_{DateTime.Now:yyyyMMdd_HHmm}.xlsx");
             }
 
-            var cols = columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+            var cols = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+            if (cols.Count == 0)
+                cols = IndirectosExportResolver.DefaultColumns().Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
             int N = cols.Count;
 
             using var wb = new XLWorkbook();
@@ -53,16 +73,15 @@ namespace SOPRO.WinForms.Services
             fila = EscribirTitulo(ws, proyecto, N, fila, tituloCfg);
 
             // ── DATOS GENERALES ───────────────────────────────────────────────
-            fila = EscribirDatosGenerales(ws, config, proyecto, N, fila);
+            fila = EscribirDatosGenerales(ws, config, proyecto, N, fila, snapshot);
 
             // ── ENCABEZADOS DE COLUMNAS ───────────────────────────────────────
-            int filaCols = fila;
             fila = EscribirTitulosColumnas(ws, cols, fila);
             ReporteEncabezadoHelper.ConfigurarFilasRepetidas(ws, 1, fila - 1);
             ws.SheetView.FreezeRows(fila - 1);
 
             // ── SECCIÓN OFICINA CENTRAL ───────────────────────────────────────
-            fila = EscribirSeccion(ws, "OFICINA CENTRAL", gruposOC, cols, false, fila);
+            fila = EscribirSeccion(ws, "OFICINA CENTRAL", gruposOC, cols, false, fila, snapshot);
 
             // Resumen OC
             fila = EscribirResumenSeccion(ws,
@@ -70,12 +89,12 @@ namespace SOPRO.WinForms.Services
                 config.TotalOficinaCentralAnual,
                 config.PorcentajeOficinaCentral,
                 "% sobre Volumen Anual",
-                N, fila);
+                N, fila, snapshot);
 
             fila++; // espacio
 
             // ── SECCIÓN CAMPO ─────────────────────────────────────────────────
-            fila = EscribirSeccion(ws, "GASTOS DE CAMPO", gruposCampo, cols, true, fila);
+            fila = EscribirSeccion(ws, "GASTOS DE CAMPO", gruposCampo, cols, true, fila, snapshot);
 
             // Resumen Campo
             fila = EscribirResumenSeccion(ws,
@@ -83,12 +102,12 @@ namespace SOPRO.WinForms.Services
                 config.TotalCampo,
                 config.PorcentajeCampo,
                 "% sobre Costo Directo",
-                N, fila);
+                N, fila, snapshot);
 
             fila++; // espacio
 
             // ── RESUMEN FINAL ─────────────────────────────────────────────────
-            fila = EscribirResumenFinal(ws, config, N, fila);
+            fila = EscribirResumenFinal(ws, config, N, fila, snapshot);
 
             // ── PIE ───────────────────────────────────────────────────────────
             fila += 2;
@@ -96,7 +115,7 @@ namespace SOPRO.WinForms.Services
 
             // ── ANCHOS ────────────────────────────────────────────────────────
             for (int i = 0; i < cols.Count; i++)
-                ws.Column(i + 1).Width = Math.Max(cols[i].AnchoColumna / 7.0, 4);
+                ws.Column(i + 1).Width = ReportColumnWidthConverter.PxToExcelWidth(cols[i].Ancho);
 
             // ── IMPRESIÓN ─────────────────────────────────────────────────────
             ws.PageSetup.PageOrientation = XLPageOrientation.Portrait;
@@ -150,47 +169,57 @@ namespace SOPRO.WinForms.Services
         }
 
         private int EscribirDatosGenerales(IXLWorksheet ws, ConfiguracionIndirectos config,
-                                            Proyecto proyecto, int N, int fila)
+                                            Proyecto proyecto, int N, int fila, ReportColumnSnapshot snapshot)
         {
             fila++;
-            void FilaDato(string etiqueta, string valor)
+            int mid = N / 2;
+
+            void FilaValor(string etiqueta, Action<IXLRange> escribirValor)
             {
-                int mid = N / 2;
                 var rE = ws.Range(fila, 1, fila, mid); rE.Merge();
                 rE.FirstCell().Value = etiqueta;
                 rE.Style.Font.Bold = true;
                 rE.Style.Fill.BackgroundColor = XLColor.FromHtml("#F5F5F5");
 
                 var rV = ws.Range(fila, mid + 1, fila, N); rV.Merge();
-                rV.FirstCell().Value = valor;
                 rV.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                escribirValor(rV);
                 ws.Row(fila).Height = 14;
             }
 
-            FilaDato("Costo Directo de Obra:", $"${config.CostoDirectoObra:N2}"); fila++;
-            FilaDato("Volumen Anual de Obra:", $"${config.VolumenAnualObra:N2}"); fila++;
+            FilaValor("Costo Directo de Obra:", rV =>
+            {
+                rV.FirstCell().Value = config.CostoDirectoObra;
+                rV.Style.NumberFormat.Format = ReportColumnGridFormat.FormatoMonedaExcel(snapshot.DecimalesImporte, CultureInfo.CurrentCulture);
+            });
+            fila++;
+            FilaValor("Volumen Anual de Obra:", rV =>
+            {
+                rV.FirstCell().Value = config.VolumenAnualObra;
+                rV.Style.NumberFormat.Format = ReportColumnGridFormat.FormatoMonedaExcel(snapshot.DecimalesImporte, CultureInfo.CurrentCulture);
+            });
+            fila++;
             int durMeses = proyecto.PlazoEjecucion > 0 ? (int)Math.Ceiling(proyecto.PlazoEjecucion / 30.0) : 1;
-            FilaDato("Duración de la Obra:", $"{durMeses} meses ({proyecto.PlazoEjecucion} días)"); fila++;
+            FilaValor("Duración de la Obra:", rV => rV.FirstCell().Value = $"{durMeses} meses ({proyecto.PlazoEjecucion} días)");
+            fila++;
             fila++;
             return fila;
         }
 
-        private int EscribirTitulosColumnas(IXLWorksheet ws, List<ColumnaIndirectos> cols, int fila)
+        private int EscribirTitulosColumnas(IXLWorksheet ws, IReadOnlyList<ReportColumnDefinition> cols, int fila)
         {
             for (int i = 0; i < cols.Count; i++)
             {
-                var col  = cols[i];
+                var col = cols[i];
+                var enc = col.EstiloEncabezado;
                 var cell = ws.Cell(fila, i + 1);
-                cell.Value = col.Nombre;
-                cell.Style.Font.Bold            = true;
-                cell.Style.Font.FontName        = col.NombreFuente ?? "Segoe UI";
-                cell.Style.Font.FontSize        = col.TamanoFuente > 0 ? col.TamanoFuente : 9;
-                cell.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(
-                    !string.IsNullOrEmpty(col.ColorFondo) && col.ColorFondo != "#FFFFFF"
-                    ? col.ColorFondo : "#33334C");
-                cell.Style.Font.FontColor       = ExcelColorHelper.SafeFromHtml(
-                    !string.IsNullOrEmpty(col.ColorFuente) && col.ColorFuente != "#000000"
-                    ? col.ColorFuente : "#FFFFFF");
+                cell.Value = col.Encabezado ?? string.Empty;
+                cell.Style.Font.Bold     = enc.Negrita;
+                cell.Style.Font.Italic   = enc.Cursiva;
+                cell.Style.Font.FontName = enc.Fuente ?? "Segoe UI";
+                cell.Style.Font.FontSize = enc.Tamano > 0 ? enc.Tamano : 9;
+                cell.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(enc.ColorFondo ?? "#4A4A6A");
+                cell.Style.Font.FontColor       = ExcelColorHelper.SafeFromHtml(enc.ColorFuente, "#FFFFFF");
                 cell.Style.Alignment.Horizontal = AlineacionXL(col.Alineacion);
                 cell.Style.Border.BottomBorder  = XLBorderStyleValues.Medium;
                 cell.Style.Border.BottomBorderColor = XLColor.FromHtml("#1565C0");
@@ -201,8 +230,8 @@ namespace SOPRO.WinForms.Services
 
         // ── SECCIÓN (OFICINA CENTRAL o CAMPO) ────────────────────────────────
         private int EscribirSeccion(IXLWorksheet ws, string titulo,
-            List<GrupoIndirecto> grupos, List<ColumnaIndirectos> cols,
-            bool mostrarDuracion, int fila)
+            List<GrupoIndirecto> grupos, IReadOnlyList<ReportColumnDefinition> cols,
+            bool mostrarDuracion, int fila, ReportColumnSnapshot snapshot)
         {
             // Encabezado de sección
             var rEnc = ws.Range(fila, 1, fila, cols.Count); rEnc.Merge();
@@ -218,52 +247,49 @@ namespace SOPRO.WinForms.Services
                 for (int i = 0; i < cols.Count; i++)
                 {
                     var col  = cols[i];
+                    var cont = col.EstiloContenido;
                     var cell = ws.Cell(fila, i + 1);
-                    if      (col.NombreInterno == "Grupo")        cell.Value = grupo.Nombre;
-                    else if (col.NombreInterno == "ImporteTotal") { cell.Value = grupo.Total; cell.Style.NumberFormat.Format = "$#,##0.00"; }
+
+                    if (IndirectosExportResolver.TryGetValorGrupo(grupo, col, out var valorGrupo))
+                    {
+                        cell.Value = valorGrupo;
+                        cell.Style.NumberFormat.Format = ReportColumnGridFormat.ResolveExcelFormat(col, snapshot);
+                    }
+                    else
+                    {
+                        cell.Value = IndirectosExportResolver.ResolveTextoGrupo(grupo, col);
+                    }
+
+                    AplicarEstiloCelda(cell, cont);
                     cell.Style.Font.Bold            = true;
-                    cell.Style.Font.FontName        = col.NombreFuente ?? "Segoe UI";
-                    cell.Style.Font.FontSize        = col.TamanoFuente > 0 ? col.TamanoFuente : 9;
                     cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#E8E8E8");
-                    cell.Style.Alignment.Horizontal = col.NombreInterno == "Grupo"
-                        ? XLAlignmentHorizontalValues.Left : AlineacionXL(col.Alineacion);
+                    cell.Style.Alignment.Horizontal = AlineacionXL(col.Alineacion);
                     cell.Style.Border.BottomBorder      = XLBorderStyleValues.Thin;
                     cell.Style.Border.BottomBorderColor = XLColor.Gray;
                 }
                 ws.Row(fila).Height = 15; fila++;
 
                 // Filas de conceptos
-                foreach (var concepto in grupo.Conceptos.OrderBy(c => c.Orden))
+                foreach (var concepto in grupo.Conceptos.Where(c => c.Activo).OrderBy(c => c.Orden))
                 {
                     for (int i = 0; i < cols.Count; i++)
                     {
                         var col  = cols[i];
+                        var cont = col.EstiloContenido;
                         var cell = ws.Cell(fila, i + 1);
-                        switch (col.NombreInterno)
+
+                        if (IndirectosExportResolver.TryGetValorConcepto(concepto, col, out var valorConcepto))
                         {
-                            case "Grupo":
-                                cell.Value = "    " + concepto.Concepto;
-                                break;
-                            case "ImporteMensual":
-                                cell.Value = concepto.ImporteMensual;
-                                cell.Style.NumberFormat.Format = "$#,##0.00";
-                                break;
-                            case "Duracion":
-                                if (mostrarDuracion) { cell.Value = concepto.DuracionMeses; cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center; }
-                                break;
-                            case "ImporteTotal":
-                                cell.Value = concepto.ImporteTotal;
-                                cell.Style.NumberFormat.Format = "$#,##0.00";
-                                break;
+                            cell.Value = valorConcepto;
+                            cell.Style.NumberFormat.Format = ReportColumnGridFormat.ResolveExcelFormat(col, snapshot);
                         }
-                        cell.Style.Font.FontName        = col.NombreFuente ?? "Segoe UI";
-                        cell.Style.Font.FontSize        = col.TamanoFuente > 0 ? col.TamanoFuente : 9;
-                        cell.Style.Font.Bold            = col.Negrita;
-                        cell.Style.Font.Italic          = col.Cursiva;
-                        cell.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(!string.IsNullOrEmpty(col.ColorFondo) ? col.ColorFondo : "#FFFFFF");
-                        cell.Style.Font.FontColor       = ExcelColorHelper.SafeFromHtml(!string.IsNullOrEmpty(col.ColorFuente) ? col.ColorFuente : "#000000");
-                        if (col.NombreInterno != "Grupo" && col.NombreInterno != "Duracion")
-                            cell.Style.Alignment.Horizontal = AlineacionXL(col.Alineacion);
+                        else
+                        {
+                            cell.Value = IndirectosExportResolver.ResolveTextoConcepto(concepto, col, mostrarDuracion);
+                        }
+
+                        AplicarEstiloCelda(cell, cont);
+                        cell.Style.Alignment.Horizontal = AlineacionXL(col.Alineacion);
                         cell.Style.Border.BottomBorder      = XLBorderStyleValues.Hair;
                         cell.Style.Border.BottomBorderColor = XLColor.LightGray;
                     }
@@ -273,15 +299,23 @@ namespace SOPRO.WinForms.Services
             return fila;
         }
 
+        private static void AplicarEstiloCelda(IXLCell cell, ReportTextStyle cont)
+        {
+            cell.Style.Font.Bold   = cont.Negrita;
+            cell.Style.Font.Italic = cont.Cursiva;
+            cell.Style.Font.FontName = cont.Fuente ?? "Segoe UI";
+            cell.Style.Font.FontSize = cont.Tamano > 0 ? cont.Tamano : 9;
+            cell.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(cont.ColorFondo ?? "#FFFFFF");
+            cell.Style.Font.FontColor       = ExcelColorHelper.SafeFromHtml(cont.ColorFuente, "#000000");
+        }
+
         private int EscribirResumenSeccion(IXLWorksheet ws, string etiquetaTotal,
-            decimal total, decimal porcentaje, string labelPorc, int N, int fila)
+            decimal total, decimal porcentaje, string labelPorc, int N, int fila, ReportColumnSnapshot snapshot)
         {
             // Línea separadora
             ws.Range(fila, 1, fila, N).Style.Border.TopBorder      = XLBorderStyleValues.Medium;
             ws.Range(fila, 1, fila, N).Style.Border.TopBorderColor = XLColor.FromHtml("#1565C0");
 
-            // Encontrar columnas por posición (ImporteTotal es siempre la última visible importante)
-            // Usamos N directamente
             var rEtiq = ws.Range(fila, 1, fila, N - 1); rEtiq.Merge();
             rEtiq.FirstCell().Value = etiquetaTotal;
             rEtiq.Style.Font.Bold = true;
@@ -289,7 +323,7 @@ namespace SOPRO.WinForms.Services
             rEtiq.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
 
             ws.Cell(fila, N).Value = total;
-            ws.Cell(fila, N).Style.NumberFormat.Format = "$#,##0.00";
+            ws.Cell(fila, N).Style.NumberFormat.Format = ReportColumnGridFormat.FormatoMonedaExcel(snapshot.DecimalesImporte, CultureInfo.CurrentCulture);
             ws.Cell(fila, N).Style.Font.Bold = true;
             ws.Cell(fila, N).Style.Fill.BackgroundColor = XLColor.FromHtml("#E3F2FD");
             ws.Cell(fila, N).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
@@ -302,7 +336,7 @@ namespace SOPRO.WinForms.Services
             rP.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
 
             ws.Cell(fila, N).Value = porcentaje / 100m;
-            ws.Cell(fila, N).Style.NumberFormat.Format = "0.0000%";
+            ws.Cell(fila, N).Style.NumberFormat.Format = ReportColumnGridFormat.FormatoPorcentajeExcel(snapshot.DecimalesPorcentaje);
             ws.Cell(fila, N).Style.Fill.BackgroundColor = XLColor.FromHtml("#F5F5F5");
             ws.Cell(fila, N).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             ws.Row(fila).Height = 13;
@@ -310,7 +344,7 @@ namespace SOPRO.WinForms.Services
         }
 
         private int EscribirResumenFinal(IXLWorksheet ws, ConfiguracionIndirectos config,
-                                          int N, int fila)
+                                          int N, int fila, ReportColumnSnapshot snapshot)
         {
             // Título resumen
             var rTit = ws.Range(fila, 1, fila, N); rTit.Merge();
@@ -321,7 +355,7 @@ namespace SOPRO.WinForms.Services
             rTit.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             ws.Row(fila).Height = 18; fila++;
 
-            void FilaResumen(string label, string valor, string fondo, bool bold = false)
+            void FilaResumen(string label, decimal porcentaje, string fondo, bool bold = false)
             {
                 var rL = ws.Range(fila, 1, fila, N - 1); rL.Merge();
                 rL.FirstCell().Value = label;
@@ -329,24 +363,22 @@ namespace SOPRO.WinForms.Services
                 rL.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(fondo);
                 rL.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
 
-                ws.Cell(fila, N).Value = valor;
+                ws.Cell(fila, N).Value = porcentaje / 100m;
+                ws.Cell(fila, N).Style.NumberFormat.Format = ReportColumnGridFormat.FormatoPorcentajeExcel(snapshot.DecimalesPorcentaje);
                 ws.Cell(fila, N).Style.Font.Bold = bold;
                 ws.Cell(fila, N).Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(fondo);
                 ws.Cell(fila, N).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
                 ws.Row(fila).Height = 14; fila++;
             }
 
-            FilaResumen("% Oficina Central:",
-                $"{config.PorcentajeOficinaCentral:N4}%", "#F5F5F5");
-            FilaResumen("% Gastos de Campo:",
-                $"{config.PorcentajeCampo:N4}%", "#F5F5F5");
+            FilaResumen("% Oficina Central:", config.PorcentajeOficinaCentral, "#F5F5F5");
+            FilaResumen("% Gastos de Campo:", config.PorcentajeCampo, "#F5F5F5");
 
             // Separador antes del total
             ws.Range(fila, 1, fila, N).Style.Border.TopBorder      = XLBorderStyleValues.Medium;
             ws.Range(fila, 1, fila, N).Style.Border.TopBorderColor = XLColor.FromHtml("#1565C0");
 
-            FilaResumen("% TOTAL INDIRECTOS:",
-                $"{config.PorcentajeTotal:N4}%", "#BBDEFB", bold: true);
+            FilaResumen("% TOTAL INDIRECTOS:", config.PorcentajeTotal, "#BBDEFB", bold: true);
 
             return fila;
         }
@@ -399,12 +431,12 @@ namespace SOPRO.WinForms.Services
             };
         }
 
-        private XLAlignmentHorizontalValues AlineacionXL(AlineacionColumna a) => a switch
+        private XLAlignmentHorizontalValues AlineacionXL(ReportTextAlignment a) => a switch
         {
-            AlineacionColumna.Centro      => XLAlignmentHorizontalValues.Center,
-            AlineacionColumna.Derecha     => XLAlignmentHorizontalValues.Right,
-            AlineacionColumna.Justificado => XLAlignmentHorizontalValues.Left,
-            _                             => XLAlignmentHorizontalValues.Left,
+            ReportTextAlignment.Centro      => XLAlignmentHorizontalValues.Center,
+            ReportTextAlignment.Derecha     => XLAlignmentHorizontalValues.Right,
+            ReportTextAlignment.Justificado => XLAlignmentHorizontalValues.Left,
+            _                               => XLAlignmentHorizontalValues.Left,
         };
 
         private string Sanitizar(string nombre)
