@@ -1,22 +1,23 @@
 ﻿using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
+using SOPRO.Application.Models.Reporting.Financiamiento;
+using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
-using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Reporting.Formatting;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Globalization;
 using System.Linq;
 using System.Windows.Forms;
 
 namespace SOPRO.WinForms.Forms
 {
     /// <summary>
-    /// Exportación a Excel con ClosedXML y helpers de escritura/formato.
+    /// Exportación a Excel del reporte de financiamiento. Consume el MISMO snapshot
+    /// neutral de columnas y el MISMO modelo neutral de filas que el PDF (paridad de
+    /// filas base/períodos y de formatos) y NO lee columnas ni estilos del grid.
     /// </summary>
     public partial class FormFinanciamiento
     {
@@ -45,17 +46,27 @@ namespace SOPRO.WinForms.Forms
             if (dlg.ShowDialog(this) != DialogResult.OK)
                 return false;
 
-            var columnasCfg = ColumnasFinanciamientoHelper.ObtenerColumnas(_context, _proyecto.Id)
-                .ToDictionary(c => c.NombreInterno, StringComparer.OrdinalIgnoreCase);
+            var svcRep = new ReporteService(_context);
+            var plantilla = svcRep.ObtenerOCrearPlantilla(_proyecto.Id);
+            var columnasCfg = ColumnasFinanciamientoHelper.ObtenerColumnas(_context, _proyecto.Id);
 
-            var baseRows = BuildDisplayRows();
+            // ── Snapshot neutral y modelo compartidos con el PDF ─────────────
+            var snapshot = FinanciamientoExportResolver.BuildSnapshot(
+                _proyecto.Id, lblTitulo.Text, columnasCfg,
+                _proyecto.DecimalesCantidad, _proyecto.DecimalesImporte, _proyecto.DecimalesPorcentaje);
+
+            var baseRows = BuildDisplayRows().Values
+                .OrderBy(x => x.NumeroPeriodo)
+                .Select(x => new FinanciamientoBaseRow(x.NumeroPeriodo, x.CostoDirecto, x.CostoIndirecto))
+                .ToList();
+
+            var modelo = FinanciamientoExportResolver.BuildModel(
+                _proyecto, _config, filas, baseRows, EsModeloDualSeleccionado());
+
             using var wb = new XLWorkbook();
             var ws = wb.Worksheets.Add("Financiamiento");
 
-            var svcRep = new ReporteService(_context);
-            var plantilla = svcRep.ObtenerOCrearPlantilla(_proyecto.Id);
-
-            int numCols = Math.Max(filas.Count + 2, 9);
+            int numCols = Math.Max(modelo.EtiquetasPeriodo.Count + 2, 9);
             int fila = 1;
 
             fila = ReporteEncabezadoHelper.EscribirEncabezado(ws, plantilla, _proyecto, numCols, fila, svcRep);
@@ -73,72 +84,34 @@ namespace SOPRO.WinForms.Forms
             ws.Cell(fila, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#E9EEF7");
             fila++;
 
-            decimal totalCD = filas.Sum(x => baseRows.TryGetValue(x.NumeroPeriodo, out var b) ? b.CostoDirecto : 0m);
-            decimal totalCI = filas.Sum(x => baseRows.TryGetValue(x.NumeroPeriodo, out var b) ? b.CostoIndirecto : 0m);
-
-            EscribirDato(ws, fila++, "COSTO DIRECTO", totalCD, "INDICADOR ECONÓMICO", "TIIE", $"{_config.TasaTIIE:N4}%", formatoIzq: "#,##0.00");
-            EscribirDato(ws, fila++, $"COSTO INDIRECTO = {(_proyecto.PorcentajeIndirectosCentral + _proyecto.PorcentajeIndirectosCampo):N2}%", totalCI,
-                "TASA DE INTERÉS ANUAL", string.Empty, $"{(_config.TasaTIIE + _config.PuntosAdicionales):N4}%", formatoIzq: "#,##0.00");
-            EscribirDato(ws, fila++, "% ANTICIPO", _config.PorcentajeAnticipo / 100m, "TASA DE INTERÉS PERIODO BASE", string.Empty,
-                filas.Count > 0 ? $"{GetTasaPeriodoLabel(filas[0].DiasPeriodo, filas[0].SaldoAcumulado):N4}%" : "0.0000%", formatoIzq: "0.0000%");
-            EscribirDato(ws, fila++, "DESFASE DE COBRO", _config.DesfaseCobro, "BASE DE CÁLCULO", string.Empty, _config.BaseCalculo);
+            foreach (var dato in modelo.Datos)
+                EscribirDato(ws, fila++, dato, snapshot);
 
             fila++;
 
             int headerRow = fila;
             ws.Cell(headerRow, 1).Value = "CONCEPTO";
             ws.Cell(headerRow, 2).Value = string.Empty;
-            for (int i = 0; i < filas.Count; i++)
-                ws.Cell(headerRow, i + 3).Value = filas[i].Etiqueta;
-            AplicarFilaEncabezado(ws, headerRow, numCols, columnasCfg.TryGetValue("colPeriodo", out var cfgPeriodo) ? cfgPeriodo : null);
+            for (int i = 0; i < modelo.EtiquetasPeriodo.Count; i++)
+                ws.Cell(headerRow, i + 3).Value = modelo.EtiquetasPeriodo[i];
+            AplicarFilaEncabezado(ws, headerRow, numCols, snapshot);
             fila++;
 
-            decimal totalBase = totalCD + totalCI;
-            var ingresosAcumulados = new List<decimal>();
-            var egresosAcumulados = new List<decimal>();
-            decimal ingresoAcum = 0m;
-            decimal egresoAcum = 0m;
-            foreach (var f in filas)
+            foreach (var row in modelo.Matriz)
             {
-                ingresoAcum += f.AnticipoRecibido + f.EstimacionCobrada - f.AmortizacionAnticipo;
-                egresoAcum += f.Egresos;
-                ingresosAcumulados.Add(BudgetPricingService.RoundImporte(_proyecto, ingresoAcum));
-                egresosAcumulados.Add(BudgetPricingService.RoundImporte(_proyecto, egresoAcum));
+                switch (row.Kind)
+                {
+                    case FinanciamientoMatrixRowKind.Seccion:
+                        EscribirFilaSeccion(ws, fila++, numCols, row.Concepto);
+                        break;
+                    case FinanciamientoMatrixRowKind.Espaciador:
+                        fila++;
+                        break;
+                    default:
+                        EscribirFilaValores(ws, fila++, row, snapshot);
+                        break;
+                }
             }
-
-            decimal[] avanceProgramado = totalBase > 0m
-                ? filas.Select(x => decimal.Round(x.Egresos / totalBase, 4, MidpointRounding.AwayFromZero)).ToArray()
-                : filas.Select(_ => 0m).ToArray();
-
-            EscribirFilaValores(ws, fila++, "AVANCE PROGRAMADO", filas, x => avanceProgramado[x], columnasCfg, "colPeriodo", "colEgresos", "0.0000%");
-            fila++;
-
-            EscribirFilaSeccion(ws, fila++, numCols, "INGRESOS");
-            EscribirFilaValores(ws, fila++, "ESTIMACIONES DE OBRA (CD + CI)", filas, x => filas[x].EstimacionCobrada, columnasCfg, "colPeriodo", "colEstim", "#,##0.00");
-            EscribirFilaValores(ws, fila++, "AMORTIZACIÓN ANTICIPO", filas, x => filas[x].AmortizacionAnticipo, columnasCfg, "colPeriodo", "colAmort", "#,##0.00");
-            EscribirFilaValores(ws, fila++, "COBRO NETO", filas, x => filas[x].EstimacionCobrada - filas[x].AmortizacionAnticipo, columnasCfg, "colPeriodo", "colCobro", "#,##0.00");
-            EscribirFilaValores(ws, fila++, "ANTICIPOS (CD + CI)", filas, x => filas[x].AnticipoRecibido, columnasCfg, "colPeriodo", "colAnticipo", "#,##0.00");
-            EscribirFilaValores(ws, fila++, "INGRESOS ACUMULADOS", filas, x => ingresosAcumulados[x], columnasCfg, "colPeriodo", "colCobro", "#,##0.00");
-
-            fila++;
-
-            EscribirFilaSeccion(ws, fila++, numCols, "EGRESOS");
-            EscribirFilaValores(ws, fila++, "COSTO DIRECTO", filas, x => baseRows.TryGetValue(filas[x].NumeroPeriodo, out var b) ? b.CostoDirecto : 0m, columnasCfg, "colPeriodo", "colCD", "#,##0.00");
-            EscribirFilaValores(ws, fila++, "COSTO INDIRECTO", filas, x => baseRows.TryGetValue(filas[x].NumeroPeriodo, out var b) ? b.CostoIndirecto : 0m, columnasCfg, "colPeriodo", "colCI", "#,##0.00");
-            EscribirFilaValores(ws, fila++, "C.D. + C.I.", filas, x => filas[x].Egresos, columnasCfg, "colPeriodo", "colEgresos", "#,##0.00");
-            EscribirFilaValores(ws, fila++, "EGRESOS ACUMULADOS", filas, x => egresosAcumulados[x], columnasCfg, "colPeriodo", "colEgresos", "#,##0.00");
-
-            fila++;
-
-            EscribirFilaValores(ws, fila++, "EGRESOS ACUM - INGRESOS ACUM", filas, x => (egresosAcumulados[x] - ingresosAcumulados[x]), columnasCfg, "colPeriodo", "colSaldo", "#,##0.00");
-            EscribirFilaValores(ws, fila++, "TASA PERÍODO", filas, x => GetTasaPeriodoLabel(filas[x].DiasPeriodo, filas[x].SaldoAcumulado) / 100m, columnasCfg, "colPeriodo", "colTasa", "0.0000%");
-            EscribirFilaValores(ws, fila++, "COSTO FINANC. PARCIAL (INTERESES)", filas, x => filas[x].InteresPeriodo, columnasCfg, "colPeriodo", "colInteres", "#,##0.0000");
-            decimal interesAcum = 0m;
-            EscribirFilaValores(ws, fila++, "COSTO FINANC. ACUMULADO", filas, x =>
-            {
-                interesAcum += filas[x].InteresPeriodo;
-                return interesAcum;
-            }, columnasCfg, "colPeriodo", "colInteres", "#,##0.0000");
 
             fila++;
 
@@ -146,7 +119,7 @@ namespace SOPRO.WinForms.Forms
             ws.Cell(fila, 1).Style.Font.Bold = true;
             ws.Cell(fila, numCols - 1).Value = "RESULTADO";
             ws.Cell(fila, numCols - 1).Style.Font.Bold = true;
-            ws.Cell(fila, numCols).Value = _config.PorcentajeCalculado / 100m;
+            ws.Cell(fila, numCols).Value = modelo.PorcentajeCalculado / 100m;
             ws.Cell(fila, numCols).Style.NumberFormat.Format = "0.00000%";
             ws.Cell(fila, numCols).Style.Font.Bold = true;
             ws.Cell(fila, numCols).Style.Fill.BackgroundColor = XLColor.FromHtml("#FFF2CC");
@@ -158,8 +131,8 @@ namespace SOPRO.WinForms.Forms
             ws.SheetView.FreezeRows(headerRow);
             ws.Column(1).Width = 34;
             ws.Column(2).Width = 14;
-            for (int i = 0; i < filas.Count; i++)
-                ws.Column(i + 3).Width = Math.Max(13, filas[i].Etiqueta.Length + 2);
+            for (int i = 0; i < modelo.EtiquetasPeriodo.Count; i++)
+                ws.Column(i + 3).Width = Math.Max(13, modelo.EtiquetasPeriodo[i].Length + 2);
 
             ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
             ws.PageSetup.PaperSize = XLPaperSize.LetterPaper;
@@ -177,55 +150,36 @@ namespace SOPRO.WinForms.Forms
             return true;
         }
 
-        private void EscribirDato(
-            IXLWorksheet ws,
-            int fila,
-            string etiquetaIzq,
-            object valorIzq,
-            string etiquetaDer,
-            string subEtiquetaDer,
-            object valorDer,
-            string? formatoIzq = null,
-            string? formatoDer = null)
+        private void EscribirDato(IXLWorksheet ws, int fila, FinanciamientoDatoRow dato, ReportColumnSnapshot snapshot)
         {
-            ws.Cell(fila, 1).Value = etiquetaIzq;
-            AsignarValorCeldaExcel(ws.Cell(fila, 3), valorIzq);
-            ws.Cell(fila, 6).Value = etiquetaDer;
-            ws.Cell(fila, 8).Value = subEtiquetaDer;
-            AsignarValorCeldaExcel(ws.Cell(fila, 9), valorDer);
+            ws.Cell(fila, 1).Value = dato.EtiquetaIzquierda;
+            AsignarValor(ws.Cell(fila, 3), dato.ValorIzquierda, snapshot);
+            ws.Cell(fila, 6).Value = dato.EtiquetaDerecha;
+            ws.Cell(fila, 8).Value = dato.SubEtiquetaDerecha;
+            AsignarValor(ws.Cell(fila, 9), dato.ValorDerecha, snapshot);
 
             ws.Cell(fila, 1).Style.Font.Bold = true;
             ws.Cell(fila, 6).Style.Font.Bold = true;
-            if (!string.IsNullOrWhiteSpace(subEtiquetaDer))
+            if (!string.IsNullOrWhiteSpace(dato.SubEtiquetaDerecha))
                 ws.Cell(fila, 8).Style.Font.Bold = true;
-
-            AplicarFormatoDatoExcel(ws.Cell(fila, 3), valorIzq, etiquetaIzq, formatoIzq);
-            AplicarFormatoDatoExcel(ws.Cell(fila, 9), valorDer, etiquetaDer, formatoDer);
 
             ws.Range(fila, 1, fila, 9).Style.Fill.BackgroundColor = XLColor.White;
         }
 
-        private void AplicarFormatoDatoExcel(IXLCell cell, object? valor, string etiqueta, string? formatoForzado = null)
+        private void AsignarValor(IXLCell cell, FinanciamientoValor valor, ReportColumnSnapshot snapshot)
         {
-            if (!string.IsNullOrWhiteSpace(formatoForzado))
+            if (valor.EsNumerico)
             {
-                cell.Style.NumberFormat.Format = formatoForzado;
-                return;
+                cell.Value = valor.Numero!.Value;
+                cell.Style.NumberFormat.Format = FormatoNumerico(valor.Formato, snapshot);
             }
-
-            if (valor is decimal or double or float)
+            else
             {
-                cell.Style.NumberFormat.Format = etiqueta.Contains("%")
-                    ? "0.0000%"
-                    : "#,##0.00";
-            }
-            else if (valor is int or long or short)
-            {
-                cell.Style.NumberFormat.Format = "0";
+                cell.Value = valor.Texto;
             }
         }
 
-        private void AplicarFilaEncabezado(IXLWorksheet ws, int fila, int numCols, ColumnaFinanciamiento? cfgPeriodo)
+        private void AplicarFilaEncabezado(IXLWorksheet ws, int fila, int numCols, ReportColumnSnapshot snapshot)
         {
             for (int col = 1; col <= numCols; col++)
             {
@@ -238,6 +192,7 @@ namespace SOPRO.WinForms.Forms
                 cell.Style.Alignment.WrapText = true;
             }
 
+            var cfgPeriodo = BuscarColumna(snapshot, "colPeriodo");
             if (cfgPeriodo != null)
                 AplicarFormatoExcel(ws.Range(fila, 1, fila, numCols), cfgPeriodo, esEncabezado: true);
 
@@ -254,108 +209,74 @@ namespace SOPRO.WinForms.Forms
             rng.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
         }
 
-        private void AsignarValorCeldaExcel(IXLCell cell, object? valor)
+        private void EscribirFilaValores(IXLWorksheet ws, int fila, FinanciamientoMatrixRow row, ReportColumnSnapshot snapshot)
         {
-            if (valor == null)
-            {
-                cell.Value = string.Empty;
-                return;
-            }
-
-            switch (valor)
-            {
-                case string s:
-                    cell.Value = s;
-                    break;
-                case decimal dec:
-                    cell.Value = dec;
-                    break;
-                case double d:
-                    cell.Value = d;
-                    break;
-                case float f:
-                    cell.Value = f;
-                    break;
-                case int i:
-                    cell.Value = i;
-                    break;
-                case long l:
-                    cell.Value = l;
-                    break;
-                case short sh:
-                    cell.Value = sh;
-                    break;
-                case bool b:
-                    cell.Value = b;
-                    break;
-                case DateTime dt:
-                    cell.Value = dt;
-                    break;
-                default:
-                    cell.Value = valor.ToString();
-                    break;
-            }
-        }
-
-        private void EscribirFilaValores(
-            IXLWorksheet ws,
-            int fila,
-            string concepto,
-            List<FilaFlujoCajaFinanciamiento> filas,
-            Func<int, decimal> selector,
-            Dictionary<string, ColumnaFinanciamiento> columnasCfg,
-            string keyPeriodo,
-            string keyValor,
-            string formatoNumerico)
-        {
-            ws.Cell(fila, 1).Value = concepto;
+            ws.Cell(fila, 1).Value = row.Concepto;
             ws.Cell(fila, 1).Style.Font.Bold = true;
 
-            if (columnasCfg.TryGetValue(keyPeriodo, out var cfgPeriodo))
-                AplicarFormatoExcel(ws.Range(fila, 1, fila, 1), cfgPeriodo);
+            var cfgConcepto = BuscarColumna(snapshot, row.ColumnaConcepto);
+            if (cfgConcepto != null)
+                AplicarFormatoExcel(ws.Range(fila, 1, fila, 1), cfgConcepto);
 
-            for (int i = 0; i < filas.Count; i++)
+            var formato = FormatoNumerico(row.Formato, snapshot);
+            for (int i = 0; i < row.Valores.Count; i++)
             {
                 var cell = ws.Cell(fila, i + 3);
-                decimal valor = selector(i);
+                decimal valor = row.Valores[i];
                 cell.Value = valor;
-                cell.Style.NumberFormat.Format = formatoNumerico;
+                cell.Style.NumberFormat.Format = formato;
                 if (valor == 0m)
                     cell.Clear(XLClearOptions.Contents);
             }
 
-            if (columnasCfg.TryGetValue(keyValor, out var cfgValor))
-                AplicarFormatoExcel(ws.Range(fila, 3, fila, filas.Count + 2), cfgValor);
+            var cfgValor = BuscarColumna(snapshot, row.ColumnaValor);
+            if (cfgValor != null && row.Valores.Count > 0)
+                AplicarFormatoExcel(ws.Range(fila, 3, fila, row.Valores.Count + 2), cfgValor);
         }
 
-        private void AplicarFormatoExcel(IXLRangeBase rango, ColumnaFinanciamiento cfg, bool esEncabezado = false)
+        private void AplicarFormatoExcel(IXLRangeBase rango, ReportColumnDefinition cfg, bool esEncabezado = false)
         {
-            if (!string.IsNullOrWhiteSpace(cfg.NombreFuente))
-                rango.Style.Font.FontName = cfg.NombreFuente;
-            if (cfg.TamanoFuente > 0)
-                rango.Style.Font.FontSize = cfg.TamanoFuente;
-            rango.Style.Font.Bold = cfg.Negrita || esEncabezado;
-            rango.Style.Font.Italic = cfg.Cursiva;
+            var estilo = esEncabezado ? cfg.EstiloEncabezado : cfg.EstiloContenido;
+            if (!string.IsNullOrWhiteSpace(estilo.Fuente))
+                rango.Style.Font.FontName = estilo.Fuente;
+            if (estilo.Tamano > 0)
+                rango.Style.Font.FontSize = estilo.Tamano;
+            rango.Style.Font.Bold = estilo.Negrita || esEncabezado;
+            rango.Style.Font.Italic = estilo.Cursiva;
 
-            var colorFuente = ObtenerColorXL(cfg.ColorFuente);
+            var colorFuente = ObtenerColorXL(estilo.ColorFuente);
             if (colorFuente != null)
                 rango.Style.Font.FontColor = colorFuente;
 
             if (!esEncabezado)
             {
-                var colorFondo = ObtenerColorXL(cfg.ColorFondo);
+                var colorFondo = ObtenerColorXL(estilo.ColorFondo);
                 if (colorFondo != null)
                     rango.Style.Fill.BackgroundColor = colorFondo;
             }
 
             rango.Style.Alignment.Horizontal = cfg.Alineacion switch
             {
-                AlineacionColumna.Centro => XLAlignmentHorizontalValues.Center,
-                AlineacionColumna.Derecha => XLAlignmentHorizontalValues.Right,
+                ReportTextAlignment.Centro => XLAlignmentHorizontalValues.Center,
+                ReportTextAlignment.Derecha => XLAlignmentHorizontalValues.Right,
+                ReportTextAlignment.Justificado => XLAlignmentHorizontalValues.Justify,
                 _ => XLAlignmentHorizontalValues.Left
             };
             rango.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
         }
+
+        private static ReportColumnDefinition? BuscarColumna(ReportColumnSnapshot snapshot, string identificador)
+            => snapshot.Columnas.FirstOrDefault(c =>
+                string.Equals(c.Identificador, identificador, StringComparison.OrdinalIgnoreCase));
+
+        private static string FormatoNumerico(FinanciamientoValorFormato formato, ReportColumnSnapshot snapshot) => formato switch
+        {
+            FinanciamientoValorFormato.Moneda => ReportColumnGridFormat.FormatoMonedaExcel(snapshot.DecimalesImporte, System.Globalization.CultureInfo.CurrentCulture),
+            FinanciamientoValorFormato.Porcentaje => ReportColumnGridFormat.FormatoPorcentajeExcel(snapshot.DecimalesPorcentaje),
+            FinanciamientoValorFormato.Cantidad => ReportColumnGridFormat.FormatoNumeroExcel(snapshot.DecimalesCantidad),
+            FinanciamientoValorFormato.Entero => "0",
+            _ => "N2",
+        };
 
         private XLColor? ObtenerColorXL(string? html)
         {

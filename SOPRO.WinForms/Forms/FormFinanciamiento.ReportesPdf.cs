@@ -1,22 +1,19 @@
-﻿using ClosedXML.Excel;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
+using SOPRO.Application.Models.Reporting.Financiamiento;
 using SOPRO.Application.Services;
-using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Globalization;
 using System.Linq;
 using System.Windows.Forms;
 
 namespace SOPRO.WinForms.Forms
 {
     /// <summary>
-    /// Generación del reporte PDF de financiamiento.
+    /// Generación del reporte PDF de financiamiento. Consume el snapshot neutral de
+    /// columnas y el modelo neutral de filas (compartidos con el exportador Excel).
     /// </summary>
     public partial class FormFinanciamiento
     {
@@ -52,26 +49,26 @@ namespace SOPRO.WinForms.Forms
 
                 var svcRep = new ReporteService(_context);
                 var plantilla = svcRep.ObtenerOCrearPlantilla(_proyecto.Id);
-                var columnasCfg = ColumnasFinanciamientoHelper.ObtenerColumnas(_context, _proyecto.Id)
-                    .Where(c => c.Visible)
-                    .OrderBy(c => c.Orden)
+                var columnasCfg = ColumnasFinanciamientoHelper.ObtenerColumnas(_context, _proyecto.Id);
+
+                // Snapshot neutral compartido: misma lista/orden/ancho/formato/estilo
+                // que el exportador Excel (no se leen columnas ni estilos del grid).
+                var snapshot = FinanciamientoExportResolver.BuildSnapshot(
+                    _proyecto.Id, lblTitulo.Text, columnasCfg,
+                    _proyecto.DecimalesCantidad, _proyecto.DecimalesImporte, _proyecto.DecimalesPorcentaje);
+
+                var baseRows = BuildDisplayRows().Values
+                    .OrderBy(x => x.NumeroPeriodo)
+                    .Select(x => new FinanciamientoBaseRow(x.NumeroPeriodo, x.CostoDirecto, x.CostoIndirecto))
                     .ToList();
 
-                var baseRows = BuildDisplayRows();
-                var baseRowsPdf = baseRows.Values
-                    .OrderBy(x => x.NumeroPeriodo)
-                    .Select(x => new GeneradorPdfFinanciamiento.BaseRowInfo
-                    {
-                        NumeroPeriodo = x.NumeroPeriodo,
-                        CostoDirecto = x.CostoDirecto,
-                        CostoIndirecto = x.CostoIndirecto
-                    })
-                    .ToList();
+                var modelo = FinanciamientoExportResolver.BuildModel(
+                    _proyecto, _config, filas, baseRows, EsModeloDualSeleccionado());
 
                 Cursor = Cursors.WaitCursor;
                 var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Financiamiento, lblTitulo.Text);
                 var generador = new GeneradorPdfFinanciamiento(svcRep);
-                string ruta = generador.Generar(_proyecto, plantilla, columnasCfg, _config, filas, baseRowsPdf, dlg.FileName, tituloCfg);
+                string ruta = generador.Generar(_proyecto, plantilla, snapshot, modelo, dlg.FileName, tituloCfg);
                 Cursor = Cursors.Default;
 
                 if (MessageBox.Show("Reporte PDF generado.\n\n¿Abrir ahora?",

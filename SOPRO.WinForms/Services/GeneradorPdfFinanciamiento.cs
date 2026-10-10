@@ -1,12 +1,16 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
+using SOPRO.Application.Models.Reporting.Financiamiento;
+using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
+using SOPRO.Reporting.Formatting;
 using DrawingColor = System.Drawing.Color;
 using MColor = MigraDoc.DocumentObjectModel.Color;
 using MOrientation = MigraDoc.DocumentObjectModel.Orientation;
@@ -14,15 +18,14 @@ using MParagraphAlignment = MigraDoc.DocumentObjectModel.ParagraphAlignment;
 
 namespace SOPRO.WinForms.Services
 {
+    /// <summary>
+    /// Generador PDF del reporte de financiamiento. Consume el MISMO
+    /// <see cref="ReportColumnSnapshot"/> y el MISMO
+    /// <see cref="FinanciamientoReportModel"/> que el exportador Excel (paridad de
+    /// filas base/períodos, columnas y formatos entre medios). No lee del grid.
+    /// </summary>
     public sealed class GeneradorPdfFinanciamiento
     {
-        public sealed class BaseRowInfo
-        {
-            public int NumeroPeriodo { get; set; }
-            public decimal CostoDirecto { get; set; }
-            public decimal CostoIndirecto { get; set; }
-        }
-
         private readonly ReporteService _svc;
 
         public GeneradorPdfFinanciamiento(ReporteService svc)
@@ -33,22 +36,17 @@ namespace SOPRO.WinForms.Services
         public string Generar(
             Proyecto proyecto,
             PlantillaReporte plantilla,
-            List<ColumnaFinanciamiento> columnas,
-            ConfiguracionFinanciamiento config,
-            List<FilaFlujoCajaFinanciamiento> filas,
-            List<BaseRowInfo> baseRows,
+            ReportColumnSnapshot snapshot,
+            FinanciamientoReportModel modelo,
             string rutaDestino = null,
             ConfiguracionTituloReporte? tituloCfg = null)
         {
             if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
             if (plantilla == null) throw new ArgumentNullException(nameof(plantilla));
-            if (columnas == null) throw new ArgumentNullException(nameof(columnas));
-            if (config == null) throw new ArgumentNullException(nameof(config));
-            if (filas == null) throw new ArgumentNullException(nameof(filas));
-            if (baseRows == null) throw new ArgumentNullException(nameof(baseRows));
+            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
+            if (modelo == null) throw new ArgumentNullException(nameof(modelo));
 
-            var cols = columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
-            if (filas.Count == 0)
+            if (modelo.EtiquetasPeriodo.Count == 0)
                 throw new InvalidOperationException("No hay cálculo de financiamiento para exportar.");
 
             if (string.IsNullOrWhiteSpace(rutaDestino))
@@ -79,7 +77,7 @@ namespace SOPRO.WinForms.Services
 
             ConstruirHeader(section, proyecto, plantilla, headerHeightCm);
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
-            ConstruirCuerpo(section, proyecto, plantilla, cols, config, filas.OrderBy(x => x.NumeroPeriodo).ToList(), baseRows, tituloCfg);
+            ConstruirCuerpo(section, proyecto, snapshot, modelo, tituloCfg);
 
             var renderer = new PdfDocumentRenderer() { Document = doc };
             renderer.RenderDocument();
@@ -232,11 +230,9 @@ namespace SOPRO.WinForms.Services
         private void ConstruirCuerpo(
             Section section,
             Proyecto proyecto,
-            PlantillaReporte plantilla,
-            List<ColumnaFinanciamiento> cols,
-            ConfiguracionFinanciamiento config,
-            List<FilaFlujoCajaFinanciamiento> filas,
-            List<BaseRowInfo> baseRows, ConfiguracionTituloReporte? tituloCfg)
+            ReportColumnSnapshot snapshot,
+            FinanciamientoReportModel modelo,
+            ConfiguracionTituloReporte? tituloCfg)
         {
             var tituloTable = section.AddTable();
             tituloTable.Borders.Visible = false;
@@ -264,12 +260,11 @@ namespace SOPRO.WinForms.Services
 
             section.AddParagraph().Format.SpaceAfter = Unit.FromCentimeter(0.05);
 
-            ConstruirDatos(section, proyecto, config, filas, baseRows);
-            ConstruirMatriz(section, proyecto, cols, config, filas, baseRows);
+            ConstruirDatos(section, snapshot, modelo);
+            ConstruirMatriz(section, snapshot, modelo);
         }
 
-        private void ConstruirDatos(Section section, Proyecto proyecto, ConfiguracionFinanciamiento config,
-            List<FilaFlujoCajaFinanciamiento> filas, List<BaseRowInfo> baseRows)
+        private void ConstruirDatos(Section section, ReportColumnSnapshot snapshot, FinanciamientoReportModel modelo)
         {
             var table = section.AddTable();
             table.Borders.Visible = false;
@@ -279,18 +274,15 @@ namespace SOPRO.WinForms.Services
             foreach (var width in widths)
                 table.AddColumn(Unit.FromCentimeter(width));
 
-            int durMeses = proyecto.PlazoEjecucion > 0 ? (int)Math.Ceiling(proyecto.PlazoEjecucion / 30.0) : 1;
-            decimal totalCD = baseRows.Sum(x => x.CostoDirecto);
-            decimal totalCI = baseRows.Sum(x => x.CostoIndirecto);
-
-            AgregarDato(table, "COSTO DIRECTO", totalCD.ToString("N2"), "INDICADOR ECONÓMICO", "TIIE", config.TasaTIIE.ToString("N4") + "%");
-            AgregarDato(table, "COSTO INDIRECTO = " + (proyecto.PorcentajeIndirectosCentral + proyecto.PorcentajeIndirectosCampo).ToString("N2") + "%",
-                totalCI.ToString("N2"), "TASA DE INTERÉS ANUAL", string.Empty, config.TasaEfectiva.ToString("N4") + "%");
-            AgregarDato(table, "% ANTICIPO", (config.PorcentajeAnticipo / 100m).ToString("0.0000%"),
-                "TASA DE INTERÉS PERIODO BASE", string.Empty,
-                (filas.Count > 0 ? GetTasaPeriodoLabel(config, filas[0].DiasPeriodo) : 0m).ToString("N4") + "%");
-            AgregarDato(table, "DESFASE DE COBRO", config.DesfaseCobro.ToString(),
-                "BASE DE CÁLCULO", string.Empty, config.BaseCalculo ?? string.Empty);
+            foreach (var dato in modelo.Datos)
+            {
+                AgregarDato(table,
+                    dato.EtiquetaIzquierda,
+                    FormatearValor(dato.ValorIzquierda, snapshot),
+                    dato.EtiquetaDerecha,
+                    dato.SubEtiquetaDerecha,
+                    FormatearValor(dato.ValorDerecha, snapshot));
+            }
 
             section.AddParagraph().Format.SpaceAfter = Unit.FromCentimeter(0.10);
         }
@@ -312,25 +304,23 @@ namespace SOPRO.WinForms.Services
             row.Cells[5].Shading.Color = ParseColor("#F5F5F5");
         }
 
-        private void ConstruirMatriz(Section section, Proyecto proyecto, List<ColumnaFinanciamiento> cols, ConfiguracionFinanciamiento config,
-            List<FilaFlujoCajaFinanciamiento> filas, List<BaseRowInfo> baseRows)
+        private void ConstruirMatriz(Section section, ReportColumnSnapshot snapshot, FinanciamientoReportModel modelo)
         {
             var table = section.AddTable();
             table.Rows.LeftIndent = 0;
             table.Borders.Visible = false;
 
+            var etiquetas = modelo.EtiquetasPeriodo;
             double pageWidthCm = 25.94;
             double fixedConceptCm = 4.9;
             double fixedGapCm = 0.6;
             double remainingCm = Math.Max(10.0, pageWidthCm - fixedConceptCm - fixedGapCm);
-            double periodWidthCm = Math.Max(1.35, remainingCm / Math.Max(1, filas.Count));
+            double periodWidthCm = Math.Max(1.35, remainingCm / Math.Max(1, etiquetas.Count));
 
             table.AddColumn(Unit.FromCentimeter(fixedConceptCm));
             table.AddColumn(Unit.FromCentimeter(fixedGapCm));
-            for (int i = 0; i < filas.Count; i++)
+            for (int i = 0; i < etiquetas.Count; i++)
                 table.AddColumn(Unit.FromCentimeter(periodWidthCm));
-
-            var cfgPeriodo = cols.FirstOrDefault(c => string.Equals(c.NombreInterno, "colPeriodo", StringComparison.OrdinalIgnoreCase));
 
             var header = table.AddRow();
             header.HeadingFormat = true;
@@ -340,9 +330,9 @@ namespace SOPRO.WinForms.Services
             header.Cells[1].AddParagraph(string.Empty);
             AplicarHeaderCell(header.Cells[0]);
             AplicarHeaderCell(header.Cells[1]);
-            for (int i = 0; i < filas.Count; i++)
+            for (int i = 0; i < etiquetas.Count; i++)
             {
-                var p = header.Cells[i + 2].AddParagraph(filas[i].Etiqueta);
+                var p = header.Cells[i + 2].AddParagraph(etiquetas[i]);
                 p.Style = "FinHeader";
                 p.Format.Alignment = MParagraphAlignment.Center;
                 AplicarHeaderCell(header.Cells[i + 2]);
@@ -350,71 +340,35 @@ namespace SOPRO.WinForms.Services
             AplicarBordeInferior(header.Cells[0], "#4A4A6A", 0.02);
             header.Cells[0].Borders.Bottom.Visible = false;
 
-            var baseRowsMap = baseRows.ToDictionary(x => x.NumeroPeriodo, x => x);
-            decimal totalBase = baseRows.Sum(x => x.CostoDirecto + x.CostoIndirecto);
-            decimal[] avanceProgramado = filas.Select(x =>
+            foreach (var fila in modelo.Matriz)
             {
-                decimal basePeriodo = baseRowsMap.TryGetValue(x.NumeroPeriodo, out var b) ? b.CostoDirecto + b.CostoIndirecto : 0m;
-                return totalBase > 0m ? decimal.Round(basePeriodo / totalBase, 4, MidpointRounding.AwayFromZero) : 0m;
-            }).ToArray();
-
-            var ingresosAcum = new List<decimal>();
-            var egresosAcum = new List<decimal>();
-            decimal ingresoAcum = 0m;
-            decimal egresoAcum = 0m;
-            foreach (var f in filas)
-            {
-                ingresoAcum += f.AnticipoRecibido + f.EstimacionCobrada - f.AmortizacionAnticipo;
-                egresoAcum += f.Egresos;
-                ingresosAcum.Add(BudgetPricingService.RoundImporte(proyecto, ingresoAcum));
-                egresosAcum.Add(BudgetPricingService.RoundImporte(proyecto, egresoAcum));
+                switch (fila.Kind)
+                {
+                    case FinanciamientoMatrixRowKind.Seccion:
+                        AgregarFilaSeccion(table, fila.Concepto);
+                        break;
+                    case FinanciamientoMatrixRowKind.Espaciador:
+                        AgregarFilaEspaciador(table);
+                        break;
+                    default:
+                        AgregarFilaValores(table, fila, snapshot);
+                        break;
+                }
             }
-
-            AgregarFilaValores(table, "AVANCE PROGRAMADO", filas, x => avanceProgramado[x], cols, "colPeriodo", "colEgresos", "0.0000%");
-
-            AgregarFilaEspaciador(table);
-
-            AgregarFilaSeccion(table, "INGRESOS");
-            AgregarFilaValores(table, "ESTIMACIONES DE OBRA (CD + CI)", filas, x => filas[x].EstimacionCobrada, cols, "colPeriodo", "colEstim", "#,##0.00");
-            AgregarFilaValores(table, "AMORTIZACIÓN ANTICIPO", filas, x => filas[x].AmortizacionAnticipo, cols, "colPeriodo", "colAmort", "#,##0.00");
-            AgregarFilaValores(table, "COBRO NETO", filas, x => filas[x].EstimacionCobrada - filas[x].AmortizacionAnticipo, cols, "colPeriodo", "colCobro", "#,##0.00");
-            AgregarFilaValores(table, "ANTICIPOS (CD + CI)", filas, x => filas[x].AnticipoRecibido, cols, "colPeriodo", "colAnticipo", "#,##0.00");
-            AgregarFilaValores(table, "INGRESOS ACUMULADOS", filas, x => ingresosAcum[x], cols, "colPeriodo", "colCobro", "#,##0.00");
-
-            AgregarFilaEspaciador(table);
-
-            AgregarFilaSeccion(table, "EGRESOS");
-            AgregarFilaValores(table, "COSTO DIRECTO", filas, x => baseRowsMap.TryGetValue(filas[x].NumeroPeriodo, out var b) ? b.CostoDirecto : 0m, cols, "colPeriodo", "colCD", "#,##0.00");
-            AgregarFilaValores(table, "COSTO INDIRECTO", filas, x => baseRowsMap.TryGetValue(filas[x].NumeroPeriodo, out var b) ? b.CostoIndirecto : 0m, cols, "colPeriodo", "colCI", "#,##0.00");
-            AgregarFilaValores(table, "C.D. + C.I.", filas, x => filas[x].Egresos, cols, "colPeriodo", "colEgresos", "#,##0.00");
-            AgregarFilaValores(table, "EGRESOS ACUMULADOS", filas, x => egresosAcum[x], cols, "colPeriodo", "colEgresos", "#,##0.00");
-
-            AgregarFilaEspaciador(table);
-
-            AgregarFilaValores(table, "EGRESOS ACUM - INGRESOS ACUM", filas, x => (egresosAcum[x] - ingresosAcum[x]), cols, "colPeriodo", "colSaldo", "#,##0.00");
-            AgregarFilaValores(table, "TASA PERÍODO", filas, x => GetTasaPeriodoLabel(config, filas[x].DiasPeriodo) / 100m, cols, "colPeriodo", "colTasa", "0.0000%");
-            AgregarFilaValores(table, "COSTO FINANC. PARCIAL (INTERESES)", filas, x => filas[x].InteresPeriodo, cols, "colPeriodo", "colInteres", "#,##0.0000");
-            decimal interesAcum = 0m;
-            AgregarFilaValores(table, "COSTO FINANC. ACUMULADO", filas, x =>
-            {
-                interesAcum += filas[x].InteresPeriodo;
-                return interesAcum;
-            }, cols, "colPeriodo", "colInteres", "#,##0.0000");
-
-            AgregarFilaEspaciador(table);
 
             var result = table.AddRow();
             result.HeightRule = RowHeightRule.AtLeast;
             result.Height = Unit.FromCentimeter(0.58);
             result.Cells[0].AddParagraph("PORCENTAJE DE FINANCIAMIENTO").Format.Font.Bold = true;
-            result.Cells[0].MergeRight = Math.Max(0, filas.Count - 1);
-            result.Cells[filas.Count].AddParagraph("RESULTADO").Format.Font.Bold = true;
-            result.Cells[filas.Count + 1].AddParagraph((config.PorcentajeCalculado / 100m).ToString("0.00000%")).Format.Alignment = MParagraphAlignment.Right;
-            result.Cells[filas.Count + 1].Shading.Color = ParseColor("#FFF2CC");
-            result.Cells[filas.Count + 1].Format.Font.Bold = true;
+            result.Cells[0].MergeRight = Math.Max(0, etiquetas.Count - 1);
+            result.Cells[etiquetas.Count].AddParagraph("RESULTADO").Format.Font.Bold = true;
+            result.Cells[etiquetas.Count + 1].AddParagraph(
+                (modelo.PorcentajeCalculado / 100m).ToString("0.00000%", CultureInfo.CurrentCulture)).Format.Alignment = MParagraphAlignment.Right;
+            result.Cells[etiquetas.Count + 1].Shading.Color = ParseColor("#FFF2CC");
+            result.Cells[etiquetas.Count + 1].Format.Font.Bold = true;
             AplicarBordeSuperior(result.Cells[0], "#B7B7B7", 0.02);
-            AplicarBordeSuperior(result.Cells[filas.Count], "#B7B7B7", 0.02);
-            AplicarBordeSuperior(result.Cells[filas.Count + 1], "#B7B7B7", 0.02);
+            AplicarBordeSuperior(result.Cells[etiquetas.Count], "#B7B7B7", 0.02);
+            AplicarBordeSuperior(result.Cells[etiquetas.Count + 1], "#B7B7B7", 0.02);
         }
 
         private void AgregarFilaSeccion(Table table, string titulo)
@@ -441,39 +395,55 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private void AgregarFilaValores(
-            Table table,
-            string concepto,
-            List<FilaFlujoCajaFinanciamiento> filas,
-            Func<int, decimal> selector,
-            List<ColumnaFinanciamiento> columnas,
-            string keyPeriodo,
-            string keyValor,
-            string formato)
+        private void AgregarFilaValores(Table table, FinanciamientoMatrixRow fila, ReportColumnSnapshot snapshot)
         {
             var row = table.AddRow();
             row.HeightRule = RowHeightRule.AtLeast;
             row.Height = Unit.FromCentimeter(0.52);
 
             var cellConcepto = row.Cells[0];
-            var pConcepto = cellConcepto.AddParagraph(concepto);
+            var pConcepto = cellConcepto.AddParagraph(fila.Concepto);
             pConcepto.Format.Font.Bold = true;
-            AplicarFormatoCelda(cellConcepto, columnas.FirstOrDefault(c => string.Equals(c.NombreInterno, keyPeriodo, StringComparison.OrdinalIgnoreCase)), true, false);
+            AplicarFormatoCelda(cellConcepto, BuscarColumna(snapshot, fila.ColumnaConcepto), true, false);
 
             row.Cells[1].AddParagraph(string.Empty);
 
-            var cfgValor = columnas.FirstOrDefault(c => string.Equals(c.NombreInterno, keyValor, StringComparison.OrdinalIgnoreCase));
+            var cfgValor = BuscarColumna(snapshot, fila.ColumnaValor);
 
-            for (int i = 0; i < filas.Count; i++)
+            for (int i = 0; i < fila.Valores.Count; i++)
             {
-                var valor = selector(i);
+                var valor = fila.Valores[i];
                 var cell = row.Cells[i + 2];
                 if (valor != 0m)
-                    cell.AddParagraph(FormatearValor(valor, formato));
-                cell.Format.Alignment = ConvertirAlineacion(cfgValor != null ? cfgValor.Alineacion : AlineacionColumna.Derecha);
+                    cell.AddParagraph(FormatearValor(valor, fila.Formato, snapshot));
+                cell.Format.Alignment = ConvertirAlineacion(cfgValor?.Alineacion ?? ReportTextAlignment.Derecha);
                 AplicarFormatoCelda(cell, cfgValor, false, false);
             }
         }
+
+        private static ReportColumnDefinition? BuscarColumna(ReportColumnSnapshot snapshot, string identificador)
+            => snapshot.Columnas.FirstOrDefault(c =>
+                string.Equals(c.Identificador, identificador, StringComparison.OrdinalIgnoreCase));
+
+        private static string FormatearValor(FinanciamientoValor valor, ReportColumnSnapshot snapshot)
+        {
+            if (!valor.EsNumerico)
+                return valor.Texto;
+
+            return valor.Numero!.Value.ToString(FormatoNumerico(valor.Formato, snapshot), CultureInfo.CurrentCulture);
+        }
+
+        private static string FormatearValor(decimal valor, FinanciamientoValorFormato formato, ReportColumnSnapshot snapshot)
+            => valor.ToString(FormatoNumerico(formato, snapshot), CultureInfo.CurrentCulture);
+
+        private static string FormatoNumerico(FinanciamientoValorFormato formato, ReportColumnSnapshot snapshot) => formato switch
+        {
+            FinanciamientoValorFormato.Moneda => ReportColumnGridFormat.FormatoMonedaPdf(snapshot.DecimalesImporte),
+            FinanciamientoValorFormato.Porcentaje => ReportColumnGridFormat.FormatoPorcentajeExcel(snapshot.DecimalesPorcentaje),
+            FinanciamientoValorFormato.Cantidad => ReportColumnGridFormat.FormatoNumeroExcel(snapshot.DecimalesCantidad),
+            FinanciamientoValorFormato.Entero => "0",
+            _ => "N2",
+        };
 
         private void AplicarHeaderCell(Cell cell)
         {
@@ -485,7 +455,7 @@ namespace SOPRO.WinForms.Services
             cell.Borders.Visible = false;
         }
 
-        private void AplicarFormatoCelda(Cell cell, ColumnaFinanciamiento cfg, bool esConcepto, bool esEncabezado)
+        private void AplicarFormatoCelda(Cell cell, ReportColumnDefinition? cfg, bool esConcepto, bool esEncabezado)
         {
             cell.Borders.Visible = false;
             cell.VerticalAlignment = VerticalAlignment.Center;
@@ -493,43 +463,22 @@ namespace SOPRO.WinForms.Services
             if (cfg == null)
                 return;
 
-            PdfFontHelper.ApplyFont(cell.Format.Font, cfg.NombreFuente, cfg.TamanoFuente > 0 ? cfg.TamanoFuente : 8,
-                cfg.Negrita || esConcepto || esEncabezado, cfg.Cursiva);
+            var cont = cfg.EstiloContenido;
+            PdfFontHelper.ApplyFont(cell.Format.Font, cont.Fuente, cont.Tamano > 0 ? cont.Tamano : 8,
+                cont.Negrita || esConcepto || esEncabezado, cont.Cursiva);
 
-            if (!string.IsNullOrWhiteSpace(cfg.ColorFuente))
-                cell.Format.Font.Color = ParseColor(cfg.ColorFuente);
+            if (!string.IsNullOrWhiteSpace(cont.ColorFuente))
+                cell.Format.Font.Color = ParseColor(cont.ColorFuente);
 
-            if (!esEncabezado && !string.IsNullOrWhiteSpace(cfg.ColorFondo))
+            if (!esEncabezado && !string.IsNullOrWhiteSpace(cont.ColorFondo))
             {
-                var fondo = NormalizarColor(cfg.ColorFondo);
+                var fondo = NormalizarColor(cont.ColorFondo);
                 if (!string.Equals(fondo, "#FFFFFF", StringComparison.OrdinalIgnoreCase))
                     cell.Shading.Color = ParseColor(fondo);
             }
 
             if (!esConcepto)
                 cell.Format.Alignment = ConvertirAlineacion(cfg.Alineacion);
-        }
-
-        private static string FormatearValor(decimal valor, string formato)
-        {
-            if (string.IsNullOrWhiteSpace(formato))
-                return valor.ToString("N2");
-
-            if (string.Equals(formato, "0.0000%", StringComparison.OrdinalIgnoreCase))
-                return valor.ToString("0.0000%");
-            if (string.Equals(formato, "0.00000%", StringComparison.OrdinalIgnoreCase))
-                return valor.ToString("0.00000%");
-            if (string.Equals(formato, "#,##0.0000", StringComparison.OrdinalIgnoreCase))
-                return valor.ToString("N4");
-            return valor.ToString("N2");
-        }
-
-        private static decimal GetTasaPeriodoLabel(ConfiguracionFinanciamiento config, int diasPeriodo)
-        {
-            decimal tasaAnual = (config.TasaTIIE + config.PuntosAdicionales) / 100m;
-            if (tasaAnual <= 0m || diasPeriodo <= 0)
-                return 0m;
-            return decimal.Round(tasaAnual * diasPeriodo / 365m * 100m, 4, MidpointRounding.AwayFromZero);
         }
 
         private static void AplicarBordeSuperior(Cell cell, string colorHex, double widthPt)
@@ -546,12 +495,13 @@ namespace SOPRO.WinForms.Services
             cell.Borders.Bottom.Width = Unit.FromPoint(widthPt);
         }
 
-        private static MParagraphAlignment ConvertirAlineacion(AlineacionColumna alineacion)
+        private static MParagraphAlignment ConvertirAlineacion(ReportTextAlignment alineacion)
         {
             return alineacion switch
             {
-                AlineacionColumna.Centro => MParagraphAlignment.Center,
-                AlineacionColumna.Derecha => MParagraphAlignment.Right,
+                ReportTextAlignment.Centro => MParagraphAlignment.Center,
+                ReportTextAlignment.Derecha => MParagraphAlignment.Right,
+                ReportTextAlignment.Justificado => MParagraphAlignment.Justify,
                 _ => MParagraphAlignment.Left
             };
         }
