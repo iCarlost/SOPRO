@@ -431,6 +431,16 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             }
         }
 
+        /// <summary>Recarga desde BBDD la matriz del concepto visible (p.ej. cuando el Catálogo de Materiales cambió un precio). Ignora el short-circuit de fila/matriz igual.</summary>
+        public void RecargarMatrizVisibleDesdeBd()
+        {
+            if (_filaActual < 0) return;
+            if (_modoCreacionMatriz || _modoSubedicionComponente) return;
+            // No recargar mientras una celda está en edición (evita pisar lo que el usuario escribe).
+            if (_dgvComponentes != null && _dgvComponentes.IsCurrentCellInEditMode) return;
+            CargarMatrizDeFila(_filaActual, forceReload: true);
+        }
+
         private void ConfigurarMenuContextualComponentes()
         {
             _menuContextualComponentes = new ContextMenuStrip();
