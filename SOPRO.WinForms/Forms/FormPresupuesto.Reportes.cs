@@ -34,51 +34,8 @@ namespace SOPRO.WinForms.Forms
             {
                 var svc = new Services.ReporteService(_context);
                 var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
-                var columnasBD = svc.ObtenerOCrearColumnas(_proyecto.Id, "Presupuesto");
-
-                foreach (var cfg in columnasBD)
-                    cfg.Visible = false;
-
-                var colsEnReporte = dgvPresupuesto.Columns
-                    .Cast<System.Windows.Forms.DataGridViewColumn>()
-                    .Where(col => col.Visible)
-                    .Where(col => col.Name != "colRelleno")
-                    .Where(col =>
-                    {
-                        if (col.Name == "colNumero") return true;
-                        if (col.Tag is not Core.Entities.ColumnaPersonalizada cd2) return false;
-                        return !string.Equals(cd2.NombreInterno, "Tipo", StringComparison.OrdinalIgnoreCase);
-                    })
-                    .OrderBy(col => col.DisplayIndex)
-                    .ToList();
-
-                int ordenReporte = 0;
-                foreach (var col in colsEnReporte)
-                {
-                    string nombreInternoGrid = col.Name == "colNumero"
-                        ? "Numero"
-                        : ((Core.Entities.ColumnaPersonalizada)col.Tag).NombreInterno;
-
-                    string nombreInternoReporte = ObtenerNombreInternoReporteDesdeGrid(nombreInternoGrid);
-                    var cfg = columnasBD.FirstOrDefault(r => r.NombreInterno == nombreInternoReporte);
-                    if (cfg == null)
-                    {
-                        cfg = CrearConfigColumnaReporteDesdeGrid(col, nombreInternoReporte);
-                        cfg.ProyectoId = _proyecto.Id;
-                        cfg.TipoReporte = "Presupuesto";
-                        columnasBD.Add(cfg);
-                    }
-
-                    cfg.Visible = true;
-                    cfg.Orden = ordenReporte++;
-                    cfg.Ancho = col.Width;
-                    cfg.Encabezado = col.HeaderText;
-                    cfg.WrapTexto = (col.Tag as Core.Entities.ColumnaPersonalizada)?.WrapTexto == true
-                        || col.DefaultCellStyle.WrapMode == DataGridViewTriState.True;
-                    ActualizarConfigColumnaReporteDesdeGrid(cfg, col);
-                }
-
-                svc.GuardarColumnas(columnasBD);
+                // Snapshot neutral desde la configuración persistida (no desde el grid).
+                var snapshot = ConstruirSnapshotPresupuesto();
 
                 var conceptos = _context.ConceptosPresupuesto
                     .Where(c => c.ProyectoId == _proyecto.Id)
@@ -105,7 +62,7 @@ namespace SOPRO.WinForms.Forms
                 decimal factorPU = CalcularFactorPU();
                 var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Presupuesto, lblTitulo.Text);
                 var gen = new Services.GeneradorPdfPresupuesto(svc);
-                var ruta = gen.Generar(_proyecto, conceptos, plantilla, columnasBD, dlg.FileName, factorPU, tituloCfg);
+                var ruta = gen.Generar(_proyecto, conceptos, plantilla, snapshot, dlg.FileName, factorPU, tituloCfg);
                 Cursor = Cursors.Default;
 
                 if (MessageBox.Show("Reporte PDF generado:\n" + ruta + "\n\n¿Abrir ahora?",
@@ -160,7 +117,7 @@ namespace SOPRO.WinForms.Forms
                 if (dlg.ShowDialog() != DialogResult.OK) return;
 
                 Cursor = Cursors.WaitCursor;
-                var estiloDescripcionApu = ObtenerEstiloDescripcionPresupuestoParaApu(svc);
+                var estiloDescripcionApu = ObtenerEstiloDescripcionPresupuestoParaApu();
                 var gen = new Services.GeneradorPdfAPU(svc, _context);
                 var ruta = gen.Generar(_proyecto, conceptos, plantilla, dlg.FileName, estiloDescripcionApu);
                 Cursor = Cursors.Default;
@@ -190,54 +147,8 @@ namespace SOPRO.WinForms.Forms
                 var svc = new Services.ReporteService(_context);
                 var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
 
-                // Tomar las columnas visibles en el orden actual del grid
-                // en lugar de las de la BD, para respetar lo que el usuario ve.
-                // Se excluye intencionalmente la columna Tipo.
-                var columnasBD = svc.ObtenerOCrearColumnas(_proyecto.Id, "Presupuesto");
-
-                foreach (var cfg in columnasBD)
-                    cfg.Visible = false;
-
-                var colsEnReporte = dgvPresupuesto.Columns
-                    .Cast<System.Windows.Forms.DataGridViewColumn>()
-                    .Where(col => col.Visible)
-                    .Where(col => col.Name != "colRelleno")
-                    .Where(col =>
-                    {
-                        if (col.Name == "colNumero") return true;
-                        if (col.Tag is not Core.Entities.ColumnaPersonalizada cd2) return false;
-                        return !string.Equals(cd2.NombreInterno, "Tipo", StringComparison.OrdinalIgnoreCase);
-                    })
-                    .OrderBy(col => col.DisplayIndex)
-                    .ToList();
-
-                int ordenReporte = 0;
-                foreach (var col in colsEnReporte)
-                {
-                    string nombreInternoGrid = col.Name == "colNumero"
-                        ? "Numero"
-                        : ((Core.Entities.ColumnaPersonalizada)col.Tag).NombreInterno;
-
-                    string nombreInternoReporte = ObtenerNombreInternoReporteDesdeGrid(nombreInternoGrid);
-                    var cfg = columnasBD.FirstOrDefault(r => r.NombreInterno == nombreInternoReporte);
-                    if (cfg == null)
-                    {
-                        cfg = CrearConfigColumnaReporteDesdeGrid(col, nombreInternoReporte);
-                        cfg.ProyectoId = _proyecto.Id;
-                        cfg.TipoReporte = "Presupuesto";
-                        columnasBD.Add(cfg);
-                    }
-
-                    cfg.Visible = true;
-                    cfg.Orden = ordenReporte++;
-                    cfg.Ancho = col.Width;
-                    cfg.Encabezado = col.HeaderText;
-                    cfg.WrapTexto = (col.Tag as Core.Entities.ColumnaPersonalizada)?.WrapTexto == true
-                        || col.DefaultCellStyle.WrapMode == DataGridViewTriState.True;
-                    ActualizarConfigColumnaReporteDesdeGrid(cfg, col);
-                }
-
-                svc.GuardarColumnas(columnasBD);
+                // Snapshot neutral desde la configuración persistida (no desde el grid).
+                var snapshot = ConstruirSnapshotPresupuesto();
 
                 var conceptos = _context.ConceptosPresupuesto
                     .Where(c => c.ProyectoId == _proyecto.Id)
@@ -264,7 +175,7 @@ namespace SOPRO.WinForms.Forms
                 decimal factorPU = CalcularFactorPU();
                 var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Presupuesto, lblTitulo.Text);
                 var gen = new Services.GeneradorExcelPresupuesto(svc);
-                var ruta = gen.Generar(_proyecto, conceptos, plantilla, columnasBD, dlg.FileName, factorPU, tituloCfg);
+                var ruta = gen.Generar(_proyecto, conceptos, plantilla, snapshot, dlg.FileName, factorPU, tituloCfg);
                 Cursor = Cursors.Default;
 
                 if (MessageBox.Show("Reporte generado:\n" + ruta + "\n\n¿Abrir ahora?",
@@ -283,93 +194,50 @@ namespace SOPRO.WinForms.Forms
         }
 
 
-        private static string ObtenerNombreInternoReporteDesdeGrid(string nombreInternoGrid)
+        /// <summary>
+        /// Construye el snapshot neutral de columnas del reporte de Presupuesto a
+        /// partir de la configuración persistida (columnas personalizadas + overlays
+        /// de encabezado del reporte). NO lee del <c>DataGridView</c>.
+        /// </summary>
+        private Application.Models.Reporting.ReportColumns.ReportColumnSnapshot ConstruirSnapshotPresupuesto()
         {
-            return nombreInternoGrid switch
-            {
-                "Importe" => "ImporteTotal",
-                _ => nombreInternoGrid
-            };
+            var columnas = _context.ColumnasPersonalizadas
+                .Where(c => c.ProyectoId == _proyecto.Id)
+                .OrderBy(c => c.Orden)
+                .ToList();
+
+            // SOLO LECTURA: la exportación nunca debe inicializar ni persistir la
+            // configuración de columnas/overlays. Si no existe configuración se
+            // pasa lista vacía y el builder aplica sus defaults en memoria.
+            var overlays = ObtenerConfiguracionColumnasSoloLectura("Presupuesto");
+
+            return new Application.UseCases.Reporting.PresupuestoReportSnapshotBuilder()
+                .Build(
+                    _proyecto.Id,
+                    lblTitulo.Text,
+                    columnas,
+                    overlays,
+                    _proyecto.DecimalesCantidad,
+                    _proyecto.DecimalesImporte,
+                    _proyecto.DecimalesPorcentaje);
         }
 
-        private static Core.Entities.ConfigColumnaReporte CrearConfigColumnaReporteDesdeGrid(DataGridViewColumn col, string nombreInternoReporte)
+        /// <summary>
+        /// Consulta de solo lectura de los overlays de <c>ConfigColumnaReporte</c>
+        /// de un proyecto/tipo. NO crea valores por defecto ni ejecuta
+        /// <c>SaveChanges</c>: exportar un reporte no debe modificar la
+        /// configuración persistida.
+        /// </summary>
+        private List<Core.Entities.ConfigColumnaReporte> ObtenerConfiguracionColumnasSoloLectura(string tipoReporte)
+            => _context.ConfigColumnasReporte
+                .Where(c => c.ProyectoId == _proyecto.Id && c.TipoReporte == tipoReporte)
+                .OrderBy(c => c.Orden)
+                .ToList();
+
+        private Core.Entities.ConfigColumnaReporte ObtenerEstiloDescripcionPresupuestoParaApu()
         {
-            var sourceColumn = col.Tag as Core.Entities.ColumnaPersonalizada;
-            var tipoDato = sourceColumn?.TipoDato ?? Core.Entities.TipoDatoColumna.Texto;
-            var alineacion = sourceColumn?.Alineacion ?? Core.Entities.AlineacionColumna.Izquierda;
-
-            var cfg = new Core.Entities.ConfigColumnaReporte
-            {
-                NombreInterno = nombreInternoReporte,
-                Encabezado = col.HeaderText,
-                Visible = col.Visible,
-                Orden = col.DisplayIndex,
-                Ancho = col.Width,
-                EncFuente = "Segoe UI",
-                EncTamaño = 9f,
-                EncNegrita = true,
-                EncAlineacion = "Centro",
-                EncColorFondo = "#1565C0",
-                EncColorTexto = "#FFFFFF",
-                ConFuente = "Segoe UI",
-                ConTamaño = 9f,
-                ConNegrita = false,
-                ConAlineacion = alineacion switch
-                {
-                    Core.Entities.AlineacionColumna.Centro => "Centro",
-                    Core.Entities.AlineacionColumna.Derecha => "Derecha",
-                    _ => tipoDato == Core.Entities.TipoDatoColumna.Moneda || tipoDato == Core.Entities.TipoDatoColumna.Numerico || tipoDato == Core.Entities.TipoDatoColumna.Porcentaje
-                        ? "Derecha"
-                        : "Izquierda"
-                },
-                ConColorFondo = "#FFFFFF",
-                ConColorTexto = "#000000",
-                WrapTexto = (sourceColumn?.WrapTexto ?? false) || col.DefaultCellStyle.WrapMode == DataGridViewTriState.True,
-                FormatoNumero = ObtenerFormatoNumeroReporte(nombreInternoReporte, tipoDato)
-            };
-
-            ActualizarConfigColumnaReporteDesdeGrid(cfg, col);
-            return cfg;
-        }
-
-        private static void ActualizarConfigColumnaReporteDesdeGrid(Core.Entities.ConfigColumnaReporte cfg, DataGridViewColumn col)
-        {
-            var sourceColumn = col.Tag as Core.Entities.ColumnaPersonalizada;
-            var estiloColumna = col.DefaultCellStyle;
-            var fuente = estiloColumna.Font;
-
-            cfg.ConFuente = !string.IsNullOrWhiteSpace(sourceColumn?.NombreFuente)
-                ? sourceColumn.NombreFuente
-                : (!string.IsNullOrWhiteSpace(fuente?.Name) ? fuente.Name : "Segoe UI");
-            cfg.ConTamaño = sourceColumn?.TamanoFuente > 0
-                ? sourceColumn.TamanoFuente
-                : (fuente?.Size ?? 9f);
-            cfg.ConNegrita = sourceColumn?.Negrita ?? (fuente?.Bold ?? false);
-            cfg.ConCursiva = sourceColumn?.Cursiva ?? (fuente?.Italic ?? false);
-            cfg.ConColorFondo = !string.IsNullOrWhiteSpace(sourceColumn?.ColorFondo)
-                ? sourceColumn.ColorFondo
-                : ColorAHex(estiloColumna.BackColor.IsEmpty ? Color.White : estiloColumna.BackColor);
-            cfg.ConColorTexto = !string.IsNullOrWhiteSpace(sourceColumn?.ColorFuente)
-                ? sourceColumn.ColorFuente
-                : ColorAHex(estiloColumna.ForeColor.IsEmpty ? Color.Black : estiloColumna.ForeColor);
-        }
-
-
-        private static string ColorAHex(Color color)
-        {
-            if (color.IsEmpty) color = Color.Black;
-            return $"#{color.R:X2}{color.G:X2}{color.B:X2}";
-        }
-
-        private Core.Entities.ConfigColumnaReporte ObtenerEstiloDescripcionPresupuestoParaApu(Services.ReporteService svc)
-        {
-            var columnasReporte = svc.ObtenerOCrearColumnas(_proyecto.Id, "Presupuesto");
+            var columnasReporte = ObtenerConfiguracionColumnasSoloLectura("Presupuesto");
             var descripcionReporte = columnasReporte.FirstOrDefault(c => c.NombreInterno == "Descripcion");
-
-            var columnaGridDescripcion = dgvPresupuesto.Columns
-                .Cast<DataGridViewColumn>()
-                .FirstOrDefault(col => col.Tag is Core.Entities.ColumnaPersonalizada cp &&
-                    string.Equals(cp.NombreInterno, "Descripcion", StringComparison.OrdinalIgnoreCase));
 
             if (descripcionReporte == null)
             {
@@ -385,25 +253,7 @@ namespace SOPRO.WinForms.Forms
                 };
             }
 
-            if (columnaGridDescripcion != null)
-                ActualizarConfigColumnaReporteDesdeGrid(descripcionReporte, columnaGridDescripcion);
-
             return descripcionReporte;
-        }
-
-        private static string ObtenerFormatoNumeroReporte(string nombreInternoReporte, Core.Entities.TipoDatoColumna tipoDato)
-        {
-            return nombreInternoReporte switch
-            {
-                "Cantidad" => "N3",
-                "PrecioUnitario" or "ImporteTotal" or "Subtotal" or "IVA" or "Total" or "Indirectos" or "Financiamiento" or "Utilidad" => "N2",
-                _ => tipoDato switch
-                {
-                    Core.Entities.TipoDatoColumna.Moneda => "N2",
-                    Core.Entities.TipoDatoColumna.Numerico => "N3",
-                    _ => string.Empty
-                }
-            };
         }
 
         public void GenerarExcelAPU()
@@ -441,7 +291,7 @@ namespace SOPRO.WinForms.Forms
                 if (dlg.ShowDialog() != DialogResult.OK) return;
 
                 Cursor = Cursors.WaitCursor;
-                var estiloDescripcionApu = ObtenerEstiloDescripcionPresupuestoParaApu(svc);
+                var estiloDescripcionApu = ObtenerEstiloDescripcionPresupuestoParaApu();
                 var gen = new Services.GeneradorExcelAPU(svc, _context);
                 var ruta = gen.Generar(_proyecto, conceptos, plantilla, columnas, dlg.FileName, estiloDescripcionApu);
                 Cursor = Cursors.Default;

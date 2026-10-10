@@ -1548,6 +1548,34 @@ public class MaterialsUseCasesTests
         Assert.AreEqual("Maestro", MaterialCatalogExportResolver.ResolveOrigin(maestro));
     }
 
+    [TestMethod]
+    public void MaterialCatalogExportResolver_ColumnasPredeterminadas_PrecioUnitarioEsMonetario()
+    {
+        // El fallback de Precio Unitario conserva el token legacy "#,##0.0000" (no
+        // "C4"), pero la columna es monetaria por NombreInterno: el valor exportado
+        // usa símbolo de moneda y DecimalesImporte, con paridad con el grid.
+        var precioDefault = MaterialCatalogExportResolver.DefaultColumns()
+            .Single(c => c.Identificador == "PrecioUnitario");
+
+        Assert.IsTrue(precioDefault.EsNumerica);
+        Assert.IsTrue(precioDefault.EsMoneda,
+            "El Precio Unitario debe ser monetario (paridad con el grid).");
+        Assert.AreEqual("#,##0.0000", precioDefault.FormatoNumerico);
+        Assert.AreNotEqual("C4", precioDefault.FormatoNumerico);
+
+        // El snapshot sin configuración persistida usa el mismo fallback.
+        var snapshot = MaterialCatalogExportResolver.BuildSnapshot(0, null, null);
+        var precioSnapshot = snapshot.Columnas.Single(c => c.Identificador == "PrecioUnitario");
+        Assert.AreEqual("#,##0.0000", precioSnapshot.FormatoNumerico);
+
+        // El valor renderizado lleva símbolo de moneda + DecimalesImporte (por
+        // defecto 2), igual que el grid.
+        var material = new MaterialListItem(1, "M-1", "Descripción", "pza", 60m, string.Empty, OrigenInsumo.Proyecto);
+        Assert.AreEqual(
+            60m.ToString("C2", System.Globalization.CultureInfo.CurrentCulture),
+            MaterialCatalogExportResolver.ResolveValue(material, precioSnapshot, snapshot));
+    }
+
     private static Proyecto CrearOtroProyecto(SOPRO.Data.Context.SOPROContext context)
     {
         var otroProyecto = new Proyecto

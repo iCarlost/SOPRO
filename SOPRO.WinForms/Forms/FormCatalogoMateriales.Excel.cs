@@ -13,13 +13,17 @@ using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
 using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
+using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.UseCases.Materials;
 using SOPRO.Application.Models.Catalogs;
+using SOPRO.Reporting.Formatting;
+using SOPRO.Reporting.Layout;
 
 namespace SOPRO.WinForms.Forms
 {
     /// <summary>
-    /// Exportación del catálogo de materiales a Excel.
+    /// Exportación del catálogo de materiales a Excel. Consume el mismo snapshot
+    /// neutral de columnas que el PDF (visibilidad, orden, ancho, formato, estilo).
     /// </summary>
     public partial class FormCatalogoMateriales
     {
@@ -53,8 +57,16 @@ namespace SOPRO.WinForms.Forms
                 Proyecto proyecto = _proyectoId.HasValue
                     ? _context.Proyectos.Find(_proyectoId.Value)
                     : new Proyecto { Nombre = "Materiales" };
-                var colsVis = _columnasConfig.Where(c => c.Visible).ToList();
-                int numCols = colsVis.Any() ? colsVis.Count : 5;
+
+                // ── Snapshot neutral compartido con el PDF ────────────────
+                var snapshot = MaterialCatalogExportResolver.BuildSnapshot(
+                    _proyectoId ?? 0, lblTitulo.Text, _columnasConfig,
+                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+                var estiloTabla = snapshot.EstiloTabla;
+                var colsVis = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+                if (colsVis.Count == 0)
+                    colsVis = MaterialCatalogExportResolver.DefaultColumns().Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+                int numCols = colsVis.Count > 0 ? colsVis.Count : 5;
 
                 // ── Encabezado + Título ─────────────────────────────────
                 int fila = 1;
@@ -69,32 +81,23 @@ namespace SOPRO.WinForms.Forms
                 ws.Row(fila).Height = 24;
                 fila++;
 
-                // Encabezados de columnas
-                if (colsVis.Any())
+                // Encabezados de columnas (estilo desde el contrato neutral)
+                for (int i = 0; i < colsVis.Count; i++)
                 {
-                    for (int i = 0; i < colsVis.Count; i++)
-                    {
-                        var h = ws.Cell(fila, i + 1);
-                        h.Value = colsVis[i].Nombre;
-                        h.Style.Font.Bold = true;
-                        h.Style.Fill.BackgroundColor = XLColor.FromHtml("#4A4A6A");
-                        h.Style.Font.FontColor = XLColor.White;
-                        h.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-                        ws.Column(i + 1).Width = colsVis[i].AnchoColumna / 7.0;
-                    }
-                }
-                else
-                {
-                    string[] hdrs = { "Clave", "Descripción", "Unidad", "Precio Unitario", "Origen" };
-                    for (int i = 0; i < hdrs.Length; i++)
-                    {
-                        var h = ws.Cell(fila, i + 1);
-                        h.Value = hdrs[i];
-                        h.Style.Font.Bold = true;
-                        h.Style.Fill.BackgroundColor = XLColor.FromHtml("#4A4A6A");
-                        h.Style.Font.FontColor = XLColor.White;
-                        h.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-                    }
+                    var def = colsVis[i];
+                    var enc = def.EstiloEncabezado;
+                    var h = ws.Cell(fila, i + 1);
+                    h.Value = def.Encabezado ?? string.Empty;
+                    h.Style.Font.Bold = enc.Negrita;
+                    h.Style.Font.Italic = enc.Cursiva;
+                    if (!string.IsNullOrEmpty(enc.Fuente))
+                        h.Style.Font.FontName = enc.Fuente;
+                    if (enc.Tamano > 0)
+                        h.Style.Font.FontSize = enc.Tamano;
+                    h.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(enc.ColorFondo ?? "#4A4A6A");
+                    h.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(enc.ColorFuente, "#FFFFFF");
+                    h.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                    ws.Column(i + 1).Width = ReportColumnWidthConverter.PxToExcelWidth(def.Ancho);
                 }
                 ws.Row(fila).Height = 18;
                 fila++;
@@ -103,54 +106,41 @@ namespace SOPRO.WinForms.Forms
                 bool alt = false;
                 foreach (var m in materiales)
                 {
-                    string fondo = alt ? "#F5F5F5" : "#FFFFFF";
-                    alt = !alt;
-
-                    if (colsVis.Any())
+                    for (int i = 0; i < colsVis.Count; i++)
                     {
-                        for (int i = 0; i < colsVis.Count; i++)
-                        {
-                            var cell = ws.Cell(fila, i + 1);
-                            cell.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(fondo);
-                            if (colsVis[i].Negrita) cell.Style.Font.Bold = true;
-                            if (colsVis[i].Cursiva) cell.Style.Font.Italic = true;
-                            if (!string.IsNullOrEmpty(colsVis[i].NombreFuente))
-                                cell.Style.Font.FontName = colsVis[i].NombreFuente;
-                            if (colsVis[i].TamanoFuente > 0)
-                                cell.Style.Font.FontSize = colsVis[i].TamanoFuente;
-                            cell.Style.Alignment.WrapText = colsVis[i].WrapTexto;
-                            cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                        var def = colsVis[i];
+                        var cont = def.EstiloContenido;
+                        var cell = ws.Cell(fila, i + 1);
 
-                            switch (colsVis[i].NombreInterno)
-                            {
-                                case "Clave": cell.Value = m.Clave ?? ""; break;
-                                case "Descripcion": cell.Value = m.Descripcion ?? ""; break;
-                                case "Unidad": cell.Value = m.Unidad ?? ""; break;
-                                case "PrecioUnitario":
-                                    cell.Value = m.PrecioUnitario;
-                                    cell.Style.NumberFormat.Format = "#,##0.0000";
-                                    cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-                                    break;
-                                case "Origen":
-                                    cell.Value = m.Origen == OrigenInsumo.Maestro ? "Maestro" : "Proyecto";
-                                    cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-                                    break;
-                            }
+                        cell.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(
+                            MaterialCatalogExportResolver.ResolveCellBackground(def, estiloTabla, alt));
+                        cell.Style.Font.Bold = cont.Negrita;
+                        cell.Style.Font.Italic = cont.Cursiva;
+                        if (!string.IsNullOrEmpty(cont.Fuente))
+                            cell.Style.Font.FontName = cont.Fuente;
+                        if (cont.Tamano > 0)
+                            cell.Style.Font.FontSize = cont.Tamano;
+                        cell.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(cont.ColorFuente, "#000000");
+                        cell.Style.Alignment.WrapText = def.Wrap;
+                        cell.Style.Alignment.Vertical = ConvertirAlineacionVertical(def.AlineacionVertical);
+                        cell.Style.Alignment.Horizontal = ConvertirAlineacion(def.Alineacion);
+
+                        if (def.EsNumerica && def.Identificador == "PrecioUnitario")
+                        {
+                            cell.Value = m.PrecioUnitario;
+                            // Paridad grid↔export: símbolo de moneda de la cultura +
+                            // DecimalesImporte del proyecto (no el token legacy crudo).
+                            cell.Style.NumberFormat.Format = ReportColumnGridFormat.ResolveExcelFormat(def, snapshot);
+                        }
+                        else
+                        {
+                            cell.Value = MaterialCatalogExportResolver.ResolveValue(m, def);
                         }
                     }
-                    else
-                    {
-                        ws.Cell(fila, 1).Value = m.Clave ?? "";
-                        ws.Cell(fila, 2).Value = m.Descripcion ?? "";
-                        ws.Cell(fila, 3).Value = m.Unidad ?? "";
-                        ws.Cell(fila, 4).Value = m.PrecioUnitario;
-                        ws.Cell(fila, 4).Style.NumberFormat.Format = "#,##0.0000";
-                        ws.Cell(fila, 5).Value = m.Origen == OrigenInsumo.Maestro ? "Maestro" : "Proyecto";
-                        ws.Range(fila, 1, fila, 5).Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(fondo);
-                    }
 
-                    ws.Row(fila).Height = CalcularAlturaFilaCatalogo(colsVis, fila, ws, 14);
+                    ws.Row(fila).Height = CalcularAlturaFilaCatalogoNeutral(colsVis, fila, ws, 14);
                     fila++;
+                    alt = !alt;
                 }
 
                 ws.Range(2, 1, fila - 1, numCols).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
@@ -168,6 +158,51 @@ namespace SOPRO.WinForms.Forms
                 MessageBox.Show($"Error al exportar:\n{ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private static XLAlignmentHorizontalValues ConvertirAlineacion(ReportTextAlignment a) => a switch
+        {
+            ReportTextAlignment.Centro => XLAlignmentHorizontalValues.Center,
+            ReportTextAlignment.Derecha => XLAlignmentHorizontalValues.Right,
+            ReportTextAlignment.Justificado => XLAlignmentHorizontalValues.Justify,
+            _ => XLAlignmentHorizontalValues.Left,
+        };
+
+        private static XLAlignmentVerticalValues ConvertirAlineacionVertical(ReportVerticalAlignment v) => v switch
+        {
+            ReportVerticalAlignment.Superior => XLAlignmentVerticalValues.Top,
+            ReportVerticalAlignment.Inferior => XLAlignmentVerticalValues.Bottom,
+            _ => XLAlignmentVerticalValues.Center,
+        };
+
+        private static double CalcularAlturaFilaCatalogoNeutral(IReadOnlyList<ReportColumnDefinition> colsVis, int fila, IXLWorksheet ws, double alturaBase)
+        {
+            if (colsVis == null || colsVis.Count == 0) return alturaBase;
+
+            double altura = alturaBase;
+            for (int i = 0; i < colsVis.Count; i++)
+            {
+                var def = colsVis[i];
+                if (!def.Wrap) continue;
+
+                var valor = ws.Cell(fila, i + 1).GetFormattedString();
+                if (string.IsNullOrWhiteSpace(valor)) continue;
+
+                var cont = def.EstiloContenido;
+                using var font = new Font(
+                    string.IsNullOrWhiteSpace(cont.Fuente) ? "Segoe UI" : cont.Fuente,
+                    Math.Max(8f, cont.Tamano > 0 ? cont.Tamano : 9f),
+                    cont.Negrita ? FontStyle.Bold : FontStyle.Regular);
+
+                int anchoPx = Math.Max(24, (int)Math.Round(def.Ancho - 8d));
+                var proposed = new Size(anchoPx, int.MaxValue);
+                var flags = TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl;
+                var measured = TextRenderer.MeasureText(valor, font, proposed, flags);
+                double alturaPts = Math.Max(alturaBase, measured.Height * 72.0 / 96.0 + 6);
+                if (alturaPts > altura) altura = alturaPts;
+            }
+
+            return altura;
         }
     }
 }

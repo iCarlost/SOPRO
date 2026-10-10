@@ -573,11 +573,11 @@ namespace SOPRO.WinForms.Forms
                     catch { }
                 }
 
-                // Refrescar también el panel embebido con la fila actual restaurada
-                if (filaActual >= 0 && filaActual < dgvPresupuesto.Rows.Count)
-                    _panelMatricesEmbebido?.NotificarFilaCambiada(filaActual);
-                else if (dgvPresupuesto.CurrentRow != null)
-                    _panelMatricesEmbebido?.NotificarFilaCambiada(dgvPresupuesto.CurrentRow.Index);
+                // Refrescar también el panel embebido con la fila actual restaurada.
+                // Recarga forzada desde BD: NotificarFilaCambiada es tragada por el guard
+                // de vista normal (_modoEdicionCabecera == true), por eso el panel no
+                // reflejaba los cambios de precio del Catálogo de Materiales.
+                _panelMatricesEmbebido?.RecargarMatrizVisibleDesdeBd();
 
                 // Actualizar el header con los % del proyecto
                 ActualizarInfoPorcentajes();

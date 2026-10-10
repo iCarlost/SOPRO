@@ -141,7 +141,11 @@ namespace SOPRO.WinForms.Forms
             }
         }
 
-        private int DecimalesImporte => _sessionInfo.DecimalesImporte ?? 2;
+        // Decimales de importe vigentes del proyecto. Se leen de FormatoHelper (la
+        // configuración global que FormDatosProyecto actualiza ANTES de disparar
+        // DecimalesActualizados), no del _sessionInfo capturado en el ctor: así un
+        // catálogo abierto refleja el nuevo decimal sin cerrarlo/reabrirlo.
+        private int DecimalesImporte => FormatoHelper.DecimalesImporte;
 
         private void DgvMateriales_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
         {

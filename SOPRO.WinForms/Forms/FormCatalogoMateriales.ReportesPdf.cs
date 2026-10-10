@@ -72,12 +72,15 @@ namespace SOPRO.WinForms.Forms
                         PlazoEjecucion = refProy.PlazoEjecucion
                     }
                     : new Proyecto { Nombre = "Materiales" };
-                var colsVis = _columnasConfig.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+                // Snapshot neutral compartido: misma lista/orden/ancho/formato/estilo que Excel.
+                var snapshot = MaterialCatalogExportResolver.BuildSnapshot(
+                    _proyectoId ?? 0, lblTitulo.Text, _columnasConfig,
+                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
                 var tituloCfg = _proyectoId.HasValue
                     ? new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyectoId.Value, ReportTitleModuleKeys.CatalogoMateriales, lblTitulo.Text)
                     : null;
                 var generador = new GeneradorPdfCatalogoMateriales(svcRep);
-                var ruta = generador.Generar(proyecto, materiales, plantilla, colsVis, dlg.FileName, tituloCfg);
+                var ruta = generador.Generar(proyecto, materiales, plantilla, snapshot, dlg.FileName, tituloCfg);
                 Cursor = Cursors.Default;
 
                 if (MessageBox.Show("Catálogo PDF exportado.¿Desea abrir el archivo?",
