@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
+using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
+using SOPRO.Reporting.Formatting;
 using SOPRO.WinForms.Helpers;
 using MColor = MigraDoc.DocumentObjectModel.Color;
 using MOrientation = MigraDoc.DocumentObjectModel.Orientation;
@@ -14,6 +16,15 @@ using MParagraphAlignment = MigraDoc.DocumentObjectModel.ParagraphAlignment;
 
 namespace SOPRO.WinForms.Services
 {
+    /// <summary>
+    /// Generador PDF de la Explosión de Insumos. Consume el snapshot neutral de
+    /// columnas (<see cref="ReportColumnSnapshot"/>) compartido con la ruta Excel:
+    /// mismas columnas, orden, anchos, estilos y —sobre todo— la MISMA resolución de
+    /// formatos numéricos (<see cref="ReportColumnGridFormat"/>), de modo que el
+    /// símbolo de moneda y los decimales de cantidad/importe/porcentaje del proyecto
+    /// no se dupliquen en cada medio. Cubre las cuatro familias de insumo
+    /// (Materiales, Mano de Obra, Herramientas y Maquinaria) y sus totales.
+    /// </summary>
     public class GeneradorPdfExplosion
     {
         private readonly ReporteService _svc;
@@ -23,7 +34,7 @@ namespace SOPRO.WinForms.Services
         public string Generar(
             Proyecto proyecto,
             PlantillaReporte plantilla,
-            List<ColumnaExplosion> columnas,
+            ReportColumnSnapshot snapshot,
             string filtro,
             Dictionary<int, DatosInsumo> materiales,
             Dictionary<int, DatosInsumo> manoObra,
@@ -33,7 +44,9 @@ namespace SOPRO.WinForms.Services
             string rutaDestino = null,
             ConfiguracionTituloReporte? tituloCfg = null)
         {
-            var cols = columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+            ArgumentNullException.ThrowIfNull(snapshot);
+
+            var cols = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
             if (!cols.Any())
                 throw new InvalidOperationException("No hay columnas visibles para exportar.");
 
@@ -67,7 +80,7 @@ namespace SOPRO.WinForms.Services
 
             ConstruirHeader(section, proyecto, plantilla, headerHeightCm);
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
-            ConstruirCuerpo(section, proyecto, cols, filtro, materiales, manoObra, maquinaria, herramientas, costoDirectoTotal, tituloCfg);
+            ConstruirCuerpo(section, proyecto, cols, snapshot, filtro, materiales, manoObra, maquinaria, herramientas, costoDirectoTotal, tituloCfg);
 
             var renderer = new PdfDocumentRenderer() { Document = doc };
             renderer.RenderDocument();
@@ -195,7 +208,8 @@ namespace SOPRO.WinForms.Services
         private void ConstruirCuerpo(
             Section section,
             Proyecto proyecto,
-            List<ColumnaExplosion> cols,
+            IReadOnlyList<ReportColumnDefinition> cols,
+            ReportColumnSnapshot snapshot,
             string filtro,
             Dictionary<int, DatosInsumo> materiales,
             Dictionary<int, DatosInsumo> manoObra,
@@ -236,16 +250,16 @@ namespace SOPRO.WinForms.Services
             spacer.Format.SpaceAfter = Unit.FromCentimeter(0.06);
 
             if (DebeIncluirSeccion(filtro, "Materiales"))
-                AgregarSeccion(section, "MATERIALES", materiales, cols, costoDirectoTotal, proyecto);
+                AgregarSeccion(section, "MATERIALES", materiales, cols, snapshot, costoDirectoTotal);
             if (DebeIncluirSeccion(filtro, "Mano de Obra"))
-                AgregarSeccion(section, "MANO DE OBRA", manoObra, cols, costoDirectoTotal, proyecto);
+                AgregarSeccion(section, "MANO DE OBRA", manoObra, cols, snapshot, costoDirectoTotal);
             if (DebeIncluirSeccion(filtro, "Herramientas"))
-                AgregarSeccion(section, "HERRAMIENTAS", herramientas, cols, costoDirectoTotal, proyecto);
+                AgregarSeccion(section, "HERRAMIENTAS", herramientas, cols, snapshot, costoDirectoTotal);
             if (DebeIncluirSeccion(filtro, "Maquinaria"))
-                AgregarSeccion(section, "MAQUINARIA", maquinaria, cols, costoDirectoTotal, proyecto);
+                AgregarSeccion(section, "MAQUINARIA", maquinaria, cols, snapshot, costoDirectoTotal);
 
             if (string.Equals(filtro, "Todos", StringComparison.OrdinalIgnoreCase))
-                AgregarTotalGeneral(section, cols, costoDirectoTotal, proyecto);
+                AgregarTotalGeneral(section, cols, snapshot, costoDirectoTotal);
         }
 
         private static bool DebeIncluirSeccion(string filtro, string seccion)
@@ -254,7 +268,13 @@ namespace SOPRO.WinForms.Services
                 || string.Equals(filtro, seccion, StringComparison.OrdinalIgnoreCase);
         }
 
-        private void AgregarSeccion(Section section, string titulo, Dictionary<int, DatosInsumo> datos, List<ColumnaExplosion> cols, decimal costoTotal, Proyecto proyecto)
+        private void AgregarSeccion(
+            Section section,
+            string titulo,
+            Dictionary<int, DatosInsumo> datos,
+            IReadOnlyList<ReportColumnDefinition> cols,
+            ReportColumnSnapshot snapshot,
+            decimal costoTotal)
         {
             if (datos == null || datos.Count == 0)
                 return;
@@ -286,28 +306,24 @@ namespace SOPRO.WinForms.Services
             for (int i = 0; i < cols.Count; i++)
             {
                 var col = cols[i];
+                var enc = col.EstiloEncabezado;
                 var cell = header.Cells[i];
-                cell.Shading.Color = ParseColorSafe(
-                    !string.IsNullOrWhiteSpace(col.ColorFondo) && !string.Equals(col.ColorFondo, "#FFFFFF", StringComparison.OrdinalIgnoreCase)
-                        ? col.ColorFondo
-                        : "#33334C",
-                    "#33334C");
+                cell.Shading.Color = ParseColorSafe(enc.ColorFondo ?? "#4A4A6A", "#4A4A6A");
                 cell.VerticalAlignment = VerticalAlignment.Center;
-                var p = cell.AddParagraph(col.Nombre ?? string.Empty);
+                var p = cell.AddParagraph(col.Encabezado ?? string.Empty);
                 p.Style = "ExplosionHeader";
                 p.Format.Alignment = ConvertirAlineacion(col.Alineacion);
-                p.Format.Font.Name = NormalizarFuentePdf(col.NombreFuente);
-                p.Format.Font.Size = col.TamanoFuente > 0 ? col.TamanoFuente : 9;
-                p.Format.Font.Color = ParseColorSafe(
-                    !string.IsNullOrWhiteSpace(col.ColorFuente) && !string.Equals(col.ColorFuente, "#000000", StringComparison.OrdinalIgnoreCase)
-                        ? col.ColorFuente
-                        : "#FFFFFF",
-                    "#FFFFFF");
+                p.Format.Font.Name = NormalizarFuentePdf(enc.Fuente);
+                p.Format.Font.Size = enc.Tamano > 0 ? enc.Tamano : 9;
+                p.Format.Font.Bold = enc.Negrita;
+                p.Format.Font.Italic = enc.Cursiva;
+                p.Format.Font.Color = ParseColorSafe(enc.ColorFuente, "#FFFFFF");
                 cell.Format.Alignment = ConvertirAlineacion(col.Alineacion);
                 AplicarBordeInferior(cell, "#1565C0", 0.45);
             }
 
             decimal subtotal = 0m;
+            bool alt = false;
             foreach (var kvp in datos.OrderBy(x => x.Value.Clave))
             {
                 var ins = kvp.Value;
@@ -315,28 +331,42 @@ namespace SOPRO.WinForms.Services
                 decimal porcentaje = costoTotal > 0m ? importe / costoTotal : 0m;
                 subtotal += importe;
 
-                var row = table.AddRow();
-                row.HeightRule = RowHeightRule.AtLeast;
-                row.Height = Unit.FromCentimeter(CalcularAlturaFilaPdf(ins, cols));
+                var row = new ExplosionReportRow(
+                    ins.Clave ?? string.Empty,
+                    ins.Descripcion ?? string.Empty,
+                    ins.Unidad ?? string.Empty,
+                    ins.CantidadFisica,
+                    ins.PrecioUnitario,
+                    importe,
+                    porcentaje,
+                    ins.EsPorcentual);
+
+                var dataRow = table.AddRow();
+                dataRow.HeightRule = RowHeightRule.AtLeast;
+                dataRow.Height = Unit.FromCentimeter(CalcularAlturaFilaPdf(row, cols, snapshot));
 
                 for (int i = 0; i < cols.Count; i++)
                 {
                     var col = cols[i];
-                    var cell = row.Cells[i];
-                    cell.VerticalAlignment = VerticalAlignment.Center;
-                    cell.Shading.Color = ParseColorSafe(string.IsNullOrWhiteSpace(col.ColorFondo) ? "#FFFFFF" : col.ColorFondo, "#FFFFFF");
+                    var cont = col.EstiloContenido;
+                    var cell = dataRow.Cells[i];
+                    cell.VerticalAlignment = ConvertirAlineacionVertical(col.AlineacionVertical);
+                    cell.Shading.Color = ParseColorSafe(
+                        ExplosionExportResolver.ResolveCellBackground(col, snapshot.EstiloTabla, alt), "#FFFFFF");
                     cell.Format.Alignment = ConvertirAlineacion(col.Alineacion);
 
                     var p = cell.AddParagraph();
                     p.Format.Alignment = ConvertirAlineacion(col.Alineacion);
-                    p.Format.Font.Name = NormalizarFuentePdf(col.NombreFuente);
-                    p.Format.Font.Size = col.TamanoFuente > 0 ? col.TamanoFuente : 9;
-                    p.Format.Font.Bold = col.Negrita;
-                    p.Format.Font.Italic = col.Cursiva;
-                    p.Format.Font.Color = ParseColorSafe(string.IsNullOrWhiteSpace(col.ColorFuente) ? "#000000" : col.ColorFuente, "#000000");
-                    p.AddText(ResolverValor(col.NombreInterno, ins, importe, porcentaje, proyecto));
+                    p.Format.Font.Name = NormalizarFuentePdf(cont.Fuente);
+                    p.Format.Font.Size = cont.Tamano > 0 ? cont.Tamano : 9;
+                    p.Format.Font.Bold = cont.Negrita;
+                    p.Format.Font.Italic = cont.Cursiva;
+                    p.Format.Font.Color = ParseColorSafe(cont.ColorFuente, "#000000");
+                    p.AddText(ValorCelda(row, col, snapshot));
                     AplicarBordeInferior(cell, "#D9DEE3", 0.20);
                 }
+
+                alt = !alt;
             }
 
             var subtotalRow = table.AddRow();
@@ -354,12 +384,12 @@ namespace SOPRO.WinForms.Services
                 p.Format.Alignment = ConvertirAlineacion(col.Alineacion);
                 p.Format.Font.Bold = true;
 
-                if (string.Equals(col.NombreInterno, "Descripcion", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(col.Identificador, "Descripcion", StringComparison.OrdinalIgnoreCase))
                     p.AddText("SUBTOTAL " + titulo + ":");
-                else if (string.Equals(col.NombreInterno, "Importe", StringComparison.OrdinalIgnoreCase))
-                    p.AddText(FormatearDecimal(subtotal, FormatoC(proyecto.DecimalesImporte)));
-                else if (string.Equals(col.NombreInterno, "Porcentaje", StringComparison.OrdinalIgnoreCase))
-                    p.AddText(FormatearPorcentaje(costoTotal > 0m ? subtotal / costoTotal : 0m));
+                else if (EsColumnaImporte(col))
+                    p.AddText(FormatearNumerico(subtotal, col, snapshot));
+                else if (string.Equals(col.Identificador, "Porcentaje", StringComparison.OrdinalIgnoreCase))
+                    p.AddText(FormatearNumerico(costoTotal > 0m ? subtotal / costoTotal : 0m, col, snapshot));
                 else
                     p.AddText(string.Empty);
 
@@ -372,7 +402,11 @@ namespace SOPRO.WinForms.Services
             spacer.Format.SpaceAfter = Unit.FromCentimeter(0.10);
         }
 
-        private void AgregarTotalGeneral(Section section, List<ColumnaExplosion> cols, decimal costoDirectoTotal, Proyecto proyecto)
+        private void AgregarTotalGeneral(
+            Section section,
+            IReadOnlyList<ReportColumnDefinition> cols,
+            ReportColumnSnapshot snapshot,
+            decimal costoDirectoTotal)
         {
             var table = section.AddTable();
             table.Format.Font.Name = "Segoe UI";
@@ -396,12 +430,12 @@ namespace SOPRO.WinForms.Services
                 p.Style = "ExplosionTotal";
                 p.Format.Alignment = ConvertirAlineacion(col.Alineacion);
 
-                if (string.Equals(col.NombreInterno, "Descripcion", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(col.Identificador, "Descripcion", StringComparison.OrdinalIgnoreCase))
                     p.AddText("TOTAL COSTO DIRECTO:");
-                else if (string.Equals(col.NombreInterno, "Importe", StringComparison.OrdinalIgnoreCase))
-                    p.AddText(FormatearDecimal(costoDirectoTotal, FormatoC(proyecto.DecimalesImporte)));
-                else if (string.Equals(col.NombreInterno, "Porcentaje", StringComparison.OrdinalIgnoreCase))
-                    p.AddText(FormatearPorcentaje(1m));
+                else if (EsColumnaImporte(col))
+                    p.AddText(FormatearNumerico(costoDirectoTotal, col, snapshot));
+                else if (string.Equals(col.Identificador, "Porcentaje", StringComparison.OrdinalIgnoreCase))
+                    p.AddText(FormatearNumerico(1m, col, snapshot));
                 else
                     p.AddText(string.Empty);
 
@@ -409,7 +443,35 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private static MOrientation DeterminarOrientacionExplosion(List<ColumnaExplosion> cols, double leftMarginCm, double rightMarginCm)
+        /// <summary>
+        /// Resuelve el texto de una celda de DATOS con paridad grid↔PDF↔Excel: las
+        /// columnas numéricas usan la regla compartida
+        /// (<see cref="ReportColumnGridFormat"/>) y el resto la resolución de texto
+        /// del resolver neutral.
+        /// </summary>
+        private static string ValorCelda(ExplosionReportRow row, ReportColumnDefinition col, ReportColumnSnapshot snapshot)
+        {
+            if (col.EsNumerica && ExplosionExportResolver.TryResolveNumber(row, col, out var valor))
+                return FormatearNumerico(valor, col, snapshot);
+            return ExplosionExportResolver.ResolveValue(row, col);
+        }
+
+        /// <summary>
+        /// Formatea un valor numérico con la regla compartida. El porcentaje se
+        /// presenta como magnitud (fracción × 100) con los decimales de porcentaje
+        /// del proyecto y el signo '%', reproduciendo la semántica del grid.
+        /// </summary>
+        private static string FormatearNumerico(decimal valor, ReportColumnDefinition col, ReportColumnSnapshot snapshot)
+        {
+            if (ReportColumnGridFormat.EsPorcentajeGrid(col))
+                return ReportColumnGridFormat.FormatearPorcentajePdf(valor * 100m, snapshot) + "%";
+            return ReportColumnGridFormat.FormatearPdf(valor, col, snapshot);
+        }
+
+        private static bool EsColumnaImporte(ReportColumnDefinition col)
+            => string.Equals(col.Identificador, "ImporteTotal", StringComparison.OrdinalIgnoreCase);
+
+        private static MOrientation DeterminarOrientacionExplosion(IReadOnlyList<ReportColumnDefinition> cols, double leftMarginCm, double rightMarginCm)
         {
             if (cols == null || cols.Count == 0)
                 return MOrientation.Portrait;
@@ -420,20 +482,20 @@ namespace SOPRO.WinForms.Services
             var portraitContentPx = Math.Max(1.0, (letterPortraitWidthCm - leftMarginCm - rightMarginCm) * pxPerCm);
             var requiredPx = cols
                 .Where(c => c.Visible)
-                .Sum(c => (double)Math.Max(12, c.AnchoColumna));
+                .Sum(c => (double)Math.Max(12, c.Ancho));
 
             return requiredPx <= portraitContentPx * 1.02
                 ? MOrientation.Portrait
                 : MOrientation.Landscape;
         }
 
-        private static void AgregarColumnas(Table table, List<ColumnaExplosion> cols, Section section)
+        private static void AgregarColumnas(Table table, IReadOnlyList<ReportColumnDefinition> cols, Section section)
         {
             double availableCm = ReportPageLayoutHelper.GetLetterContentWidthCm(section);
-            double totalPx = Math.Max(1, cols.Sum(c => Math.Max(24, c.AnchoColumna)));
+            double totalPx = Math.Max(1, cols.Sum(c => Math.Max(24, c.Ancho)));
             foreach (var col in cols)
             {
-                double widthCm = availableCm * Math.Max(24, col.AnchoColumna) / totalPx;
+                double widthCm = availableCm * Math.Max(24, col.Ancho) / totalPx;
                 table.AddColumn(Unit.FromCentimeter(widthCm));
             }
         }
@@ -524,49 +586,26 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private static string ResolverValor(string nombreInterno, DatosInsumo ins, decimal importe, decimal porcentaje, Proyecto proyecto)
-        {
-            switch (nombreInterno)
-            {
-                case "Clave":
-                    return ins.Clave ?? string.Empty;
-                case "Descripcion":
-                    return ins.Descripcion ?? string.Empty;
-                case "Unidad":
-                    return ins.Unidad ?? string.Empty;
-                case "Cantidad":
-                    return ins.EsPorcentual ? "—" : FormatearDecimal(ins.CantidadFisica, FormatoN(proyecto.DecimalesCantidad));
-                case "PrecioUnitario":
-                    return (ins.EsPorcentual && ins.PrecioUnitario == 0m) ? "—" : FormatearDecimal(ins.PrecioUnitario, FormatoC(proyecto.DecimalesImporte));
-                case "Importe":
-                    return FormatearDecimal(importe, FormatoC(proyecto.DecimalesImporte));
-                case "Porcentaje":
-                    return FormatearPorcentaje(porcentaje);
-                default:
-                    return string.Empty;
-            }
-        }
-
-        private static double CalcularAlturaFilaPdf(DatosInsumo ins, List<ColumnaExplosion> cols)
+        private static double CalcularAlturaFilaPdf(ExplosionReportRow row, IReadOnlyList<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot)
         {
             int maxLineas = 1;
             foreach (var col in cols)
             {
-                if (!col.WrapTexto)
+                if (!col.Wrap)
                     continue;
 
-                string texto = col.NombreInterno switch
+                string texto = col.Identificador switch
                 {
-                    "Clave" => ins.Clave ?? string.Empty,
-                    "Descripcion" => ins.Descripcion ?? string.Empty,
-                    "Unidad" => ins.Unidad ?? string.Empty,
+                    "Clave" => row.Clave ?? string.Empty,
+                    "Descripcion" => row.Descripcion ?? string.Empty,
+                    "Unidad" => row.Unidad ?? string.Empty,
                     _ => string.Empty
                 };
 
                 if (string.IsNullOrWhiteSpace(texto))
                     continue;
 
-                double ancho = Math.Max(24, col.AnchoColumna);
+                double ancho = Math.Max(24, col.Ancho);
                 int estimadas = (int)Math.Ceiling((texto.Length * 7.0) / ancho);
                 if (estimadas > maxLineas)
                     maxLineas = estimadas;
@@ -575,35 +614,16 @@ namespace SOPRO.WinForms.Services
             return Math.Max(0.44, Math.Min(1.20, 0.22 * maxLineas));
         }
 
-        private static string FormatearDecimal(decimal valor, string formatoNumero)
-        {
-            string formato = formatoNumero switch
-            {
-                "N0" => "#,##0",
-                "N2" => "#,##0.00",
-                "N3" => "#,##0.000",
-                "N4" => "#,##0.0000",
-                "N5" => "#,##0.00000",
-                "C2" => "$#,##0.00",
-                "C4" => "$#,##0.0000",
-                _ => string.IsNullOrWhiteSpace(formatoNumero) ? "#,##0.00" : formatoNumero
-            };
-            return valor.ToString(formato, CultureInfo.InvariantCulture);
-        }
-
-        private static string FormatearPorcentaje(decimal valor)
-        {
-            return valor.ToString("0.00%", CultureInfo.InvariantCulture);
-        }
-
-        private static MParagraphAlignment ConvertirAlineacion(AlineacionColumna alineacion)
+        private static MParagraphAlignment ConvertirAlineacion(ReportTextAlignment alineacion)
         {
             switch (alineacion)
             {
-                case AlineacionColumna.Centro:
+                case ReportTextAlignment.Centro:
                     return MParagraphAlignment.Center;
-                case AlineacionColumna.Derecha:
+                case ReportTextAlignment.Derecha:
                     return MParagraphAlignment.Right;
+                case ReportTextAlignment.Justificado:
+                    return MParagraphAlignment.Justify;
                 default:
                     return MParagraphAlignment.Left;
             }
@@ -621,6 +641,14 @@ namespace SOPRO.WinForms.Services
                     return MParagraphAlignment.Left;
             }
         }
+
+        private static VerticalAlignment ConvertirAlineacionVertical(ReportVerticalAlignment valor)
+            => valor switch
+            {
+                ReportVerticalAlignment.Superior => VerticalAlignment.Top,
+                ReportVerticalAlignment.Inferior => VerticalAlignment.Bottom,
+                _ => VerticalAlignment.Center,
+            };
 
         private static MColor ParseColorSafe(string html, string fallback)
         {
@@ -641,18 +669,6 @@ namespace SOPRO.WinForms.Services
             cell.Borders.Top.Visible = true;
             cell.Borders.Top.Color = MColor.Parse(colorHtml);
             cell.Borders.Top.Width = width;
-        }
-
-        private static string FormatoN(int decimales)
-        {
-            string ceros = decimales > 0 ? "." + new string('0', decimales) : "";
-            return $"#,##0{ceros}";
-        }
-
-        private static string FormatoC(int decimales)
-        {
-            string ceros = decimales > 0 ? "." + new string('0', decimales) : "";
-            return $"$#,##0{ceros}";
         }
 
         private static string SanitizarNombre(string nombre)

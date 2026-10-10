@@ -33,7 +33,16 @@ namespace SOPRO.WinForms.Forms
 
                 var svc      = new Services.ReporteService(_context);
                 var plantilla = svc.ObtenerOCrearPlantilla(_proyectoId);
-                var columnas  = Helpers.ColumnasExplosionHelper.ObtenerColumnas(_context, _proyectoId);
+                // Snapshot neutral compartido con PDF: misma lista/orden/ancho/
+                // formato/estilo. Las columnas se leen sin persistir; si no hay, el
+                // resolver usa sus defaults EN MEMORIA (sin SaveChanges).
+                var columnas  = _context.ColumnasExplosion
+                    .Where(c => c.ProyectoId == _proyectoId)
+                    .OrderBy(c => c.Orden)
+                    .ToList();
+                var snapshot  = ExplosionExportResolver.BuildSnapshot(
+                    _proyectoId, lblTitulo.Text, columnas,
+                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
                 string filtro = cmbFiltro.SelectedItem?.ToString() ?? "Todos";
 
                 using var dlg = new SaveFileDialog
@@ -49,7 +58,7 @@ namespace SOPRO.WinForms.Forms
                 var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyectoId, ReportTitleModuleKeys.ExplosionInsumos, lblTitulo.Text);
                 var generador = new Services.GeneradorExcelExplosion(svc);
                 string ruta = generador.Generar(
-                    _proyecto, plantilla, columnas, filtro,
+                    _proyecto, plantilla, snapshot, filtro,
                     _ultMateriales, _ultManoObra, _ultMaquinaria, _ultHerramientas,
                     _ultCostoDirectoTotal, dlg.FileName, tituloCfg);
                 Cursor = Cursors.Default;

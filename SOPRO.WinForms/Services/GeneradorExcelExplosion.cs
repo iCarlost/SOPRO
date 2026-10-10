@@ -3,7 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using ClosedXML.Excel;
+using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
+using SOPRO.Reporting.Formatting;
 using SOPRO.WinForms.Helpers;
 
 namespace SOPRO.WinForms.Services
@@ -11,7 +14,11 @@ namespace SOPRO.WinForms.Services
     /// <summary>
     /// Genera el reporte de Explosión de Insumos en formato .xlsx.
     /// Recibe los diccionarios DatosInsumo ya calculados por FormExplosionInsumos
-    /// (método OPUS PLANET) — el Excel coincide exactamente con lo que muestra el formulario.
+    /// (método OPUS PLANET) y el snapshot neutral de columnas
+    /// (<see cref="ReportColumnSnapshot"/>) compartido con la ruta PDF: mismas
+    /// columnas, orden, anchos, estilos y la MISMA resolución de formatos numéricos
+    /// (<see cref="ReportColumnGridFormat"/>). Cubre las cuatro familias de insumo
+    /// (Materiales, Mano de Obra, Herramientas y Maquinaria) y sus totales.
     /// </summary>
     public class GeneradorExcelExplosion
     {
@@ -22,7 +29,7 @@ namespace SOPRO.WinForms.Services
         public string Generar(
             Proyecto proyecto,
             PlantillaReporte plantilla,
-            List<ColumnaExplosion> columnas,
+            ReportColumnSnapshot snapshot,
             string filtro,
             Dictionary<int, DatosInsumo> materiales,
             Dictionary<int, DatosInsumo> manoObra,
@@ -32,6 +39,8 @@ namespace SOPRO.WinForms.Services
             string rutaDestino = null,
             ConfiguracionTituloReporte? tituloCfg = null)
         {
+            ArgumentNullException.ThrowIfNull(snapshot);
+
             if (string.IsNullOrEmpty(rutaDestino))
             {
                 var carpeta = Path.Combine(
@@ -42,7 +51,7 @@ namespace SOPRO.WinForms.Services
                     $"ExplosionInsumos_{Sanitizar(proyecto.Nombre)}_{DateTime.Now:yyyyMMdd_HHmm}.xlsx");
             }
 
-            var cols    = columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+            var cols    = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
             int numCols = cols.Count;
 
             using var wb = new XLWorkbook();
@@ -56,21 +65,21 @@ namespace SOPRO.WinForms.Services
             ws.SheetView.FreezeRows(fila - 1);
 
             if (filtro == "Todos" || filtro == "Materiales")
-                fila = EscribirSeccion(ws, "MATERIALES",   materiales,   cols, costoDirectoTotal, fila, proyecto);
+                fila = EscribirSeccion(ws, "MATERIALES",   materiales,   cols, snapshot, costoDirectoTotal, fila);
             if (filtro == "Todos" || filtro == "Mano de Obra")
-                fila = EscribirSeccion(ws, "MANO DE OBRA", manoObra,     cols, costoDirectoTotal, fila, proyecto);
+                fila = EscribirSeccion(ws, "MANO DE OBRA", manoObra,     cols, snapshot, costoDirectoTotal, fila);
             if (filtro == "Todos" || filtro == "Herramientas")
-                fila = EscribirSeccion(ws, "HERRAMIENTAS", herramientas, cols, costoDirectoTotal, fila, proyecto);
+                fila = EscribirSeccion(ws, "HERRAMIENTAS", herramientas, cols, snapshot, costoDirectoTotal, fila);
             if (filtro == "Todos" || filtro == "Maquinaria")
-                fila = EscribirSeccion(ws, "MAQUINARIA",   maquinaria,   cols, costoDirectoTotal, fila, proyecto);
+                fila = EscribirSeccion(ws, "MAQUINARIA",   maquinaria,   cols, snapshot, costoDirectoTotal, fila);
             if (filtro == "Todos")
-                fila = EscribirTotalGeneral(ws, costoDirectoTotal, cols, fila, proyecto);
+                fila = EscribirTotalGeneral(ws, costoDirectoTotal, cols, snapshot, fila);
 
             fila += 2;
             EscribirPie(ws, plantilla, proyecto, numCols, fila);
 
             for (int i = 0; i < cols.Count; i++)
-                ws.Column(i + 1).Width = Math.Max(cols[i].AnchoColumna / 7.0, 4);
+                ws.Column(i + 1).Width = Math.Max(cols[i].Ancho / 7.0, 4);
 
             ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
             ws.PageSetup.PaperSize       = XLPaperSize.LetterPaper;
@@ -123,23 +132,24 @@ namespace SOPRO.WinForms.Services
             return fila + 1;
         }
 
-        private int EscribirTitulosColumnas(IXLWorksheet ws, List<ColumnaExplosion> cols, int fila)
+        private int EscribirTitulosColumnas(IXLWorksheet ws, IReadOnlyList<ReportColumnDefinition> cols, int fila)
         {
             for (int i = 0; i < cols.Count; i++)
             {
-                var col = cols[i]; var cell = ws.Cell(fila, i + 1);
-                cell.Value = col.Nombre;
+                var col = cols[i];
+                var enc = col.EstiloEncabezado;
+                var cell = ws.Cell(fila, i + 1);
+                cell.Value = col.Encabezado ?? string.Empty;
                 var est = cell.Style;
-                est.Font.Bold = true;
-                est.Font.FontName   = col.NombreFuente ?? "Segoe UI";
-                est.Font.FontSize   = col.TamanoFuente > 0 ? col.TamanoFuente : 9;
-                est.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(
-                    !string.IsNullOrEmpty(col.ColorFondo) && col.ColorFondo != "#FFFFFF" ? col.ColorFondo : "#33334C");
-                est.Font.FontColor = ExcelColorHelper.SafeFromHtml(
-                    !string.IsNullOrEmpty(col.ColorFuente) && col.ColorFuente != "#000000" ? col.ColorFuente : "#FFFFFF");
+                est.Font.Bold = enc.Negrita;
+                est.Font.Italic = enc.Cursiva;
+                est.Font.FontName   = string.IsNullOrWhiteSpace(enc.Fuente) ? "Segoe UI" : enc.Fuente;
+                est.Font.FontSize   = enc.Tamano > 0 ? enc.Tamano : 9;
+                est.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(enc.ColorFondo ?? "#4A4A6A");
+                est.Font.FontColor = ExcelColorHelper.SafeFromHtml(enc.ColorFuente, "#FFFFFF");
                 est.Alignment.Horizontal = AlineacionXL(col.Alineacion);
                 est.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-                est.Alignment.WrapText = col.WrapTexto;
+                est.Alignment.WrapText = col.Wrap;
                 est.Border.BottomBorder = XLBorderStyleValues.Medium;
                 est.Border.BottomBorderColor = XLColor.FromHtml("#1565C0");
             }
@@ -149,14 +159,10 @@ namespace SOPRO.WinForms.Services
 
         private int EscribirSeccion(IXLWorksheet ws, string titulo,
             Dictionary<int, DatosInsumo> dic,
-            List<ColumnaExplosion> cols, decimal costoTotal, int fila,
-            Proyecto proyecto)
+            IReadOnlyList<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot,
+            decimal costoTotal, int fila)
         {
             if (dic.Count == 0) return fila;
-
-            // Formatos de número según configuración del proyecto
-            string fmtCant = DecimalesToFormat(proyecto.DecimalesCantidad, esPrecio: false);
-            string fmtImp  = DecimalesToFormat(proyecto.DecimalesImporte,  esPrecio: true);
 
             var rEnc = ws.Range(fila, 1, fila, cols.Count);
             rEnc.Merge(); rEnc.FirstCell().Value = titulo;
@@ -167,6 +173,7 @@ namespace SOPRO.WinForms.Services
             ws.Row(fila).Height = 16; fila++;
 
             decimal subtotal = 0;
+            bool alt = false;
             foreach (var kvp in dic.OrderBy(x => x.Value.Clave))
             {
                 var ins     = kvp.Value;
@@ -174,55 +181,53 @@ namespace SOPRO.WinForms.Services
                 decimal pct = costoTotal > 0 ? imp / costoTotal : 0;
                 subtotal   += imp;
 
+                var row = new ExplosionReportRow(
+                    ins.Clave ?? string.Empty,
+                    ins.Descripcion ?? string.Empty,
+                    ins.Unidad ?? string.Empty,
+                    ins.CantidadFisica,
+                    ins.PrecioUnitario,
+                    imp,
+                    pct,
+                    ins.EsPorcentual);
+
                 for (int i = 0; i < cols.Count; i++)
                 {
                     var col  = cols[i];
+                    var cont = col.EstiloContenido;
                     var cell = ws.Cell(fila, i + 1);
-                    switch (col.NombreInterno)
-                    {
-                        case "Clave":       cell.Value = ins.Clave;       break;
-                        case "Descripcion": cell.Value = ins.Descripcion; break;
-                        case "Unidad":      cell.Value = ins.Unidad;      break;
-                        case "Cantidad":
-                            if (ins.EsPorcentual) cell.Value = "—";
-                            else { cell.Value = ins.CantidadFisica; cell.Style.NumberFormat.Format = fmtCant; }
-                            break;
-                        case "PrecioUnitario":
-                            if (ins.EsPorcentual && ins.PrecioUnitario == 0m) cell.Value = "—";
-                            else { cell.Value = ins.PrecioUnitario; cell.Style.NumberFormat.Format = fmtImp; }
-                            break;
-                        case "Importe":
-                            cell.Value = imp; cell.Style.NumberFormat.Format = fmtImp; break;
-                        case "Porcentaje":
-                            cell.Value = pct; cell.Style.NumberFormat.Format = "0.00%"; break;
-                        default: cell.Value = ""; break;
-                    }
+
+                    if (col.EsNumerica && ExplosionExportResolver.TryResolveNumber(row, col, out var valor))
+                        EscribirNumerico(cell, valor, col, snapshot);
+                    else
+                        cell.Value = ExplosionExportResolver.ResolveValue(row, col);
+
                     var est = cell.Style;
-                    est.Font.FontName   = col.NombreFuente ?? "Segoe UI";
-                    est.Font.FontSize   = col.TamanoFuente > 0 ? col.TamanoFuente : 9;
-                    est.Font.Bold       = col.Negrita;
-                    est.Font.Italic     = col.Cursiva;
+                    est.Font.FontName   = string.IsNullOrWhiteSpace(cont.Fuente) ? "Segoe UI" : cont.Fuente;
+                    est.Font.FontSize   = cont.Tamano > 0 ? cont.Tamano : 9;
+                    est.Font.Bold       = cont.Negrita;
+                    est.Font.Italic     = cont.Cursiva;
                     est.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(
-                        !string.IsNullOrEmpty(col.ColorFondo) ? col.ColorFondo : "#FFFFFF");
-                    est.Font.FontColor = ExcelColorHelper.SafeFromHtml(
-                        !string.IsNullOrEmpty(col.ColorFuente) ? col.ColorFuente : "#000000");
+                        ExplosionExportResolver.ResolveCellBackground(col, snapshot.EstiloTabla, alt));
+                    est.Font.FontColor = ExcelColorHelper.SafeFromHtml(cont.ColorFuente, "#000000");
                     est.Alignment.Horizontal = AlineacionXL(col.Alineacion);
-                    est.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-                    est.Alignment.WrapText = col.WrapTexto;
+                    est.Alignment.Vertical = ConvertirAlineacionVertical(col.AlineacionVertical);
+                    est.Alignment.WrapText = col.Wrap;
                     est.Border.BottomBorder = XLBorderStyleValues.Hair;
                     est.Border.BottomBorderColor = XLColor.Gray;
                 }
                 ws.Row(fila).Height = CalcularAlturaFila(cols, fila, ws, 13);
                 fila++;
+                alt = !alt;
             }
 
             // Subtotal
             for (int i = 0; i < cols.Count; i++)
             {
                 var col = cols[i]; var cell = ws.Cell(fila, i + 1);
-                if      (col.NombreInterno == "Descripcion") { cell.Value = $"SUBTOTAL {titulo}:"; cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right; }
-                else if (col.NombreInterno == "Importe")     { cell.Value = subtotal; cell.Style.NumberFormat.Format = fmtImp; cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right; }
-                else if (col.NombreInterno == "Porcentaje")  { cell.Value = costoTotal > 0 ? subtotal / costoTotal : 0; cell.Style.NumberFormat.Format = "0.00%"; cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right; }
+                if      (string.Equals(col.Identificador, "Descripcion", StringComparison.OrdinalIgnoreCase)) { cell.Value = $"SUBTOTAL {titulo}:"; cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right; }
+                else if (EsColumnaImporte(col))     { EscribirNumerico(cell, subtotal, col, snapshot); cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right; }
+                else if (string.Equals(col.Identificador, "Porcentaje", StringComparison.OrdinalIgnoreCase))  { EscribirNumerico(cell, costoTotal > 0 ? subtotal / costoTotal : 0, col, snapshot); cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right; }
                 cell.Style.Font.Bold = true;
                 cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#E3F2FD");
                 cell.Style.Border.TopBorder = XLBorderStyleValues.Thin;
@@ -234,25 +239,45 @@ namespace SOPRO.WinForms.Services
         }
 
         private int EscribirTotalGeneral(IXLWorksheet ws, decimal costoTotal,
-                                          List<ColumnaExplosion> cols, int fila,
-                                          Proyecto proyecto)
+                                          IReadOnlyList<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot,
+                                          int fila)
         {
-            string fmtImp = DecimalesToFormat(proyecto.DecimalesImporte, esPrecio: true);
             var r = ws.Range(fila, 1, fila, cols.Count);
             r.Style.Border.TopBorder = XLBorderStyleValues.Medium;
             r.Style.Border.TopBorderColor = XLColor.FromHtml("#1565C0");
             for (int i = 0; i < cols.Count; i++)
             {
                 var col = cols[i]; var cell = ws.Cell(fila, i + 1);
-                if      (col.NombreInterno == "Descripcion") { cell.Value = "TOTAL COSTO DIRECTO:"; cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right; }
-                else if (col.NombreInterno == "Importe")     { cell.Value = costoTotal; cell.Style.NumberFormat.Format = fmtImp; cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right; }
-                else if (col.NombreInterno == "Porcentaje")  { cell.Value = 1m; cell.Style.NumberFormat.Format = "0.00%"; cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right; }
+                if      (string.Equals(col.Identificador, "Descripcion", StringComparison.OrdinalIgnoreCase)) { cell.Value = "TOTAL COSTO DIRECTO:"; cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right; }
+                else if (EsColumnaImporte(col))     { EscribirNumerico(cell, costoTotal, col, snapshot); cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right; }
+                else if (string.Equals(col.Identificador, "Porcentaje", StringComparison.OrdinalIgnoreCase))  { EscribirNumerico(cell, 1m, col, snapshot); cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right; }
                 cell.Style.Font.Bold = true; cell.Style.Font.FontSize = 11;
                 cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#BBDEFB");
             }
             ws.Row(fila).Height = 16;
             return fila + 1;
         }
+
+        /// <summary>
+        /// Escribe una celda numérica aplicando la MISMA regla de formato que la ruta
+        /// PDF (<see cref="ReportColumnGridFormat"/>). El porcentaje se escribe como
+        /// texto con el signo '%' (magnitud, fracción × 100) para paridad byte a byte
+        /// con el PDF; el resto se escribe como número con el formato del proyecto.
+        /// </summary>
+        private static void EscribirNumerico(IXLCell cell, decimal valor, ReportColumnDefinition col, ReportColumnSnapshot snapshot)
+        {
+            if (ReportColumnGridFormat.EsPorcentajeGrid(col))
+            {
+                cell.Value = ReportColumnGridFormat.FormatearPorcentajePdf(valor * 100m, snapshot) + "%";
+                return;
+            }
+
+            cell.Value = valor;
+            cell.Style.NumberFormat.Format = ReportColumnGridFormat.ResolveExcelFormat(col, snapshot);
+        }
+
+        private static bool EsColumnaImporte(ReportColumnDefinition col)
+            => string.Equals(col.Identificador, "ImporteTotal", StringComparison.OrdinalIgnoreCase);
 
         private void EscribirPie(IXLWorksheet ws, PlantillaReporte p,
                                   Proyecto proyecto, int numCols, int fila)
@@ -301,23 +326,24 @@ namespace SOPRO.WinForms.Services
         }
 
 
-        private double CalcularAlturaFila(List<ColumnaExplosion> cols, int fila, IXLWorksheet ws, double alturaBase)
+        private double CalcularAlturaFila(IReadOnlyList<ReportColumnDefinition> cols, int fila, IXLWorksheet ws, double alturaBase)
         {
             double altura = alturaBase;
             for (int i = 0; i < cols.Count; i++)
             {
                 var col = cols[i];
-                if (!col.WrapTexto) continue;
+                if (!col.Wrap) continue;
 
                 var valor = ws.Cell(fila, i + 1).GetFormattedString();
                 if (string.IsNullOrWhiteSpace(valor)) continue;
 
+                var cont = col.EstiloContenido;
                 using var font = new System.Drawing.Font(
-                    string.IsNullOrWhiteSpace(col.NombreFuente) ? "Segoe UI" : col.NombreFuente,
-                    Math.Max(8f, col.TamanoFuente > 0 ? col.TamanoFuente : 9f),
-                    col.Negrita ? System.Drawing.FontStyle.Bold : System.Drawing.FontStyle.Regular);
+                    string.IsNullOrWhiteSpace(cont.Fuente) ? "Segoe UI" : cont.Fuente,
+                    Math.Max(8f, cont.Tamano > 0 ? cont.Tamano : 9f),
+                    cont.Negrita ? System.Drawing.FontStyle.Bold : System.Drawing.FontStyle.Regular);
 
-                int anchoPx = Math.Max(24, (int)Math.Round(cols[i].AnchoColumna - 8d));
+                int anchoPx = Math.Max(24, (int)Math.Round(col.Ancho - 8d));
                 var proposed = new System.Drawing.Size(anchoPx, int.MaxValue);
                 var flags = System.Windows.Forms.TextFormatFlags.WordBreak | System.Windows.Forms.TextFormatFlags.TextBoxControl;
                 var measured = System.Windows.Forms.TextRenderer.MeasureText(valor, font, proposed, flags);
@@ -329,12 +355,19 @@ namespace SOPRO.WinForms.Services
 
         private static double PixelsToPoints(int pixels) => pixels * 72.0 / 96.0;
 
-                private XLAlignmentHorizontalValues AlineacionXL(AlineacionColumna a) => a switch
+        private XLAlignmentHorizontalValues AlineacionXL(ReportTextAlignment a) => a switch
         {
-            AlineacionColumna.Centro      => XLAlignmentHorizontalValues.Center,
-            AlineacionColumna.Derecha     => XLAlignmentHorizontalValues.Right,
-            AlineacionColumna.Justificado => XLAlignmentHorizontalValues.Left,
-            _                             => XLAlignmentHorizontalValues.Left,
+            ReportTextAlignment.Centro      => XLAlignmentHorizontalValues.Center,
+            ReportTextAlignment.Derecha     => XLAlignmentHorizontalValues.Right,
+            ReportTextAlignment.Justificado => XLAlignmentHorizontalValues.Left,
+            _                               => XLAlignmentHorizontalValues.Left,
+        };
+
+        private static XLAlignmentVerticalValues ConvertirAlineacionVertical(ReportVerticalAlignment v) => v switch
+        {
+            ReportVerticalAlignment.Superior => XLAlignmentVerticalValues.Top,
+            ReportVerticalAlignment.Inferior => XLAlignmentVerticalValues.Bottom,
+            _                                => XLAlignmentVerticalValues.Center,
         };
 
         private string Sanitizar(string nombre)
@@ -343,12 +376,6 @@ namespace SOPRO.WinForms.Services
             foreach (var c in Path.GetInvalidFileNameChars())
                 nombre = nombre.Replace(c, '_');
             return nombre.Length > 40 ? nombre[..40] : nombre;
-        }
-
-        private static string DecimalesToFormat(int decimales, bool esPrecio)
-        {
-            string ceros = decimales > 0 ? "." + new string('0', decimales) : "";
-            return esPrecio ? $"$#,##0{ceros}" : $"#,##0{ceros}";
         }
     }
 }
