@@ -83,11 +83,11 @@ namespace SOPRO.WinForms.Services
             foreach (var c in conceptosOrdenados)
             {
                 if (!c.EsAgrupador) consecutivo++;
-                fila = EscribirConcepto(ws, proyecto, c, cols, fila, consecutivo, factorPU);
+                fila = EscribirConcepto(ws, proyecto, c, cols, snapshot, fila, consecutivo, factorPU);
             }
 
             // ── TOTALES ───────────────────────────────────────────────────────
-            fila = EscribirTotales(ws, proyecto, conceptos, cols, fila);
+            fila = EscribirTotales(ws, proyecto, conceptos, cols, snapshot, fila);
 
             // ── PIE DE PÁGINA ─────────────────────────────────────────────────
             fila++;
@@ -224,8 +224,8 @@ namespace SOPRO.WinForms.Services
 
         // ── CONCEPTO ─────────────────────────────────────────────────────────
         private int EscribirConcepto(IXLWorksheet ws, Proyecto proyecto, ConceptoPresupuesto c,
-                                      List<ReportColumnDefinition> cols, int fila, int consecutivo,
-                                      decimal factorPU = 1m)
+                                      List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot, int fila,
+                                      int consecutivo, decimal factorPU = 1m)
         {
             // ── SUBTOTAL DE AGRUPADOR ─────────────────────────────────────────
             if (c.Notas == "__subtotal__")
@@ -243,7 +243,7 @@ namespace SOPRO.WinForms.Services
                     else if (col.Identificador is "ImporteTotal" or "Importe" or "Subtotal" or "Total")
                     {
                         cell.Value = c.ImporteTotal;
-                        cell.Style.NumberFormat.Format = ReportNumberFormatMapper.ToExcelFormat(col.FormatoNumerico);
+                        cell.Style.NumberFormat.Format = ReportColumnGridFormat.ResolveExcelFormat(col, snapshot);
                     }
                     else
                         cell.Value = "";
@@ -292,7 +292,7 @@ namespace SOPRO.WinForms.Services
                 {
                     cell.Value = d;
                     if (!string.IsNullOrEmpty(col.FormatoNumerico))
-                        cell.Style.NumberFormat.Format = ReportNumberFormatMapper.ToExcelFormat(col.FormatoNumerico);
+                        cell.Style.NumberFormat.Format = ReportColumnGridFormat.ResolveExcelFormat(col, snapshot);
                 }
                 else
                 {
@@ -368,7 +368,7 @@ namespace SOPRO.WinForms.Services
         // ── TOTALES ───────────────────────────────────────────────────────────
         private int EscribirTotales(IXLWorksheet ws, Proyecto proyecto,
                                      List<ConceptoPresupuesto> conceptos,
-                                     List<ReportColumnDefinition> cols, int fila)
+                                     List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot, int fila)
         {
             // Solo conceptos terminales (no agrupadores)
             var terminales = conceptos.Where(c => !c.EsAgrupador).ToList();
@@ -379,6 +379,7 @@ namespace SOPRO.WinForms.Services
 
             // Índice de columna ImporteTotal
             int colImporte = cols.FindIndex(c => c.Identificador == "ImporteTotal") + 1;
+            var colImporteDef = colImporte > 0 ? cols[colImporte - 1] : null;
             int colDesc    = cols.FindIndex(c => c.Identificador == "Descripcion") + 1;
             if (colDesc < 1) colDesc = 1;
 
@@ -395,12 +396,14 @@ namespace SOPRO.WinForms.Services
                 cEtiq.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
                 cEtiq.Style.Font.Bold = negrita;
 
-                // Monto en columna ImporteTotal
+                // Monto en columna ImporteTotal (misma semántica que el grid para el importe).
                 if (colImporte > 0)
                 {
                     var cMonto = ws.Cell(fila, colImporte);
                     cMonto.Value = monto;
-                    cMonto.Style.NumberFormat.Format = ReportNumberFormatMapper.ToExcelFormat("N2");
+                    cMonto.Style.NumberFormat.Format = colImporteDef != null
+                        ? ReportColumnGridFormat.ResolveExcelFormat(colImporteDef, snapshot)
+                        : ReportNumberFormatMapper.ToExcelFormat("N2");
                     cMonto.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
                     cMonto.Style.Font.Bold = negrita;
                 }

@@ -29,7 +29,16 @@ public sealed record ReportColumnDefinition(
     ReportVerticalAlignment AlineacionVertical,
     bool Wrap,
     string FormatoNumerico,
-    bool EsNumerica);
+    bool EsNumerica)
+{
+    /// <summary>
+    /// Indica si la columna es monetaria (TipoDato <c>Moneda</c> o token de formato
+    /// que empieza por "C"). El renderizador de Presupuesto la formatea con la misma
+    /// semántica del grid: símbolo de moneda de la cultura actual y los decimales de
+    /// importe del proyecto. Por defecto, no monetaria.
+    /// </summary>
+    public bool EsMoneda { get; init; }
+}
 
 /// <summary>
 /// Snapshot inmutable del contrato de columnas: definiciones ordenadas, estilo de
@@ -46,4 +55,14 @@ public sealed record ReportColumnSnapshot(
     int ProyectoId,
     string Titulo,
     IReadOnlyList<ReportColumnDefinition> Columnas,
-    ReportTableStyle EstiloTabla);
+    ReportTableStyle EstiloTabla)
+{
+    /// <summary>Decimales de cantidad configurados en el proyecto (por defecto 2).</summary>
+    public int DecimalesCantidad { get; init; } = 2;
+
+    /// <summary>Decimales de importe configurados en el proyecto (por defecto 2).</summary>
+    public int DecimalesImporte { get; init; } = 2;
+
+    /// <summary>Decimales de porcentaje configurados en el proyecto (por defecto 4).</summary>
+    public int DecimalesPorcentaje { get; init; } = 4;
+}

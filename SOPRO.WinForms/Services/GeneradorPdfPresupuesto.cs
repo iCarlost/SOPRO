@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using MigraDoc.DocumentObjectModel;
@@ -76,7 +75,7 @@ namespace SOPRO.WinForms.Services
 
             ConstruirHeader(section, proyecto, plantilla, headerHeightCm);
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
-            ConstruirTablaPresupuesto(section, proyecto, conceptos, cols, snapshot.EstiloTabla, factorPU, tituloCfg);
+            ConstruirTablaPresupuesto(section, proyecto, conceptos, cols, snapshot, factorPU, tituloCfg);
 
             var renderer = new PdfDocumentRenderer()
             {
@@ -218,8 +217,9 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private void ConstruirTablaPresupuesto(Section section, Proyecto proyecto, List<ConceptoPresupuesto> conceptos, List<ReportColumnDefinition> cols, ReportTableStyle estiloTabla, decimal factorPU, ConfiguracionTituloReporte? tituloCfg = null)
+        private void ConstruirTablaPresupuesto(Section section, Proyecto proyecto, List<ConceptoPresupuesto> conceptos, List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot, decimal factorPU, ConfiguracionTituloReporte? tituloCfg = null)
         {
+            var estiloTabla = snapshot.EstiloTabla;
             var titulo = string.IsNullOrWhiteSpace(tituloCfg?.TextoTitulo) ? "PRESUPUESTO" : tituloCfg!.TextoTitulo;
             var pTitle = section.AddParagraph(titulo);
             ReportTitleStyleHelper.ApplyToParagraph(pTitle, tituloCfg, titulo);
@@ -272,17 +272,17 @@ namespace SOPRO.WinForms.Services
                 if (!c.EsAgrupador) consecutivo++;
                 if (c.Notas == "__subtotal__")
                 {
-                    AgregarFilaSubtotal(table, c, cols);
+                    AgregarFilaSubtotal(table, c, cols, snapshot);
                     continue;
                 }
 
-                AgregarFilaConcepto(table, proyecto, c, cols, consecutivo, factorPU);
+                AgregarFilaConcepto(table, proyecto, c, cols, snapshot, consecutivo, factorPU);
             }
 
-            AgregarTotales(table, proyecto, conceptos, cols);
+            AgregarTotales(table, proyecto, conceptos, cols, snapshot);
         }
 
-        private void AgregarFilaConcepto(Table table, Proyecto proyecto, ConceptoPresupuesto c, List<ReportColumnDefinition> cols, int consecutivo, decimal factorPU)
+        private void AgregarFilaConcepto(Table table, Proyecto proyecto, ConceptoPresupuesto c, List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot, int consecutivo, decimal factorPU)
         {
             var row = table.AddRow();
             row.HeightRule = RowHeightRule.AtLeast;
@@ -325,7 +325,7 @@ namespace SOPRO.WinForms.Services
                 object valor = ResolverValorConceptoPdf(c, col.Identificador, consecutivo, factorPU, rowDisplay, indent);
                 if (valor is decimal d)
                 {
-                    p.AddText(FormatearDecimal(d, col.FormatoNumerico));
+                    p.AddText(ReportColumnGridFormat.FormatearPdf(d, col, snapshot));
                 }
                 else
                 {
@@ -336,7 +336,7 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private void AgregarFilaSubtotal(Table table, ConceptoPresupuesto c, List<ReportColumnDefinition> cols)
+        private void AgregarFilaSubtotal(Table table, ConceptoPresupuesto c, List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot)
         {
             var row = table.AddRow();
             row.HeightRule = RowHeightRule.AtLeast;
@@ -365,25 +365,25 @@ namespace SOPRO.WinForms.Services
                 if (col.Identificador == "Descripcion")
                     p.AddText($"Total {c.Descripcion}:");
                 else if (col.Identificador is "ImporteTotal" or "Importe" or "Subtotal" or "Total")
-                    p.AddText(FormatearDecimal(c.ImporteTotal, col.FormatoNumerico));
+                    p.AddText(ReportColumnGridFormat.FormatearPdf(c.ImporteTotal, col, snapshot));
 
                 AplicarBordeInferior(cell, "#C7D6E5", 0.35);
             }
         }
 
-        private void AgregarTotales(Table table, Proyecto proyecto, List<ConceptoPresupuesto> conceptos, List<ReportColumnDefinition> cols)
+        private void AgregarTotales(Table table, Proyecto proyecto, List<ConceptoPresupuesto> conceptos, List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot)
         {
             var terminales = conceptos.Where(c => !c.EsAgrupador).ToList();
             decimal subtotal = terminales.Sum(c => c.ImporteTotal);
             decimal iva = subtotal * proyecto.PorcentajeIVA / 100m;
             decimal total = subtotal + iva;
 
-            AgregarFilaTotal(table, cols, "SUBTOTAL:", subtotal, "#E3F2FD", true, proyecto.PorcentajeIVA);
-            AgregarFilaTotal(table, cols, $"IVA ({proyecto.PorcentajeIVA:N0}%):", iva, "#F5F5F5", false, proyecto.PorcentajeIVA);
-            AgregarFilaTotal(table, cols, "TOTAL:", total, "#BBDEFB", true, proyecto.PorcentajeIVA);
+            AgregarFilaTotal(table, cols, snapshot, "SUBTOTAL:", subtotal, "#E3F2FD", true, proyecto.PorcentajeIVA);
+            AgregarFilaTotal(table, cols, snapshot, $"IVA ({proyecto.PorcentajeIVA:N0}%):", iva, "#F5F5F5", false, proyecto.PorcentajeIVA);
+            AgregarFilaTotal(table, cols, snapshot, "TOTAL:", total, "#BBDEFB", true, proyecto.PorcentajeIVA);
         }
 
-        private void AgregarFilaTotal(Table table, List<ReportColumnDefinition> cols, string etiqueta, decimal monto, string fondo, bool negrita, decimal iva)
+        private void AgregarFilaTotal(Table table, List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot, string etiqueta, decimal monto, string fondo, bool negrita, decimal iva)
         {
             var row = table.AddRow();
             row.HeightRule = RowHeightRule.AtLeast;
@@ -410,7 +410,7 @@ namespace SOPRO.WinForms.Services
                 if (col.Identificador == "Descripcion")
                     p.AddText(etiqueta);
                 else if (col.Identificador is "ImporteTotal" or "Importe" or "Subtotal" or "Total")
-                    p.AddText(FormatearDecimal(monto, col.FormatoNumerico));
+                    p.AddText(ReportColumnGridFormat.FormatearPdf(monto, col, snapshot));
 
                 AplicarBordeInferior(cell, "#BCC9D6", 0.4);
             }
@@ -443,9 +443,6 @@ namespace SOPRO.WinForms.Services
 
             return valor;
         }
-
-        private static string FormatearDecimal(decimal valor, string? formatoNumero)
-            => valor.ToString(ReportNumberFormatMapper.ToPdfFormat(formatoNumero), CultureInfo.InvariantCulture);
 
         private static MParagraphAlignment ConvertirAlineacion(string alineacion) => alineacion switch
         {

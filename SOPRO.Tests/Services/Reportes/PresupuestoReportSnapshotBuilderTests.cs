@@ -395,4 +395,61 @@ public class PresupuestoReportSnapshotBuilderTests
         Assert.AreEqual(1, snapshot.Columnas.Count);
         Assert.AreEqual("Clave", snapshot.Columnas.Single().Identificador);
     }
+
+    // ────────────── Decimales del proyecto y moneda (paridad grid) ──────────────
+
+    [TestMethod]
+    public void Build_SinDecimalesExplicitos_UsaDefaultsDelContrato()
+    {
+        var snapshot = new PresupuestoReportSnapshotBuilder()
+            .Build(1, "P", Array.Empty<ColumnaPersonalizada>());
+
+        Assert.AreEqual(2, snapshot.DecimalesCantidad);
+        Assert.AreEqual(2, snapshot.DecimalesImporte);
+        Assert.AreEqual(4, snapshot.DecimalesPorcentaje);
+    }
+
+    [TestMethod]
+    public void Build_PropagaDecimalesDelProyecto()
+    {
+        var snapshot = new PresupuestoReportSnapshotBuilder()
+            .Build(
+                1,
+                "P",
+                new[] { Columna("Cantidad", "Cantidad") },
+                decimalesCantidad: 4,
+                decimalesImporte: 2,
+                decimalesPorcentaje: 3);
+
+        Assert.AreEqual(4, snapshot.DecimalesCantidad);
+        Assert.AreEqual(2, snapshot.DecimalesImporte);
+        Assert.AreEqual(3, snapshot.DecimalesPorcentaje);
+    }
+
+    [TestMethod]
+    public void Build_MarcaMonedaSegunTipoDatoOToken()
+    {
+        var columnas = new[]
+        {
+            Columna("PrecioUnitario", "P.U.", orden: 0, tipoDato: TipoDatoColumna.Moneda, formato: "C4"),
+            Columna("Importe", "Importe", orden: 1, tipoDato: TipoDatoColumna.Moneda),
+            Columna("Cantidad", "Cantidad", orden: 2, tipoDato: TipoDatoColumna.Numerico, formato: "N2"),
+            Columna("Nota", "Nota", orden: 3, tipoDato: TipoDatoColumna.Texto)
+        };
+
+        var snapshot = new PresupuestoReportSnapshotBuilder().Build(1, "P", columnas);
+
+        Assert.IsTrue(
+            snapshot.Columnas.Single(c => c.Identificador == "PrecioUnitario").EsMoneda,
+            "TipoDato Moneda o token C4 debe marcar EsMoneda.");
+        Assert.IsTrue(
+            snapshot.Columnas.Single(c => c.Identificador == "ImporteTotal").EsMoneda,
+            "TipoDato Moneda debe marcar EsMoneda aunque el formato se normalice a N2.");
+        Assert.IsFalse(
+            snapshot.Columnas.Single(c => c.Identificador == "Cantidad").EsMoneda,
+            "Cantidad (N2/Numerico) no es moneda.");
+        Assert.IsFalse(
+            snapshot.Columnas.Single(c => c.Identificador == "Nota").EsMoneda,
+            "Una columna de texto no es moneda.");
+    }
 }

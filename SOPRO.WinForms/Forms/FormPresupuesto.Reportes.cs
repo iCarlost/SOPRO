@@ -212,7 +212,14 @@ namespace SOPRO.WinForms.Forms
             var overlays = ObtenerConfiguracionColumnasSoloLectura("Presupuesto");
 
             return new Application.UseCases.Reporting.PresupuestoReportSnapshotBuilder()
-                .Build(_proyecto.Id, lblTitulo.Text, columnas, overlays);
+                .Build(
+                    _proyecto.Id,
+                    lblTitulo.Text,
+                    columnas,
+                    overlays,
+                    _proyecto.DecimalesCantidad,
+                    _proyecto.DecimalesImporte,
+                    _proyecto.DecimalesPorcentaje);
         }
 
         /// <summary>

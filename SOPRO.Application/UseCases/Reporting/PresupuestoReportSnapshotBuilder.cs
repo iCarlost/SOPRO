@@ -26,11 +26,17 @@ public sealed class PresupuestoReportSnapshotBuilder
     /// <param name="titulo">Título visible del reporte, si aplica.</param>
     /// <param name="columnas">Columnas personalizadas persistidas.</param>
     /// <param name="configuracionReporte">Overlays de encabezado persistidos.</param>
+    /// <param name="decimalesCantidad">Decimales de cantidad configurados en el proyecto (por defecto 2).</param>
+    /// <param name="decimalesImporte">Decimales de importe configurados en el proyecto (por defecto 2).</param>
+    /// <param name="decimalesPorcentaje">Decimales de porcentaje configurados en el proyecto (por defecto 4).</param>
     public ReportColumnSnapshot Build(
         int proyectoId,
         string? titulo,
         IEnumerable<ColumnaPersonalizada> columnas,
-        IEnumerable<ConfigColumnaReporte>? configuracionReporte = null)
+        IEnumerable<ConfigColumnaReporte>? configuracionReporte = null,
+        int decimalesCantidad = 2,
+        int decimalesImporte = 2,
+        int decimalesPorcentaje = 4)
     {
         ArgumentNullException.ThrowIfNull(columnas);
 
@@ -55,6 +61,11 @@ public sealed class PresupuestoReportSnapshotBuilder
             ProyectoId: proyectoId,
             Titulo: titulo ?? string.Empty,
             Columnas: definiciones,
-            EstiloTabla: ReportTableStyle.LegacyPresupuesto());
+            EstiloTabla: ReportTableStyle.LegacyPresupuesto())
+        {
+            DecimalesCantidad = decimalesCantidad,
+            DecimalesImporte = decimalesImporte,
+            DecimalesPorcentaje = decimalesPorcentaje
+        };
     }
 }

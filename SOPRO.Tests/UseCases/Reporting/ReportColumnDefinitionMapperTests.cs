@@ -185,4 +185,76 @@ public class ReportColumnDefinitionMapperTests
         Assert.IsTrue(snapshot.EstiloTabla.Bordes.Visible);
         Assert.AreEqual("#DDDDDD", snapshot.EstiloTabla.Bordes.ColorHex);
     }
+
+    // ──────────────────────── EsMoneda (paridad grid) ────────────────────────
+
+    [TestMethod]
+    public void MapearPresupuesto_EsMonedaPorTipoDatoOToken()
+    {
+        var monedaPorTipo = new ColumnaPersonalizada
+        {
+            NombreInterno = "PrecioUnitario",
+            TipoDato = TipoDatoColumna.Moneda,
+            FormatoNumerico = "C4"
+        };
+        var monedaPorToken = new ColumnaPersonalizada
+        {
+            NombreInterno = "Extra",
+            TipoDato = TipoDatoColumna.Numerico,
+            FormatoNumerico = "C2"
+        };
+        var cantidad = new ColumnaPersonalizada
+        {
+            NombreInterno = "Cantidad",
+            TipoDato = TipoDatoColumna.Numerico,
+            FormatoNumerico = "N2"
+        };
+        var explicito = new ColumnaPersonalizada
+        {
+            NombreInterno = "Rendimiento",
+            TipoDato = TipoDatoColumna.Numerico,
+            FormatoNumerico = "#,##0.0000"
+        };
+        var monedaSinFormato = new ColumnaPersonalizada
+        {
+            NombreInterno = "Importe",
+            TipoDato = TipoDatoColumna.Moneda,
+            FormatoNumerico = ""
+        };
+
+        Assert.IsTrue(ReportColumnDefinitionMapper.MapearPresupuesto(monedaPorTipo, null).EsMoneda,
+            "TipoDato Moneda debe marcar EsMoneda.");
+        Assert.IsTrue(ReportColumnDefinitionMapper.MapearPresupuesto(monedaPorToken, null).EsMoneda,
+            "Token 'C2' (case-insensitive) debe marcar EsMoneda.");
+        Assert.IsFalse(ReportColumnDefinitionMapper.MapearPresupuesto(cantidad, null).EsMoneda,
+            "Una columna Cantidad con token 'N2' no es moneda.");
+        Assert.IsFalse(ReportColumnDefinitionMapper.MapearPresupuesto(explicito, null).EsMoneda,
+            "Un formato explícito '#,##0.0000' no es moneda.");
+        Assert.IsTrue(ReportColumnDefinitionMapper.MapearPresupuesto(monedaSinFormato, null).EsMoneda,
+            "TipoDato Moneda con formato normalizado a N2 sigue siendo moneda.");
+    }
+
+    [TestMethod]
+    public void MapearMaterial_EsMonedaSoloPorTokenC()
+    {
+        var precioC4 = new ColumnaMaterial
+        {
+            NombreInterno = "PrecioUnitario",
+            Nombre = "Precio Unitario",
+            Alineacion = AlineacionColumna.Derecha,
+            FormatoNumerico = "C4"
+        };
+        var precioDefault = new ColumnaMaterial
+        {
+            NombreInterno = "PrecioUnitario",
+            Nombre = "Precio Unitario",
+            Alineacion = AlineacionColumna.Derecha,
+            FormatoNumerico = "#,##0.0000"
+        };
+
+        Assert.IsTrue(ReportColumnDefinitionMapper.MapearMaterial(precioC4).EsMoneda,
+            "El token 'C4' de Materiales debe marcar EsMoneda.");
+        Assert.IsFalse(ReportColumnDefinitionMapper.MapearMaterial(precioDefault).EsMoneda,
+            "El default de Materiales '#,##0.0000' NO es moneda.");
+    }
 }

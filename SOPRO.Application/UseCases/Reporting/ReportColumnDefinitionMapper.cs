@@ -72,6 +72,8 @@ public static class ReportColumnDefinitionMapper
         ArgumentNullException.ThrowIfNull(columna);
 
         var esNumerica = EsNumerica(columna.TipoDato);
+        var esMoneda = columna.TipoDato == TipoDatoColumna.Moneda
+                       || EsMonedaPorPrefijoToken(columna.FormatoNumerico);
 
         return new ReportColumnDefinition(
             Identificador: NormalizarIdentificador(columna.NombreInterno),
@@ -94,7 +96,10 @@ public static class ReportColumnDefinitionMapper
             AlineacionVertical: NormalizarAlineacionVertical(columna.AlineacionVertical),
             Wrap: columna.WrapTexto,
             FormatoNumerico: NormalizarFormato(columna.FormatoNumerico, esNumerica),
-            EsNumerica: esNumerica);
+            EsNumerica: esNumerica)
+        {
+            EsMoneda = esMoneda
+        };
     }
 
     /// <summary>
@@ -106,6 +111,9 @@ public static class ReportColumnDefinitionMapper
         ArgumentNullException.ThrowIfNull(columna);
 
         var esNumerica = EsNumericaColumnaMaterial(columna);
+        // ColumnaMaterial no expone TipoDato: la moneda se infiere del token ("C*").
+        // El default de Materiales "#,##0.0000" NO es moneda.
+        var esMoneda = EsMonedaPorPrefijoToken(columna.FormatoNumerico);
 
         return new ReportColumnDefinition(
             Identificador: NormalizarIdentificador(columna.NombreInterno),
@@ -126,7 +134,22 @@ public static class ReportColumnDefinitionMapper
             AlineacionVertical: NormalizarAlineacionVertical(columna.AlineacionVertical),
             Wrap: columna.WrapTexto,
             FormatoNumerico: NormalizarFormato(columna.FormatoNumerico, esNumerica),
-            EsNumerica: esNumerica);
+            EsNumerica: esNumerica)
+        {
+            EsMoneda = esMoneda
+        };
+    }
+
+    /// <summary>
+    /// Indica si el token de formato denota moneda: empieza por 'C' (p. ej. "C2",
+    /// "C4"), sin distinguir mayúsculas. Los formatos numéricos explícitos
+    /// ("#,##0.0000", "0.00") y los tokens "N*"/"P*" no son moneda.
+    /// </summary>
+    private static bool EsMonedaPorPrefijoToken(string? formato)
+    {
+        if (string.IsNullOrWhiteSpace(formato)) return false;
+        var token = formato!.Trim();
+        return token[0] == 'C' || token[0] == 'c';
     }
 
     private static bool EsNumerica(TipoDatoColumna tipo)
