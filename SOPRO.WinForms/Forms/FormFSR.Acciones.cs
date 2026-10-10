@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Reporting;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -97,7 +98,8 @@ namespace SOPRO.WinForms.Forms
                 var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.FSR, lblTitulo.Text);
 
                 using var wb = new ClosedXML.Excel.XLWorkbook();
-                Services.GeneradorExcelFSR.GenerarAE2A(wb, _proyecto, plantilla, svcRep, tituloCfg);
+                var snapshot = new FsrReportSnapshotBuilder().BuildAE2A(_proyecto, lblTitulo.Text);
+                Services.GeneradorExcelFSR.GenerarAE2A(wb, _proyecto, plantilla, svcRep, snapshot, tituloCfg);
                 wb.SaveAs(dlg.FileName);
 
                 if (MessageBox.Show("Reporte generado exitosamente.\n¿Desea abrirlo?",
@@ -142,7 +144,8 @@ namespace SOPRO.WinForms.Forms
                 var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.FSR, lblTitulo.Text);
 
                 using var wb = new ClosedXML.Excel.XLWorkbook();
-                Services.GeneradorExcelFSR.GenerarAE2A(wb, _proyecto, plantilla, svcRep, tituloCfg);
+                var snapshot = new FsrReportSnapshotBuilder().BuildAE2A(_proyecto, lblTitulo.Text);
+                Services.GeneradorExcelFSR.GenerarAE2A(wb, _proyecto, plantilla, svcRep, snapshot, tituloCfg);
                 wb.SaveAs(dlg.FileName);
 
                 if (MessageBox.Show("Reporte generado exitosamente.\n¿Desea abrirlo?",

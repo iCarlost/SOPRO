@@ -13,6 +13,7 @@ using ClosedXML.Excel;
 using SOPRO.Application.Services;
 using SOPRO.Application.Models.Catalogs;
 using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Reporting.Formatting;
 using SOPRO.Reporting.Layout;
 
@@ -67,7 +68,10 @@ namespace SOPRO.WinForms.Forms
                     if (dlgFSR.ShowDialog() != DialogResult.OK) return;
 
                     using var wbFSR = new XLWorkbook();
-                    GeneradorExcelFSR.GenerarAE2C(wbFSR, proyecto, lista, plantilla, svcRep);
+                    // Snapshot neutral AE-2(C) compartido con la ruta PDF del Tabulador
+                    // (misma lista/orden/ancho/formato). No afecta a la rama Catálogo (F1.1).
+                    var snapshotAE2C = new FsrReportSnapshotBuilder().BuildAE2C(proyecto, lblTitulo.Text);
+                    GeneradorExcelFSR.GenerarAE2C(wbFSR, proyecto, lista, plantilla, svcRep, snapshotAE2C);
                     wbFSR.SaveAs(dlgFSR.FileName);
 
                     if (MessageBox.Show("Reporte generado exitosamente.\n¿Desea abrirlo?",

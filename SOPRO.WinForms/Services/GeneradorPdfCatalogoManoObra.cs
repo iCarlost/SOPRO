@@ -7,8 +7,10 @@ using System.Windows.Forms;
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
+using SOPRO.Application.Models.Reporting.Fsr;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Reporting.Formatting;
 using SOPRO.Reporting.Layout;
@@ -83,6 +85,10 @@ namespace SOPRO.WinForms.Services
             var filas = GeneradorExcelFSR.CalcularFilasAE2C(proyecto, items);
             if (!filas.Any()) throw new InvalidOperationException("No hay datos suficientes para generar el tabulador FSR.");
 
+            // Snapshot neutral AE-2(C) compartido con la ruta Excel del Tabulador
+            // (misma lista/orden/ancho/formato). La rama Catálogo (F1.1) no se toca.
+            var snapshot = new FsrReportSnapshotBuilder().BuildAE2C(proyecto, null);
+
             if (string.IsNullOrWhiteSpace(rutaDestino))
                 throw new InvalidOperationException("Debe especificarse la ruta destino del PDF.");
 
@@ -104,7 +110,7 @@ namespace SOPRO.WinForms.Services
             section.PageSetup.BottomMargin = Unit.FromCentimeter(footerHeightCm + bottomGapTabulador);
             ConstruirHeader(section, proyecto, plantilla, headerHeightCm);
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
-            ConstruirCuerpoTabulador(section, proyecto, filas);
+            ConstruirCuerpoTabulador(section, proyecto, snapshot, filas);
 
             var renderer = new PdfDocumentRenderer() { Document = doc };
             renderer.RenderDocument();
@@ -304,7 +310,7 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private void ConstruirCuerpoTabulador(Section section, Proyecto proyecto, List<GeneradorExcelFSR.AE2CRowData> filas)
+        private void ConstruirCuerpoTabulador(Section section, Proyecto proyecto, ReportColumnSnapshot snapshot, List<FsrTabuladorRow> filas)
         {
             var pTitle = section.AddParagraph("TABLA DE CÁLCULO DEL FACTOR DE SALARIO REAL", "CatalogoManoObraTitle");
             ReportTitleStyleHelper.ApplyToParagraph(pTitle, null, "TABLA DE CÁLCULO DEL FACTOR DE SALARIO REAL");
@@ -317,26 +323,26 @@ namespace SOPRO.WinForms.Services
             pProject.Format.SpaceAfter = Unit.FromCentimeter(0.2);
             pProject.Format.KeepWithNext = true;
 
-            string[] headers = {
-                "Clave","Descripción","Sal. Base M.N.","Salario Nominal","Factor SBC","Salario Base Cotización","Cuota fija","Excedente a 3 SMGDF",
-                "Prest. especie","Prest. dinero","Inv. y vida","Guarderías","Cesantía y vejez","Retiro","Suma cuotas IMSS","INFONAVIT",
-                "Suma prest. patronales","Obligac. PS","Factor TP/TL","FSR","Salario Real"};
-            var widths = new List<int>{70,220,90,80,70,85,70,70,70,70,70,70,70,60,80,75,95,80,70,60,85};
+            // Columnas, encabezados, anchos y alineaciones desde el snapshot neutral
+            // compartido con Excel (AE-2C); los valores se formatean con el contrato.
+            var cols = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+            if (cols.Count == 0)
+                cols = FsrReportSnapshotBuilder.DefaultColumnsAE2C().Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
 
             var table = section.AddTable();
             table.Rows.LeftIndent = 0;
-            table.Borders.Width = 0.2;
-            table.Borders.Color = ParseColor("#D8D8D8");
-            AgregarColumnas(table, widths, ReportPageLayoutHelper.GetContentWidthCm(section));
+            table.Borders.Width = snapshot.EstiloTabla.Bordes.GrosorPuntos;
+            table.Borders.Color = ParseColor(snapshot.EstiloTabla.Bordes.ColorHex);
+            AgregarColumnas(table, cols.Select(c => c.Ancho).ToList(), ReportPageLayoutHelper.GetContentWidthCm(section));
 
             var head = table.AddRow();
             head.HeadingFormat = true;
             head.Height = Unit.FromPoint(28);
             head.HeightRule = RowHeightRule.AtLeast;
-            head.Shading.Color = ParseColor("#4A4A6A");
-            for (int i=0;i<headers.Length;i++)
+            head.Shading.Color = ParseColor(snapshot.EstiloTabla.EstiloEncabezado.ColorFondo ?? "#4A4A6A");
+            for (int i = 0; i < cols.Count; i++)
             {
-                var p = head.Cells[i].AddParagraph(headers[i]);
+                var p = head.Cells[i].AddParagraph(cols[i].Encabezado ?? string.Empty);
                 p.Format.Alignment = MParagraphAlignment.Center;
                 p.Format.SpaceAfter = 0;
                 p.Format.SpaceBefore = 0;
@@ -352,15 +358,14 @@ namespace SOPRO.WinForms.Services
                 var rowColor = alt ? "#F5F5F5" : "#FFFFFF";
                 row.Shading.Color = ParseColor(rowColor);
                 alt = !alt;
-                var vals = new string[] {
-                    r.Clave, r.Descripcion, r.SalarioBaseTexto, r.SalarioNominalTexto, r.FactorSbcTexto, r.SalarioBaseCotTexto,
-                    r.CuotaFijaTexto, r.ExcedenteTexto, r.PrestacionesEspecieTexto, r.PrestacionesDineroTexto, r.InvalidezVidaTexto,
-                    r.GuarderiasTexto, r.CesantiaVejezTexto, r.RetiroTexto, r.SumaCuotasImssTexto, r.InfonavitTexto, r.SumaPrestPatronalesTexto,
-                    r.ObligacionesPsTexto, r.FactorTpTlTexto, r.FsrTexto, r.SalarioRealTexto
-                };
+
+                var vals = new string[cols.Count];
+                for (int i = 0; i < cols.Count; i++)
+                    vals[i] = ObtenerValorTabulador(r, i, cols[i], snapshot);
+
                 row.HeightRule = RowHeightRule.AtLeast;
                 row.Height = Unit.FromPoint(EstimarAlturaFilaTabulador(table, vals, 13d));
-                for (int i=0;i<vals.Length;i++)
+                for (int i = 0; i < vals.Length; i++)
                 {
                     var cell = row.Cells[i];
                     cell.VerticalAlignment = VerticalAlignment.Center;
@@ -368,10 +373,26 @@ namespace SOPRO.WinForms.Services
                     var p = cell.AddParagraph(vals[i] ?? string.Empty);
                     p.Format.SpaceBefore = 0;
                     p.Format.SpaceAfter = 0;
-                    p.Format.Alignment = i == 1 ? MParagraphAlignment.Justify : (i==0 ? MParagraphAlignment.Center : MParagraphAlignment.Right);
+                    p.Format.Alignment = ConvertirAlineacion(cols[i].Alineacion);
                     PdfFontHelper.ApplyFont(p.Format.Font, "Segoe UI", 7.2, false, false);
                 }
             }
+        }
+
+        /// <summary>
+        /// Resuelve el texto de una celda del Tabulador FSR desde el modelo neutral
+        /// (<see cref="FsrTabuladorRow"/>) y el contrato del snapshot: Clave y
+        /// Descripción son texto; el resto son cantidades formateadas con la regla
+        /// compartida (monetario → '$' + decimales de importe; cantidad → decimales
+        /// de cantidad).
+        /// </summary>
+        private static string ObtenerValorTabulador(FsrTabuladorRow fila, int indice, ReportColumnDefinition columna, ReportColumnSnapshot snapshot)
+        {
+            if (indice == 0) return fila.Clave ?? string.Empty;
+            if (indice == 1) return fila.Descripcion ?? string.Empty;
+            if (!fila.SinCalculo && fila.Valores.Count > indice - 2)
+                return ReportColumnGridFormat.FormatearPdf(fila.Valores[indice - 2], columna, snapshot);
+            return string.Empty;
         }
 
         private static void AgregarColumnas(Table table, List<int> widthsPx, double availableCm)
