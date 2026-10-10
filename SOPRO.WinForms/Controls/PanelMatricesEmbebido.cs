@@ -63,6 +63,7 @@ namespace SOPRO.WinForms.Controls
         private bool _modoSubedicionComponente;
         private int? _matrizPadreIdSubedicion;
         private int? _filaPadreSubedicion;
+        private bool _huboEdicionEnSubedicion;
         private readonly UndoManager _undoManager = new();
         private bool _isUndoRedo;
         private int _undoPanelRowIndex = -1;
@@ -311,6 +312,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _modoSubedicionComponente = false;
             _matrizPadreIdSubedicion = null;
             _filaPadreSubedicion = null;
+            _huboEdicionEnSubedicion = false;
             _modoCreacionMatriz = false;
             _modoEdicionCabecera = false;
             _matrizEditandoId = null;
@@ -435,9 +437,24 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
         public void RecargarMatrizVisibleDesdeBd()
         {
             if (_filaActual < 0) return;
-            if (_modoCreacionMatriz || _modoSubedicionComponente) return;
+            if (_modoCreacionMatriz) return;
             // No recargar mientras una celda está en edición (evita pisar lo que el usuario escribe).
             if (_dgvComponentes != null && _dgvComponentes.IsCurrentCellInEditMode) return;
+
+            // En subedición de componente el nivel abierto es el HIJO (cuadrilla/básico),
+            // no el P.U. del concepto: recargar ese hijo desde BD sin salir del modo ni
+            // reemplazar _matrizActual por el padre (rompería la UX de subedición).
+            if (_modoSubedicionComponente && _matrizEditandoId.HasValue)
+            {
+                var hijo = CargarMatrizConComponentes(_matrizEditandoId.Value, asNoTracking: true);
+                if (hijo != null)
+                {
+                    _matrizActual = hijo;
+                    MostrarMatriz(hijo, null);
+                }
+                return;
+            }
+
             CargarMatrizDeFila(_filaActual, forceReload: true);
         }
 
@@ -507,15 +524,20 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
 
             int matrizPadreId = _matrizPadreIdSubedicion.Value;
             int? filaPadre = _filaPadreSubedicion;
+            bool huboEdicion = _huboEdicionEnSubedicion;
 
             _modoSubedicionComponente = false;
             _matrizPadreIdSubedicion = null;
             _filaPadreSubedicion = null;
+            _huboEdicionEnSubedicion = false;
             _onMatrixHeaderSaved = null;
             _onMatrixHeaderCancelled = null;
             _modoEdicionCabecera = false;
 
-            if (refrescarPadre)
+            // Salida por Guardar (refrescarPadre == true) recalcula siempre; salida por
+            // Cancelar solo propaga si hubo ediciones guardadas durante la subedición,
+            // para no dejar el P.U. padre y la fila del concepto obsoletos.
+            if (refrescarPadre || huboEdicion)
                 RecalcularMatrizYConceptos(matrizPadreId);
 
             var matrizPadre = CargarMatrizConComponentes(matrizPadreId, false);
@@ -755,9 +777,12 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 // Calcular PrecioUnitario usando la precisión configurada del proyecto.
                 decimal nuevoPrecioUnitario = BudgetPricingService.CalculateUnitPrice(_proyectoPME, nuevoCostoDirecto);
 
-                // Actualizar el concepto en la fila del presupuesto usando el motor
+                // Actualizar el concepto en la fila del presupuesto usando el motor.
+                // En subedición de componente el costo calculado aquí es el del HIJO (cuadrilla),
+                // no el del P.U. abierto en el presupuesto: escribir esos valores sobre el concepto
+                // mezclaría niveles. La propagación al padre (P.U. → concepto) se hace más abajo.
                 var concepto = _dgvPresupuesto.Rows[_filaActual].Tag as ConceptoPresupuesto;
-                if (concepto != null)
+                if (concepto != null && !(_modoSubedicionComponente && _matrizPadreIdSubedicion.HasValue))
                 {
                     concepto.CostoDirectoUnitario = nuevoCostoDirecto;
                     concepto.CostoDirectoTotal    = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyectoPME, concepto.Cantidad, nuevoCostoDirecto);
@@ -766,6 +791,14 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 }
 
                 _context.SaveChanges();
+
+                // Cuadrilla → P.U. → concepto: en subedición el hijo ya quedó persistido arriba;
+                // recalcular el ancestro para que el P.U. y la fila del concepto reflejen el cambio
+                // (RecalcularMatrizYConceptos emite MatrizActualizada para rehacer la jerarquía).
+                if (_modoSubedicionComponente && _matrizPadreIdSubedicion.HasValue)
+                {
+                    RecalcularMatrizYConceptos(_matrizPadreIdSubedicion.Value);
+                }
 
                 // Actualizar celdas visualmente en el grid del presupuesto
                 // para TODOS los conceptos que usen esta matriz (no solo el actual)
@@ -1124,6 +1157,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             var matriz = CargarMatrizConComponentes(matrizId, false);
             if (matriz == null) return;
 
+            _huboEdicionEnSubedicion = false;
             _modoCreacionMatriz = false;
             _modoEdicionCabecera = true;
             _matrizEditandoId = matrizId;
@@ -1468,6 +1502,8 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
                     else
                     {
                         _context.SaveChanges();
+                        if (_modoSubedicionComponente)
+                            _huboEdicionEnSubedicion = true;
                         BeginInvoke(new Action(GuardarYPropagar));
                     }
                 }
@@ -1546,6 +1582,8 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
             else
             {
                 _context.SaveChanges();
+                if (_modoSubedicionComponente)
+                    _huboEdicionEnSubedicion = true;
                 BeginInvoke(new Action(GuardarYPropagar));
             }
         }
