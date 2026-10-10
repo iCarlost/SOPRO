@@ -54,9 +54,16 @@ namespace SOPRO.WinForms.Forms
 
                 Cursor = Cursors.WaitCursor;
                 var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Indirectos, lblTitulo.Text);
+
+                // Snapshot neutral compartido con la ruta Excel: misma lista/orden/
+                // ancho/formato/estilo y mismos decimales globales del proyecto.
+                var snapshot = IndirectosExportResolver.BuildSnapshot(
+                    _proyecto.Id, lblTitulo.Text, columnas,
+                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+
                 var generador = new Services.GeneradorPdfIndirectos(svc);
                 string ruta = generador.Generar(_proyecto, gruposOC, gruposCampo,
-                    _configuracion, plantilla, columnas, dlg.FileName, tituloCfg);
+                    _configuracion, plantilla, snapshot, dlg.FileName, tituloCfg);
                 Cursor = Cursors.Default;
 
                 if (MessageBox.Show("Reporte PDF generado.\n\n¿Abrir ahora?",
@@ -110,9 +117,16 @@ namespace SOPRO.WinForms.Forms
 
                 Cursor = Cursors.WaitCursor;
                 var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Indirectos, lblTitulo.Text);
+
+                // Snapshot neutral compartido con la ruta PDF: misma lista/orden/
+                // ancho/formato/estilo y mismos decimales globales del proyecto.
+                var snapshot = IndirectosExportResolver.BuildSnapshot(
+                    _proyecto.Id, lblTitulo.Text, columnas,
+                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+
                 var generador = new Services.GeneradorExcelIndirectos(svc);
                 string ruta = generador.Generar(_proyecto, gruposOC, gruposCampo,
-                    _configuracion, plantilla, columnas, dlg.FileName, tituloCfg);
+                    _configuracion, plantilla, snapshot, dlg.FileName, tituloCfg);
                 Cursor = Cursors.Default;
 
                 if (MessageBox.Show($"Reporte generado.\n\n¿Abrir ahora?",
