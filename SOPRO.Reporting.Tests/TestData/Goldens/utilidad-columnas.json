@@ -1,0 +1,167 @@
+{
+  "Schema": "sopro.utilidad-columnas.1",
+  "TipoReporte": "Utilidad",
+  "ProyectoId": 5,
+  "Titulo": "Determinación de la Utilidad Sintética",
+  "Columnas": [
+    {
+      "Identificador": "Concepto",
+      "Encabezado": "Concepto",
+      "Visible": true,
+      "Orden": 0,
+      "Ancho": 340,
+      "Formato": "",
+      "EsNumerica": false,
+      "Alineacion": "Izquierda",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "Base",
+      "Encabezado": "Base",
+      "Visible": true,
+      "Orden": 1,
+      "Ancho": 130,
+      "Formato": "C2",
+      "EsNumerica": true,
+      "Alineacion": "Derecha",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "Porcentaje",
+      "Encabezado": "Porcentaje",
+      "Visible": true,
+      "Orden": 2,
+      "Ancho": 90,
+      "Formato": "P2",
+      "EsNumerica": true,
+      "Alineacion": "Derecha",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "ImporteFinal",
+      "Encabezado": "Importe final",
+      "Visible": true,
+      "Orden": 3,
+      "Ancho": 130,
+      "Formato": "C2",
+      "EsNumerica": true,
+      "Alineacion": "Derecha",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    }
+  ],
+  "EstiloTabla": {
+    "Encabezado": {
+      "Fuente": "Segoe UI",
+      "Tamano": 9,
+      "Negrita": true,
+      "Cursiva": false,
+      "ColorFuente": "#FFFFFF",
+      "ColorFondo": "#4A4A6A",
+      "ColorFuenteEncabezado": "#FFFFFF",
+      "ColorFondoEncabezado": "#4A4A6A"
+    },
+    "Contenido": {
+      "Fuente": "Segoe UI",
+      "Tamano": 9,
+      "Negrita": false,
+      "Cursiva": false,
+      "ColorFuente": "#000000",
+      "ColorFondo": "#FFFFFF",
+      "ColorFuenteEncabezado": null,
+      "ColorFondoEncabezado": null
+    },
+    "FilaAlterna": {
+      "ColorFondoAlterno": "#F5F5F5",
+      "ColorFuente": "#000000"
+    },
+    "Bordes": {
+      "Visible": true,
+      "ColorHex": "#DDDDDD",
+      "GrosorPuntos": 0.25
+    }
+  }
+}

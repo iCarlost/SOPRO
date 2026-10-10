@@ -5,8 +5,11 @@ using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
 using SOPRO.Application.Models.Presupuesto;
+using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
+using SOPRO.Reporting.Formatting;
 using DrawingColor = System.Drawing.Color;
 using MColor = MigraDoc.DocumentObjectModel.Color;
 using MOrientation = MigraDoc.DocumentObjectModel.Orientation;
@@ -25,6 +28,7 @@ namespace SOPRO.WinForms.Services
             PlantillaReporte plantilla,
             BudgetPercentagePreviewResult preview,
             UtilidadCalculationResult resultado,
+            ReportColumnSnapshot snapshot,
             ColumnaPersonalizada? estiloBase,
             string rutaDestino = null,
             ConfiguracionTituloReporte? tituloCfg = null)
@@ -33,6 +37,7 @@ namespace SOPRO.WinForms.Services
             if (plantilla == null) throw new ArgumentNullException(nameof(plantilla));
             if (preview == null) throw new ArgumentNullException(nameof(preview));
             if (resultado == null) throw new ArgumentNullException(nameof(resultado));
+            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
 
             if (string.IsNullOrWhiteSpace(rutaDestino))
             {
@@ -60,7 +65,7 @@ namespace SOPRO.WinForms.Services
 
             ConstruirHeader(section, proyecto, plantilla, headerHeightCm);
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
-            ConstruirCuerpo(section, proyecto, preview, resultado, estiloBase, tituloCfg);
+            ConstruirCuerpo(section, proyecto, preview, resultado, snapshot, estiloBase, tituloCfg);
 
             var renderer = new PdfDocumentRenderer() { Document = doc };
             renderer.RenderDocument();
@@ -214,12 +219,18 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private void ConstruirCuerpo(Section section, Proyecto proyecto, BudgetPercentagePreviewResult preview, UtilidadCalculationResult resultado, ColumnaPersonalizada? estiloBase, ConfiguracionTituloReporte? tituloCfg)
+        private void ConstruirCuerpo(Section section, Proyecto proyecto, BudgetPercentagePreviewResult preview, UtilidadCalculationResult resultado, ReportColumnSnapshot snapshot, ColumnaPersonalizada? estiloBase, ConfiguracionTituloReporte? tituloCfg)
         {
             decimal costoDirecto   = BudgetPricingService.RoundImporte(proyecto, preview.CostoDirecto);
             decimal costoIndirecto = BudgetPricingService.RoundImporte(proyecto, preview.Subtotal1 - preview.CostoDirecto);
             decimal financiamiento = BudgetPricingService.RoundImporte(proyecto, preview.MontoFinanciamiento);
             decimal subtotal       = BudgetPricingService.RoundImporte(proyecto, resultado.BaseUtilidad);
+
+            // Columnas y borde de tabla del MISMO snapshot neutral que la ruta Excel.
+            var colBase         = ResolverColumna(snapshot, UtilidadReportColumns.Base);
+            var colPorcentaje   = ResolverColumna(snapshot, UtilidadReportColumns.Porcentaje);
+            var colImporteFinal = ResolverColumna(snapshot, UtilidadReportColumns.ImporteFinal);
+            var bordes          = snapshot.EstiloTabla.Bordes;
 
             var titulo = section.AddTable();
             titulo.Borders.Visible = false;
@@ -256,30 +267,51 @@ namespace SOPRO.WinForms.Services
             t.AddColumn(Unit.FromCentimeter(3.0));
             t.AddColumn(Unit.FromCentimeter(2.8));
 
-            AgregarFilaMonedaPdf(t, "COSTO DIRECTO", costoDirecto, false, null, null, estiloBase);
-            AgregarFilaMonedaPdf(t, "COSTO INDIRECTO", costoIndirecto, false, null, null, estiloBase);
-            AgregarFilaMonedaPdf(t, "FINANCIAMIENTO", financiamiento, false, null, null, estiloBase);
-            AgregarFilaMonedaPdf(t, "SUBTOTAL", subtotal, true, "#FFF2CC", "#C00000", estiloBase);
+            AgregarFilaMonedaPdf(t, "COSTO DIRECTO", costoDirecto, colBase, snapshot, bordes, false, null, null, estiloBase);
+            AgregarFilaMonedaPdf(t, "COSTO INDIRECTO", costoIndirecto, colBase, snapshot, bordes, false, null, null, estiloBase);
+            AgregarFilaMonedaPdf(t, "FINANCIAMIENTO", financiamiento, colBase, snapshot, bordes, false, null, null, estiloBase);
+            AgregarFilaMonedaPdf(t, "SUBTOTAL", subtotal, colBase, snapshot, bordes, true, "#FFF2CC", "#C00000", estiloBase);
 
             t.AddRow().Height = Unit.FromCentimeter(0.18);
 
-            AgregarFilaParametroPdf(t, "Up = Utilidad Propuesta", resultado.PorcentajeUtilidadBruta / 100m, null, true, "#C6E0B4", estiloBase);
-            AgregarFilaParametroPdf(t, "ISR = Impuesto Sobre la Renta", resultado.Isr / 100m, "SAT", false, null, estiloBase);
-            AgregarFilaParametroPdf(t, "PTU = Participación de los Trabajadores en la Utilidad", resultado.Ptu / 100m, "LFT", false, null, estiloBase);
+            AgregarFilaParametroPdf(t, "Up = Utilidad Propuesta", resultado.PorcentajeUtilidadBruta, snapshot, bordes, null, true, "#C6E0B4", estiloBase);
+            AgregarFilaParametroPdf(t, "ISR = Impuesto Sobre la Renta", resultado.Isr, snapshot, bordes, "SAT", false, null, estiloBase);
+            AgregarFilaParametroPdf(t, "PTU = Participación de los Trabajadores en la Utilidad", resultado.Ptu, snapshot, bordes, "LFT", false, null, estiloBase);
 
             t.AddRow().Height = Unit.FromCentimeter(0.18);
 
-            AgregarFilaFormulaPdf(t, $"UTILIDAD NETA = Up / 1 - (ISR + PTU) =", (resultado.PorcentajeUtilidadNeta / 100m), estiloBase);
-            AgregarFilaTextoPdf(t, $"={resultado.PorcentajeUtilidadNeta:N2}% / (1 - ({resultado.Isr:N0}% + {resultado.Ptu:N0}%))", estiloBase, "#E2F0D9");
+            AgregarFilaFormulaPdf(t, "UTILIDAD NETA = Up / 1 - (ISR + PTU) =", resultado.PorcentajeUtilidadNeta, colPorcentaje, snapshot, bordes, estiloBase);
+            AgregarFilaTextoPdf(t, $"={resultado.PorcentajeUtilidadNeta:N2}% / (1 - ({resultado.Isr:N0}% + {resultado.Ptu:N0}%))", estiloBase, "#E2F0D9", bordes);
 
             t.AddRow().Height = Unit.FromCentimeter(0.18);
 
-            AgregarFilaFormulaPdf(t, "IMPORTE DE UTILIDAD =", resultado.ImporteUtilidad, estiloBase, true, "#,##0.00");
+            AgregarFilaFormulaPdf(t, "IMPORTE DE UTILIDAD =", resultado.ImporteUtilidad, colImporteFinal, snapshot, bordes, estiloBase);
             t.AddRow().Height = Unit.FromCentimeter(0.18);
-            AgregarFilaMonedaPdf(t, "IMPORTE ISR", resultado.ImporteIsr, false, "#F2F2F2", null, estiloBase);
-            AgregarFilaMonedaPdf(t, "IMPORTE PTU", resultado.ImportePtu, false, "#F2F2F2", null, estiloBase);
-            AgregarFilaMonedaPdf(t, "UTILIDAD NETA ESTIMADA", resultado.UtilidadNetaEstimada, true, "#DDEBF7", null, estiloBase);
+            AgregarFilaMonedaPdf(t, "IMPORTE ISR", resultado.ImporteIsr, colImporteFinal, snapshot, bordes, false, "#F2F2F2", null, estiloBase);
+            AgregarFilaMonedaPdf(t, "IMPORTE PTU", resultado.ImportePtu, colImporteFinal, snapshot, bordes, false, "#F2F2F2", null, estiloBase);
+            AgregarFilaMonedaPdf(t, "UTILIDAD NETA ESTIMADA", resultado.UtilidadNetaEstimada, colImporteFinal, snapshot, bordes, true, "#DDEBF7", null, estiloBase);
         }
+
+        /// <summary>
+        /// Resuelve la columna neutral del snapshot para un identificador; si el
+        /// snapshot no la expone, cae a los defaults neutrales del reporte (nunca a
+        /// un control de UI).
+        /// </summary>
+        private static ReportColumnDefinition ResolverColumna(ReportColumnSnapshot snapshot, string identificador)
+            => UtilidadReportColumns.Buscar(snapshot, identificador)
+               ?? UtilidadReportSnapshotBuilder.DefaultColumns()
+                      .FirstOrDefault(c => string.Equals(c.Identificador, identificador, StringComparison.OrdinalIgnoreCase))
+               ?? throw new InvalidOperationException($"El snapshot de Utilidad no expone la columna '{identificador}'.");
+
+        /// <summary>
+        /// Formatea un valor con la regla neutral compartida: porcentaje (con el
+        /// signo '%') cuando la columna es de porcentaje; en caso contrario respeta
+        /// la semántica de la columna (monetaria '$' + decimales de importe).
+        /// </summary>
+        private static string FormatearValor(decimal valor, ReportColumnDefinition columna, ReportColumnSnapshot snapshot)
+            => ReportColumnGridFormat.EsPorcentajeGrid(columna)
+                ? ReportColumnGridFormat.FormatearPorcentajePdf(valor, snapshot) + "%"
+                : ReportColumnGridFormat.FormatearPdf(valor, columna, snapshot);
 
         private static void AplicarEstiloBase(Cell cell, ColumnaPersonalizada? estiloBase, bool bold = false, bool italic = false, string? colorTexto = null)
         {
@@ -296,7 +328,7 @@ namespace SOPRO.WinForms.Services
             cell.VerticalAlignment = VerticalAlignment.Center;
         }
 
-        private static void AgregarFilaMonedaPdf(Table t, string etiqueta, decimal valor, bool resaltar, string? fondo, string? colorTexto, ColumnaPersonalizada? estiloBase)
+        private static void AgregarFilaMonedaPdf(Table t, string etiqueta, decimal valor, ReportColumnDefinition columna, ReportColumnSnapshot snapshot, ReportTableBorder bordes, bool resaltar, string? fondo, string? colorTexto, ColumnaPersonalizada? estiloBase)
         {
             var row = t.AddRow();
             row.HeightRule = RowHeightRule.AtLeast;
@@ -305,7 +337,7 @@ namespace SOPRO.WinForms.Services
             row.Cells[0].AddParagraph(etiqueta);
             AplicarEstiloBase(row.Cells[0], estiloBase, resaltar, true, colorTexto);
 
-            row.Cells[2].AddParagraph(valor.ToString("$ #,##0.00"));
+            row.Cells[2].AddParagraph(FormatearValor(valor, columna, snapshot));
             AplicarEstiloBase(row.Cells[2], estiloBase, resaltar, false, colorTexto);
             row.Cells[2].Format.Alignment = MParagraphAlignment.Right;
 
@@ -316,18 +348,18 @@ namespace SOPRO.WinForms.Services
                 row.Cells[2].Shading.Color = ParseColor(fondo);
             }
 
-            AplicarCaja(row.Cells[0]);
-            AplicarCaja(row.Cells[1]);
-            AplicarCaja(row.Cells[2]);
+            AplicarCaja(row.Cells[0], bordes);
+            AplicarCaja(row.Cells[1], bordes);
+            AplicarCaja(row.Cells[2], bordes);
         }
 
-        private static void AgregarFilaParametroPdf(Table t, string etiqueta, decimal porcentaje, string? nota, bool resaltar, string? fondo, ColumnaPersonalizada? estiloBase)
+        private static void AgregarFilaParametroPdf(Table t, string etiqueta, decimal porcentaje, ReportColumnSnapshot snapshot, ReportTableBorder bordes, string? nota, bool resaltar, string? fondo, ColumnaPersonalizada? estiloBase)
         {
             var row = t.AddRow();
             row.Cells[0].MergeRight = 2;
             row.Cells[0].AddParagraph(etiqueta);
             AplicarEstiloBase(row.Cells[0], estiloBase, true, resaltar);
-            row.Cells[3].AddParagraph(porcentaje.ToString("0.00%"));
+            row.Cells[3].AddParagraph(ReportColumnGridFormat.FormatearPorcentajePdf(porcentaje, snapshot) + "%");
             AplicarEstiloBase(row.Cells[3], estiloBase, true);
             row.Cells[3].Format.Alignment = MParagraphAlignment.Right;
             if (!string.IsNullOrWhiteSpace(nota))
@@ -337,22 +369,22 @@ namespace SOPRO.WinForms.Services
             }
             if (!string.IsNullOrWhiteSpace(fondo))
                 for (int i = 0; i <= 3; i++) row.Cells[i].Shading.Color = ParseColor(fondo);
-            for (int i = 0; i <= 3; i++) AplicarCaja(row.Cells[i]);
+            for (int i = 0; i <= 3; i++) AplicarCaja(row.Cells[i], bordes);
         }
 
-        private static void AgregarFilaFormulaPdf(Table t, string etiqueta, decimal valor, ColumnaPersonalizada? estiloBase, bool esMoneda = false, string formato = "0.00%")
+        private static void AgregarFilaFormulaPdf(Table t, string etiqueta, decimal valor, ReportColumnDefinition columna, ReportColumnSnapshot snapshot, ReportTableBorder bordes, ColumnaPersonalizada? estiloBase)
         {
             var row = t.AddRow();
             row.Cells[0].MergeRight = 2;
             row.Cells[0].AddParagraph(etiqueta);
             AplicarEstiloBase(row.Cells[0], estiloBase, true, true);
-            row.Cells[3].AddParagraph(esMoneda ? valor.ToString("$ #,##0.00") : valor.ToString(formato));
+            row.Cells[3].AddParagraph(FormatearValor(valor, columna, snapshot));
             AplicarEstiloBase(row.Cells[3], estiloBase, true);
             row.Cells[3].Format.Alignment = MParagraphAlignment.Right;
-            for (int i = 0; i <= 3; i++) AplicarCaja(row.Cells[i]);
+            for (int i = 0; i <= 3; i++) AplicarCaja(row.Cells[i], bordes);
         }
 
-        private static void AgregarFilaTextoPdf(Table t, string texto, ColumnaPersonalizada? estiloBase, string? fondo)
+        private static void AgregarFilaTextoPdf(Table t, string texto, ColumnaPersonalizada? estiloBase, string? fondo, ReportTableBorder bordes)
         {
             var row = t.AddRow();
             row.Cells[0].MergeRight = 3;
@@ -360,14 +392,14 @@ namespace SOPRO.WinForms.Services
             AplicarEstiloBase(row.Cells[0], estiloBase);
             if (!string.IsNullOrWhiteSpace(fondo))
                 row.Cells[0].Shading.Color = ParseColor(fondo);
-            AplicarCaja(row.Cells[0]);
+            AplicarCaja(row.Cells[0], bordes);
         }
 
-        private static void AplicarCaja(Cell cell)
+        private static void AplicarCaja(Cell cell, ReportTableBorder borde)
         {
-            cell.Borders.Visible = true;
-            cell.Borders.Color = ParseColor("#BFBFBF");
-            cell.Borders.Width = Unit.FromPoint(0.5);
+            cell.Borders.Visible = borde.Visible;
+            cell.Borders.Color = ParseColor(borde.ColorHex);
+            cell.Borders.Width = Unit.FromPoint(borde.GrosorPuntos);
             cell.Format.SpaceBefore = 0;
             cell.Format.SpaceAfter = 0;
             cell.Format.SpaceBefore = Unit.FromPoint(1);
