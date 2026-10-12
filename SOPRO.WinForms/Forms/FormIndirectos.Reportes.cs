@@ -24,7 +24,9 @@ namespace SOPRO.WinForms.Forms
             {
                 var svc = new Services.ReporteService(_context);
                 var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
-                var columnas = Helpers.ColumnasIndirectosHelper.ObtenerColumnas(_context, _proyecto.Id);
+                // SOLO LECTURA: la exportación nunca debe inicializar ni persistir la
+                // configuración de columnas de indirectos (ver Hallazgo 1 / Fase 5).
+                var columnas = Helpers.ColumnasIndirectosHelper.ObtenerColumnasSoloLectura(_context, _proyecto.Id);
 
                 var gruposOC = _context.GruposIndirectos
                     .Include(g => g.Conceptos)
@@ -87,7 +89,9 @@ namespace SOPRO.WinForms.Forms
             {
                 var svc = new Services.ReporteService(_context);
                 var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
-                var columnas = Helpers.ColumnasIndirectosHelper.ObtenerColumnas(_context, _proyecto.Id);
+                // SOLO LECTURA: la exportación nunca debe inicializar ni persistir la
+                // configuración de columnas de indirectos (ver Hallazgo 1 / Fase 5).
+                var columnas = Helpers.ColumnasIndirectosHelper.ObtenerColumnasSoloLectura(_context, _proyecto.Id);
 
                 var gruposOC = _context.GruposIndirectos
                     .Include(g => g.Conceptos)

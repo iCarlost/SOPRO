@@ -41,7 +41,7 @@ namespace SOPRO.WinForms.Services
             var columnas = MapearColumnas(snapshot);
             var filas = MapearFilas(datos, snapshot);
             return GenerarCore(
-                proyecto, plantilla, columnas, filas, ganttModel, ganttVisualSettings,
+                proyecto, plantilla, snapshot, columnas, filas, ganttModel, ganttVisualSettings,
                 footerMode, timelineCellWidth, tituloReporte, "ProgramaInsumos", rutaDestino, tituloCfg, datos.Periodos);
         }
     }

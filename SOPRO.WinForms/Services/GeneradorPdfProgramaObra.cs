@@ -970,7 +970,9 @@ namespace SOPRO.WinForms.Services
 
         private static string AbreviarImporte(decimal valor)
         {
-            return valor.ToString("$#,##0.##", CultureInfo.InvariantCulture);
+            // Símbolo centralizado (ReportColumnGridFormat.SimboloMoneda); se mantiene
+            // la abreviatura compacta con cultura invariante para los separadores.
+            return valor.ToString(ReportColumnGridFormat.SimboloMoneda + "#,##0.##", CultureInfo.InvariantCulture);
         }
 
         private static XFont FitFontToWidth(XGraphics gfx, string text, XFont baseFont, double minSize, double maxWidth)

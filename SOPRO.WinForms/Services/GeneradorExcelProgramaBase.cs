@@ -26,6 +26,7 @@ namespace SOPRO.WinForms.Services
         protected string GenerarCore(
             Proyecto proyecto,
             PlantillaReporte plantilla,
+            ReportColumnSnapshot snapshot,
             List<ProgramaExcelColumnExport> columnas,
             List<ProgramaExcelRowExport> filas,
             GanttRenderModel ganttModel,
@@ -38,6 +39,7 @@ namespace SOPRO.WinForms.Services
             ConfiguracionTituloReporte? tituloCfg = null,
             IReadOnlyList<ProgramaPeriodColumn>? periodos = null)
         {
+            ArgumentNullException.ThrowIfNull(snapshot);
             ArgumentNullException.ThrowIfNull(proyecto);
             ArgumentNullException.ThrowIfNull(plantilla);
             ArgumentNullException.ThrowIfNull(ganttModel);
@@ -143,7 +145,7 @@ namespace SOPRO.WinForms.Services
 
             if (importeColumnIndex.HasValue)
             {
-                EscribirTotalColumnaImporte(ws, filas, columnas.Count, importeColumnIndex.Value, filaFooterInicio);
+                EscribirTotalColumnaImporte(ws, filas, columnas.Count, importeColumnIndex.Value, filaFooterInicio, snapshot.DecimalesImporte);
                 filaFooterFin = Math.Max(filaFooterFin, filaFooterInicio);
             }
 
@@ -540,7 +542,7 @@ namespace SOPRO.WinForms.Services
             return null;
         }
 
-        protected static void EscribirTotalColumnaImporte(IXLWorksheet ws, List<ProgramaExcelRowExport> filas, int totalColumnasIzquierda, int importeColumnIndex, int row)
+        protected static void EscribirTotalColumnaImporte(IXLWorksheet ws, List<ProgramaExcelRowExport> filas, int totalColumnasIzquierda, int importeColumnIndex, int row, int decimalesImporte)
         {
             decimal total = filas.Where(x => !x.EsResumen).Sum(x => x.GetDecimal("colImporte") ?? x.GetDecimal("Importe") ?? 0m);
 
@@ -554,7 +556,7 @@ namespace SOPRO.WinForms.Services
 
             var totalCell = ws.Cell(row, importeColumnIndex);
             totalCell.Value = total;
-            totalCell.Style.NumberFormat.Format = "$#,##0.00####";
+            totalCell.Style.NumberFormat.Format = ReportColumnGridFormat.FormatoMonedaExcel(decimalesImporte, CultureInfo.CurrentCulture);
             totalCell.Style.Font.Bold = true;
             totalCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             totalCell.Style.Fill.BackgroundColor = XLColor.FromHtml("#FFF8E1");
