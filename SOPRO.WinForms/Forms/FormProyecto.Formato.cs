@@ -18,10 +18,31 @@ namespace SOPRO.WinForms.Forms
     /// </summary>
     public partial class FormProyecto
     {
+        /// <summary>
+        /// Decide el DESTINO del formato del ribbon: selección de celdas
+        /// (si el grid activo implementa <see cref="IGridSeleccionFormato"/>) o
+        /// columna (comportamiento previo intacto).
+        /// </summary>
+        private readonly FormatoSeleccionCoordinator _formatoSeleccionCoordinator = new FormatoSeleccionCoordinator();
 
         private void AplicarRibbon()
         {
-            if (_cargandoRibbon || _formActivo?.ColumnaSeleccionada == null) return;
+            if (_cargandoRibbon) return;
+
+            _formatoSeleccionCoordinator.EstablecerGrid(_formActivo);
+
+            // Destino CELDAS: grid que implementa IGridSeleccionFormato con celdas
+            // seleccionadas → overlay por celda (pintado inmediato) y pares
+            // antes/después listos para el undo/persistencia (Fase 4.1).
+            if (_formatoSeleccionCoordinator.PuedeAplicarASeleccion)
+            {
+                _formatoSeleccionCoordinator.AplicarASeleccion(
+                    FormatoSeleccionCoordinator.ConstruirOverlay(BuildFmt()));
+                return;
+            }
+
+            // Destino COLUMNA: comportamiento existente (encabezado seleccionado).
+            if (_formActivo?.ColumnaSeleccionada == null) return;
             _formActivo.AplicarFormato(BuildFmt());
             AplicarAlineacionVerticalSeleccionActual();
         }
@@ -61,6 +82,18 @@ namespace SOPRO.WinForms.Forms
         private void SetAlineacionVertical(DataGridViewContentAlignment alineacionBase)
         {
             if (_cargandoRibbon || _formActivo?.GridPrincipal == null) return;
+
+            _formatoSeleccionCoordinator.EstablecerGrid(_formActivo);
+
+            // Destino CELDAS: aplicar la alineación vertical a la selección
+            // (pintado inmediato) sin tocar el encabezado/columna.
+            if (_formatoSeleccionCoordinator.PuedeAplicarASeleccion)
+            {
+                ActualizarBotonesAlinVertical(alineacionBase);
+                _formatoSeleccionCoordinator.AplicarASeleccion(
+                    FormatoSeleccionCoordinator.ConstruirOverlay(BuildFmt()));
+                return;
+            }
 
             var grid = _formActivo.GridPrincipal;
             var col = ObtenerColumnaSeleccionadaGrid();
