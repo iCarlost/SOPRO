@@ -270,7 +270,7 @@ public class ProgramaObraReportSnapshotBuilderTests
     }
 
     [TestMethod]
-    public void ConstruirFilas_FormateaFechasConLaCulturaActual()
+    public void ConstruirFilas_FormateaFechasEnFormatoCortoConsistenteConElGrid()
     {
         var inicio = new DateTime(2026, 3, 15);
         var fin = new DateTime(2026, 4, 1);
@@ -286,8 +286,10 @@ public class ProgramaObraReportSnapshotBuilderTests
             .ConstruirFilas(new[] { actividad }, new GanttRenderModel())
             .Single();
 
-        Assert.AreEqual(inicio.ToString(CultureInfo.CurrentCulture), fila.ObtenerTexto("colFechaInicio"));
-        Assert.AreEqual(fin.ToString(CultureInfo.CurrentCulture), fila.ObtenerTexto("colFechaFin"));
+        // El grid muestra las fechas con el formato corto "dd/MM/yyyy" (sin hora);
+        // la exportación PDF/Excel debe replicarlo (no la cultura general con hora).
+        Assert.AreEqual(inicio.ToString("dd/MM/yyyy", CultureInfo.CurrentCulture), fila.ObtenerTexto("colFechaInicio"));
+        Assert.AreEqual(fin.ToString("dd/MM/yyyy", CultureInfo.CurrentCulture), fila.ObtenerTexto("colFechaFin"));
         Assert.AreEqual("No", fila.ObtenerTexto("colRutaCritica"));
     }
 

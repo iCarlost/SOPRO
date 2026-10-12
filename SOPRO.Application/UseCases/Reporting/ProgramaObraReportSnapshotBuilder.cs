@@ -190,7 +190,7 @@ public sealed class ProgramaObraReportSnapshotBuilder
     }
 
     private static string FormatearFecha(DateTime? fecha)
-        => fecha.HasValue ? fecha.Value.ToString(CultureInfo.CurrentCulture) : string.Empty;
+        => fecha.HasValue ? fecha.Value.ToString("dd/MM/yyyy", CultureInfo.CurrentCulture) : string.Empty;
 
     private static List<ReportColumnDefinition> ConstruirDefiniciones(IEnumerable<ColumnaProgramaObra>? columnas)
     {
