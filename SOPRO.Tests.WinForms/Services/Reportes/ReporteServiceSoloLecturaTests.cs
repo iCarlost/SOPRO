@@ -7,7 +7,7 @@ using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.WinForms.Services;
 
-namespace SOPRO.Tests.Services.Reportes;
+namespace SOPRO.Tests.WinForms.Services.Reportes;
 
 /// <summary>
 /// Hallazgo bloqueante Critic #2: ninguna ruta de EXPORTACIÓN puede escribir en
