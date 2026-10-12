@@ -76,18 +76,16 @@ namespace SOPRO.WinForms.Services
             Proyecto proyecto,
             List<ManoDeObra> items,
             PlantillaReporte plantilla,
+            ReportColumnSnapshot snapshot,
             string rutaDestino = null)
         {
             if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
             if (items == null) throw new ArgumentNullException(nameof(items));
             if (plantilla == null) throw new ArgumentNullException(nameof(plantilla));
+            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
 
             var filas = GeneradorExcelFSR.CalcularFilasAE2C(proyecto, items);
             if (!filas.Any()) throw new InvalidOperationException("No hay datos suficientes para generar el tabulador FSR.");
-
-            // Snapshot neutral AE-2(C) compartido con la ruta Excel del Tabulador
-            // (misma lista/orden/ancho/formato). La rama Catálogo (F1.1) no se toca.
-            var snapshot = new FsrReportSnapshotBuilder().BuildAE2C(proyecto, null);
 
             if (string.IsNullOrWhiteSpace(rutaDestino))
                 throw new InvalidOperationException("Debe especificarse la ruta destino del PDF.");

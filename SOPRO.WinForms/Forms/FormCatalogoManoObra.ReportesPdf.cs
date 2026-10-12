@@ -12,6 +12,7 @@ using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
 using SOPRO.Application.Services;
 using SOPRO.Application.Models.Catalogs;
+using SOPRO.Application.UseCases.Reporting;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -68,7 +69,10 @@ namespace SOPRO.WinForms.Forms
                 };
                 if (dlgPdfFsr.ShowDialog(this) != DialogResult.OK) return;
 
-                ruta = gen.GenerarTabuladorFsr(proyecto, lista, plantilla, dlgPdfFsr.FileName);
+                // Snapshot neutral AE-2(C) compartido con la ruta Excel del Tabulador
+                // (misma lista/orden/ancho/formato). La rama Catálogo (F1.1) no se toca.
+                var snapshotAE2C = new FsrReportSnapshotBuilder().BuildAE2C(proyecto, lblTitulo.Text);
+                ruta = gen.GenerarTabuladorFsr(proyecto, lista, plantilla, snapshotAE2C, dlgPdfFsr.FileName);
             }
             else
             {

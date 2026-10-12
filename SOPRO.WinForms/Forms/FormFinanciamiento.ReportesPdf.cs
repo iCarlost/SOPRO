@@ -49,7 +49,7 @@ namespace SOPRO.WinForms.Forms
 
                 var svcRep = new ReporteService(_context);
                 var plantilla = svcRep.ObtenerOCrearPlantilla(_proyecto.Id);
-                var columnasCfg = ColumnasFinanciamientoHelper.ObtenerColumnas(_context, _proyecto.Id);
+                var columnasCfg = ColumnasFinanciamientoHelper.ObtenerColumnasSoloLectura(_context, _proyecto.Id);
 
                 // Snapshot neutral compartido: misma lista/orden/ancho/formato/estilo
                 // que el exportador Excel (no se leen columnas ni estilos del grid).

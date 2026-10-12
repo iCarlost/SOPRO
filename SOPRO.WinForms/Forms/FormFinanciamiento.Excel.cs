@@ -48,7 +48,7 @@ namespace SOPRO.WinForms.Forms
 
             var svcRep = new ReporteService(_context);
             var plantilla = svcRep.ObtenerOCrearPlantilla(_proyecto.Id);
-            var columnasCfg = ColumnasFinanciamientoHelper.ObtenerColumnas(_context, _proyecto.Id);
+            var columnasCfg = ColumnasFinanciamientoHelper.ObtenerColumnasSoloLectura(_context, _proyecto.Id);
 
             // ── Snapshot neutral y modelo compartidos con el PDF ─────────────
             var snapshot = FinanciamientoExportResolver.BuildSnapshot(
