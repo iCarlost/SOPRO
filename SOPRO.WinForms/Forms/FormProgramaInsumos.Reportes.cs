@@ -42,11 +42,11 @@ namespace SOPRO.WinForms.Forms
                 }
 
                 var svc = new Services.ReporteService(_context);
-                var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
+                var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
                 FormatoHelper.EstablecerProyecto(_proyecto);
 
                 var tituloReporte = ObtenerTituloReporteProgramaInsumos();
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.ProgramaInsumos, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.ProgramaInsumos, lblTitulo.Text);
                 using var dlg = new SaveFileDialog
                 {
                     Title = "Guardar reporte Excel del programa de insumos",

@@ -76,7 +76,7 @@ namespace SOPRO.WinForms.Forms
                     return;
 
                 var svcRep = new ReporteService(_context);
-                var plantilla = svcRep.ObtenerOCrearPlantilla(_proyecto.Id);
+                var plantilla = svcRep.ObtenerPlantillaSoloLectura(_proyecto.Id);
 
                 var preview = BudgetPreviewCalculationService.BuildPreview(_context, _proyecto, new BudgetPercentageInput
                 {
@@ -90,7 +90,7 @@ namespace SOPRO.WinForms.Forms
                 });
 
                 Cursor = Cursors.WaitCursor;
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Utilidad, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.Utilidad, lblTitulo.Text);
                 var snapshot = ConstruirSnapshot();
                 var generador = new GeneradorPdfUtilidad(svcRep);
                 string ruta = generador.Generar(_proyecto, plantilla, preview, _resultado, snapshot, _columnaRibbon, dlg.FileName, tituloCfg);
@@ -278,7 +278,7 @@ namespace SOPRO.WinForms.Forms
                 var ws = wb.Worksheets.Add("Utilidad");
 
                 var svcRep = new ReporteService(_context);
-                var plantilla = svcRep.ObtenerOCrearPlantilla(_proyecto.Id);
+                var plantilla = svcRep.ObtenerPlantillaSoloLectura(_proyecto.Id);
 
                 int totalCols = 6;
                 int fila = 1;
@@ -287,7 +287,7 @@ namespace SOPRO.WinForms.Forms
                 fila += 2;
 
                 var titulo = ws.Range(fila, 1, fila, totalCols);
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Utilidad, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.Utilidad, lblTitulo.Text);
                 ReportTitleStyleHelper.ApplyToClosedXmlTitle(titulo, tituloCfg, "DETERMINACIÓN DE LA UTILIDAD NETA", "#F4B183");
                 ws.Row(fila).Height = 24;
                 fila++;

@@ -1,11 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Necesario para probar los servicios de la capa WinForms
+         (ReporteService.ObtenerPlantillaSoloLectura) desde las pruebas. -->
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,6 +26,7 @@
     <ProjectReference Include="..\SOPRO.Application\SOPRO.Application.csproj" />
     <ProjectReference Include="..\SOPRO.Data\SOPRO.Data.csproj" />
     <ProjectReference Include="..\SOPRO.Calculation\SOPRO.Calculation.csproj" />
+    <ProjectReference Include="..\SOPRO.WinForms\SOPRO.WinForms.csproj" />
   </ItemGroup>
 
   <ItemGroup>

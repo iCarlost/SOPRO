@@ -48,7 +48,7 @@ namespace SOPRO.WinForms.Forms
                     return;
 
                 var svcRep = new ReporteService(_context);
-                var plantilla = svcRep.ObtenerOCrearPlantilla(_proyecto.Id);
+                var plantilla = svcRep.ObtenerPlantillaSoloLectura(_proyecto.Id);
                 var columnasCfg = ColumnasFinanciamientoHelper.ObtenerColumnasSoloLectura(_context, _proyecto.Id);
 
                 // Snapshot neutral compartido: misma lista/orden/ancho/formato/estilo
@@ -66,7 +66,7 @@ namespace SOPRO.WinForms.Forms
                     _proyecto, _config, filas, baseRows, EsModeloDualSeleccionado());
 
                 Cursor = Cursors.WaitCursor;
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Financiamiento, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.Financiamiento, lblTitulo.Text);
                 var generador = new GeneradorPdfFinanciamiento(svcRep);
                 string ruta = generador.Generar(_proyecto, plantilla, snapshot, modelo, dlg.FileName, tituloCfg);
                 Cursor = Cursors.Default;

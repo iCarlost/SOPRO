@@ -41,8 +41,8 @@ namespace SOPRO.WinForms.Forms
                     return;
 
                 var svcRep = new ReporteService(_context);
-                var plantilla = svcRep.ObtenerOCrearPlantilla(_proyecto.Id);
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.FSR, lblTitulo.Text);
+                var plantilla = svcRep.ObtenerPlantillaSoloLectura(_proyecto.Id);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.FSR, lblTitulo.Text);
 
                 var filas = new List<FsrRow>
                 {

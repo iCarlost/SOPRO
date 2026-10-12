@@ -40,6 +40,40 @@ namespace SOPRO.Application.Services
             return cfg;
         }
 
+        /// <summary>
+        /// Consulta de SOLO LECTURA de la configuración de título del reporte.
+        /// NO crea ni persiste la <see cref="ConfiguracionTituloReporte"/>: si no
+        /// existe, devuelve una instancia por defecto EN MEMORIA (sin <c>Add</c> ni
+        /// <c>SaveChanges</c>) usando <paramref name="tituloDefault"/> como texto.
+        /// PROHIBIDO su uso desde la UI de edición del título (que debe persistir):
+        /// es la variante que deben usar TODAS las rutas de exportación, de modo que
+        /// exportar un reporte nunca modifique la base de datos.
+        /// </summary>
+        public ConfiguracionTituloReporte ObtenerSoloLectura(int proyectoId, string modulo, string tituloDefault)
+        {
+            if (proyectoId <= 0) throw new ArgumentOutOfRangeException(nameof(proyectoId));
+            if (string.IsNullOrWhiteSpace(modulo)) throw new ArgumentException("El módulo es requerido.", nameof(modulo));
+
+            var cfg = _context.ConfiguracionesTituloReporte
+                .FirstOrDefault(x => x.ProyectoId == proyectoId && x.Modulo == modulo);
+
+            if (cfg != null)
+                return cfg;
+
+            // Default en memoria: no se agrega al contexto ni se ejecuta SaveChanges.
+            return new ConfiguracionTituloReporte
+            {
+                ProyectoId = proyectoId,
+                Modulo = modulo,
+                TextoTitulo = tituloDefault ?? string.Empty,
+                NombreFuente = "Segoe UI",
+                TamanoFuente = 13f,
+                Negrita = true,
+                Cursiva = false,
+                ColorTexto = "#FFFFFF"
+            };
+        }
+
         public ConfiguracionTituloReporte Guardar(int proyectoId, string modulo, string textoTitulo, string nombreFuente, float tamanoFuente, bool negrita, bool cursiva, string colorTexto)
         {
             var cfg = ObtenerOCrear(proyectoId, modulo, textoTitulo);

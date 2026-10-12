@@ -23,7 +23,7 @@ namespace SOPRO.WinForms.Forms
             try
             {
                 var svc = new Services.ReporteService(_context);
-                var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
+                var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
                 // SOLO LECTURA: la exportación nunca debe inicializar ni persistir la
                 // configuración de columnas de indirectos (ver Hallazgo 1 / Fase 5).
                 var columnas = Helpers.ColumnasIndirectosHelper.ObtenerColumnasSoloLectura(_context, _proyecto.Id);
@@ -55,7 +55,7 @@ namespace SOPRO.WinForms.Forms
                 if (dlg.ShowDialog() != DialogResult.OK) return;
 
                 Cursor = Cursors.WaitCursor;
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Indirectos, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.Indirectos, lblTitulo.Text);
 
                 // Snapshot neutral compartido con la ruta Excel: misma lista/orden/
                 // ancho/formato/estilo y mismos decimales globales del proyecto.
@@ -88,7 +88,7 @@ namespace SOPRO.WinForms.Forms
             try
             {
                 var svc = new Services.ReporteService(_context);
-                var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
+                var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
                 // SOLO LECTURA: la exportación nunca debe inicializar ni persistir la
                 // configuración de columnas de indirectos (ver Hallazgo 1 / Fase 5).
                 var columnas = Helpers.ColumnasIndirectosHelper.ObtenerColumnasSoloLectura(_context, _proyecto.Id);
@@ -120,7 +120,7 @@ namespace SOPRO.WinForms.Forms
                 if (dlg.ShowDialog() != DialogResult.OK) return;
 
                 Cursor = Cursors.WaitCursor;
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Indirectos, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.Indirectos, lblTitulo.Text);
 
                 // Snapshot neutral compartido con la ruta PDF: misma lista/orden/
                 // ancho/formato/estilo y mismos decimales globales del proyecto.

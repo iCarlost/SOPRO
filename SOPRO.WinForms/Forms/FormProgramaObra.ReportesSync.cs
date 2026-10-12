@@ -45,11 +45,11 @@ namespace SOPRO.WinForms.Forms
                 }
 
                 var svc = new Services.ReporteService(_context);
-                var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
+                var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
                 FormatoHelper.EstablecerProyecto(_proyecto);
 
                 var tituloReporte = ObtenerTituloReportePrograma();
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.ProgramaObra, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.ProgramaObra, lblTitulo.Text);
                 using var dlg = new SaveFileDialog
                 {
                     Title = "Guardar reporte Excel del programa",
@@ -103,9 +103,9 @@ namespace SOPRO.WinForms.Forms
                     throw new InvalidOperationException("No hay vista gantt disponible para exportar.");
 
                 var svc = new Services.ReporteService(_context);
-                var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
+                var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
                 var tituloReporte = ObtenerTituloReportePrograma();
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.ProgramaObra, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.ProgramaObra, lblTitulo.Text);
 
                 using var dlg = new SaveFileDialog
                 {
@@ -153,7 +153,7 @@ namespace SOPRO.WinForms.Forms
 
         private string ObtenerTituloReportePrograma()
         {
-            var baseTitle = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.ProgramaObra, lblTitulo.Text).TextoTitulo;
+            var baseTitle = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.ProgramaObra, lblTitulo.Text).TextoTitulo;
             return ObtenerVistaCurvaSeleccionada() switch
             {
                 CurvaSViewMode.Financiera => $"{baseTitle} - Erogaciones",

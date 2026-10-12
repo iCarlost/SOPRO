@@ -51,13 +51,13 @@ namespace SOPRO.WinForms.Forms
             {
                 Cursor = Cursors.WaitCursor;
                 var svcRep = new ReporteService(_context);
-                var plantilla = svcRep.ObtenerOCrearPlantilla(_proyectoId ?? 0);
+                var plantilla = svcRep.ObtenerPlantillaSoloLectura(_proyectoId ?? 0);
                 Proyecto proyecto = _proyectoId.HasValue
                     ? _context.Proyectos.Find(_proyectoId.Value)
                     : new Proyecto { Nombre = "Maquinaria" };
 
                 var tituloCfg = _proyectoId.HasValue
-                    ? new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyectoId.Value, ReportTitleModuleKeys.CatalogoMaquinaria, lblTitulo.Text)
+                    ? new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyectoId.Value, ReportTitleModuleKeys.CatalogoMaquinaria, lblTitulo.Text)
                     : null;
                 // Snapshot neutral compartido: misma lista/orden/ancho/formato/estilo que Excel.
                 var snapshot = new CostoHorarioReportSnapshotBuilder().Build(

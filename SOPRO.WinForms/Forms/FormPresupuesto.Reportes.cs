@@ -33,7 +33,7 @@ namespace SOPRO.WinForms.Forms
             try
             {
                 var svc = new Services.ReporteService(_context);
-                var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
+                var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
                 // Snapshot neutral desde la configuración persistida (no desde el grid).
                 var snapshot = ConstruirSnapshotPresupuesto();
 
@@ -60,7 +60,7 @@ namespace SOPRO.WinForms.Forms
 
                 Cursor = Cursors.WaitCursor;
                 decimal factorPU = CalcularFactorPU();
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Presupuesto, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.Presupuesto, lblTitulo.Text);
                 var gen = new Services.GeneradorPdfPresupuesto(svc);
                 var ruta = gen.Generar(_proyecto, conceptos, plantilla, snapshot, dlg.FileName, factorPU, tituloCfg);
                 Cursor = Cursors.Default;
@@ -88,7 +88,7 @@ namespace SOPRO.WinForms.Forms
             try
             {
                 var svc = new Services.ReporteService(_context);
-                var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
+                var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
                 var conceptos = _context.ConceptosPresupuesto
                     .Where(c => c.ProyectoId == _proyecto.Id)
                     .OrderBy(c => c.Orden)
@@ -146,7 +146,7 @@ namespace SOPRO.WinForms.Forms
             try
             {
                 var svc = new Services.ReporteService(_context);
-                var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
+                var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
 
                 // Snapshot neutral desde la configuración persistida (no desde el grid).
                 var snapshot = ConstruirSnapshotPresupuesto();
@@ -174,7 +174,7 @@ namespace SOPRO.WinForms.Forms
 
                 Cursor = Cursors.WaitCursor;
                 decimal factorPU = CalcularFactorPU();
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Presupuesto, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.Presupuesto, lblTitulo.Text);
                 var gen = new Services.GeneradorExcelPresupuesto(svc);
                 var ruta = gen.Generar(_proyecto, conceptos, plantilla, snapshot, dlg.FileName, factorPU, tituloCfg);
                 Cursor = Cursors.Default;
@@ -274,7 +274,7 @@ namespace SOPRO.WinForms.Forms
                 }
 
                 var svc = new Services.ReporteService(_context);
-                var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
+                var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
                 // Snapshot neutral en memoria: el APU no inicializa ni persiste configuración.
                 var snapshot = ConstruirSnapshotApu();
 

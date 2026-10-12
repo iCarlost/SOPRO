@@ -36,9 +36,9 @@ namespace SOPRO.WinForms.Forms
                     throw new InvalidOperationException("El programa de insumos no tiene datos suficientes para generar el PDF.");
 
                 var svc = new Services.ReporteService(_context);
-                var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
+                var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
                 var tituloReporte = ObtenerTituloReporteProgramaInsumos();
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.ProgramaInsumos, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.ProgramaInsumos, lblTitulo.Text);
 
                 using var dlg = new SaveFileDialog
                 {

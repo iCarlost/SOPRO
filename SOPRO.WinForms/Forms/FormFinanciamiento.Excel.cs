@@ -47,7 +47,7 @@ namespace SOPRO.WinForms.Forms
                 return false;
 
             var svcRep = new ReporteService(_context);
-            var plantilla = svcRep.ObtenerOCrearPlantilla(_proyecto.Id);
+            var plantilla = svcRep.ObtenerPlantillaSoloLectura(_proyecto.Id);
             var columnasCfg = ColumnasFinanciamientoHelper.ObtenerColumnasSoloLectura(_context, _proyecto.Id);
 
             // ── Snapshot neutral y modelo compartidos con el PDF ─────────────
@@ -73,7 +73,7 @@ namespace SOPRO.WinForms.Forms
 
             var titulo = ws.Range(fila, 1, fila, numCols);
             titulo.Merge();
-            var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Financiamiento, lblTitulo.Text);
+            var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.Financiamiento, lblTitulo.Text);
             ReportTitleStyleHelper.ApplyToClosedXmlTitle(titulo, tituloCfg, "ANÁLISIS DE FINANCIAMIENTO");
             ws.Row(fila).Height = 24;
             fila++;

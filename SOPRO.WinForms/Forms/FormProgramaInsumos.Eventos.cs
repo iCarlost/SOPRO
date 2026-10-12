@@ -126,7 +126,7 @@ namespace SOPRO.WinForms.Forms
         private string ObtenerTituloReporteProgramaInsumos()
         {
             var vista = cboVista.ComboBox.SelectedItem is VistaProgramaInsumos v ? v : VistaProgramaInsumos.Cantidades;
-            var baseTitle = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.ProgramaInsumos, lblTitulo.Text).TextoTitulo;
+            var baseTitle = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.ProgramaInsumos, lblTitulo.Text).TextoTitulo;
             return vista switch
             {
                 VistaProgramaInsumos.Importes => $"{baseTitle} - Erogaciones",

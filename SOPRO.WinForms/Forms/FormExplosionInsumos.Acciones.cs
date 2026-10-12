@@ -32,7 +32,7 @@ namespace SOPRO.WinForms.Forms
                 }
 
                 var svc      = new Services.ReporteService(_context);
-                var plantilla = svc.ObtenerOCrearPlantilla(_proyectoId);
+                var plantilla = svc.ObtenerPlantillaSoloLectura(_proyectoId);
                 // Snapshot neutral compartido con PDF: misma lista/orden/ancho/
                 // formato/estilo. Las columnas se leen sin persistir; si no hay, el
                 // resolver usa sus defaults EN MEMORIA (sin SaveChanges).
@@ -55,7 +55,7 @@ namespace SOPRO.WinForms.Forms
                 if (dlg.ShowDialog() != DialogResult.OK) return;
 
                 Cursor = Cursors.WaitCursor;
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyectoId, ReportTitleModuleKeys.ExplosionInsumos, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyectoId, ReportTitleModuleKeys.ExplosionInsumos, lblTitulo.Text);
                 var generador = new Services.GeneradorExcelExplosion(svc);
                 string ruta = generador.Generar(
                     _proyecto, plantilla, snapshot, filtro,

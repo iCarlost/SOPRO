@@ -94,8 +94,8 @@ namespace SOPRO.WinForms.Forms
                 _proyecto.ParametrosFSR = GuardarParametros();
 
                 var svcRep    = new Services.ReporteService(_context);
-                var plantilla = svcRep.ObtenerOCrearPlantilla(_proyecto.Id);
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.FSR, lblTitulo.Text);
+                var plantilla = svcRep.ObtenerPlantillaSoloLectura(_proyecto.Id);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.FSR, lblTitulo.Text);
 
                 using var wb = new ClosedXML.Excel.XLWorkbook();
                 var snapshot = new FsrReportSnapshotBuilder().BuildAE2A(_proyecto, lblTitulo.Text);
@@ -140,8 +140,8 @@ namespace SOPRO.WinForms.Forms
                 _proyecto.ParametrosFSR = GuardarParametros();
 
                 var svcRep    = new Services.ReporteService(_context);
-                var plantilla = svcRep.ObtenerOCrearPlantilla(_proyecto.Id);
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.FSR, lblTitulo.Text);
+                var plantilla = svcRep.ObtenerPlantillaSoloLectura(_proyecto.Id);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.FSR, lblTitulo.Text);
 
                 using var wb = new ClosedXML.Excel.XLWorkbook();
                 var snapshot = new FsrReportSnapshotBuilder().BuildAE2A(_proyecto, lblTitulo.Text);
