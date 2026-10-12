@@ -4,7 +4,9 @@ using System.Drawing;
 using System.Windows.Forms;
 using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.DTOs.Programacion;
+using SOPRO.Application.Models.Reporting.Programa;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.WinForms.Helpers;
@@ -43,11 +45,11 @@ namespace SOPRO.WinForms.Forms
                 }
 
                 var svc = new Services.ReporteService(_context);
-                var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
+                var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
                 FormatoHelper.EstablecerProyecto(_proyecto);
 
                 var tituloReporte = ObtenerTituloReportePrograma();
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.ProgramaObra, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.ProgramaObra, lblTitulo.Text);
                 using var dlg = new SaveFileDialog
                 {
                     Title = "Guardar reporte Excel del programa",
@@ -59,11 +61,15 @@ namespace SOPRO.WinForms.Forms
                     return;
 
                 Cursor = Cursors.WaitCursor;
+                var builder = new ProgramaObraReportSnapshotBuilder();
+                var snapshot = builder.Build(_proyecto, tituloReporte, _columnasConfig);
+                ProgramaReportData datos = builder.ConstruirDatos(_actividades, ganttModel);
                 var generador = new Services.GeneradorExcelProgramaObra(svc);
                 var ruta = generador.Generar(
                     _proyecto,
                     plantilla,
-                    dgvActividades,
+                    snapshot,
+                    datos,
                     ganttModel,
                     _ganttControl.VisualSettings,
                     _ganttControl.FooterDisplayMode,
@@ -97,9 +103,9 @@ namespace SOPRO.WinForms.Forms
                     throw new InvalidOperationException("No hay vista gantt disponible para exportar.");
 
                 var svc = new Services.ReporteService(_context);
-                var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
+                var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
                 var tituloReporte = ObtenerTituloReportePrograma();
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.ProgramaObra, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.ProgramaObra, lblTitulo.Text);
 
                 using var dlg = new SaveFileDialog
                 {
@@ -113,11 +119,15 @@ namespace SOPRO.WinForms.Forms
                     return;
 
                 Cursor = Cursors.WaitCursor;
+                var builder = new ProgramaObraReportSnapshotBuilder();
+                var snapshot = builder.Build(_proyecto, tituloReporte, _columnasConfig);
+                ProgramaReportData datos = builder.ConstruirDatos(_actividades, _ganttControl.RenderModel);
                 var generador = new Services.GeneradorPdfProgramaObra(svc);
                 var ruta = generador.Generar(
                     _proyecto,
                     plantilla,
-                    dgvActividades,
+                    snapshot,
+                    datos,
                     _ganttControl.RenderModel,
                     _ganttControl.VisualSettings,
                     tituloReporte,
@@ -143,7 +153,7 @@ namespace SOPRO.WinForms.Forms
 
         private string ObtenerTituloReportePrograma()
         {
-            var baseTitle = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.ProgramaObra, lblTitulo.Text).TextoTitulo;
+            var baseTitle = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.ProgramaObra, lblTitulo.Text).TextoTitulo;
             return ObtenerVistaCurvaSeleccionada() switch
             {
                 CurvaSViewMode.Financiera => $"{baseTitle} - Erogaciones",

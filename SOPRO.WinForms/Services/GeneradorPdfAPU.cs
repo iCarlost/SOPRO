@@ -1,13 +1,19 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
+using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+using SOPRO.Reporting.Formatting;
+using SOPRO.Reporting.Layout;
 using MOrientation = MigraDoc.DocumentObjectModel.Orientation;
 using MColor = MigraDoc.DocumentObjectModel.Color;
 using MParagraphAlignment = MigraDoc.DocumentObjectModel.ParagraphAlignment;
@@ -15,11 +21,22 @@ using MigraFont = MigraDoc.DocumentObjectModel.Font;
 
 namespace SOPRO.WinForms.Services
 {
+    /// <summary>
+    /// Genera el reporte PDF del APU (Análisis de Precios Unitarios), un documento
+    /// con una sección por concepto. Consume el MISMO
+    /// <see cref="ReportColumnSnapshot"/> neutral que la ruta Excel (visibilidad,
+    /// orden, encabezado, ancho, alineación, rol numérico y formato). Las columnas
+    /// de la tabla de componentes ya NO son un layout fijo: provienen del contrato
+    /// compartido grid→PDF/Excel. El reporte conserva su estructura interna
+    /// (bloques por tipo de insumo, subtotales e integración del precio unitario).
+    /// </summary>
     public class GeneradorPdfAPU
     {
         private readonly ReporteService _svc;
         private readonly SOPROContext _ctx;
-        private ConfigColumnaReporte? _estiloDescripcionPresupuesto;
+
+        /// <summary>Snapshot vigente de la corrida (aporta decimales y estilos).</summary>
+        private ReportColumnSnapshot? _snapshot;
 
         public GeneradorPdfAPU(ReporteService svc, SOPROContext ctx)
         {
@@ -27,13 +44,26 @@ namespace SOPRO.WinForms.Services
             _ctx = ctx;
         }
 
-        public string Generar(Proyecto proyecto, List<ConceptoPresupuesto> conceptos, PlantillaReporte plantilla, string rutaDestino, ConfigColumnaReporte? estiloDescripcionPresupuesto = null)
+        public string Generar(
+            Proyecto proyecto,
+            List<ConceptoPresupuesto> conceptos,
+            PlantillaReporte plantilla,
+            ReportColumnSnapshot snapshot,
+            string rutaDestino)
         {
-            _estiloDescripcionPresupuesto = estiloDescripcionPresupuesto;
+            ArgumentNullException.ThrowIfNull(proyecto);
+            ArgumentNullException.ThrowIfNull(conceptos);
+            ArgumentNullException.ThrowIfNull(plantilla);
+            ArgumentNullException.ThrowIfNull(snapshot);
+            _snapshot = snapshot;
 
             var conceptosConAPU = conceptos.Where(c => !c.EsAgrupador && c.MatrizId.HasValue).ToList();
             if (!conceptosConAPU.Any())
                 throw new InvalidOperationException("No hay conceptos con APU vinculado en este presupuesto.");
+
+            var cols = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+            if (cols.Count == 0)
+                cols = ApuExportResolver.DefaultColumns().Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
 
             var matrizIds = conceptosConAPU.Select(c => c.MatrizId!.Value).Distinct().ToList();
             var matrices = _ctx.Matrices
@@ -72,7 +102,7 @@ namespace SOPRO.WinForms.Services
 
                 ConstruirHeader(section, proyecto, plantilla, headerHeightCm);
                 ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
-                ConstruirApu(section, proyecto, concepto, matriz, numero);
+                ConstruirApu(section, proyecto, concepto, matriz, numero, cols, snapshot);
                 numero++;
             }
 
@@ -165,7 +195,7 @@ namespace SOPRO.WinForms.Services
             string alineacion, bool soportaCamposPagina)
         {
             cell.VerticalAlignment = VerticalAlignment.Center;
-            cell.Format.Alignment = ConvertirAlineacion(alineacion);
+            cell.Format.Alignment = ConvertirAlineacionTexto(alineacion);
             cell.Borders.Visible = false;
 
             if (string.Equals(tipo, "Imagen", StringComparison.OrdinalIgnoreCase) && File.Exists(contenido))
@@ -177,7 +207,7 @@ namespace SOPRO.WinForms.Services
             }
 
             var p = cell.AddParagraph();
-            p.Format.Alignment = ConvertirAlineacion(alineacion);
+            p.Format.Alignment = ConvertirAlineacionTexto(alineacion);
             p.Format.SpaceAfter = 0;
             p.Format.SpaceBefore = 0;
             p.Format.Font.Name = PdfFontHelper.NormalizeFontName(string.IsNullOrWhiteSpace(fuente) ? "Segoe UI" : fuente);
@@ -222,29 +252,31 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private ConfigColumnaReporte ObtenerEstiloBaseApu()
+        /// <summary>Estilo de contenido neutral vigente (snapshot o default de catálogo).</summary>
+        private ReportTextStyle Contenido
+            => _snapshot?.EstiloTabla.EstiloContenido ?? ReportTableStyle.LegacyCatalogo().EstiloContenido;
+
+        private void AplicarFuenteContenido(MigraFont font, bool boldOverride = false, string? colorOverride = null)
         {
-            return _estiloDescripcionPresupuesto ?? new ConfigColumnaReporte
-            {
-                ConFuente = "Segoe UI",
-                ConTamaño = 8.5f,
-                ConNegrita = false,
-                ConCursiva = false,
-                ConColorTexto = "#000000",
-                ConAlineacion = "Izquierda"
-            };
+            var estilo = Contenido;
+            PdfFontHelper.ApplyFont(font, estilo.Fuente, estilo.Tamano > 0 ? estilo.Tamano : 9, boldOverride || estilo.Negrita, estilo.Cursiva);
+            font.Color = ParseColorSafe(string.IsNullOrWhiteSpace(colorOverride) ? estilo.ColorFuente : colorOverride, "#000000");
         }
 
-        private void AplicarFuenteBaseApu(MigraFont font, bool boldOverride = false, string? colorOverride = null)
-        {
-            var estilo = ObtenerEstiloBaseApu();
-            PdfFontHelper.ApplyFont(font, estilo.ConFuente, estilo.ConTamaño > 0 ? estilo.ConTamaño : 8.5, boldOverride || estilo.ConNegrita, estilo.ConCursiva);
-            font.Color = ParseColorSafe(string.IsNullOrWhiteSpace(colorOverride) ? estilo.ConColorTexto : colorOverride, "#000000");
-        }
-
-        private void ConstruirApu(Section section, Proyecto proyecto, ConceptoPresupuesto concepto, Matriz matriz, int numero)
+        private void ConstruirApu(
+            Section section,
+            Proyecto proyecto,
+            ConceptoPresupuesto concepto,
+            Matriz matriz,
+            int numero,
+            IReadOnlyList<ReportColumnDefinition> cols,
+            ReportColumnSnapshot snapshot)
         {
             const double altoUtilPaginaCm = 16.20;
+            int nCols = cols.Count;
+            int idxDesc = IndiceDe(cols, ApuExportResolver.IdentificadorDescripcion, 2, nCols);
+            int idxPct = IndiceDe(cols, ApuExportResolver.IdentificadorCantidad, 4, nCols);
+            int idxImporte = IndiceDe(cols, ApuExportResolver.IdentificadorImporte, nCols - 1, nCols);
 
             var grupos = new[]
             {
@@ -265,8 +297,8 @@ namespace SOPRO.WinForms.Services
                 if (tabla != null)
                     section.AddPageBreak();
 
-                tabla = CrearTablaBaseApu(section);
-                AgregarBloqueIdentificadorApu(tabla, concepto, numero);
+                tabla = CrearTablaBaseApu(section, cols);
+                AgregarBloqueIdentificadorApu(tabla, concepto, numero, nCols);
                 espacioRestanteCm = altoUtilPaginaCm - EstimarAlturaBloqueIdentificadorCm(concepto);
             }
 
@@ -297,7 +329,7 @@ namespace SOPRO.WinForms.Services
                 double altoSubtotalCm = 0.50;
                 double altoMinimoAperturaCm = altoEncabezadoSeccionCm + EstimarAlturaFilaComponenteCm(componentes[0], grupo.Titulo) + altoSubtotalCm;
                 AsegurarEspacio(altoMinimoAperturaCm);
-                AgregarEncabezadoSeccionComponentes(tabla!, grupo.Titulo, grupo.Color);
+                AgregarEncabezadoSeccionComponentes(tabla!, grupo.Titulo, grupo.Color, cols, nCols);
                 espacioRestanteCm -= altoEncabezadoSeccionCm;
 
                 decimal subtotal = 0;
@@ -310,7 +342,7 @@ namespace SOPRO.WinForms.Services
                     if (espacioRestanteCm < altoFilaCm + reservaSubtotalCm)
                     {
                         IniciarNuevaPagina();
-                        AgregarEncabezadoSeccionComponentes(tabla!, grupo.Titulo, grupo.Color);
+                        AgregarEncabezadoSeccionComponentes(tabla!, grupo.Titulo, grupo.Color, cols, nCols);
                         espacioRestanteCm -= altoEncabezadoSeccionCm;
                     }
 
@@ -329,22 +361,19 @@ namespace SOPRO.WinForms.Services
                     }
                     subtotal += importe;
 
-                    string[] vals =
-                    {
-                        AbreviarTipo(grupo.Titulo), clave, desc, unidad,
-                        cantidad.ToString("N4"), pu.ToString("N2"), importe.ToString("N2")
-                    };
-
+                    string fondoFila = (idx % 2 == 0) ? grupo.Color : "#FFFFFF";
                     var row = tabla!.AddRow();
-                    for (int i = 0; i < vals.Length; i++)
+                    for (int i = 0; i < nCols; i++)
                     {
-                        var c = row.Cells[i];
-                        var p = c.AddParagraph(vals[i]);
-                        AplicarFuenteBaseApu(p.Format.Font);
-                        p.Format.Alignment = i >= 4 ? MParagraphAlignment.Right : MParagraphAlignment.Left;
-                        if (i == 2)
-                            p.Format.Font.Size = Math.Min(Math.Max(8.0, ObtenerEstiloBaseApu().ConTamaño), 9.0);
-                        AplicarBordeInferior(c);
+                        var col = cols[i];
+                        var cell = row.Cells[i];
+                        cell.Shading.Color = MColor.Parse(fondoFila);
+                        var p = cell.AddParagraph(ResolverTextoComponente(col, grupo.Titulo, clave, desc, unidad, cantidad, pu, importe, snapshot));
+                        AplicarFuenteContenido(p.Format.Font);
+                        p.Format.Alignment = ConvertirAlineacion(col.Alineacion);
+                        p.Format.SpaceBefore = 0;
+                        p.Format.SpaceAfter = 0;
+                        AplicarBordeInferior(cell);
                     }
 
                     espacioRestanteCm -= altoFilaCm;
@@ -353,21 +382,11 @@ namespace SOPRO.WinForms.Services
                 if (espacioRestanteCm < altoSubtotalCm)
                 {
                     IniciarNuevaPagina();
-                    AgregarEncabezadoSeccionComponentes(tabla!, grupo.Titulo, grupo.Color);
+                    AgregarEncabezadoSeccionComponentes(tabla!, grupo.Titulo, grupo.Color, cols, nCols);
                     espacioRestanteCm -= altoEncabezadoSeccionCm;
                 }
 
-                var sub = tabla!.AddRow();
-                sub.Shading.Color = MColor.Parse("#ECEFF1");
-                sub.Format.Font.Bold = true;
-                sub.Cells[0].MergeRight = 5;
-                var pSubLbl = sub.Cells[0].AddParagraph($"Subtotal {grupo.Titulo}");
-                AplicarFuenteBaseApu(pSubLbl.Format.Font, boldOverride: true);
-                var pSubVal = sub.Cells[6].AddParagraph(subtotal.ToString("N2"));
-                AplicarFuenteBaseApu(pSubVal.Format.Font, boldOverride: true);
-                pSubVal.Format.Alignment = MParagraphAlignment.Right;
-                AplicarBordeInferior(sub.Cells[0]);
-                AplicarBordeInferior(sub.Cells[6]);
+                AgregarSubtotal(tabla!, grupo.Titulo, subtotal, nCols, snapshot);
                 costoDirecto += subtotal;
                 espacioRestanteCm -= altoSubtotalCm;
             }
@@ -377,7 +396,7 @@ namespace SOPRO.WinForms.Services
 
             var espacio = tabla!.AddRow();
             espacio.Height = Unit.FromCentimeter(0.10);
-            espacio.Cells[0].MergeRight = 6;
+            espacio.Cells[0].MergeRight = nCols - 1;
             espacio.Borders.Visible = false;
             espacioRestanteCm -= 0.10;
 
@@ -386,7 +405,7 @@ namespace SOPRO.WinForms.Services
             double altoPrecioUnitarioCm = 0.55;
             double altoMinimoIntegracionCm = altoHeaderIntegracionCm + EstimarAlturaFilaIntegracionCm(integracion.Lineas.First()) + altoPrecioUnitarioCm;
             AsegurarEspacio(altoMinimoIntegracionCm);
-            AgregarEncabezadoIntegracion(tabla!);
+            AgregarEncabezadoIntegracion(tabla!, nCols, idxDesc, idxPct, idxImporte);
             espacioRestanteCm -= altoHeaderIntegracionCm;
 
             for (int idx = 0; idx < integracion.Lineas.Count; idx++)
@@ -398,24 +417,24 @@ namespace SOPRO.WinForms.Services
                 if (espacioRestanteCm < altoFilaCm + reservaCm)
                 {
                     IniciarNuevaPagina();
-                    AgregarEncabezadoIntegracion(tabla!);
+                    AgregarEncabezadoIntegracion(tabla!, nCols, idxDesc, idxPct, idxImporte);
                     espacioRestanteCm -= altoHeaderIntegracionCm;
                 }
 
                 var r = tabla!.AddRow();
-                var pDesc = r.Cells[2].AddParagraph(linea.Etiqueta);
-                AplicarFuenteBaseApu(pDesc.Format.Font);
+                var pDesc = r.Cells[idxDesc].AddParagraph(linea.Etiqueta);
+                AplicarFuenteContenido(pDesc.Format.Font);
                 if (!string.IsNullOrWhiteSpace(linea.PorcentajeTexto))
                 {
-                    var pPct = r.Cells[4].AddParagraph(linea.PorcentajeTexto);
-                    AplicarFuenteBaseApu(pPct.Format.Font);
+                    var pPct = r.Cells[idxPct].AddParagraph(linea.PorcentajeTexto);
+                    AplicarFuenteContenido(pPct.Format.Font);
                     pPct.Format.Alignment = MParagraphAlignment.Right;
                 }
-                var pMonto = r.Cells[6].AddParagraph(linea.Monto.ToString("N4"));
-                AplicarFuenteBaseApu(pMonto.Format.Font);
+                var pMonto = r.Cells[idxImporte].AddParagraph(FormatearMoneda(linea.Monto, snapshot));
+                AplicarFuenteContenido(pMonto.Format.Font);
                 pMonto.Format.Alignment = MParagraphAlignment.Right;
 
-                for (int i = 0; i < 7; i++)
+                for (int i = 0; i < nCols; i++)
                     AplicarBordeInferior(r.Cells[i]);
 
                 espacioRestanteCm -= altoFilaCm;
@@ -424,43 +443,66 @@ namespace SOPRO.WinForms.Services
             if (espacioRestanteCm < altoPrecioUnitarioCm)
             {
                 IniciarNuevaPagina();
-                AgregarEncabezadoIntegracion(tabla!);
+                AgregarEncabezadoIntegracion(tabla!, nCols, idxDesc, idxPct, idxImporte);
                 espacioRestanteCm -= altoHeaderIntegracionCm;
             }
 
-            var precioU = tabla!.AddRow();
-            precioU.Shading.Color = MColor.Parse("#FFF8E1");
-            precioU.Cells[2].MergeRight = 3;
-            var pPrecioLbl = precioU.Cells[2].AddParagraph($"PRECIO UNITARIO (Unidad: {concepto.Unidad})");
-            AplicarFuenteBaseApu(pPrecioLbl.Format.Font, boldOverride: true);
-            precioU.Cells[2].Format.Alignment = MParagraphAlignment.Left;
-            var pPrecioVal = precioU.Cells[6].AddParagraph(integracion.PrecioUnitario.ToString("N2"));
-            AplicarFuenteBaseApu(pPrecioVal.Format.Font, boldOverride: true);
-            pPrecioVal.Format.Alignment = MParagraphAlignment.Right;
-            for (int i = 0; i < 7; i++)
-                AplicarBordeInferior(precioU.Cells[i]);
+            AgregarPrecioUnitario(tabla!, concepto, integracion.PrecioUnitario, nCols, idxDesc, idxImporte, snapshot);
         }
 
-        private Table CrearTablaBaseApu(Section section)
+        private Table CrearTablaBaseApu(Section section, IReadOnlyList<ReportColumnDefinition> cols)
         {
             var tabla = section.AddTable();
             tabla.Borders.Visible = false;
             tabla.TopPadding = 0;
             tabla.BottomPadding = 0;
-            double[] widths = { 2.2, 3.0, 11.0, 1.7, 2.2, 2.4, 2.4 };
-            foreach (var w in widths)
-                tabla.AddColumn(Unit.FromCentimeter(w));
+
+            double availableCm = ReportColumnWidthConverter.GetLetterUsableWidthCm(landscape: true);
+            int[] anchosPx = cols.Select(c => c.Ancho).ToArray();
+            double[] anchosCm = ReportColumnWidthConverter.PxToCm(anchosPx, availableCm);
+            for (int i = 0; i < cols.Count; i++)
+                tabla.AddColumn(Unit.FromCentimeter(anchosCm[i]));
             return tabla;
         }
 
-        private void AgregarEncabezadoSeccionComponentes(Table tabla, string titulo, string color)
+        private void AgregarSubtotal(Table tabla, string tituloGrupo, decimal subtotal, int nCols, ReportColumnSnapshot snapshot)
+        {
+            var sub = tabla.AddRow();
+            sub.Shading.Color = MColor.Parse("#ECEFF1");
+            sub.Cells[0].MergeRight = Math.Max(0, nCols - 2);
+            var pSubLbl = sub.Cells[0].AddParagraph($"Subtotal {tituloGrupo}");
+            AplicarFuenteContenido(pSubLbl.Format.Font, boldOverride: true);
+            var pSubVal = sub.Cells[nCols - 1].AddParagraph(FormatearMoneda(subtotal, snapshot));
+            AplicarFuenteContenido(pSubVal.Format.Font, boldOverride: true);
+            pSubVal.Format.Alignment = MParagraphAlignment.Right;
+            AplicarBordeInferior(sub.Cells[0]);
+            AplicarBordeInferior(sub.Cells[nCols - 1]);
+        }
+
+        private void AgregarPrecioUnitario(Table tabla, ConceptoPresupuesto concepto, decimal precioUnitario,
+            int nCols, int idxDesc, int idxImporte, ReportColumnSnapshot snapshot)
+        {
+            var precioU = tabla.AddRow();
+            precioU.Shading.Color = MColor.Parse("#FFF8E1");
+            precioU.Cells[idxDesc].MergeRight = Math.Max(0, idxImporte - idxDesc - 1);
+            var pPrecioLbl = precioU.Cells[idxDesc].AddParagraph($"PRECIO UNITARIO (Unidad: {concepto.Unidad})");
+            AplicarFuenteContenido(pPrecioLbl.Format.Font, boldOverride: true);
+            precioU.Cells[idxDesc].Format.Alignment = MParagraphAlignment.Left;
+            var pPrecioVal = precioU.Cells[idxImporte].AddParagraph(FormatearMoneda(precioUnitario, snapshot));
+            AplicarFuenteContenido(pPrecioVal.Format.Font, boldOverride: true);
+            pPrecioVal.Format.Alignment = MParagraphAlignment.Right;
+            for (int i = 0; i < nCols; i++)
+                AplicarBordeInferior(precioU.Cells[i]);
+        }
+
+        private void AgregarEncabezadoSeccionComponentes(Table tabla, string titulo, string color, IReadOnlyList<ReportColumnDefinition> cols, int nCols)
         {
             var secRow = tabla.AddRow();
             secRow.KeepWith = 1;
             secRow.Shading.Color = MColor.Parse(color);
-            secRow.Cells[0].MergeRight = 6;
+            secRow.Cells[0].MergeRight = nCols - 1;
             var pTituloSeccion = secRow.Cells[0].AddParagraph(titulo);
-            AplicarFuenteBaseApu(pTituloSeccion.Format.Font, boldOverride: true);
+            AplicarFuenteContenido(pTituloSeccion.Format.Font, boldOverride: true);
             secRow.Cells[0].Format.Alignment = MParagraphAlignment.Left;
             secRow.Cells[0].Format.LeftIndent = 2;
             secRow.Cells[0].VerticalAlignment = VerticalAlignment.Center;
@@ -468,43 +510,72 @@ namespace SOPRO.WinForms.Services
 
             var header = tabla.AddRow();
             header.KeepWith = 1;
-            header.Shading.Color = MColor.Parse("#37474F");
-            header.Format.Font.Color = MColor.Parse("#FFFFFF");
-            header.Format.Font.Bold = true;
-            string[] caps = { "Tipo", "Clave", "Descripción", "Unidad", "Cantidad", "P.U.", "Importe" };
-            for (int i = 0; i < caps.Length; i++)
+            header.Shading.Color = MColor.Parse(_snapshot?.EstiloTabla.EstiloEncabezado.ColorFondo ?? "#4A4A6A");
+            for (int i = 0; i < nCols; i++)
             {
+                var col = cols[i];
+                var enc = col.EstiloEncabezado;
                 var c = header.Cells[i];
-                var p = c.AddParagraph(caps[i]);
-                AplicarFuenteBaseApu(p.Format.Font, boldOverride: true, colorOverride: "#FFFFFF");
-                c.Format.Alignment = i >= 4 ? MParagraphAlignment.Right : MParagraphAlignment.Left;
+                var p = c.AddParagraph(col.Encabezado ?? string.Empty);
+                PdfFontHelper.ApplyFont(p.Format.Font, enc.Fuente, Math.Max(8f, enc.Tamano), enc.Negrita, enc.Cursiva);
+                p.Format.Font.Color = ParseColorSafe(enc.ColorFuente, "#FFFFFF");
+                p.Format.Alignment = ConvertirAlineacion(col.Alineacion);
+                p.Format.SpaceBefore = 0;
+                p.Format.SpaceAfter = 0;
+                c.VerticalAlignment = VerticalAlignment.Center;
                 AplicarBordeInferior(c);
             }
         }
 
-        private void AgregarEncabezadoIntegracion(Table tabla)
+        private void AgregarEncabezadoIntegracion(Table tabla, int nCols, int idxDesc, int idxPct, int idxImporte)
         {
             var resHeader = tabla.AddRow();
             resHeader.KeepWith = 1;
-            resHeader.Shading.Color = MColor.Parse("#37474F");
-            resHeader.Cells[0].MergeRight = 6;
+            resHeader.Shading.Color = MColor.Parse(_snapshot?.EstiloTabla.EstiloEncabezado.ColorFondo ?? "#37474F");
+            resHeader.Cells[0].MergeRight = nCols - 1;
             var pResHeader = resHeader.Cells[0].AddParagraph("INTEGRACIÓN DEL PRECIO UNITARIO");
-            AplicarFuenteBaseApu(pResHeader.Format.Font, boldOverride: true, colorOverride: "#FFFFFF");
+            AplicarFuenteContenido(pResHeader.Format.Font, boldOverride: true, colorOverride: "#FFFFFF");
             resHeader.Cells[0].Format.Alignment = MParagraphAlignment.Left;
             AplicarBordeInferior(resHeader.Cells[0]);
 
             var resCols = tabla.AddRow();
             resCols.KeepWith = 1;
             resCols.Shading.Color = MColor.Parse("#ECEFF1");
-            string[] resCaps = { "", "", "Descripción", "", "%", "", "Importe" };
-            for (int i = 0; i < resCaps.Length; i++)
+            for (int i = 0; i < nCols; i++)
             {
+                string cap = i == idxDesc ? "Descripción" : i == idxPct ? "%" : i == idxImporte ? "Importe" : string.Empty;
                 var c = resCols.Cells[i];
-                var p = c.AddParagraph(resCaps[i]);
-                AplicarFuenteBaseApu(p.Format.Font, boldOverride: true);
-                c.Format.Alignment = i >= 4 ? MParagraphAlignment.Right : MParagraphAlignment.Left;
+                var p = c.AddParagraph(cap);
+                AplicarFuenteContenido(p.Format.Font, boldOverride: true);
+                p.Format.Alignment = (i == idxPct || i == idxImporte) ? MParagraphAlignment.Right : MParagraphAlignment.Left;
+                p.Format.SpaceBefore = 0;
+                p.Format.SpaceAfter = 0;
                 AplicarBordeInferior(c);
             }
+        }
+
+        private static string ResolverTextoComponente(
+            ReportColumnDefinition col, string tituloGrupo,
+            string clave, string desc, string unidad,
+            decimal cantidad, decimal pu, decimal importe,
+            ReportColumnSnapshot snapshot)
+        {
+            if (ApuExportResolver.EsTipo(col)) return ApuExportResolver.AbreviarTipo(tituloGrupo);
+            if (ApuExportResolver.EsCantidad(col)) return ReportColumnGridFormat.FormatearPdf(cantidad, col, snapshot);
+            if (ApuExportResolver.EsPrecioUnitario(col)) return ReportColumnGridFormat.FormatearPdf(pu, col, snapshot);
+            if (ApuExportResolver.EsImporte(col)) return ReportColumnGridFormat.FormatearPdf(importe, col, snapshot);
+            return ApuExportResolver.ResolveTexto(col, clave, desc, unidad);
+        }
+
+        private static string FormatearMoneda(decimal valor, ReportColumnSnapshot snapshot)
+            => valor.ToString(ReportColumnGridFormat.FormatoMonedaPdf(snapshot.DecimalesImporte), CultureInfo.CurrentCulture);
+
+        private static int IndiceDe(IReadOnlyList<ReportColumnDefinition> cols, string identificador, int fallback, int nCols)
+        {
+            for (int i = 0; i < cols.Count; i++)
+                if (string.Equals(cols[i].Identificador, identificador, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            return Math.Clamp(fallback, 0, Math.Max(0, nCols - 1));
         }
 
         private static double EstimarAlturaBloqueIdentificadorCm(ConceptoPresupuesto concepto)
@@ -527,18 +598,17 @@ namespace SOPRO.WinForms.Services
             return Math.Max(0.42, 0.18 + (lineas * 0.24));
         }
 
-        private void AgregarBloqueIdentificadorApu(Table tabla, ConceptoPresupuesto concepto, int numero)
+        private void AgregarBloqueIdentificadorApu(Table tabla, ConceptoPresupuesto concepto, int numero, int nCols)
         {
             var titulo = tabla.AddRow();
             titulo.HeadingFormat = true;
-            titulo.Cells[0].MergeRight = 6;
+            titulo.Cells[0].MergeRight = nCols - 1;
             var pTitulo = titulo.Cells[0].AddParagraph($"ANÁLISIS DE PRECIOS UNITARIOS #{numero}");
-            pTitulo.Style = "ApuTitle";
             pTitulo.Format.Alignment = MParagraphAlignment.Center;
-            pTitulo.Format.Font.Name = PdfFontHelper.NormalizeFontName(ObtenerEstiloBaseApu().ConFuente);
+            pTitulo.Format.Font.Name = PdfFontHelper.NormalizeFontName(Contenido.Fuente);
             pTitulo.Format.Font.Size = 14;
             pTitulo.Format.Font.Bold = true;
-            pTitulo.Format.Font.Color = ParseColorSafe(ObtenerEstiloBaseApu().ConColorTexto, ReportTitleStyleHelper.StandardTextHex);
+            pTitulo.Format.Font.Color = ParseColorSafe(Contenido.ColorFuente, ReportTitleStyleHelper.StandardTextHex);
             titulo.Cells[0].Shading.Color = MColor.Parse(ReportTitleStyleHelper.StandardBackgroundHex);
             titulo.Cells[0].VerticalAlignment = VerticalAlignment.Center;
             titulo.Cells[0].Borders.Visible = false;
@@ -547,34 +617,35 @@ namespace SOPRO.WinForms.Services
             var info1 = tabla.AddRow();
             info1.HeadingFormat = true;
             var pClaveLbl = info1.Cells[0].AddParagraph("Clave:");
-            AplicarFuenteBaseApu(pClaveLbl.Format.Font, boldOverride: true);
+            AplicarFuenteContenido(pClaveLbl.Format.Font, boldOverride: true);
             var pClaveVal = info1.Cells[1].AddParagraph(concepto.Clave ?? string.Empty);
-            AplicarFuenteBaseApu(pClaveVal.Format.Font);
-            info1.Cells[2].MergeRight = 2;
-            var pUnidadLbl = info1.Cells[5].AddParagraph("Unidad:");
-            AplicarFuenteBaseApu(pUnidadLbl.Format.Font, boldOverride: true);
-            var pUnidadVal = info1.Cells[6].AddParagraph(concepto.Unidad ?? string.Empty);
-            AplicarFuenteBaseApu(pUnidadVal.Format.Font);
+            AplicarFuenteContenido(pClaveVal.Format.Font);
+            info1.Cells[2].MergeRight = Math.Max(0, nCols - 5);
+            var idxEtq = Math.Max(0, nCols - 2);
+            var pUnidadLbl = info1.Cells[idxEtq].AddParagraph("Unidad:");
+            AplicarFuenteContenido(pUnidadLbl.Format.Font, boldOverride: true);
+            var pUnidadVal = info1.Cells[nCols - 1].AddParagraph(concepto.Unidad ?? string.Empty);
+            AplicarFuenteContenido(pUnidadVal.Format.Font);
             LimpiarBordesFila(info1);
 
             var info2 = tabla.AddRow();
             info2.HeadingFormat = true;
             var pDescLbl = info2.Cells[0].AddParagraph("Descripción:");
-            AplicarFuenteBaseApu(pDescLbl.Format.Font, boldOverride: true);
-            info2.Cells[1].MergeRight = 3;
+            AplicarFuenteContenido(pDescLbl.Format.Font, boldOverride: true);
+            info2.Cells[1].MergeRight = Math.Max(0, nCols - 4);
             var pDescVal = info2.Cells[1].AddParagraph(concepto.Descripcion ?? string.Empty);
-            AplicarFuenteBaseApu(pDescVal.Format.Font);
-            var pPuLbl = info2.Cells[5].AddParagraph("P.U.:");
-            AplicarFuenteBaseApu(pPuLbl.Format.Font, boldOverride: true);
-            var pPuVal = info2.Cells[6].AddParagraph(concepto.PrecioUnitario.ToString("N2"));
-            AplicarFuenteBaseApu(pPuVal.Format.Font);
-            info2.Cells[6].Format.Alignment = MParagraphAlignment.Left;
+            AplicarFuenteContenido(pDescVal.Format.Font);
+            var pPuLbl = info2.Cells[idxEtq].AddParagraph("P.U.:");
+            AplicarFuenteContenido(pPuLbl.Format.Font, boldOverride: true);
+            var pPuVal = info2.Cells[nCols - 1].AddParagraph(FormatearMoneda(concepto.PrecioUnitario, _snapshot!));
+            AplicarFuenteContenido(pPuVal.Format.Font);
+            info2.Cells[nCols - 1].Format.Alignment = MParagraphAlignment.Left;
             LimpiarBordesFila(info2);
 
             var espacio = tabla.AddRow();
             espacio.HeadingFormat = true;
             espacio.Height = Unit.FromCentimeter(0.08);
-            espacio.Cells[0].MergeRight = 6;
+            espacio.Cells[0].MergeRight = nCols - 1;
             espacio.Borders.Visible = false;
         }
 
@@ -603,22 +674,22 @@ namespace SOPRO.WinForms.Services
             cell.Borders.Top.Visible = false;
         }
 
-        private static MParagraphAlignment ConvertirAlineacion(string? alineacion)
+        private static MParagraphAlignment ConvertirAlineacion(ReportTextAlignment a) => a switch
+        {
+            ReportTextAlignment.Centro => MParagraphAlignment.Center,
+            ReportTextAlignment.Derecha => MParagraphAlignment.Right,
+            ReportTextAlignment.Justificado => MParagraphAlignment.Justify,
+            _ => MParagraphAlignment.Left,
+        };
+
+        private static MParagraphAlignment ConvertirAlineacionTexto(string? alineacion)
             => (alineacion ?? "Izquierda").Trim().ToLowerInvariant() switch
             {
                 "centro" or "centrado" => MParagraphAlignment.Center,
                 "derecha" => MParagraphAlignment.Right,
+                "justificado" => MParagraphAlignment.Justify,
                 _ => MParagraphAlignment.Left
             };
-
-        private static string AbreviarTipo(string titulo)
-        {
-            if (titulo.StartsWith("MATER", StringComparison.OrdinalIgnoreCase)) return "MAT";
-            if (titulo.StartsWith("MANO", StringComparison.OrdinalIgnoreCase)) return "M.O.";
-            if (titulo.StartsWith("MAQUI", StringComparison.OrdinalIgnoreCase)) return "MAQ";
-            if (titulo.StartsWith("HER", StringComparison.OrdinalIgnoreCase)) return "HER";
-            return "AUX";
-        }
 
         private decimal CalcularTotalMO(Matriz matriz)
         {

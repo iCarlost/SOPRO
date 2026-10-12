@@ -6,7 +6,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using SOPRO.Application.Models.Reporting.Fsr;
+using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Reporting;
+using SOPRO.Reporting.Formatting;
+using SOPRO.Reporting.Layout;
 using Sopro.Calculation.Labor;
 
 namespace SOPRO.WinForms.Services
@@ -15,6 +20,12 @@ namespace SOPRO.WinForms.Services
     /// Genera reportes Excel del Factor de Salario Real.
     /// AE-2(A): Tabla de cálculo detallada (parámetros y fórmulas).
     /// AE-2(C): Tabulador desglosado por cada insumo de mano de obra.
+    ///
+    /// Ambas rutas consumen el snapshot neutral <see cref="FsrReportSnapshotBuilder"/>
+    /// (compartido con PDF): los encabezados, anchos, alineaciones y formatos salen
+    /// del contrato, no de literales '$'/'0.00000'. Las filas viajan como modelos
+    /// neutrales (<see cref="FsrRow"/> y <see cref="FsrTabuladorRow"/>), extraídos
+    /// de los generadores.
     /// </summary>
     public static class GeneradorExcelFSR
     {
@@ -29,7 +40,7 @@ namespace SOPRO.WinForms.Services
         // Tabla de cálculo del FSR (parámetros + fórmulas)
         // ─────────────────────────────────────────────────────────────────────
         public static void GenerarAE2A(XLWorkbook wb, Proyecto proyecto,
-            PlantillaReporte plantilla, ReporteService svc, ConfiguracionTituloReporte? tituloCfg = null)
+            PlantillaReporte plantilla, ReporteService svc, ReportColumnSnapshot snapshot, ConfiguracionTituloReporte? tituloCfg = null)
         {
             if (string.IsNullOrEmpty(proyecto.ParametrosFSR)) return;
 
@@ -44,38 +55,51 @@ namespace SOPRO.WinForms.Services
             // Reconstruir cálculo completo para tener todas las variables intermedias
             var c = RecalcularCompleto(p);
 
+            var cols = snapshot.Columnas.Where(x => x.Visible).OrderBy(x => x.Orden).ToList();
+            if (cols.Count == 0)
+                cols = FsrReportSnapshotBuilder.DefaultColumnsAE2A().Where(x => x.Visible).OrderBy(x => x.Orden).ToList();
+            var valorCol = cols.FirstOrDefault(x => string.Equals(x.Identificador, FsrReportSnapshotBuilder.ColValor, StringComparison.OrdinalIgnoreCase))
+                           ?? FsrReportSnapshotBuilder.DefaultColumnsAE2A()
+                               .Single(x => string.Equals(x.Identificador, FsrReportSnapshotBuilder.ColValor, StringComparison.OrdinalIgnoreCase));
+            string formatoValor = ReportColumnGridFormat.ResolveExcelFormat(valorCol, snapshot);
+            int totalCols = cols.Count;
+
             var ws = wb.Worksheets.Add("Cálculo FSR");
 
-            // Columnas: A=Descripción, B=Operación, C=Unidad, D=Valor
-            ws.Column(1).Width = 52;
-            ws.Column(2).Width = 38;
-            ws.Column(3).Width = 10;
-            ws.Column(4).Width = 16;
+            // Columnas: anchos desde el contrato neutral (px → unidades Excel)
+            for (int i = 0; i < totalCols; i++)
+                ws.Column(i + 1).Width = ReportColumnWidthConverter.PxToExcelWidth(cols[i].Ancho);
 
             int f = 1;
-            f = ReporteEncabezadoHelper.EscribirEncabezado(ws, plantilla, proyecto, 4, f, svc);
+            f = ReporteEncabezadoHelper.EscribirEncabezado(ws, plantilla, proyecto, totalCols, f, svc);
 
             // Título tabla
-            Merge(ws, f, 1, f, 4, string.Empty,
+            Merge(ws, f, 1, f, totalCols, string.Empty,
                 ColorEncabezado, "#FFFFFF", 11, bold: true, height: 22);
-            ReportTitleStyleHelper.ApplyToClosedXmlTitle(ws.Range(f, 1, f, 4), tituloCfg, "TABLA DE CALCULO DEL FACTOR DE SALARIO REAL", ColorEncabezado);
+            ReportTitleStyleHelper.ApplyToClosedXmlTitle(ws.Range(f, 1, f, totalCols), tituloCfg, "TABLA DE CALCULO DEL FACTOR DE SALARIO REAL", ColorEncabezado);
             f++;
 
-            // Encabezado columnas
-            string[] hdrs = { "Descripción", "Operación", "Unidad", "Valor" };
-            for (int i = 0; i < 4; i++)
+            // Encabezado columnas (desde el snapshot neutral)
+            for (int i = 0; i < totalCols; i++)
             {
+                var enc = cols[i].EstiloEncabezado;
                 var hc = ws.Cell(f, i + 1);
-                hc.Value = hdrs[i];
-                hc.Style.Font.Bold = true;
-                hc.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorSeccion);
-                hc.Style.Font.FontColor = XLColor.White;
+                hc.Value = cols[i].Encabezado ?? string.Empty;
+                hc.Style.Font.Bold = enc.Negrita;
+                hc.Style.Font.Italic = enc.Cursiva;
+                if (!string.IsNullOrEmpty(enc.Fuente))
+                    hc.Style.Font.FontName = enc.Fuente;
+                if (enc.Tamano > 0)
+                    hc.Style.Font.FontSize = enc.Tamano;
+                hc.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(enc.ColorFondo ?? ColorSeccion);
+                hc.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(enc.ColorFuente, "#FFFFFF");
                 hc.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                 hc.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             }
             ws.Row(f).Height = 16;
             f++;
 
+            int primeraFilaDatos = f;
             ReporteEncabezadoHelper.ConfigurarFilasRepetidas(ws, 1, f - 1);
 
             // Clave / Descripción general
@@ -113,8 +137,8 @@ namespace SOPRO.WinForms.Services
             SeccionFSR(ws, f++, "CALCULO");
 
             SubseccionFSR(ws, f++, "De datos básicos a utilizar");
-            FilaFSRSinVal(ws, f++, "Salario Mínimo General (D.F.)", "", "", $"{c.FSR_SAMI:N5}");
-            FilaFSRSinVal(ws, f++, "Salario Nominal por jornada (SND)", "", "", $"{c.FSR_SACAL:N5}");
+            FilaFSR(ws, f++, "Salario Mínimo General (D.F.)", "", "", c.FSR_SAMI);
+            FilaFSR(ws, f++, "Salario Nominal por jornada (SND)", "", "", c.FSR_SACAL);
 
             SubseccionFSR(ws, f++, "De días realmente pagados y SBC");
             FilaFSR(ws, f++, "Vacaciones",    "", "días", c.FSR_DVAC);
@@ -125,7 +149,7 @@ namespace SOPRO.WinForms.Services
             FilaFSR(ws, f++, "SUMA de días no laborados", "", "días", c.FSR_DNLA);
             FilaFSROperacion(ws, f++, "Días realmente laborados  (TL = DC - DNLA)",
                 $"{c.FSR_DPCAL:N6}días-{c.FSR_DNLA:N6}días", "días", c.FSR_DLA);
-            FilaFSRSinVal(ws, f++, "TP/TL", "", "", $"{c.FSR_FSI:N5}");
+            FilaFSR(ws, f++, "TP/TL", "", "", c.FSR_FSI);
             FilaFSROperacion(ws, f++, "(FSBC = DPA/DPCAL)",
                 $"{c.FSR_DPA:N6}días/{c.FSR_DPCAL:N6}días", "", c.FSR_FSBC);
             FilaFSROperacion(ws, f++, "Salario Base de Cotización (SB = FSBC * SN)",
@@ -134,16 +158,16 @@ namespace SOPRO.WinForms.Services
             SubseccionFSR(ws, f++, "De cuotas del IMSS");
             FilaFSR(ws, f++, "Porcentaje sobre salario mínimo para cuota fija", "", "%", c.AA);
             FilaFSR(ws, f++, "Porcentaje para Excedente a 3 SMGDF", "", "%", c.AB);
-            FilaFSRSinVal(ws, f++, "Excedente de 3 SMGDF", "", "", $"{c.AU:N5}");
-            FilaFSRSinVal(ws, f++, "Prestaciones en dinero (Patron+obrero)",
-                $".7+IIF({c.FSR_SACAL:N6}>1.000000,0,0.25)", "%", $"{c.FSR_IMPE_p:N5}");
-            FilaFSRSinVal(ws, f++, "Gastos medicos. Pensionados (Patrón-Obrero)",
-                $"1.05+IIF({c.FSR_SACAL:N6}>1.000000,0,0.375)", "%", $"{c.FSR_IMGM_p:N5}");
-            FilaFSRSinVal(ws, f++, "Invalidez y vida",
-                $"1.75+IIF({c.FSR_SACAL:N6}>1.000000,0,0.625)", "%", $"{c.FSR_IMINV_p:N5}");
-            FilaFSRSinVal(ws, f++, "Cesantía en edad avanzada y vejez",
-                $"3.15+IIF({c.FSR_SACAL:N6}>1.000000,0,1.125)", "%", $"{c.FSR_IMCE_p:N5}");
-            FilaFSRSinVal(ws, f++, "Límite de prest. Inv., vida, cesantía y vejez", "", "", $"{c.AS_lim:N5}");
+            FilaFSR(ws, f++, "Excedente de 3 SMGDF", "", "", c.AU);
+            FilaFSROperacion(ws, f++, "Prestaciones en dinero (Patron+obrero)",
+                $".7+IIF({c.FSR_SACAL:N6}>1.000000,0,0.25)", "%", c.FSR_IMPE_p);
+            FilaFSROperacion(ws, f++, "Gastos medicos. Pensionados (Patrón-Obrero)",
+                $"1.05+IIF({c.FSR_SACAL:N6}>1.000000,0,0.375)", "%", c.FSR_IMGM_p);
+            FilaFSROperacion(ws, f++, "Invalidez y vida",
+                $"1.75+IIF({c.FSR_SACAL:N6}>1.000000,0,0.625)", "%", c.FSR_IMINV_p);
+            FilaFSROperacion(ws, f++, "Cesantía en edad avanzada y vejez",
+                $"3.15+IIF({c.FSR_SACAL:N6}>1.000000,0,1.125)", "%", c.FSR_IMCE_p);
+            FilaFSR(ws, f++, "Límite de prest. Inv., vida, cesantía y vejez", "", "", c.AS_lim);
             FilaFSR(ws, f++, "Enfermedad y maternidad. Cuota fija especie", "", "", c.AC);
             FilaFSR(ws, f++, "Enferm.-matern. Exc. a 3 S.M.D.F. especie",    "", "", c.AD);
 
@@ -185,7 +209,7 @@ namespace SOPRO.WinForms.Services
             rFinal.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
             var vFinal = ws.Cell(f, 4);
             vFinal.Value = c.FSR_FSR;
-            vFinal.Style.NumberFormat.Format = "0.00000";
+            vFinal.Style.NumberFormat.Format = formatoValor;
             vFinal.Style.Font.Bold = true;
             vFinal.Style.Font.FontSize = 12;
             vFinal.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorTotal);
@@ -193,6 +217,16 @@ namespace SOPRO.WinForms.Services
             vFinal.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             vFinal.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
             ws.Row(f).Height = 22;
+
+            // Paridad de formato del valor: todas las celdas numéricas de la columna
+            // Valor usan el formato del contrato neutral (cantidad → decimales de
+            // cantidad), eliminando el N5/`$#,##0.00` hardcodeado.
+            for (int r = primeraFilaDatos; r <= f; r++)
+            {
+                var celdaValor = ws.Cell(r, 4);
+                if (celdaValor.DataType == XLDataType.Number)
+                    celdaValor.Style.NumberFormat.Format = formatoValor;
+            }
 
             // Bordes generales
             AplicarBordes(ws, 1, f);
@@ -212,25 +246,24 @@ namespace SOPRO.WinForms.Services
         // Tabulador desglosado por insumo de mano de obra
         // ─────────────────────────────────────────────────────────────────────
         public static void GenerarAE2C(XLWorkbook wb, Proyecto proyecto,
-            List<ManoDeObra> manoDeObras, PlantillaReporte plantilla, ReporteService svc)
+            List<ManoDeObra> manoDeObras, PlantillaReporte plantilla, ReporteService svc, ReportColumnSnapshot snapshot)
         {
             if (string.IsNullOrEmpty(proyecto.ParametrosFSR)) return;
 
             var p = JsonSerializer.Deserialize<Dictionary<string, string>>(proyecto.ParametrosFSR);
             if (p == null) return;
 
+            var cols = snapshot.Columnas.Where(x => x.Visible).OrderBy(x => x.Orden).ToList();
+            if (cols.Count == 0)
+                cols = FsrReportSnapshotBuilder.DefaultColumnsAE2C().Where(x => x.Visible).OrderBy(x => x.Orden).ToList();
+            int totalCols = cols.Count;
+
             var ws = wb.Worksheets.Add("Tabulador FSR");
 
-            // Columnas según: Clave | Desc | SalBase | SalNom | FacSBC | SalBC |
-            //   CuotaFija | Excedente | PrestEspecie | PrestDinero | InvVida | Guarderias |
-            //   Cesantia | Retiro | SumaCuotasIMSS | INFONAVIT | SumaPrestPatr | ObligPS |
-            //   FactorTP | FSR | SalarioReal
-            int[] anchos = { 10, 30, 12, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 12, 12, 14, 12, 10, 10, 13 };
-            for (int i = 0; i < anchos.Length; i++)
-                ws.Column(i + 1).Width = anchos[i];
+            for (int i = 0; i < totalCols; i++)
+                ws.Column(i + 1).Width = ReportColumnWidthConverter.PxToExcelWidth(cols[i].Ancho);
 
             int f = 1;
-            int totalCols = anchos.Length;
             f = ReporteEncabezadoHelper.EscribirEncabezado(ws, plantilla, proyecto, totalCols, f, svc);
 
             // Título
@@ -238,29 +271,20 @@ namespace SOPRO.WinForms.Services
                 ColorEncabezado, "#FFFFFF", 11, bold: true, height: 22);
             f++;
 
-            // Encabezados — doble fila para los grupos
-            string[] encabezados =
+            // Encabezados desde el snapshot neutral
+            for (int i = 0; i < totalCols; i++)
             {
-                "Clave", "Descripción", "Sal. Base\nM.N.", "Salario\nNominal",
-                "Factor\nSalario Base\nde Cotización", "Salario\nBase de\nCotización",
-                "Cuota fija", "Excedente\na 3 SMGDF",
-                "Prestaciones\nen especie", "Prestaciones\nen dinero",
-                "Invalidez y\nvida", "Guarderías",
-                "Cesantía y\nvejez", "Retiro",
-                "Suma de\ncuotas\nIMSS", "INFONAVIT",
-                "Suma de\nprestaciones\npatronales\nIMSS+INFONAVIT",
-                "Obligaciones\nobrero\npatronales\nPS",
-                "Factor\nempresa\nTP/TL", "FSR", "Salario Real"
-            };
-
-            for (int i = 0; i < encabezados.Length; i++)
-            {
+                var enc = cols[i].EstiloEncabezado;
                 var hc = ws.Cell(f, i + 1);
-                hc.Value = encabezados[i];
-                hc.Style.Font.Bold = true;
-                hc.Style.Font.FontSize = 7.5;
-                hc.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorSeccion);
-                hc.Style.Font.FontColor = XLColor.White;
+                hc.Value = cols[i].Encabezado ?? string.Empty;
+                hc.Style.Font.Bold = enc.Negrita;
+                hc.Style.Font.Italic = enc.Cursiva;
+                if (!string.IsNullOrEmpty(enc.Fuente))
+                    hc.Style.Font.FontName = enc.Fuente;
+                if (enc.Tamano > 0)
+                    hc.Style.Font.FontSize = enc.Tamano;
+                hc.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(enc.ColorFondo ?? ColorSeccion);
+                hc.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(enc.ColorFuente, "#FFFFFF");
                 hc.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                 hc.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
                 hc.Style.Alignment.WrapText = true;
@@ -269,119 +293,62 @@ namespace SOPRO.WinForms.Services
             ws.Row(f).Height = 46;
             f++;
 
-            // Datos — calcular FSR individual para cada MO con salario
+            int filaDatos = f;
+            int filasEncabezado = filaDatos - 1;
+
+            // Datos — FSR individual por insumo; valores crudos formateados por el contrato
+            var filas = CalcularFilasAE2C(proyecto, manoDeObras);
             bool alt = false;
-            foreach (var mo in manoDeObras.Where(m => m.SalarioBase > 0).OrderBy(m => m.Clave))
+            foreach (var r in filas)
             {
-                var c = RecalcularCompleto(p, mo.SalarioBase);
                 string fondo = alt ? ColorFilaAlterna : "#FFFFFF";
                 alt = !alt;
 
-                object[] vals =
+                for (int i = 0; i < totalCols; i++)
                 {
-                    mo.Clave ?? "",                             // Clave
-                    mo.Descripcion ?? "",                       // Descripción
-                    mo.SalarioBase,                             // Sal. Base M.N.
-                    c.FSR_SACAL,                                // Salario Nominal (relativo a SM)
-                    c.FSR_FSBC,                                 // Factor SBC
-                    c.FSR_SABC,                                 // Salario Base de Cotización
-                    c.AC,                                       // Cuota fija
-                    c.AD,                                       // Excedente a 3 SMGDF
-                    // Prestaciones especie = AE+AF (gastos médicos)
-                    c.AE + c.AF,
-                    // Prestaciones dinero = AE prest dinero (columna independiente en pdf)
-                    c.AE,
-                    c.AG,                                       // Invalidez y vida
-                    c.AH,                                       // Guarderías
-                    c.AJ,                                       // Cesantía y vejez
-                    c.AI,                                       // Retiro
-                    c.AL,                                       // Suma cuotas IMSS
-                    c.AM,                                       // INFONAVIT
-                    c.AP,                                       // Suma prest. patronales IMSS+INFONAVIT
-                    c.AQ,                                       // Obligaciones obrero patronales PS
-                    c.FSR_FSI,                                  // Factor empresa TP/TL
-                    mo.FactorSalarioReal,                       // FSR (el guardado en BD)
-                    mo.SalarioReal                              // Salario Real
-                };
-
-                for (int i = 0; i < vals.Length; i++)
-                {
+                    var def = cols[i];
                     var cell = ws.Cell(f, i + 1);
-                    if (vals[i] is decimal d)
-                        cell.Value = d;
-                    else
-                        cell.Value = vals[i]?.ToString() ?? "";
                     cell.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(fondo);
                     cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
                     cell.Style.Border.OutsideBorderColor = XLColor.FromHtml("#BDBDBD");
                     cell.Style.Font.FontSize = 8;
+                    cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
 
-                    if (vals[i] is decimal)
+                    if (i == 0)
                     {
-                        // Columna 3 (SalBase) y última (SalarioReal) = moneda
-                        if (i == 2 || i == vals.Length - 1)
-                            cell.Style.NumberFormat.Format = "$#,##0.00";
-                        else
-                            cell.Style.NumberFormat.Format = "0.00000";
-                        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                        cell.Value = r.Clave ?? string.Empty;
+                        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                     }
-                    else
+                    else if (i == 1)
                     {
-                        cell.Style.Alignment.Horizontal = i == 1
-                            ? XLAlignmentHorizontalValues.Left
-                            : XLAlignmentHorizontalValues.Center;
+                        cell.Value = r.Descripcion ?? string.Empty;
+                        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+                    }
+                    else if (!r.SinCalculo && r.Valores.Count > i - 2)
+                    {
+                        cell.Value = r.Valores[i - 2];
+                        cell.Style.NumberFormat.Format = ReportColumnGridFormat.ResolveExcelFormat(def, snapshot);
+                        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
                     }
                 }
                 ws.Row(f).Height = 15;
                 f++;
             }
 
-            // MO con SalarioBase = 0 (sin cálculo FSR)
-            foreach (var mo in manoDeObras.Where(m => m.SalarioBase <= 0).OrderBy(m => m.Clave))
-            {
-                var cell1 = ws.Cell(f, 1); cell1.Value = mo.Clave ?? "";
-                var cell2 = ws.Cell(f, 2); cell2.Value = mo.Descripcion ?? "";
-                ws.Range(f, 1, f, totalCols).Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorFilaAlterna);
-                ws.Range(f, 1, f, totalCols).Style.Font.FontSize = 8;
-                ws.Row(f).Height = 15;
-                f++;
-            }
-
             // Ajuste final
-            int filasEncabezado = f - manoDeObras.Count - 1;
             ReporteEncabezadoHelper.ConfigurarFilasRepetidas(ws, 1, filasEncabezado);
-            ws.SheetView.FreezeRows(filasEncabezado); // freeze encabezados
+            ws.SheetView.FreezeRows(filasEncabezado);
         }
 
-
-        public class AE2CRowData
+        /// <summary>
+        /// Calcula las filas del Tabulador FSR (AE-2C) como modelos neutrales: clave
+        /// y descripción textuales más los 19 valores numéricos crudos alineados con
+        /// las columnas del snapshot (los renderizadores aplican el formato del
+        /// contrato). Sustituye al DTO preformateado <c>AE2CRowData</c>.
+        /// </summary>
+        public static List<FsrTabuladorRow> CalcularFilasAE2C(Proyecto proyecto, List<ManoDeObra> manoDeObras)
         {
-            public string Clave { get; set; } = string.Empty;
-            public string Descripcion { get; set; } = string.Empty;
-            public string SalarioBaseTexto { get; set; } = string.Empty;
-            public string SalarioNominalTexto { get; set; } = string.Empty;
-            public string FactorSbcTexto { get; set; } = string.Empty;
-            public string SalarioBaseCotTexto { get; set; } = string.Empty;
-            public string CuotaFijaTexto { get; set; } = string.Empty;
-            public string ExcedenteTexto { get; set; } = string.Empty;
-            public string PrestacionesEspecieTexto { get; set; } = string.Empty;
-            public string PrestacionesDineroTexto { get; set; } = string.Empty;
-            public string InvalidezVidaTexto { get; set; } = string.Empty;
-            public string GuarderiasTexto { get; set; } = string.Empty;
-            public string CesantiaVejezTexto { get; set; } = string.Empty;
-            public string RetiroTexto { get; set; } = string.Empty;
-            public string SumaCuotasImssTexto { get; set; } = string.Empty;
-            public string InfonavitTexto { get; set; } = string.Empty;
-            public string SumaPrestPatronalesTexto { get; set; } = string.Empty;
-            public string ObligacionesPsTexto { get; set; } = string.Empty;
-            public string FactorTpTlTexto { get; set; } = string.Empty;
-            public string FsrTexto { get; set; } = string.Empty;
-            public string SalarioRealTexto { get; set; } = string.Empty;
-        }
-
-        public static List<AE2CRowData> CalcularFilasAE2C(Proyecto proyecto, List<ManoDeObra> manoDeObras)
-        {
-            var resultado = new List<AE2CRowData>();
+            var resultado = new List<FsrTabuladorRow>();
             if (proyecto == null || string.IsNullOrEmpty(proyecto.ParametrosFSR) || manoDeObras == null)
                 return resultado;
 
@@ -391,35 +358,43 @@ namespace SOPRO.WinForms.Services
             foreach (var mo in manoDeObras.Where(m => m.SalarioBase > 0).OrderBy(m => m.Clave))
             {
                 var c = RecalcularCompleto(p, mo.SalarioBase);
-                resultado.Add(new AE2CRowData
+                resultado.Add(new FsrTabuladorRow
                 {
                     Clave = mo.Clave ?? string.Empty,
                     Descripcion = mo.Descripcion ?? string.Empty,
-                    SalarioBaseTexto = mo.SalarioBase.ToString("$#,##0.00"),
-                    SalarioNominalTexto = c.FSR_SACAL.ToString("0.00000"),
-                    FactorSbcTexto = c.FSR_FSBC.ToString("0.00000"),
-                    SalarioBaseCotTexto = c.FSR_SABC.ToString("0.00000"),
-                    CuotaFijaTexto = c.AC.ToString("0.00000"),
-                    ExcedenteTexto = c.AD.ToString("0.00000"),
-                    PrestacionesEspecieTexto = (c.AE + c.AF).ToString("0.00000"),
-                    PrestacionesDineroTexto = c.AE.ToString("0.00000"),
-                    InvalidezVidaTexto = c.AG.ToString("0.00000"),
-                    GuarderiasTexto = c.AH.ToString("0.00000"),
-                    CesantiaVejezTexto = c.AJ.ToString("0.00000"),
-                    RetiroTexto = c.AI.ToString("0.00000"),
-                    SumaCuotasImssTexto = c.AL.ToString("0.00000"),
-                    InfonavitTexto = c.AM.ToString("0.00000"),
-                    SumaPrestPatronalesTexto = c.AP.ToString("0.00000"),
-                    ObligacionesPsTexto = c.AQ.ToString("0.00000"),
-                    FactorTpTlTexto = c.FSR_FSI.ToString("0.00000"),
-                    FsrTexto = mo.FactorSalarioReal.ToString("0.00000"),
-                    SalarioRealTexto = mo.SalarioReal.ToString("$#,##0.00")
+                    Valores = new[]
+                    {
+                        mo.SalarioBase,   // Sal. Base M.N.
+                        c.FSR_SACAL,      // Salario Nominal
+                        c.FSR_FSBC,       // Factor SBC
+                        c.FSR_SABC,       // Salario Base de Cotización
+                        c.AC,             // Cuota fija
+                        c.AD,             // Excedente a 3 SMGDF
+                        c.AE + c.AF,      // Prestaciones en especie (gastos médicos)
+                        c.AE,             // Prestaciones en dinero
+                        c.AG,             // Invalidez y vida
+                        c.AH,             // Guarderías
+                        c.AJ,             // Cesantía y vejez
+                        c.AI,             // Retiro
+                        c.AL,             // Suma cuotas IMSS
+                        c.AM,             // INFONAVIT
+                        c.AP,             // Suma prest. patronales IMSS+INFONAVIT
+                        c.AQ,             // Obligaciones obrero patronales PS
+                        c.FSR_FSI,        // Factor empresa TP/TL
+                        mo.FactorSalarioReal, // FSR (guardado en BD)
+                        mo.SalarioReal        // Salario Real
+                    }
                 });
             }
 
             foreach (var mo in manoDeObras.Where(m => m.SalarioBase <= 0).OrderBy(m => m.Clave))
             {
-                resultado.Add(new AE2CRowData { Clave = mo.Clave ?? string.Empty, Descripcion = mo.Descripcion ?? string.Empty });
+                resultado.Add(new FsrTabuladorRow
+                {
+                    Clave = mo.Clave ?? string.Empty,
+                    Descripcion = mo.Descripcion ?? string.Empty,
+                    SinCalculo = true
+                });
             }
 
             return resultado;
@@ -561,7 +536,6 @@ namespace SOPRO.WinForms.Services
             ws.Cell(f, 2).Value = op;
             ws.Cell(f, 3).Value = unidad;
             ws.Cell(f, 4).Value = valor;
-            ws.Cell(f, 4).Style.NumberFormat.Format = "0.00000";
             ws.Cell(f, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             EstiloFilaFSR(ws, f);
         }
@@ -573,7 +547,6 @@ namespace SOPRO.WinForms.Services
             ws.Cell(f, 2).Value = op;
             ws.Cell(f, 3).Value = unidad;
             ws.Cell(f, 4).Value = valor;
-            ws.Cell(f, 4).Style.NumberFormat.Format = "0.00000";
             ws.Cell(f, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             ws.Cell(f, 2).Style.Font.Italic = true;
             ws.Cell(f, 2).Style.Font.FontSize = 8;

@@ -130,6 +130,36 @@ namespace SOPRO.WinForms.Services
         }
 
         /// <summary>
+        /// Consulta de SOLO LECTURA de la plantilla de reportes del proyecto.
+        /// NO crea ni persiste la <see cref="PlantillaReporte"/>: si no existe,
+        /// devuelve una instancia por defecto EN MEMORIA (sin <c>Add</c> ni
+        /// <c>SaveChanges</c>), de modo que exportar un reporte nunca modifique la
+        /// base de datos (mismo criterio que los helpers
+        /// <c>ObtenerColumnasSoloLectura</c>).
+        /// PROHIBIDO su uso desde la UI de configuración de plantilla: allí debe
+        /// usarse <see cref="ObtenerOCrearPlantilla"/>.
+        /// </summary>
+        public PlantillaReporte ObtenerPlantillaSoloLectura(int proyectoId)
+        {
+            var plantilla = _ctx.PlantillasReporte
+                .FirstOrDefault(p => p.ProyectoId == proyectoId);
+
+            if (plantilla != null)
+                return plantilla;
+
+            // Default en memoria: no se agrega al contexto ni se ejecuta SaveChanges.
+            var proyecto = _ctx.Proyectos.Find(proyectoId);
+            return new PlantillaReporte
+            {
+                ProyectoId               = proyectoId,
+                EncabezadoCenContenido   = proyecto?.Nombre ?? "",
+                CampoElabaro             = "",
+                CampoReviso              = "",
+                FechaModificacion        = DateTime.Now
+            };
+        }
+
+        /// <summary>
         /// Devuelve las columnas configuradas para un tipo de reporte.
         /// Si no existen todavía, las inicializa con los valores por defecto.
         /// </summary>

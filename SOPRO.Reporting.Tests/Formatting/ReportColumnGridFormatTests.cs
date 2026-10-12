@@ -172,4 +172,114 @@ public class ReportColumnGridFormatTests
             valor.ToString(ReportNumberFormatMapper.ToPdfFormat("#,##0.0000"), CultureInfo.InvariantCulture),
             ReportColumnGridFormat.FormatearPdf(valor, explicito, snapshot));
     }
+
+    // ───────────── Fase 0: centralización del símbolo monetario '$' ─────────────
+
+    [TestMethod]
+    public void SimboloMoneda_EsDolarYNoDependeDeLaCultura()
+    {
+        Assert.AreEqual("$", ReportColumnGridFormat.SimboloMoneda);
+
+        Assert.AreEqual("$#,##0.00", ReportColumnGridFormat.FormatoMonedaExcel(2, new CultureInfo("de-DE")),
+            "El símbolo debe ser '$' aunque la cultura sea de-DE (€).");
+        Assert.AreEqual("$#,##0.00", ReportColumnGridFormat.FormatoMonedaExcel(2, CultureInfo.InvariantCulture),
+            "El símbolo debe ser '$' aunque la cultura sea la invariante (¤).");
+    }
+
+    [TestMethod]
+    public void FormatearPdf_Monetario_UsaSiempreDolarAunqueCambieLaCultura()
+    {
+        var pu = Columna("PrecioUnitario", TipoDatoColumna.Moneda, "C4");
+        var snapshot = Snapshot(4, 2, 4, pu);
+        var previa = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+            var pdf = ReportColumnGridFormat.FormatearPdf(1234.5m, pu, snapshot);
+
+            Assert.IsTrue(pdf.Contains("$"), "El símbolo debe ser el '$' centralizado.");
+            Assert.IsFalse(pdf.Contains("€"), "No debe filtrarse el símbolo de la cultura (€).");
+            Assert.IsFalse(pdf.Contains('\u00A4'), "No debe filtrarse el glifo ¤ de la invariante.");
+            Assert.IsTrue(pdf.Contains("1.234,50"), "Los separadores sí siguen la cultura actual (de-DE).");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previa;
+        }
+    }
+
+    // ───────────── Fase 0: formatos para 0–N decimales ─────────────
+
+    [TestMethod]
+    public void BloquesDecimales_DeCeroAN()
+    {
+        Assert.AreEqual("#,##0", ReportColumnGridFormat.FormatoNumeroExcel(0));
+        Assert.AreEqual("#,##0.0", ReportColumnGridFormat.FormatoNumeroExcel(1));
+        Assert.AreEqual("#,##0.00", ReportColumnGridFormat.FormatoNumeroExcel(2));
+        Assert.AreEqual("#,##0.0000", ReportColumnGridFormat.FormatoNumeroExcel(4));
+
+        Assert.AreEqual("$#,##0", ReportColumnGridFormat.FormatoMonedaPdf(0));
+        Assert.AreEqual("$#,##0.000", ReportColumnGridFormat.FormatoMonedaPdf(3));
+        Assert.AreEqual("$#,##0.00", ReportColumnGridFormat.FormatoMonedaExcel(2, CultureInfo.CurrentCulture));
+
+        Assert.AreEqual("0%", ReportColumnGridFormat.FormatoPorcentajeExcel(0));
+        Assert.AreEqual("0.00%", ReportColumnGridFormat.FormatoPorcentajeExcel(2));
+        Assert.AreEqual("0.0000%", ReportColumnGridFormat.FormatoPorcentajeExcel(4));
+    }
+
+    // ───────────── Fase 0: negativos y ceros ─────────────
+
+    [TestMethod]
+    public void Monetario_CeroYNegativo()
+    {
+        var pu = Columna("PrecioUnitario", TipoDatoColumna.Moneda, "C2");
+        var snapshot = Snapshot(2, 2, 4, pu);
+
+        var cero = ReportColumnGridFormat.FormatearPdf(0m, pu, snapshot);
+        Assert.IsTrue(cero.Contains("$"));
+        Assert.IsTrue(cero.Contains("0.00"));
+
+        var negativo = ReportColumnGridFormat.FormatearPdf(-1234.5m, pu, snapshot);
+        Assert.IsTrue(negativo.Contains("$"), "El negativo debe conservar el '$' centralizado.");
+        Assert.IsTrue(negativo.Contains("1,234.50"));
+        Assert.IsTrue(negativo.Contains("-"), "El negativo debe conservar el signo.");
+    }
+
+    // ───────────── Fase 0: rol de porcentaje (opt-in) ─────────────
+
+    [TestMethod]
+    public void Porcentaje_RolYFormatoOptIn()
+    {
+        var porcentaje = Columna("PorcentajeIndirectos", TipoDatoColumna.Porcentaje, "P2");
+        var explicito = Columna("Rendimiento", TipoDatoColumna.Numerico, "#,##0.0000");
+
+        Assert.IsTrue(ReportColumnGridFormat.EsPorcentajeGrid(porcentaje));
+        Assert.IsTrue(ReportColumnGridFormat.EsPorcentajeGrid(Columna("Extra", TipoDatoColumna.Numerico, "P4")));
+        Assert.IsFalse(ReportColumnGridFormat.EsPorcentajeGrid(explicito));
+
+        var snapshot = Snapshot(2, 2, 4, porcentaje);
+        Assert.AreEqual(
+            12.3456m.ToString("N4", CultureInfo.CurrentCulture),
+            ReportColumnGridFormat.FormatearPorcentajePdf(12.3456m, snapshot),
+            "El porcentaje PDF usa DecimalesPorcentaje del proyecto (sin '%', paridad con FormatPorcentaje).");
+        Assert.AreEqual("0.0000%", ReportColumnGridFormat.FormatoPorcentajeExcel(snapshot.DecimalesPorcentaje));
+    }
+
+    // ───────────── Fase 0: columna de texto sin formato ─────────────
+
+    [TestMethod]
+    public void ColumnaTexto_SinFormatoNiRol_UsaDefaultLegacy()
+    {
+        var col = Columna("Observaciones", TipoDatoColumna.Texto, null);
+        var snapshot = Snapshot(2, 2, 4, col);
+
+        Assert.AreEqual(string.Empty, col.FormatoNumerico);
+        Assert.IsFalse(ReportColumnGridFormat.EsMonedaGrid(col));
+        Assert.IsFalse(ReportColumnGridFormat.EsCantidadGrid(col));
+        Assert.IsFalse(ReportColumnGridFormat.EsPorcentajeGrid(col));
+
+        Assert.AreEqual(
+            1234.5m.ToString(ReportNumberFormatMapper.ToPdfFormat(string.Empty), CultureInfo.InvariantCulture),
+            ReportColumnGridFormat.FormatearPdf(1234.5m, col, snapshot));
+    }
 }

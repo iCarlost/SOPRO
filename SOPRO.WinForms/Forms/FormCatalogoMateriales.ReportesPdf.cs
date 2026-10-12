@@ -53,7 +53,7 @@ namespace SOPRO.WinForms.Forms
 
                 Cursor = Cursors.WaitCursor;
                 var svcRep = new ReporteService(_context);
-                var plantilla = svcRep.ObtenerOCrearPlantilla(_proyectoId ?? 0);
+                var plantilla = svcRep.ObtenerPlantillaSoloLectura(_proyectoId ?? 0);
 
                 // El proyecto del encabezado se construye con los metadatos de la
                 // sesión neutral (sin consultar EF desde el formulario).
@@ -77,7 +77,7 @@ namespace SOPRO.WinForms.Forms
                     _proyectoId ?? 0, lblTitulo.Text, _columnasConfig,
                     FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
                 var tituloCfg = _proyectoId.HasValue
-                    ? new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyectoId.Value, ReportTitleModuleKeys.CatalogoMateriales, lblTitulo.Text)
+                    ? new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyectoId.Value, ReportTitleModuleKeys.CatalogoMateriales, lblTitulo.Text)
                     : null;
                 var generador = new GeneradorPdfCatalogoMateriales(svcRep);
                 var ruta = generador.Generar(proyecto, materiales, plantilla, snapshot, dlg.FileName, tituloCfg);

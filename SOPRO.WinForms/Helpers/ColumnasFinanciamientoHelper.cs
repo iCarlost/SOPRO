@@ -35,6 +35,12 @@ namespace SOPRO.WinForms.Helpers
             context.SaveChanges();
         }
 
+        /// <summary>
+        /// Carga las columnas de financiamiento del proyecto creando los defaults
+        /// persistidos si aún no existen. Uso legítimo de UI (configuración/formato):
+        /// NO debe invocarse desde las rutas de exportación (ver
+        /// <see cref="ObtenerColumnasSoloLectura"/>).
+        /// </summary>
         public static List<ColumnaFinanciamiento> ObtenerColumnas(SOPROContext context, int proyectoId)
         {
             CrearColumnasPredeterminadas(context, proyectoId);
@@ -43,5 +49,19 @@ namespace SOPRO.WinForms.Helpers
                 .OrderBy(c => c.Orden)
                 .ToList();
         }
+
+        /// <summary>
+        /// Consulta de SOLO LECTURA de las columnas de financiamiento del proyecto.
+        /// NO crea valores por defecto ni ejecuta <c>SaveChanges</c>: exportar un
+        /// reporte no debe modificar la configuración persistida (mismo criterio que
+        /// <see cref="ColumnasIndirectosHelper.ObtenerColumnasSoloLectura"/>). Si no
+        /// hay configuración devuelve una lista vacía y el builder del snapshot
+        /// aplica sus defaults en memoria.
+        /// </summary>
+        public static List<ColumnaFinanciamiento> ObtenerColumnasSoloLectura(SOPROContext context, int proyectoId)
+            => context.ColumnasFinanciamiento
+                .Where(c => c.ProyectoId == proyectoId)
+                .OrderBy(c => c.Orden)
+                .ToList();
     }
 }

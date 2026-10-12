@@ -23,8 +23,10 @@ namespace SOPRO.WinForms.Forms
             try
             {
                 var svc = new Services.ReporteService(_context);
-                var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
-                var columnas = Helpers.ColumnasIndirectosHelper.ObtenerColumnas(_context, _proyecto.Id);
+                var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
+                // SOLO LECTURA: la exportación nunca debe inicializar ni persistir la
+                // configuración de columnas de indirectos (ver Hallazgo 1 / Fase 5).
+                var columnas = Helpers.ColumnasIndirectosHelper.ObtenerColumnasSoloLectura(_context, _proyecto.Id);
 
                 var gruposOC = _context.GruposIndirectos
                     .Include(g => g.Conceptos)
@@ -53,10 +55,17 @@ namespace SOPRO.WinForms.Forms
                 if (dlg.ShowDialog() != DialogResult.OK) return;
 
                 Cursor = Cursors.WaitCursor;
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Indirectos, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.Indirectos, lblTitulo.Text);
+
+                // Snapshot neutral compartido con la ruta Excel: misma lista/orden/
+                // ancho/formato/estilo y mismos decimales globales del proyecto.
+                var snapshot = IndirectosExportResolver.BuildSnapshot(
+                    _proyecto.Id, lblTitulo.Text, columnas,
+                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+
                 var generador = new Services.GeneradorPdfIndirectos(svc);
                 string ruta = generador.Generar(_proyecto, gruposOC, gruposCampo,
-                    _configuracion, plantilla, columnas, dlg.FileName, tituloCfg);
+                    _configuracion, plantilla, snapshot, dlg.FileName, tituloCfg);
                 Cursor = Cursors.Default;
 
                 if (MessageBox.Show("Reporte PDF generado.\n\n¿Abrir ahora?",
@@ -79,8 +88,10 @@ namespace SOPRO.WinForms.Forms
             try
             {
                 var svc = new Services.ReporteService(_context);
-                var plantilla = svc.ObtenerOCrearPlantilla(_proyecto.Id);
-                var columnas = Helpers.ColumnasIndirectosHelper.ObtenerColumnas(_context, _proyecto.Id);
+                var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
+                // SOLO LECTURA: la exportación nunca debe inicializar ni persistir la
+                // configuración de columnas de indirectos (ver Hallazgo 1 / Fase 5).
+                var columnas = Helpers.ColumnasIndirectosHelper.ObtenerColumnasSoloLectura(_context, _proyecto.Id);
 
                 var gruposOC = _context.GruposIndirectos
                     .Include(g => g.Conceptos)
@@ -109,10 +120,17 @@ namespace SOPRO.WinForms.Forms
                 if (dlg.ShowDialog() != DialogResult.OK) return;
 
                 Cursor = Cursors.WaitCursor;
-                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyecto.Id, ReportTitleModuleKeys.Indirectos, lblTitulo.Text);
+                var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.Indirectos, lblTitulo.Text);
+
+                // Snapshot neutral compartido con la ruta PDF: misma lista/orden/
+                // ancho/formato/estilo y mismos decimales globales del proyecto.
+                var snapshot = IndirectosExportResolver.BuildSnapshot(
+                    _proyecto.Id, lblTitulo.Text, columnas,
+                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+
                 var generador = new Services.GeneradorExcelIndirectos(svc);
                 string ruta = generador.Generar(_proyecto, gruposOC, gruposCampo,
-                    _configuracion, plantilla, columnas, dlg.FileName, tituloCfg);
+                    _configuracion, plantilla, snapshot, dlg.FileName, tituloCfg);
                 Cursor = Cursors.Default;
 
                 if (MessageBox.Show($"Reporte generado.\n\n¿Abrir ahora?",

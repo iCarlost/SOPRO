@@ -53,7 +53,7 @@ namespace SOPRO.WinForms.Forms
 
                 // ── Encabezado estándar SOPRO ─────────────────────────────
                 var svcRep = new ReporteService(_context);
-                var plantilla = svcRep.ObtenerOCrearPlantilla(_proyectoId ?? 0);
+                var plantilla = svcRep.ObtenerPlantillaSoloLectura(_proyectoId ?? 0);
                 Proyecto proyecto = _proyectoId.HasValue
                     ? _context.Proyectos.Find(_proyectoId.Value)
                     : new Proyecto { Nombre = "Materiales" };
@@ -75,7 +75,7 @@ namespace SOPRO.WinForms.Forms
 
                 var titulo = ws.Range(fila, 1, fila, numCols);
                 var tituloCfg = _proyectoId.HasValue
-                    ? new ConfiguracionTituloReporteService(_context).ObtenerOCrear(_proyectoId.Value, ReportTitleModuleKeys.CatalogoMateriales, lblTitulo.Text)
+                    ? new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyectoId.Value, ReportTitleModuleKeys.CatalogoMateriales, lblTitulo.Text)
                     : null;
                 ReportTitleStyleHelper.ApplyToClosedXmlTitle(titulo, tituloCfg, "CATÁLOGO DE MATERIALES");
                 ws.Row(fila).Height = 24;

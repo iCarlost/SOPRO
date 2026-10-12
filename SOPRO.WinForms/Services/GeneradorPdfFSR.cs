@@ -5,51 +5,29 @@ using System.Linq;
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
+using SOPRO.Application.Models.Reporting.Fsr;
+using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
+using SOPRO.Reporting.Formatting;
+using SOPRO.Reporting.Layout;
 using MColor = MigraDoc.DocumentObjectModel.Color;
 using MOrientation = MigraDoc.DocumentObjectModel.Orientation;
 using MParagraphAlignment = MigraDoc.DocumentObjectModel.ParagraphAlignment;
 
 namespace SOPRO.WinForms.Services
 {
+    /// <summary>
+    /// Renderizador PDF del reporte AE-2(A) "Tabla de cálculo del FSR". Las
+    /// columnas (lista, orden, encabezados, anchos, alineaciones, colores y el
+    /// formato del valor) provienen del snapshot neutral compartido con la ruta
+    /// Excel; las filas viajan como <see cref="FsrRow"/> (modelo neutral extraído
+    /// del generador). El valor numérico se formatea con la regla compartida
+    /// <see cref="ReportColumnGridFormat"/> (cantidad → decimales de cantidad del
+    /// proyecto), eliminando el N5 hardcodeado.
+    /// </summary>
     public sealed class GeneradorPdfFSR
     {
-        public enum FsrPdfRowType
-        {
-            Seccion,
-            Subseccion,
-            Dato,
-            Final
-        }
-
-        public sealed class FsrPdfRow
-        {
-            public FsrPdfRowType Tipo { get; set; }
-            public string Descripcion { get; set; } = string.Empty;
-            public string Operacion { get; set; } = string.Empty;
-            public string Unidad { get; set; } = string.Empty;
-            public string Valor { get; set; } = string.Empty;
-
-            public static FsrPdfRow Seccion(string descripcion) => new() { Tipo = FsrPdfRowType.Seccion, Descripcion = descripcion };
-            public static FsrPdfRow Subseccion(string descripcion) => new() { Tipo = FsrPdfRowType.Subseccion, Descripcion = descripcion };
-            public static FsrPdfRow Numero(string descripcion, string operacion, string unidad, decimal valor) => new()
-            {
-                Tipo = FsrPdfRowType.Dato,
-                Descripcion = descripcion,
-                Operacion = operacion ?? string.Empty,
-                Unidad = unidad ?? string.Empty,
-                Valor = valor.ToString("N5")
-            };
-            public static FsrPdfRow Texto(string descripcion, string operacion, string unidad, string valor) => new()
-            {
-                Tipo = FsrPdfRowType.Dato,
-                Descripcion = descripcion,
-                Operacion = operacion ?? string.Empty,
-                Unidad = unidad ?? string.Empty,
-                Valor = valor ?? string.Empty
-            };
-        }
-
         private readonly ReporteService _svc;
 
         public GeneradorPdfFSR(ReporteService svc)
@@ -57,10 +35,11 @@ namespace SOPRO.WinForms.Services
             _svc = svc;
         }
 
-        public string Generar(Proyecto proyecto, PlantillaReporte plantilla, List<FsrPdfRow> filas, decimal factorFsr, string rutaDestino = null, ConfiguracionTituloReporte? tituloCfg = null)
+        public string Generar(Proyecto proyecto, PlantillaReporte plantilla, ReportColumnSnapshot snapshot, List<FsrRow> filas, decimal factorFsr, string rutaDestino = null, ConfiguracionTituloReporte? tituloCfg = null)
         {
             if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
             if (plantilla == null) throw new ArgumentNullException(nameof(plantilla));
+            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
             if (filas == null || filas.Count == 0) throw new InvalidOperationException("No hay datos de FSR para exportar.");
 
             if (string.IsNullOrWhiteSpace(rutaDestino))
@@ -90,7 +69,7 @@ namespace SOPRO.WinForms.Services
 
             ConstruirHeader(section, proyecto, plantilla, headerHeightCm);
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
-            ConstruirCuerpo(section, proyecto, filas, factorFsr, tituloCfg);
+            ConstruirCuerpo(section, proyecto, snapshot, filas, factorFsr, tituloCfg);
 
             var renderer = new PdfDocumentRenderer() { Document = doc };
             renderer.RenderDocument();
@@ -249,7 +228,15 @@ namespace SOPRO.WinForms.Services
             };
         }
 
-        private void ConstruirCuerpo(Section section, Proyecto proyecto, List<FsrPdfRow> filas, decimal factorFsr, ConfiguracionTituloReporte? tituloCfg)
+        private static MParagraphAlignment ConvertirAlineacion(ReportTextAlignment a) => a switch
+        {
+            ReportTextAlignment.Centro => MParagraphAlignment.Center,
+            ReportTextAlignment.Derecha => MParagraphAlignment.Right,
+            ReportTextAlignment.Justificado => MParagraphAlignment.Justify,
+            _ => MParagraphAlignment.Left,
+        };
+
+        private void ConstruirCuerpo(Section section, Proyecto proyecto, ReportColumnSnapshot snapshot, List<FsrRow> filas, decimal factorFsr, ConfiguracionTituloReporte? tituloCfg)
         {
             var titulo = section.AddParagraph();
             ReportTitleStyleHelper.ApplyToParagraph(titulo, tituloCfg, "TABLA DE CÁLCULO DEL FACTOR DE SALARIO REAL");
@@ -268,45 +255,56 @@ namespace SOPRO.WinForms.Services
             mr2.Cells[1].AddParagraph("Factor de Salario Real FSR");
             meta.Format.SpaceAfter = Unit.FromCentimeter(0.20);
 
+            var cols = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+            if (cols.Count == 0)
+                cols = FsrReportSnapshotBuilder.DefaultColumnsAE2A().Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+
+            var valorCol = cols.FirstOrDefault(c => string.Equals(c.Identificador, FsrReportSnapshotBuilder.ColValor, StringComparison.OrdinalIgnoreCase))
+                           ?? FsrReportSnapshotBuilder.DefaultColumnsAE2A()
+                               .Single(c => string.Equals(c.Identificador, FsrReportSnapshotBuilder.ColValor, StringComparison.OrdinalIgnoreCase));
+
+            var estilo = snapshot.EstiloTabla;
+
             var t = section.AddTable();
             t.Borders.Width = 0.25;
             t.Rows.LeftIndent = 0;
             t.Format.SpaceAfter = Unit.FromCentimeter(0.12);
-            t.AddColumn(Unit.FromCentimeter(9.6));
-            t.AddColumn(Unit.FromCentimeter(9.0));
-            t.AddColumn(Unit.FromCentimeter(2.0));
-            t.AddColumn(Unit.FromCentimeter(4.2));
+
+            double usableCm = ReportPageLayoutHelper.GetContentWidthCm(section);
+            var anchosCm = ReportColumnWidthConverter.PxToCm(cols.Select(c => c.Ancho).ToArray(), usableCm);
+            for (int i = 0; i < cols.Count; i++)
+                t.AddColumn(Unit.FromCentimeter(anchosCm[i]));
+
+            int lastCol = cols.Count - 1;
 
             var h = t.AddRow();
             h.HeadingFormat = true;
-            h.Shading.Color = ParseColor("#1F4E78");
+            h.Shading.Color = ParseColor(estilo.EstiloEncabezado.ColorFondo ?? "#1F4E78");
             h.Height = Unit.FromCentimeter(0.65);
             h.HeightRule = RowHeightRule.AtLeast;
-            AgregarHeader(h.Cells[0], "Descripción");
-            AgregarHeader(h.Cells[1], "Operación");
-            AgregarHeader(h.Cells[2], "Unidad");
-            AgregarHeader(h.Cells[3], "Valor");
+            for (int i = 0; i < cols.Count; i++)
+                AgregarHeader(h.Cells[i], cols[i].Encabezado ?? string.Empty);
 
             foreach (var fila in filas)
             {
-                if (fila.Tipo == FsrPdfRowType.Seccion)
+                if (fila.Tipo == FsrRowType.Seccion)
                 {
                     var r = t.AddRow();
-                    r.Cells[0].MergeRight = 3;
+                    r.Cells[0].MergeRight = lastCol;
                     r.Cells[0].Shading.Color = ParseColor("#D9E2F3");
                     r.Cells[0].VerticalAlignment = VerticalAlignment.Center;
-                    var p = r.Cells[0].AddParagraph(fila.Descripcion);
+                    var p = r.Cells[0].AddParagraph(fila.Descripcion ?? string.Empty);
                     p.Format.Font.Bold = true;
                     p.Format.SpaceAfter = 0;
                     p.Format.SpaceBefore = 0;
                     continue;
                 }
-                if (fila.Tipo == FsrPdfRowType.Subseccion)
+                if (fila.Tipo == FsrRowType.Subseccion)
                 {
                     var r = t.AddRow();
-                    r.Cells[0].MergeRight = 3;
+                    r.Cells[0].MergeRight = lastCol;
                     r.Cells[0].Shading.Color = ParseColor("#EDEDED");
-                    var p = r.Cells[0].AddParagraph(fila.Descripcion);
+                    var p = r.Cells[0].AddParagraph(fila.Descripcion ?? string.Empty);
                     p.Format.Font.Bold = true;
                     p.Format.Font.Italic = true;
                     p.Format.SpaceAfter = 0;
@@ -316,27 +314,34 @@ namespace SOPRO.WinForms.Services
 
                 var row = t.AddRow();
                 row.VerticalAlignment = VerticalAlignment.Center;
-                row.Cells[0].AddParagraph(fila.Descripcion);
+                row.Cells[0].AddParagraph(fila.Descripcion ?? string.Empty);
                 var op = row.Cells[1].AddParagraph(fila.Operacion ?? string.Empty);
                 op.Format.Font.Italic = !string.IsNullOrWhiteSpace(fila.Operacion);
                 op.Format.Font.Size = 7.5;
                 row.Cells[2].AddParagraph(fila.Unidad ?? string.Empty).Format.Alignment = MParagraphAlignment.Center;
-                row.Cells[3].AddParagraph(fila.Valor ?? string.Empty).Format.Alignment = MParagraphAlignment.Right;
+                row.Cells[lastCol].AddParagraph(FormatearValor(fila, valorCol, snapshot)).Format.Alignment = MParagraphAlignment.Right;
             }
 
             var fin = t.AddRow();
             fin.Height = Unit.FromCentimeter(0.75);
-            fin.Cells[0].MergeRight = 2;
+            fin.Cells[0].MergeRight = Math.Max(0, lastCol - 1);
             fin.Cells[0].Shading.Color = ParseColor("#C00000");
-            fin.Cells[3].Shading.Color = ParseColor("#C00000");
+            fin.Cells[lastCol].Shading.Color = ParseColor("#C00000");
             var pfin = fin.Cells[0].AddParagraph("FACTOR DE SALARIO REAL");
             pfin.Format.Font.Bold = true;
             pfin.Format.Font.Color = ParseColor("#FFFFFF");
             pfin.Format.Alignment = MParagraphAlignment.Center;
-            var vfin = fin.Cells[3].AddParagraph(factorFsr.ToString("N5"));
+            var vfin = fin.Cells[lastCol].AddParagraph(ReportColumnGridFormat.FormatearPdf(factorFsr, valorCol, snapshot));
             vfin.Format.Font.Bold = true;
             vfin.Format.Font.Color = ParseColor("#FFFFFF");
             vfin.Format.Alignment = MParagraphAlignment.Center;
+        }
+
+        private static string FormatearValor(FsrRow fila, ReportColumnDefinition valorCol, ReportColumnSnapshot snapshot)
+        {
+            if (fila.Valor.HasValue)
+                return ReportColumnGridFormat.FormatearPdf(fila.Valor.Value, valorCol, snapshot);
+            return fila.ValorTexto ?? string.Empty;
         }
 
         private static void AgregarHeader(Cell cell, string texto)

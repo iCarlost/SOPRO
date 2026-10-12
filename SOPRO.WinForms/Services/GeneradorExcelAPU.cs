@@ -1,7 +1,12 @@
 using ClosedXML.Excel;
+using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
+using SOPRO.Reporting.Formatting;
+using SOPRO.Reporting.Layout;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Drawing;
@@ -13,12 +18,19 @@ namespace SOPRO.WinForms.Services
     /// <summary>
     /// Genera un archivo Excel con los Análisis de Precios Unitarios (APU).
     /// Una hoja por concepto, con secciones por tipo de insumo y resumen de integración.
+    ///
+    /// La tabla de componentes consume el MISMO <see cref="ReportColumnSnapshot"/>
+    /// neutral que la ruta PDF (visibilidad, orden, encabezado, ancho, alineación,
+    /// wrap, estilo y formato numérico), garantizando paridad de cantidades e
+    /// importes con el PDF.
     /// </summary>
     public class GeneradorExcelAPU
     {
         private readonly ReporteService _svc;
         private readonly SOPROContext _ctx;
-        private ConfigColumnaReporte? _estiloDescripcionPresupuesto;
+
+        /// <summary>Estilo de contenido neutral vigente (snapshot o default de catálogo).</summary>
+        private ReportTextStyle _contenido = ReportTableStyle.LegacyCatalogo().EstiloContenido;
 
         // Colores de sección por tipo de insumo
         private static readonly string ColorSeccionMaterial    = "#E3F2FD"; // Azul muy claro
@@ -43,11 +55,18 @@ namespace SOPRO.WinForms.Services
             Proyecto proyecto,
             List<ConceptoPresupuesto> conceptos,
             PlantillaReporte plantilla,
-            List<ConfigColumnaReporte> columnas,
-            string rutaDestino,
-            ConfigColumnaReporte? estiloDescripcionPresupuesto = null)
+            ReportColumnSnapshot snapshot,
+            string rutaDestino)
         {
-            _estiloDescripcionPresupuesto = estiloDescripcionPresupuesto;
+            ArgumentNullException.ThrowIfNull(proyecto);
+            ArgumentNullException.ThrowIfNull(conceptos);
+            ArgumentNullException.ThrowIfNull(plantilla);
+            ArgumentNullException.ThrowIfNull(snapshot);
+            _contenido = snapshot.EstiloTabla.EstiloContenido;
+
+            var cols = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+            if (cols.Count == 0)
+                cols = ApuExportResolver.DefaultColumns().Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
 
             // Solo conceptos con Matriz APU
             var conceptosConAPU = conceptos
@@ -68,17 +87,11 @@ namespace SOPRO.WinForms.Services
                 .Where(m => matrizIds.Contains(m.Id))
                 .ToDictionary(m => m.Id);
 
-            // Columnas visibles ordenadas (para la tabla de componentes)
-            var colsVisibles = columnas
-                .Where(c => c.Visible)
-                .OrderBy(c => c.Orden)
-                .ToList();
-
             using var wb = new XLWorkbook();
 
             // Índice general (primera hoja)
             var wsIndice = wb.AddWorksheet("Índice");
-            EscribirIndice(wsIndice, conceptosConAPU, proyecto, plantilla, colsVisibles);
+            EscribirIndice(wsIndice, conceptosConAPU, proyecto, snapshot);
 
             // Una hoja por concepto
             int numero = 1;
@@ -91,7 +104,7 @@ namespace SOPRO.WinForms.Services
                 string nombreHoja = LimpiarNombreHoja($"{numero:D3}-{concepto.Clave ?? concepto.Descripcion}");
                 var ws = wb.AddWorksheet(nombreHoja);
 
-                EscribirAPU(ws, concepto, matriz, proyecto, plantilla, colsVisibles, numero);
+                EscribirAPU(ws, concepto, matriz, proyecto, plantilla, cols, snapshot, numero);
                 numero++;
             }
 
@@ -101,7 +114,7 @@ namespace SOPRO.WinForms.Services
 
         // ── ÍNDICE ────────────────────────────────────────────────────────────
         private void EscribirIndice(IXLWorksheet ws, List<ConceptoPresupuesto> conceptos,
-            Proyecto proyecto, PlantillaReporte plantilla, List<ConfigColumnaReporte> cols)
+            Proyecto proyecto, ReportColumnSnapshot snapshot)
         {
             ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
             ws.PageSetup.PaperSize       = XLPaperSize.LetterPaper;
@@ -148,7 +161,8 @@ namespace SOPRO.WinForms.Services
                 AplicarFuenteBase(ws.Cell(fila, 3).Style);
                 AplicarFuenteBase(ws.Cell(fila, 4).Style);
                 AplicarFuenteBase(ws.Cell(fila, 5).Style);
-                ws.Cell(fila, 5).Style.NumberFormat.Format = "#,##0.00";
+                ws.Cell(fila, 5).Style.NumberFormat.Format =
+                    ReportColumnGridFormat.FormatoMonedaExcel(snapshot.DecimalesImporte, CultureInfo.CurrentCulture);
                 ws.Cell(fila, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
                 ws.Cell(fila, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                 ws.Cell(fila, 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
@@ -168,59 +182,41 @@ namespace SOPRO.WinForms.Services
             ws.Range(2, 1, fila - 1, 5).Style.Border.InsideBorder  = XLBorderStyleValues.Hair;
         }
 
-        private ConfigColumnaReporte ObtenerEstiloBaseApu()
-        {
-            return _estiloDescripcionPresupuesto ?? new ConfigColumnaReporte
-            {
-                ConFuente = "Segoe UI",
-                ConTamaño = 9f,
-                ConNegrita = false,
-                ConCursiva = false,
-                ConColorTexto = "#000000",
-                ConColorFondo = "#FFFFFF",
-                ConAlineacion = "Izquierda"
-            };
-        }
-
         private void AplicarFuenteBase(IXLStyle style, bool boldOverride = false, string? colorOverride = null)
         {
-            var baseStyle = ObtenerEstiloBaseApu();
-            style.Font.FontName = string.IsNullOrWhiteSpace(baseStyle.ConFuente) ? "Segoe UI" : baseStyle.ConFuente;
-            style.Font.FontSize = baseStyle.ConTamaño > 0 ? baseStyle.ConTamaño : 9f;
-            style.Font.Bold = boldOverride || baseStyle.ConNegrita;
-            style.Font.Italic = baseStyle.ConCursiva;
-            style.Font.FontColor = ObtenerColorXL(string.IsNullOrWhiteSpace(colorOverride) ? (string.IsNullOrWhiteSpace(baseStyle.ConColorTexto) ? "#000000" : baseStyle.ConColorTexto) : colorOverride, "#000000");
+            var estilo = _contenido;
+            style.Font.FontName = string.IsNullOrWhiteSpace(estilo.Fuente) ? "Segoe UI" : estilo.Fuente;
+            style.Font.FontSize = estilo.Tamano > 0 ? estilo.Tamano : 9f;
+            style.Font.Bold = boldOverride || estilo.Negrita;
+            style.Font.Italic = estilo.Cursiva;
+            style.Font.FontColor = ObtenerColorXL(
+                string.IsNullOrWhiteSpace(colorOverride) ? (string.IsNullOrWhiteSpace(estilo.ColorFuente) ? "#000000" : estilo.ColorFuente) : colorOverride,
+                "#000000");
         }
 
         // ── APU INDIVIDUAL ────────────────────────────────────────────────────
         private void EscribirAPU(IXLWorksheet ws, ConceptoPresupuesto concepto,
             Matriz matriz, Proyecto proyecto, PlantillaReporte plantilla,
-            List<ConfigColumnaReporte> cols, int numero)
+            IReadOnlyList<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot, int numero)
         {
             ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
             ws.PageSetup.PaperSize       = XLPaperSize.LetterPaper;
             ws.PageSetup.FitToPages(1, 0);
 
-            // Anchos de columna fijos para APU (A-G)
-            ws.Column(1).Width = 12;  // Tipo
-            ws.Column(2).Width = 14;  // Clave
-            ws.Column(3).Width = 50;  // Descripción
-            ws.Column(4).Width = 10;  // Unidad
-            ws.Column(5).Width = 14;  // Cantidad
-            ws.Column(6).Width = 16;  // P.U. / Costo Unit.
-            ws.Column(7).Width = 16;  // Importe
+            int nCols = cols.Count;
+            for (int i = 0; i < nCols; i++)
+                ws.Column(i + 1).Width = ReportColumnWidthConverter.PxToExcelWidth(cols[i].Ancho);
 
             int fila = 1;
-            const int COLS = 7;
 
             // ── ENCABEZADO DEL PROYECTO ──────────────────────────────────────
-            fila = EscribirEncabezadoProyecto(ws, proyecto, plantilla, numero, fila, COLS);
+            fila = EscribirEncabezadoProyecto(ws, proyecto, plantilla, numero, fila, nCols);
 
             // ── ENCABEZADO DEL APU ───────────────────────────────────────────
-            fila = EscribirEncabezadoAPU(ws, concepto, fila, COLS);
+            fila = EscribirEncabezadoAPU(ws, concepto, fila, nCols, snapshot);
 
             // ── TÍTULOS DE COLUMNAS ──────────────────────────────────────────
-            fila = EscribirTitulosColumnas(ws, fila, COLS);
+            fila = EscribirTitulosColumnas(ws, fila, cols);
             ReporteEncabezadoHelper.ConfigurarFilasRepetidas(ws, 1, fila - 1);
             int filaCongelar = fila;
 
@@ -246,7 +242,7 @@ namespace SOPRO.WinForms.Services
                 if (!componentes.Any()) continue;
 
                 // Título de sección
-                fila = EscribirTituloSeccion(ws, fila, grupo.Titulo, grupo.Color, COLS);
+                fila = EscribirTituloSeccion(ws, fila, grupo.Titulo, grupo.Color, nCols);
 
                 // Calcular totalMO para herramientas y MO con %MO
                 decimal totalMO = CalcularTotalMO(matriz);
@@ -273,31 +269,67 @@ namespace SOPRO.WinForms.Services
 
                     subtotal += importeComp;
 
-                    // Fila del componente
-                    ws.Cell(fila, 1).Value = grupo.Titulo[..Math.Min(3, grupo.Titulo.Length)]; // abreviatura
-                    ws.Cell(fila, 2).Value = clave;
-                    ws.Cell(fila, 3).Value = desc;
-                    ws.Cell(fila, 4).Value = unidad;
-                    ws.Cell(fila, 5).Value = cantidad;
-                    ws.Cell(fila, 6).Value = pu;
-                    ws.Cell(fila, 7).Value = importeComp;
+                    string abrev = ApuExportResolver.AbreviarTipo(grupo.Titulo);
+                    string fondo = (numComp % 2 == 0) ? grupo.Color : "#FFFFFF";
 
-                    AplicarEstiloFilaDato(ws, fila, COLS, grupo.Color, numComp);
+                    // Fila del componente, columna a columna desde el snapshot neutral
+                    for (int i = 0; i < nCols; i++)
+                    {
+                        var col = cols[i];
+                        var cell = ws.Cell(fila, i + 1);
+                        cell.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(fondo);
+                        AplicarFuenteBase(cell.Style);
+                        cell.Style.Border.BottomBorder = XLBorderStyleValues.Hair;
+                        cell.Style.Border.RightBorder = XLBorderStyleValues.Hair;
+                        cell.Style.Alignment.WrapText = col.Wrap;
+                        cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                        cell.Style.Alignment.Horizontal = ConvertirAlineacion(col.Alineacion);
+                        EscribirValorColumnaApu(cell, col, abrev, clave, desc, unidad, cantidad, pu, importeComp, snapshot);
+                    }
                     fila++;
                     numComp++;
                 }
 
                 // Subtotal de sección
-                fila = EscribirSubtotal(ws, fila, $"Subtotal {grupo.Titulo}", subtotal, COLS);
+                fila = EscribirSubtotal(ws, fila, $"Subtotal {grupo.Titulo}", subtotal, nCols, snapshot);
                 costoDirecto += subtotal;
             }
 
             // ── RESUMEN DE INTEGRACIÓN DEL PU ────────────────────────────────
             fila++;
-            fila = EscribirResumenIntegracion(ws, fila, concepto, proyecto, costoDirecto, COLS);
+            fila = EscribirResumenIntegracion(ws, fila, concepto, proyecto, costoDirecto, nCols, snapshot);
 
             // Congelar hasta títulos de columna
             ws.SheetView.FreezeRows(filaCongelar - 1);
+        }
+
+        private static void EscribirValorColumnaApu(IXLCell cell, ReportColumnDefinition col,
+            string abrev, string clave, string desc, string unidad,
+            decimal cantidad, decimal pu, decimal importe, ReportColumnSnapshot snapshot)
+        {
+            if (ApuExportResolver.EsCantidad(col))
+            {
+                cell.Value = cantidad;
+                cell.Style.NumberFormat.Format = ReportColumnGridFormat.ResolveExcelFormat(col, snapshot);
+            }
+            else if (ApuExportResolver.EsPrecioUnitario(col))
+            {
+                cell.Value = pu;
+                cell.Style.NumberFormat.Format = ReportColumnGridFormat.ResolveExcelFormat(col, snapshot);
+            }
+            else if (ApuExportResolver.EsImporte(col))
+            {
+                cell.Value = importe;
+                cell.Style.NumberFormat.Format = ReportColumnGridFormat.ResolveExcelFormat(col, snapshot);
+            }
+            else if (ApuExportResolver.EsTipo(col))
+            {
+                cell.Value = abrev;
+            }
+            else
+            {
+                cell.Value = ApuExportResolver.ResolveTexto(col, clave, desc, unidad);
+            }
         }
 
         // ── ENCABEZADO DEL PROYECTO ───────────────────────────────────────────
@@ -338,7 +370,7 @@ namespace SOPRO.WinForms.Services
             rngNum.Merge();
             rngNum.Value = $"APU No. {numero:D3}  —  {proyecto.Nombre}";
             AplicarFuenteBase(rngNum.Style, boldOverride: true, colorOverride: "#FFFFFF");
-            rngNum.Style.Font.FontSize = Math.Max(10, ObtenerEstiloBaseApu().ConTamaño);
+            rngNum.Style.Font.FontSize = Math.Max(10, _contenido.Tamano);
             rngNum.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             rngNum.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorResumen);
             rngNum.Style.Font.FontColor = XLColor.White;
@@ -357,7 +389,7 @@ namespace SOPRO.WinForms.Services
             var rango = ws.Range(fila, colIni, fila, colFin);
             rango.Merge();
 
-            if (tipo == "Imagen" && System.IO.File.Exists(contenido))
+            if (tipo == "Imagen" && File.Exists(contenido))
             {
                 try { ws.AddPicture(contenido).MoveTo(ws.Cell(fila, colIni)).WithSize(120, 50); }
                 catch { }
@@ -384,7 +416,7 @@ namespace SOPRO.WinForms.Services
 
         // ── ENCABEZADO DEL APU ────────────────────────────────────────────────
         private int EscribirEncabezadoAPU(IXLWorksheet ws, ConceptoPresupuesto concepto,
-            int fila, int COLS)
+            int fila, int COLS, ReportColumnSnapshot snapshot)
         {
             var colorAPU = "#37474F";
 
@@ -414,15 +446,15 @@ namespace SOPRO.WinForms.Services
             int midCol = COLS / 3;
 
             var rngCantLbl = ws.Range(fila, 1, fila, midCol); rngCantLbl.Merge();
-            rngCantLbl.Value = $"Cantidad: {concepto.Cantidad:N3} {concepto.Unidad}";
+            rngCantLbl.Value = $"Cantidad: {concepto.Cantidad.ToString($"N{snapshot.DecimalesCantidad}", CultureInfo.CurrentCulture)} {concepto.Unidad}";
             rngCantLbl.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
             var rngPULbl = ws.Range(fila, midCol + 1, fila, midCol * 2); rngPULbl.Merge();
-            rngPULbl.Value = $"P.U.: ${puConcepto:N2}";
+            rngPULbl.Value = $"P.U.: {FormatearMonedaTexto(puConcepto, snapshot)}";
             rngPULbl.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
             var rngTotLbl = ws.Range(fila, midCol * 2 + 1, fila, COLS); rngTotLbl.Merge();
-            rngTotLbl.Value = $"Total: ${totalConcepto:N2}";
+            rngTotLbl.Value = $"Total: {FormatearMonedaTexto(totalConcepto, snapshot)}";
             rngTotLbl.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
             AplicarEstiloEncabezadoInfo(ws, fila, COLS);
@@ -432,16 +464,22 @@ namespace SOPRO.WinForms.Services
         }
 
         // ── TÍTULOS DE COLUMNAS ───────────────────────────────────────────────
-        private int EscribirTitulosColumnas(IXLWorksheet ws, int fila, int COLS)
+        private static int EscribirTitulosColumnas(IXLWorksheet ws, int fila, IReadOnlyList<ReportColumnDefinition> cols)
         {
-            var titulos = new[] { "TIPO", "CLAVE", "DESCRIPCIÓN", "UNIDAD", "CANTIDAD", "COSTO UNIT.", "IMPORTE" };
-            for (int c = 0; c < titulos.Length; c++)
+            for (int i = 0; i < cols.Count; i++)
             {
-                var cell = ws.Cell(fila, c + 1);
-                cell.Value = titulos[c];
-                AplicarFuenteBase(cell.Style, boldOverride: true, colorOverride: "#FFFFFF");
-                cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1565C0");
-                cell.Style.Alignment.Horizontal = (c == 2) ? XLAlignmentHorizontalValues.Left : XLAlignmentHorizontalValues.Center;
+                var col = cols[i];
+                var enc = col.EstiloEncabezado;
+                var cell = ws.Cell(fila, i + 1);
+                cell.Value = col.Encabezado ?? string.Empty;
+                cell.Style.Font.Bold = enc.Negrita;
+                cell.Style.Font.Italic = enc.Cursiva;
+                if (!string.IsNullOrEmpty(enc.Fuente)) cell.Style.Font.FontName = enc.Fuente;
+                if (enc.Tamano > 0) cell.Style.Font.FontSize = enc.Tamano;
+                cell.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(enc.ColorFondo ?? "#4A4A6A");
+                cell.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(enc.ColorFuente, "#FFFFFF");
+                cell.Style.Alignment.Horizontal = ConvertirAlineacion(col.Alineacion);
+                cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
                 cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             }
             return fila + 1;
@@ -461,34 +499,8 @@ namespace SOPRO.WinForms.Services
             return fila + 1;
         }
 
-        // ── FILA DE DATO ──────────────────────────────────────────────────────
-        private void AplicarEstiloFilaDato(IXLWorksheet ws, int fila, int COLS, string colorSeccion, int numComp)
-        {
-            // Alternas: color de sección vs blanco
-            string fondo = (numComp % 2 == 0) ? colorSeccion : "#FFFFFF";
-
-            for (int c = 1; c <= COLS; c++)
-            {
-                var cell = ws.Cell(fila, c);
-                cell.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(fondo);
-                AplicarFuenteBase(cell.Style);
-                cell.Style.Border.BottomBorder = XLBorderStyleValues.Hair;
-                cell.Style.Border.RightBorder = XLBorderStyleValues.Hair;
-            }
-
-            ws.Cell(fila, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            ws.Cell(fila, 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            ws.Cell(fila, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            ws.Cell(fila, 5).Style.NumberFormat.Format = "#,##0.00000";
-            ws.Cell(fila, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-            ws.Cell(fila, 6).Style.NumberFormat.Format = "#,##0.0000";
-            ws.Cell(fila, 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-            ws.Cell(fila, 7).Style.NumberFormat.Format = "#,##0.0000";
-            ws.Cell(fila, 7).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-        }
-
         // ── SUBTOTAL ──────────────────────────────────────────────────────────
-        private int EscribirSubtotal(IXLWorksheet ws, int fila, string etiqueta, decimal valor, int COLS)
+        private int EscribirSubtotal(IXLWorksheet ws, int fila, string etiqueta, decimal valor, int COLS, ReportColumnSnapshot snapshot)
         {
             var rng = ws.Range(fila, 1, fila, COLS - 1);
             rng.Merge();
@@ -498,7 +510,8 @@ namespace SOPRO.WinForms.Services
             rng.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
 
             ws.Cell(fila, COLS).Value = valor;
-            ws.Cell(fila, COLS).Style.NumberFormat.Format = "#,##0.0000";
+            ws.Cell(fila, COLS).Style.NumberFormat.Format =
+                ReportColumnGridFormat.FormatoMonedaExcel(snapshot.DecimalesImporte, CultureInfo.CurrentCulture);
             AplicarFuenteBase(ws.Cell(fila, COLS).Style, boldOverride: true);
             ws.Cell(fila, COLS).Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorSubtotal);
             ws.Cell(fila, COLS).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
@@ -509,7 +522,7 @@ namespace SOPRO.WinForms.Services
 
         // ── RESUMEN DE INTEGRACIÓN ─────────────────────────────────────────────
         private int EscribirResumenIntegracion(IXLWorksheet ws, int fila,
-            ConceptoPresupuesto concepto, Proyecto proyecto, decimal costoDirecto, int COLS)
+            ConceptoPresupuesto concepto, Proyecto proyecto, decimal costoDirecto, int COLS, ReportColumnSnapshot snapshot)
         {
             // Título del resumen
             var rngTit = ws.Range(fila, 1, fila, COLS);
@@ -522,21 +535,24 @@ namespace SOPRO.WinForms.Services
 
             var integracion = ApuPrecioUnitarioIntegracionHelper.Calcular(proyecto, concepto, costoDirecto);
 
-            foreach (var linea in integracion.Lineas)
+            int idxPct = Math.Max(1, COLS - 2);
+            for (int idx = 0; idx < integracion.Lineas.Count; idx++)
             {
-                var rngE = ws.Range(fila, 1, fila, 4);
+                var linea = integracion.Lineas[idx];
+                var rngE = ws.Range(fila, 1, fila, idxPct - 1);
                 rngE.Merge();
                 rngE.Value = linea.Etiqueta;
                 rngE.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
                 rngE.Style.Alignment.Indent = 2;
 
-                ws.Cell(fila, 5).Value = linea.PorcentajeTexto;
-                ws.Cell(fila, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                ws.Cell(fila, idxPct).Value = linea.PorcentajeTexto;
+                ws.Cell(fila, idxPct).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
-                var rngM = ws.Range(fila, 6, fila, COLS);
+                var rngM = ws.Range(fila, idxPct + 1, fila, COLS);
                 rngM.Merge();
                 rngM.Value = linea.Monto;
-                rngM.Style.NumberFormat.Format = "#,##0.0000";
+                rngM.Style.NumberFormat.Format =
+                    ReportColumnGridFormat.FormatoMonedaExcel(snapshot.DecimalesImporte, CultureInfo.CurrentCulture);
                 rngM.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
 
                 ws.Range(fila, 1, fila, COLS).Style.Fill.BackgroundColor = XLColor.FromHtml("#FAFAFA");
@@ -546,20 +562,21 @@ namespace SOPRO.WinForms.Services
             }
 
             // Precio Unitario Final
-            var rngPU = ws.Range(fila, 1, fila, 5);
+            var rngPU = ws.Range(fila, 1, fila, COLS - 2);
             rngPU.Merge();
             rngPU.Value = $"PRECIO UNITARIO  (Unidad: {concepto.Unidad})";
             AplicarFuenteBase(rngPU.Style, boldOverride: true);
-            rngPU.Style.Font.FontSize = Math.Max(11, ObtenerEstiloBaseApu().ConTamaño);
+            rngPU.Style.Font.FontSize = Math.Max(11, _contenido.Tamano);
             rngPU.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             rngPU.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorPU);
 
-            var rngPUV = ws.Range(fila, 6, fila, COLS);
+            var rngPUV = ws.Range(fila, COLS - 1, fila, COLS);
             rngPUV.Merge();
             rngPUV.Value = integracion.PrecioUnitario;
-            rngPUV.Style.NumberFormat.Format = "#,##0.00";
+            rngPUV.Style.NumberFormat.Format =
+                ReportColumnGridFormat.FormatoMonedaExcel(snapshot.DecimalesImporte, CultureInfo.CurrentCulture);
             AplicarFuenteBase(rngPUV.Style, boldOverride: true);
-            rngPUV.Style.Font.FontSize = Math.Max(11, ObtenerEstiloBaseApu().ConTamaño);
+            rngPUV.Style.Font.FontSize = Math.Max(11, _contenido.Tamano);
             rngPUV.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             rngPUV.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorPU);
 
@@ -577,6 +594,16 @@ namespace SOPRO.WinForms.Services
             for (int c = 1; c <= COLS; c++) AplicarFuenteBase(ws.Cell(fila, c).Style, boldOverride: true);
         }
 
+        private static string FormatearMonedaTexto(decimal valor, ReportColumnSnapshot snapshot)
+            => valor.ToString(ReportColumnGridFormat.FormatoMonedaPdf(snapshot.DecimalesImporte), CultureInfo.CurrentCulture);
+
+        private static XLAlignmentHorizontalValues ConvertirAlineacion(ReportTextAlignment a) => a switch
+        {
+            ReportTextAlignment.Centro => XLAlignmentHorizontalValues.Center,
+            ReportTextAlignment.Derecha => XLAlignmentHorizontalValues.Right,
+            ReportTextAlignment.Justificado => XLAlignmentHorizontalValues.Justify,
+            _ => XLAlignmentHorizontalValues.Left,
+        };
 
         private static XLColor ObtenerColorXL(string? valor, string fallbackHex)
         {

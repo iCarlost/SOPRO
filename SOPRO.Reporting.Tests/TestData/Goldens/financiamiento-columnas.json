@@ -1,0 +1,519 @@
+{
+  "Schema": "sopro.financiamiento-columnas.1",
+  "TipoReporte": "Financiamiento",
+  "ProyectoId": 7,
+  "Titulo": "Análisis de Financiamiento Sintético",
+  "Columnas": [
+    {
+      "Identificador": "colPeriodo",
+      "Encabezado": "Período",
+      "Visible": true,
+      "Orden": 1,
+      "Ancho": 90,
+      "Formato": "",
+      "EsNumerica": false,
+      "Alineacion": "Centro",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "colInicio",
+      "Encabezado": "Inicio",
+      "Visible": true,
+      "Orden": 2,
+      "Ancho": 75,
+      "Formato": "",
+      "EsNumerica": false,
+      "Alineacion": "Centro",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "colFin",
+      "Encabezado": "Fin",
+      "Visible": true,
+      "Orden": 3,
+      "Ancho": 75,
+      "Formato": "",
+      "EsNumerica": false,
+      "Alineacion": "Centro",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "colDias",
+      "Encabezado": "Días",
+      "Visible": true,
+      "Orden": 4,
+      "Ancho": 45,
+      "Formato": "",
+      "EsNumerica": false,
+      "Alineacion": "Centro",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "colCD",
+      "Encabezado": "CD $",
+      "Visible": true,
+      "Orden": 5,
+      "Ancho": 95,
+      "Formato": "C2",
+      "EsNumerica": true,
+      "Alineacion": "Derecha",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "colCI",
+      "Encabezado": "CI $",
+      "Visible": true,
+      "Orden": 6,
+      "Ancho": 95,
+      "Formato": "C2",
+      "EsNumerica": true,
+      "Alineacion": "Derecha",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "colEgresos",
+      "Encabezado": "Egreso $",
+      "Visible": true,
+      "Orden": 7,
+      "Ancho": 105,
+      "Formato": "C2",
+      "EsNumerica": true,
+      "Alineacion": "Derecha",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "colAnticipo",
+      "Encabezado": "Anticipo $",
+      "Visible": true,
+      "Orden": 8,
+      "Ancho": 95,
+      "Formato": "C2",
+      "EsNumerica": true,
+      "Alineacion": "Derecha",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "colEstim",
+      "Encabezado": "Estimación $",
+      "Visible": true,
+      "Orden": 9,
+      "Ancho": 105,
+      "Formato": "C2",
+      "EsNumerica": true,
+      "Alineacion": "Derecha",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "colAmort",
+      "Encabezado": "Amortización $",
+      "Visible": true,
+      "Orden": 10,
+      "Ancho": 110,
+      "Formato": "C2",
+      "EsNumerica": true,
+      "Alineacion": "Derecha",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "colCobro",
+      "Encabezado": "Cobro neto $",
+      "Visible": true,
+      "Orden": 11,
+      "Ancho": 105,
+      "Formato": "C2",
+      "EsNumerica": true,
+      "Alineacion": "Derecha",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "colFlujoNeto",
+      "Encabezado": "Flujo $",
+      "Visible": true,
+      "Orden": 12,
+      "Ancho": 95,
+      "Formato": "C2",
+      "EsNumerica": true,
+      "Alineacion": "Derecha",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "colSaldo",
+      "Encabezado": "Saldo acum. $",
+      "Visible": true,
+      "Orden": 13,
+      "Ancho": 110,
+      "Formato": "C2",
+      "EsNumerica": true,
+      "Alineacion": "Derecha",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "colTasa",
+      "Encabezado": "Tasa período",
+      "Visible": true,
+      "Orden": 14,
+      "Ancho": 85,
+      "Formato": "",
+      "EsNumerica": false,
+      "Alineacion": "Centro",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    },
+    {
+      "Identificador": "colInteres",
+      "Encabezado": "Interés $",
+      "Visible": true,
+      "Orden": 15,
+      "Ancho": 95,
+      "Formato": "C2",
+      "EsNumerica": true,
+      "Alineacion": "Derecha",
+      "AlineacionVertical": "Medio",
+      "Wrap": false,
+      "EstiloEncabezado": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": true,
+        "Cursiva": false,
+        "ColorFuente": "#FFFFFF",
+        "ColorFondo": "#4A4A6A",
+        "ColorFuenteEncabezado": "#FFFFFF",
+        "ColorFondoEncabezado": "#4A4A6A"
+      },
+      "EstiloContenido": {
+        "Fuente": "Segoe UI",
+        "Tamano": 9,
+        "Negrita": false,
+        "Cursiva": false,
+        "ColorFuente": "#000000",
+        "ColorFondo": "#FFFFFF",
+        "ColorFuenteEncabezado": null,
+        "ColorFondoEncabezado": null
+      }
+    }
+  ],
+  "EstiloTabla": {
+    "Encabezado": {
+      "Fuente": "Segoe UI",
+      "Tamano": 9,
+      "Negrita": true,
+      "Cursiva": false,
+      "ColorFuente": "#FFFFFF",
+      "ColorFondo": "#4A4A6A",
+      "ColorFuenteEncabezado": "#FFFFFF",
+      "ColorFondoEncabezado": "#4A4A6A"
+    },
+    "Contenido": {
+      "Fuente": "Segoe UI",
+      "Tamano": 9,
+      "Negrita": false,
+      "Cursiva": false,
+      "ColorFuente": "#000000",
+      "ColorFondo": "#FFFFFF",
+      "ColorFuenteEncabezado": null,
+      "ColorFondoEncabezado": null
+    },
+    "FilaAlterna": {
+      "ColorFondoAlterno": "#F5F5F5",
+      "ColorFuente": "#000000"
+    },
+    "Bordes": {
+      "Visible": true,
+      "ColorHex": "#DDDDDD",
+      "GrosorPuntos": 0.25
+    }
+  }
+}
