@@ -42,7 +42,7 @@ namespace SOPRO.Application.Services
         /// Versión actual del schema. Incrementar cuando se agreguen nuevas migraciones.
         /// Formato: AAAA.MM.revision
         /// </summary>
-        public const string VersionActual = "2026.04.3";
+        public const string VersionActual = "2026.04.4";
 
         /// <summary>
         /// Aplica todas las migraciones sobre el contexto dado.
@@ -78,6 +78,7 @@ namespace SOPRO.Application.Services
                         M011_SanitizarNullsLegacy(conn, tx);
                         M012_DisenadorEncabezadoPdf(conn, tx);
                         M013_TablasIndirectosVistas(conn, tx);
+                        M014_TablasFormatoReporte(conn, tx);
                         RegistrarVersion(conn, tx);
                         tx.Commit();
                     }
@@ -945,6 +946,70 @@ namespace SOPRO.Application.Services
                     FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE
                 );", tx);
             TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_VistasPresupuesto_ProyectoId ON VistasPresupuesto(ProyectoId);", tx);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // M014 — Persistencia relacional de estilos de reporte
+        //
+        // Crea las tablas de override de estilo:
+        //   - FormatosCeldaReporte          → override por celda
+        //   - ConfiguracionesEstiloFilaReporte → estilo semántico por rol de fila
+        //
+        // Reemplazan colores hardcodeados por configuración persistida. Las
+        // propiedades de estilo son nullable (NULL = heredar).
+        //
+        // ClaveVista es NOT NULL con "" = vista por defecto: SQLite permite
+        // duplicados cuando una columna del índice único es NULL, por lo que ""
+        // es la clave canónica y evita el agujero del índice único.
+        //
+        // Ambas tablas cascadean al borrar el proyecto (mismo patrón que las
+        // migraciones antecesoras M003/M004/M005/M010/M013).
+        // ═══════════════════════════════════════════════════════════════════════
+        private static void M014_TablasFormatoReporte(DbConnection conn, DbTransaction tx)
+        {
+            Exec(conn, @"
+                CREATE TABLE IF NOT EXISTS FormatosCeldaReporte (
+                    Id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ProyectoId           INTEGER NOT NULL,
+                    TipoReporte          TEXT    NOT NULL,
+                    ClaveVista           TEXT    NOT NULL DEFAULT '',
+                    ClaveFila            TEXT    NOT NULL,
+                    NombreColumna        TEXT    NOT NULL,
+                    Fuente               TEXT    NULL,
+                    TamanoFuente         REAL    NULL,
+                    Negrita              INTEGER NULL,
+                    Cursiva              INTEGER NULL,
+                    ColorFuente          TEXT    NULL,
+                    ColorFondo           TEXT    NULL,
+                    AlineacionHorizontal TEXT    NULL,
+                    AlineacionVertical   TEXT    NULL,
+                    Wrap                 INTEGER NULL,
+                    FormatoNumerico      TEXT    NULL,
+                    FechaModificacion    TEXT    NOT NULL,
+                    FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE
+                );", tx);
+            TryExec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_FormatosCeldaReporte_ProyectoId_TipoReporte_ClaveVista_ClaveFila_NombreColumna ON FormatosCeldaReporte(ProyectoId, TipoReporte, ClaveVista, ClaveFila, NombreColumna);", tx);
+
+            Exec(conn, @"
+                CREATE TABLE IF NOT EXISTS ConfiguracionesEstiloFilaReporte (
+                    Id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ProyectoId           INTEGER NOT NULL,
+                    TipoReporte          TEXT    NOT NULL,
+                    RolFila              TEXT    NOT NULL,
+                    Fuente               TEXT    NULL,
+                    TamanoFuente         REAL    NULL,
+                    Negrita              INTEGER NULL,
+                    Cursiva              INTEGER NULL,
+                    ColorFuente          TEXT    NULL,
+                    ColorFondo           TEXT    NULL,
+                    AlineacionHorizontal TEXT    NULL,
+                    AlineacionVertical   TEXT    NULL,
+                    Wrap                 INTEGER NULL,
+                    FormatoNumerico      TEXT    NULL,
+                    FechaModificacion    TEXT    NOT NULL,
+                    FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE
+                );", tx);
+            TryExec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_ConfiguracionesEstiloFilaReporte_ProyectoId_TipoReporte_RolFila ON ConfiguracionesEstiloFilaReporte(ProyectoId, TipoReporte, RolFila);", tx);
         }
     }
 }

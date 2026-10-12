@@ -71,6 +71,11 @@ namespace SOPRO.Data.Context
         public DbSet<PlantillaReporteElemento> PlantillasReporteElementos { get; set; }
         public DbSet<ConfigColumnaReporte> ConfigColumnasReporte { get; set; }
         public DbSet<ConfiguracionTituloReporte> ConfiguracionesTituloReporte { get; set; }
+
+        // Persistencia relacional dispersa de estilos: overrides por celda y
+        // estilos semánticos por rol de fila (reemplazan colores hardcodeados).
+        public DbSet<FormatoCeldaReporte> FormatosCeldaReporte { get; set; }
+        public DbSet<ConfiguracionEstiloFilaReporte> ConfiguracionesEstiloFilaReporte { get; set; }
         
         // Ruta del archivo de base de datos
         private readonly string _dbPath;
@@ -739,6 +744,51 @@ namespace SOPRO.Data.Context
                     .HasForeignKey(e => e.ProyectoId)
                     .OnDelete(DeleteBehavior.Cascade);
                 entity.HasIndex(e => new { e.ProyectoId, e.Modulo }).IsUnique();
+            });
+
+            modelBuilder.Entity<FormatoCeldaReporte>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.TipoReporte).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.ClaveVista).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.ClaveFila).IsRequired().HasMaxLength(200);
+                entity.Property(e => e.NombreColumna).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Fuente).HasMaxLength(100);
+                entity.Property(e => e.ColorFuente).HasMaxLength(20);
+                entity.Property(e => e.ColorFondo).HasMaxLength(20);
+                entity.Property(e => e.AlineacionHorizontal).HasMaxLength(30);
+                entity.Property(e => e.AlineacionVertical).HasMaxLength(30);
+                entity.Property(e => e.FormatoNumerico).HasMaxLength(50);
+                entity.HasOne(e => e.Proyecto)
+                    .WithMany()
+                    .HasForeignKey(e => e.ProyectoId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasIndex(e => new
+                {
+                    e.ProyectoId,
+                    e.TipoReporte,
+                    e.ClaveVista,
+                    e.ClaveFila,
+                    e.NombreColumna
+                }).IsUnique();
+            });
+
+            modelBuilder.Entity<ConfiguracionEstiloFilaReporte>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.TipoReporte).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.RolFila).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Fuente).HasMaxLength(100);
+                entity.Property(e => e.ColorFuente).HasMaxLength(20);
+                entity.Property(e => e.ColorFondo).HasMaxLength(20);
+                entity.Property(e => e.AlineacionHorizontal).HasMaxLength(30);
+                entity.Property(e => e.AlineacionVertical).HasMaxLength(30);
+                entity.Property(e => e.FormatoNumerico).HasMaxLength(50);
+                entity.HasOne(e => e.Proyecto)
+                    .WithMany()
+                    .HasForeignKey(e => e.ProyectoId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasIndex(e => new { e.ProyectoId, e.TipoReporte, e.RolFila }).IsUnique();
             });
         }
     }

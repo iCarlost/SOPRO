@@ -65,4 +65,18 @@ public sealed record ReportColumnSnapshot(
 
     /// <summary>Decimales de porcentaje configurados en el proyecto (por defecto 4).</summary>
     public int DecimalesPorcentaje { get; init; } = 4;
+
+    /// <summary>
+    /// Overrides de estilo por celda (máxima precedencia). Es opcional y por
+    /// defecto <c>null</c>: los snapshots construidos sin estilos siguen
+    /// compilando y deserializando igual.
+    /// </summary>
+    public IReadOnlyCollection<ReportCellStyleOverride>? EstilosCelda { get; init; }
+
+    /// <summary>
+    /// Estilos semánticos por rol de fila. Es opcional y por defecto <c>null</c>:
+    /// los snapshots construidos sin estilos siguen compilando y deserializando
+    /// igual.
+    /// </summary>
+    public IReadOnlyCollection<ReportRowRoleStyle>? EstilosFila { get; init; }
 }
