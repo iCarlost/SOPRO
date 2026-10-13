@@ -132,11 +132,12 @@ namespace SOPRO.WinForms.Forms
 
             var tipo = dgv.Rows[e.RowIndex].Cells["colTipo"].Value?.ToString();
 
-            if (tipo == "GRUPO")
-            {
-                e.CellStyle.Font = new Font(dgv.Font, FontStyle.Bold);
-                e.CellStyle.BackColor = Color.FromArgb(230, 230, 230);
-            }
+            // Estilo por ROL de fila: default neutro (Grupo #E6E6E6 + negrita)
+            // combinado con el override PERSISTIDO del usuario. El override de celda
+            // del paso 5.1 SIGUE ganando a todo.
+            AplicarEstiloRolIndirectos(e.CellStyle, dgv.Font, tipo, ObtenerEstilosFilaUsuario());
+
+            AplicarOverrideFormatoCeldaIndirectos(dgv, e);
         }
 
         private void Dgv_CellEndEdit(object sender, DataGridViewCellEventArgs e)

@@ -1,6 +1,7 @@
 using ClosedXML.Excel;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Reporting.Formatting;
 using SOPRO.Reporting.Layout;
@@ -31,6 +32,16 @@ namespace SOPRO.WinForms.Services
 
         /// <summary>Estilo de contenido neutral vigente (snapshot o default de catálogo).</summary>
         private ReportTextStyle _contenido = ReportTableStyle.LegacyCatalogo().EstiloContenido;
+
+        /// <summary>Snapshot vigente de la corrida (aporta decimales y estilos).</summary>
+        private ReportColumnSnapshot? _snapshot;
+
+        /// <summary>
+        /// Snapshot SIN overrides de celda/fila: línea base para aislar QUÉ propiedad
+        /// aportó realmente un override. Con snapshots sin estilos el delta es vacío y
+        /// el render conserva EXACTAMENTE el comportamiento legacy.
+        /// </summary>
+        private ReportColumnSnapshot? _snapshotBase;
 
         // Colores de sección por tipo de insumo
         private static readonly string ColorSeccionMaterial    = "#E3F2FD"; // Azul muy claro
@@ -63,6 +74,8 @@ namespace SOPRO.WinForms.Services
             ArgumentNullException.ThrowIfNull(plantilla);
             ArgumentNullException.ThrowIfNull(snapshot);
             _contenido = snapshot.EstiloTabla.EstiloContenido;
+            _snapshot = snapshot;
+            _snapshotBase = snapshot with { EstilosCelda = null, EstilosFila = null };
 
             var cols = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
             if (cols.Count == 0)
@@ -272,6 +285,10 @@ namespace SOPRO.WinForms.Services
                     string abrev = ApuExportResolver.AbreviarTipo(grupo.Titulo);
                     string fondo = (numComp % 2 == 0) ? grupo.Color : "#FFFFFF";
 
+                    // Clave ESTABLE del componente: la MISMA que persiste el grid
+                    // (COMP:{ComponenteMatriz.Id}).
+                    string claveFilaComponente = ApuReportSnapshotBuilder.ClaveFilaComponente(comp.Id);
+
                     // Fila del componente, columna a columna desde el snapshot neutral
                     for (int i = 0; i < nCols; i++)
                     {
@@ -285,6 +302,9 @@ namespace SOPRO.WinForms.Services
                         cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
                         cell.Style.Alignment.Horizontal = ConvertirAlineacion(col.Alineacion);
                         EscribirValorColumnaApu(cell, col, abrev, clave, desc, unidad, cantidad, pu, importeComp, snapshot);
+                        // Override de celda/rol (máxima precedencia), sin tocar el
+                        // formato numérico (autoridad de la columna).
+                        AplicarOverlayExcel(cell.Style, OverrideEfectivo(claveFilaComponente, col.Identificador, null));
                     }
                     fila++;
                     numComp++;
@@ -438,6 +458,16 @@ namespace SOPRO.WinForms.Services
             }
             ws.Cell(fila, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             ws.Cell(fila, COLS).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+            // Override de la fila de CONCEPTO (C:{ConceptoPresupuesto.Id}) por columna
+            // neutral del reporte (Clave / Descripción / Unidad).
+            string claveFilaConcepto = ApuReportSnapshotBuilder.ClaveFilaConcepto(concepto.Id);
+            AplicarOverlayExcel(ws.Cell(fila, 2).Style,
+                OverrideEfectivo(claveFilaConcepto, ApuExportResolver.IdentificadorClave, ApuReportSnapshotBuilder.RolFilaConcepto));
+            AplicarOverlayExcel(ws.Range(fila, 3, fila, COLS - 1).Style,
+                OverrideEfectivo(claveFilaConcepto, ApuExportResolver.IdentificadorDescripcion, ApuReportSnapshotBuilder.RolFilaConcepto));
+            AplicarOverlayExcel(ws.Cell(fila, COLS).Style,
+                OverrideEfectivo(claveFilaConcepto, ApuExportResolver.IdentificadorUnidad, ApuReportSnapshotBuilder.RolFilaConcepto));
             fila++;
 
             // Cantidad / P.U. / Total del concepto en el presupuesto
@@ -580,6 +610,12 @@ namespace SOPRO.WinForms.Services
             rngPUV.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             rngPUV.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorPU);
 
+            // Override de la fila de cierre PU:{ConceptoPresupuesto.Id}.
+            AplicarOverlayExcel(rngPUV.Style, OverrideEfectivo(
+                ApuReportSnapshotBuilder.ClaveFilaPrecioUnitario(concepto.Id),
+                ApuExportResolver.IdentificadorImporte,
+                ApuReportSnapshotBuilder.RolFilaPrecioUnitario));
+
             ws.Range(fila, 1, fila, COLS).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
             fila++;
 
@@ -596,6 +632,68 @@ namespace SOPRO.WinForms.Services
 
         private static string FormatearMonedaTexto(decimal valor, ReportColumnSnapshot snapshot)
             => valor.ToString(ReportColumnGridFormat.FormatoMonedaPdf(snapshot.DecimalesImporte), CultureInfo.CurrentCulture);
+
+        /// <summary>
+        /// Aísla las propiedades que un override de celda o un estilo de rol
+        /// REALMENTE aportaron, comparando el estilo resuelto con el de la cascada
+        /// base (tabla + columna, sin celda/rol). Con el snapshot base sin estilos,
+        /// TODAS las propiedades quedan <c>null</c> (retrocompatibilidad exacta con
+        /// el render legacy).
+        /// </summary>
+        private ReportStyleOverlay OverrideEfectivo(string claveFila, string nombreColumna, string? rolFila)
+        {
+            var snapshot = _snapshot ?? throw new InvalidOperationException("El snapshot no está inicializado.");
+            var snapshotBase = _snapshotBase ?? snapshot;
+
+            var completo = ReportCellStyleResolver.Resolve(
+                snapshot, ApuReportSnapshotBuilder.ClaveVista, claveFila, nombreColumna, rolFila, false);
+            var baseStyle = ReportCellStyleResolver.Resolve(
+                snapshotBase, ApuReportSnapshotBuilder.ClaveVista, claveFila, nombreColumna, null, false);
+
+            return new ReportStyleOverlay(
+                Fuente: completo.Fuente != baseStyle.Fuente ? completo.Fuente : null,
+                TamanoFuente: completo.TamanoFuente != baseStyle.TamanoFuente ? completo.TamanoFuente : null,
+                Negrita: completo.Negrita != baseStyle.Negrita ? completo.Negrita : null,
+                Cursiva: completo.Cursiva != baseStyle.Cursiva ? completo.Cursiva : null,
+                ColorFuente: completo.ColorFuente != baseStyle.ColorFuente ? completo.ColorFuente : null,
+                ColorFondo: completo.ColorFondo != baseStyle.ColorFondo ? completo.ColorFondo : null,
+                AlineacionHorizontal: completo.AlineacionHorizontal != baseStyle.AlineacionHorizontal ? completo.AlineacionHorizontal : null,
+                AlineacionVertical: completo.AlineacionVertical != baseStyle.AlineacionVertical ? completo.AlineacionVertical : null,
+                Wrap: completo.Wrap != baseStyle.Wrap ? completo.Wrap : null,
+                FormatoNumerico: completo.FormatoNumerico != baseStyle.FormatoNumerico ? completo.FormatoNumerico : null);
+        }
+
+        /// <summary>
+        /// Aplica al estilo SOLO las propiedades no nulas del override (fuente,
+        /// tamaño, negrita, cursiva, colores de texto/fondo, alineaciones y wrap). No
+        /// toca el formato numérico (lo resuelve la columna).
+        /// </summary>
+        private static void AplicarOverlayExcel(IXLStyle estilo, ReportStyleOverlay overrideEfectivo)
+        {
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.Fuente))
+                estilo.Font.FontName = overrideEfectivo.Fuente;
+            if (overrideEfectivo.TamanoFuente is float tamano && tamano > 0)
+                estilo.Font.FontSize = tamano;
+            if (overrideEfectivo.Negrita is bool negrita)
+                estilo.Font.Bold = negrita;
+            if (overrideEfectivo.Cursiva is bool cursiva)
+                estilo.Font.Italic = cursiva;
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFuente))
+                estilo.Font.FontColor = ObtenerColorXL(overrideEfectivo.ColorFuente, "#000000");
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFondo))
+                estilo.Fill.BackgroundColor = ObtenerColorXL(overrideEfectivo.ColorFondo, "#FFFFFF");
+            if (overrideEfectivo.AlineacionHorizontal is ReportTextAlignment alineacion)
+                estilo.Alignment.Horizontal = ConvertirAlineacion(alineacion);
+            if (overrideEfectivo.AlineacionVertical is ReportVerticalAlignment alineacionV)
+                estilo.Alignment.Vertical = alineacionV switch
+                {
+                    ReportVerticalAlignment.Superior => XLAlignmentVerticalValues.Top,
+                    ReportVerticalAlignment.Inferior => XLAlignmentVerticalValues.Bottom,
+                    _ => XLAlignmentVerticalValues.Center,
+                };
+            if (overrideEfectivo.Wrap is bool wrap)
+                estilo.Alignment.WrapText = wrap;
+        }
 
         private static XLAlignmentHorizontalValues ConvertirAlineacion(ReportTextAlignment a) => a switch
         {

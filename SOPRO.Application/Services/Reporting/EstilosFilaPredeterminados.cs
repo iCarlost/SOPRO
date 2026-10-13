@@ -25,6 +25,9 @@ public static class EstilosFilaPredeterminados
     /// <summary>Tipo de reporte estable al que aplican estos defaults.</summary>
     public const string TipoReportePresupuesto = "Presupuesto";
 
+    /// <summary>Tipo de reporte estable del Cálculo de Indirectos.</summary>
+    public const string TipoReporteIndirectos = "Indirectos";
+
     /// <summary>Superposición vacía: ninguna propiedad (todo hereda).</summary>
     private static readonly ReportStyleOverlay Vacio = new();
 
@@ -61,6 +64,37 @@ public static class EstilosFilaPredeterminados
             : Vacio;
 
     /// <summary>
+    /// Defaults del Cálculo de Indirectos por rol de fila. Reproducen el pintado
+    /// histórico: la fila de GRUPO del grid usaba el gris 230,230,230 (#E6E6E6) y
+    /// negrita; las filas de cierre (Subtotal/Resumen) conservan los tonos
+    /// azulados que ya usaban PDF y Excel. La entidad Concepto no impone color:
+    /// hereda el de su columna/tabla. PDF y Excel convergen así al MISMO gris que
+    /// el grid (antes divergían: ambos usaban #E8E8E8 para el grupo).
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, ReportStyleOverlay> IndirectosDefaults =
+        new Dictionary<string, ReportStyleOverlay>(StringComparer.OrdinalIgnoreCase)
+        {
+            [RolFilaReporte.Grupo] = new ReportStyleOverlay(ColorFondo: "#E6E6E6", Negrita: true),
+            [RolFilaReporte.Subtotal] = new ReportStyleOverlay(ColorFondo: "#E3F2FD", ColorFuente: "#000000", Negrita: true),
+            [RolFilaReporte.Resumen] = new ReportStyleOverlay(ColorFondo: "#BBDEFB", ColorFuente: "#000000", Negrita: true),
+            // El concepto terminal no impone color: hereda el de su columna/tabla.
+            [RolFilaReporte.Concepto] = Vacio,
+        };
+
+    /// <summary>Roles con default definido para Indirectos (en orden de la tabla).</summary>
+    public static IReadOnlyList<string> RolesIndirectos { get; }
+        = IndirectosDefaults.Keys.ToList();
+
+    /// <summary>
+    /// Default de estilo del rol para Indirectos, o una superposición vacía si el
+    /// rol no tiene default (el consumidor hereda de niveles inferiores).
+    /// </summary>
+    public static ReportStyleOverlay Indirectos(string? rolFila)
+        => rolFila is not null && IndirectosDefaults.TryGetValue(rolFila, out var overlay)
+            ? overlay
+            : Vacio;
+
+    /// <summary>
     /// Combina el default del rol con el override PARCIAL del usuario (si existe):
     /// cada propiedad no nula del usuario gana; las demás heredan el default.
     /// </summary>
@@ -86,6 +120,45 @@ public static class EstilosFilaPredeterminados
     /// <param name="estilosUsuario">Estilos de rol persistidos, o <c>null</c> si no hay.</param>
     public static IReadOnlyList<ReportRowRoleStyle> CombinarPresupuesto(
         IEnumerable<ReportRowRoleStyle>? estilosUsuario)
+        => CombinarRoles(PresupuestoDefaults, estilosUsuario);
+
+    /// <summary>
+    /// Combina el default del rol de Indirectos con el override PARCIAL del usuario
+    /// (si existe): cada propiedad no nula del usuario gana; las demás heredan el
+    /// default.
+    /// </summary>
+    /// <param name="rolFila">Rol funcional de la fila.</param>
+    /// <param name="estilosUsuario">Overrides de rol persistidos indexados por rol, o <c>null</c>.</param>
+    public static ReportStyleOverlay CombinarIndirectos(
+        string? rolFila,
+        IReadOnlyDictionary<string, ReportStyleOverlay>? estilosUsuario)
+    {
+        var baseStyle = Indirectos(rolFila);
+        if (rolFila is null || estilosUsuario is null || !estilosUsuario.TryGetValue(rolFila, out var superior))
+            return baseStyle;
+        return Combinar(baseStyle, superior);
+    }
+
+    /// <summary>
+    /// Devuelve la lista de estilos de rol efectivos de Indirectos: TODOS los
+    /// defaults (combinados con el override del usuario cuando exista) más los roles
+    /// persistidos que no tienen default (se conservan tal cual). Es la que se
+    /// inyecta en <see cref="ReportColumnSnapshot.EstilosFila"/> antes de renderizar
+    /// PDF/Excel.
+    /// </summary>
+    /// <param name="estilosUsuario">Estilos de rol persistidos, o <c>null</c> si no hay.</param>
+    public static IReadOnlyList<ReportRowRoleStyle> CombinarIndirectos(
+        IEnumerable<ReportRowRoleStyle>? estilosUsuario)
+        => CombinarRoles(IndirectosDefaults, estilosUsuario);
+
+    /// <summary>
+    /// Núcleo común de combinación de una tabla de defaults con los estilos de rol
+    /// persistidos: devuelve TODOS los defaults (con el override del usuario cuando
+    /// exista) más los roles persistidos sin default (conservados tal cual).
+    /// </summary>
+    private static IReadOnlyList<ReportRowRoleStyle> CombinarRoles(
+        IReadOnlyDictionary<string, ReportStyleOverlay> defaults,
+        IEnumerable<ReportRowRoleStyle>? estilosUsuario)
     {
         var usuario = new Dictionary<string, ReportStyleOverlay>(StringComparer.OrdinalIgnoreCase);
         if (estilosUsuario is not null)
@@ -97,8 +170,8 @@ public static class EstilosFilaPredeterminados
             }
         }
 
-        var resultado = new List<ReportRowRoleStyle>(PresupuestoDefaults.Count + usuario.Count);
-        foreach (var kv in PresupuestoDefaults)
+        var resultado = new List<ReportRowRoleStyle>(defaults.Count + usuario.Count);
+        foreach (var kv in defaults)
         {
             usuario.TryGetValue(kv.Key, out var superior);
             resultado.Add(new ReportRowRoleStyle(kv.Key, Combinar(kv.Value, superior)));
@@ -107,7 +180,7 @@ public static class EstilosFilaPredeterminados
         // Roles persistidos sin default (p. ej. de otros reportes): no se pierden.
         foreach (var kv in usuario)
         {
-            if (!PresupuestoDefaults.ContainsKey(kv.Key))
+            if (!defaults.ContainsKey(kv.Key))
                 resultado.Add(new ReportRowRoleStyle(kv.Key, kv.Value));
         }
 

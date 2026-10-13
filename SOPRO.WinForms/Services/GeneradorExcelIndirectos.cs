@@ -6,6 +6,8 @@ using System.Linq;
 using ClosedXML.Excel;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Reporting;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Reporting.Formatting;
 using SOPRO.Reporting.Layout;
@@ -46,6 +48,15 @@ namespace SOPRO.WinForms.Services
             if (plantilla == null) throw new ArgumentNullException(nameof(plantilla));
             if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
 
+            // Defaults NEUTRALES por rol de fila (única fuente de verdad, compartida
+            // con grid/PDF) combinados con la config persistida del usuario. El
+            // override de celda del snapshot sigue teniendo la máxima precedencia.
+            snapshot = snapshot with
+            {
+                EstilosFila = EstilosFilaPredeterminados.CombinarIndirectos(snapshot.EstilosFila)
+            };
+            var snapshotBase = snapshot with { EstilosCelda = null, EstilosFila = null };
+
             if (string.IsNullOrEmpty(rutaDestino))
             {
                 var carpeta = Path.Combine(
@@ -81,7 +92,7 @@ namespace SOPRO.WinForms.Services
             ws.SheetView.FreezeRows(fila - 1);
 
             // ── SECCIÓN OFICINA CENTRAL ───────────────────────────────────────
-            fila = EscribirSeccion(ws, "OFICINA CENTRAL", gruposOC, cols, false, fila, snapshot);
+            fila = EscribirSeccion(ws, "OFICINA CENTRAL", gruposOC, cols, false, fila, snapshot, snapshotBase);
 
             // Resumen OC
             fila = EscribirResumenSeccion(ws,
@@ -89,12 +100,12 @@ namespace SOPRO.WinForms.Services
                 config.TotalOficinaCentralAnual,
                 config.PorcentajeOficinaCentral,
                 "% sobre Volumen Anual",
-                N, fila, snapshot);
+                N, fila, snapshot, snapshotBase, ClaveFilaReporte.Subtotal("OC"));
 
             fila++; // espacio
 
             // ── SECCIÓN CAMPO ─────────────────────────────────────────────────
-            fila = EscribirSeccion(ws, "GASTOS DE CAMPO", gruposCampo, cols, true, fila, snapshot);
+            fila = EscribirSeccion(ws, "GASTOS DE CAMPO", gruposCampo, cols, true, fila, snapshot, snapshotBase);
 
             // Resumen Campo
             fila = EscribirResumenSeccion(ws,
@@ -102,12 +113,12 @@ namespace SOPRO.WinForms.Services
                 config.TotalCampo,
                 config.PorcentajeCampo,
                 "% sobre Costo Directo",
-                N, fila, snapshot);
+                N, fila, snapshot, snapshotBase, ClaveFilaReporte.Subtotal("CAMPO"));
 
             fila++; // espacio
 
             // ── RESUMEN FINAL ─────────────────────────────────────────────────
-            fila = EscribirResumenFinal(ws, config, N, fila, snapshot);
+            fila = EscribirResumenFinal(ws, config, N, fila, snapshot, snapshotBase);
 
             // ── PIE ───────────────────────────────────────────────────────────
             fila += 2;
@@ -231,7 +242,7 @@ namespace SOPRO.WinForms.Services
         // ── SECCIÓN (OFICINA CENTRAL o CAMPO) ────────────────────────────────
         private int EscribirSeccion(IXLWorksheet ws, string titulo,
             List<GrupoIndirecto> grupos, IReadOnlyList<ReportColumnDefinition> cols,
-            bool mostrarDuracion, int fila, ReportColumnSnapshot snapshot)
+            bool mostrarDuracion, int fila, ReportColumnSnapshot snapshot, ReportColumnSnapshot snapshotBase)
         {
             // Encabezado de sección
             var rEnc = ws.Range(fila, 1, fila, cols.Count); rEnc.Merge();
@@ -243,7 +254,8 @@ namespace SOPRO.WinForms.Services
 
             foreach (var grupo in grupos)
             {
-                // Fila de grupo
+                // Fila de grupo: fondo gris + negrita desde el DEFAULT del rol Grupo.
+                var claveGrupo = ClaveFilaReporte.GrupoIndirecto(grupo.Id);
                 for (int i = 0; i < cols.Count; i++)
                 {
                     var col  = cols[i];
@@ -262,16 +274,17 @@ namespace SOPRO.WinForms.Services
 
                     AplicarEstiloCelda(cell, cont);
                     cell.Style.Font.Bold            = true;
-                    cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#E8E8E8");
                     cell.Style.Alignment.Horizontal = AlineacionXL(col.Alineacion);
+                    AplicarOverlayExcel(cell.Style, OverrideEfectivo(snapshot, snapshotBase, claveGrupo, col.Identificador, RolFilaReporte.Grupo));
                     cell.Style.Border.BottomBorder      = XLBorderStyleValues.Thin;
                     cell.Style.Border.BottomBorderColor = XLColor.Gray;
                 }
                 ws.Row(fila).Height = 15; fila++;
 
-                // Filas de conceptos
+                // Filas de conceptos (override de celda opcional).
                 foreach (var concepto in grupo.Conceptos.Where(c => c.Activo).OrderBy(c => c.Orden))
                 {
+                    var claveConcepto = ClaveFilaReporte.ConceptoIndirecto(concepto.Id);
                     for (int i = 0; i < cols.Count; i++)
                     {
                         var col  = cols[i];
@@ -290,6 +303,7 @@ namespace SOPRO.WinForms.Services
 
                         AplicarEstiloCelda(cell, cont);
                         cell.Style.Alignment.Horizontal = AlineacionXL(col.Alineacion);
+                        AplicarOverlayExcel(cell.Style, OverrideEfectivo(snapshot, snapshotBase, claveConcepto, col.Identificador, RolFilaReporte.Concepto));
                         cell.Style.Border.BottomBorder      = XLBorderStyleValues.Hair;
                         cell.Style.Border.BottomBorderColor = XLColor.LightGray;
                     }
@@ -310,8 +324,11 @@ namespace SOPRO.WinForms.Services
         }
 
         private int EscribirResumenSeccion(IXLWorksheet ws, string etiquetaTotal,
-            decimal total, decimal porcentaje, string labelPorc, int N, int fila, ReportColumnSnapshot snapshot)
+            decimal total, decimal porcentaje, string labelPorc, int N, int fila, ReportColumnSnapshot snapshot, ReportColumnSnapshot snapshotBase, string claveFila)
         {
+            // Fondo/negrita del subtotal: DEFAULT del rol Subtotal vía el resolver.
+            var efectivo = OverrideEfectivo(snapshot, snapshotBase, claveFila, string.Empty, RolFilaReporte.Subtotal);
+
             // Línea separadora
             ws.Range(fila, 1, fila, N).Style.Border.TopBorder      = XLBorderStyleValues.Medium;
             ws.Range(fila, 1, fila, N).Style.Border.TopBorderColor = XLColor.FromHtml("#1565C0");
@@ -321,12 +338,14 @@ namespace SOPRO.WinForms.Services
             rEtiq.Style.Font.Bold = true;
             rEtiq.Style.Fill.BackgroundColor = XLColor.FromHtml("#E3F2FD");
             rEtiq.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+            AplicarOverlayExcel(rEtiq.Style, efectivo);
 
             ws.Cell(fila, N).Value = total;
             ws.Cell(fila, N).Style.NumberFormat.Format = ReportColumnGridFormat.FormatoMonedaExcel(snapshot.DecimalesImporte, CultureInfo.CurrentCulture);
             ws.Cell(fila, N).Style.Font.Bold = true;
             ws.Cell(fila, N).Style.Fill.BackgroundColor = XLColor.FromHtml("#E3F2FD");
             ws.Cell(fila, N).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+            AplicarOverlayExcel(ws.Cell(fila, N).Style, efectivo);
             ws.Row(fila).Height = 15; fila++;
 
             // Porcentaje
@@ -344,8 +363,11 @@ namespace SOPRO.WinForms.Services
         }
 
         private int EscribirResumenFinal(IXLWorksheet ws, ConfiguracionIndirectos config,
-                                          int N, int fila, ReportColumnSnapshot snapshot)
+                                          int N, int fila, ReportColumnSnapshot snapshot, ReportColumnSnapshot snapshotBase)
         {
+            // Fondo/negrita del total: DEFAULT del rol Resumen vía el resolver.
+            var efectivoResumen = OverrideEfectivo(snapshot, snapshotBase, ClaveFilaReporte.Total, string.Empty, RolFilaReporte.Resumen);
+
             // Título resumen
             var rTit = ws.Range(fila, 1, fila, N); rTit.Merge();
             rTit.FirstCell().Value = "RESUMEN DE INDIRECTOS";
@@ -355,19 +377,21 @@ namespace SOPRO.WinForms.Services
             rTit.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             ws.Row(fila).Height = 18; fila++;
 
-            void FilaResumen(string label, decimal porcentaje, string fondo, bool bold = false)
+            void FilaResumen(string label, decimal porcentaje, string fondo, bool bold = false, ReportStyleOverlay? efectivo = null)
             {
                 var rL = ws.Range(fila, 1, fila, N - 1); rL.Merge();
                 rL.FirstCell().Value = label;
                 rL.Style.Font.Bold = bold;
                 rL.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(fondo);
                 rL.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                if (efectivo is not null) AplicarOverlayExcel(rL.Style, efectivo);
 
                 ws.Cell(fila, N).Value = porcentaje / 100m;
                 ws.Cell(fila, N).Style.NumberFormat.Format = ReportColumnGridFormat.FormatoPorcentajeExcel(snapshot.DecimalesPorcentaje);
                 ws.Cell(fila, N).Style.Font.Bold = bold;
                 ws.Cell(fila, N).Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(fondo);
                 ws.Cell(fila, N).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                if (efectivo is not null) AplicarOverlayExcel(ws.Cell(fila, N).Style, efectivo);
                 ws.Row(fila).Height = 14; fila++;
             }
 
@@ -378,7 +402,7 @@ namespace SOPRO.WinForms.Services
             ws.Range(fila, 1, fila, N).Style.Border.TopBorder      = XLBorderStyleValues.Medium;
             ws.Range(fila, 1, fila, N).Style.Border.TopBorderColor = XLColor.FromHtml("#1565C0");
 
-            FilaResumen("% TOTAL INDIRECTOS:", config.PorcentajeTotal, "#BBDEFB", bold: true);
+            FilaResumen("% TOTAL INDIRECTOS:", config.PorcentajeTotal, "#BBDEFB", bold: true, efectivoResumen);
 
             return fila;
         }
@@ -431,7 +455,7 @@ namespace SOPRO.WinForms.Services
             };
         }
 
-        private XLAlignmentHorizontalValues AlineacionXL(ReportTextAlignment a) => a switch
+        private static XLAlignmentHorizontalValues AlineacionXL(ReportTextAlignment a) => a switch
         {
             ReportTextAlignment.Centro      => XLAlignmentHorizontalValues.Center,
             ReportTextAlignment.Derecha     => XLAlignmentHorizontalValues.Right,
@@ -444,6 +468,78 @@ namespace SOPRO.WinForms.Services
             if (string.IsNullOrEmpty(nombre)) return "Proyecto";
             foreach (var c in Path.GetInvalidFileNameChars()) nombre = nombre.Replace(c, '_');
             return nombre.Length > 40 ? nombre[..40] : nombre;
+        }
+
+        /// <summary>
+        /// Aísla las propiedades que un override de celda o un estilo de rol
+        /// REALMENTE aportaron, comparando el estilo resuelto con el de la cascada
+        /// base (tabla + columna, sin celda/rol). Con <paramref name="snapshotBase"/>
+        /// sin estilos, TODAS las propiedades quedan <c>null</c> (retrocompatibilidad
+        /// exacta con el render legacy).
+        /// </summary>
+        private static ReportStyleOverlay OverrideEfectivo(
+            ReportColumnSnapshot snapshot,
+            ReportColumnSnapshot snapshotBase,
+            string claveFila,
+            string nombreColumna,
+            string? rolFila)
+        {
+            var claveVista = IndirectosReportSnapshotBuilder.ClaveVista;
+            var completo = ReportCellStyleResolver.Resolve(snapshot, claveVista, claveFila, nombreColumna, rolFila, false);
+            var baseStyle = ReportCellStyleResolver.Resolve(snapshotBase, claveVista, claveFila, nombreColumna, null, false);
+
+            return new ReportStyleOverlay(
+                Fuente: completo.Fuente != baseStyle.Fuente ? completo.Fuente : null,
+                TamanoFuente: completo.TamanoFuente != baseStyle.TamanoFuente ? completo.TamanoFuente : null,
+                Negrita: completo.Negrita != baseStyle.Negrita ? completo.Negrita : null,
+                Cursiva: completo.Cursiva != baseStyle.Cursiva ? completo.Cursiva : null,
+                ColorFuente: completo.ColorFuente != baseStyle.ColorFuente ? completo.ColorFuente : null,
+                ColorFondo: completo.ColorFondo != baseStyle.ColorFondo ? completo.ColorFondo : null,
+                AlineacionHorizontal: completo.AlineacionHorizontal != baseStyle.AlineacionHorizontal ? completo.AlineacionHorizontal : null,
+                AlineacionVertical: completo.AlineacionVertical != baseStyle.AlineacionVertical ? completo.AlineacionVertical : null,
+                Wrap: completo.Wrap != baseStyle.Wrap ? completo.Wrap : null,
+                FormatoNumerico: completo.FormatoNumerico != baseStyle.FormatoNumerico ? completo.FormatoNumerico : null);
+        }
+
+        /// <summary>
+        /// Aplica al estilo SOLO las propiedades no nulas del override (fuente,
+        /// tamaño, negrita, cursiva, colores de texto/fondo, alineaciones y wrap).
+        /// No toca el formato numérico (lo resuelve <see cref="ReportColumnGridFormat"/>).
+        /// </summary>
+        private static void AplicarOverlayExcel(IXLStyle estilo, ReportStyleOverlay overrideEfectivo)
+        {
+            if (estilo is null || overrideEfectivo is null) return;
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.Fuente))
+                estilo.Font.FontName = overrideEfectivo.Fuente;
+            if (overrideEfectivo.TamanoFuente is float tamano && tamano > 0)
+                estilo.Font.FontSize = tamano;
+            if (overrideEfectivo.Negrita is bool negrita)
+                estilo.Font.Bold = negrita;
+            if (overrideEfectivo.Cursiva is bool cursiva)
+                estilo.Font.Italic = cursiva;
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFuente))
+                estilo.Font.FontColor = ObtenerColorXL(overrideEfectivo.ColorFuente, "#000000");
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFondo))
+                estilo.Fill.BackgroundColor = ObtenerColorXL(overrideEfectivo.ColorFondo, "#FFFFFF");
+            if (overrideEfectivo.AlineacionHorizontal is ReportTextAlignment alineacion)
+                estilo.Alignment.Horizontal = AlineacionXL(alineacion);
+            if (overrideEfectivo.AlineacionVertical is ReportVerticalAlignment alineacionV)
+                estilo.Alignment.Vertical = ConvertirAlineacionVerticalXL(alineacionV);
+            if (overrideEfectivo.Wrap is bool wrap)
+                estilo.Alignment.WrapText = wrap;
+        }
+
+        private static XLAlignmentVerticalValues ConvertirAlineacionVerticalXL(ReportVerticalAlignment alineacion) => alineacion switch
+        {
+            ReportVerticalAlignment.Superior => XLAlignmentVerticalValues.Top,
+            ReportVerticalAlignment.Inferior => XLAlignmentVerticalValues.Bottom,
+            _                                => XLAlignmentVerticalValues.Center,
+        };
+
+        private static XLColor ObtenerColorXL(string? valor, string fallbackHex)
+        {
+            if (string.IsNullOrWhiteSpace(valor)) return ExcelColorHelper.SafeFromHtml(fallbackHex);
+            return ExcelColorHelper.SafeFromHtml(valor);
         }
     }
 }

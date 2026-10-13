@@ -58,10 +58,9 @@ namespace SOPRO.WinForms.Forms
                 var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.Indirectos, lblTitulo.Text);
 
                 // Snapshot neutral compartido con la ruta Excel: misma lista/orden/
-                // ancho/formato/estilo y mismos decimales globales del proyecto.
-                var snapshot = IndirectosExportResolver.BuildSnapshot(
-                    _proyecto.Id, lblTitulo.Text, columnas,
-                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+                // ancho/formato/estilo y mismos decimales globales del proyecto,
+                // poblado con los overrides de celda/rol persistidos (paso 5.1).
+                var snapshot = ConstruirSnapshotIndirectos(columnas);
 
                 var generador = new Services.GeneradorPdfIndirectos(svc);
                 string ruta = generador.Generar(_proyecto, gruposOC, gruposCampo,
@@ -123,10 +122,9 @@ namespace SOPRO.WinForms.Forms
                 var tituloCfg = new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyecto.Id, ReportTitleModuleKeys.Indirectos, lblTitulo.Text);
 
                 // Snapshot neutral compartido con la ruta PDF: misma lista/orden/
-                // ancho/formato/estilo y mismos decimales globales del proyecto.
-                var snapshot = IndirectosExportResolver.BuildSnapshot(
-                    _proyecto.Id, lblTitulo.Text, columnas,
-                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+                // ancho/formato/estilo y mismos decimales globales del proyecto,
+                // poblado con los overrides de celda/rol persistidos (paso 5.1).
+                var snapshot = ConstruirSnapshotIndirectos(columnas);
 
                 var generador = new Services.GeneradorExcelIndirectos(svc);
                 string ruta = generador.Generar(_proyecto, gruposOC, gruposCampo,
