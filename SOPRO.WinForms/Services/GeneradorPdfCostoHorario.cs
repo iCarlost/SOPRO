@@ -9,6 +9,7 @@ using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Reporting.Formatting;
 using SOPRO.Reporting.Layout;
@@ -88,7 +89,8 @@ namespace SOPRO.WinForms.Services
 
             ConstruirHeader(section, proyecto, plantilla, headerHeightCm);
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
-            ConstruirCuerpo(section, proyecto, maquinas, cols, estiloTabla, snapshot, tituloCfg);
+            ConstruirCuerpo(section, proyecto, maquinas, cols, estiloTabla, snapshot,
+                ReportCellOverlayResolver.SinEstilos(snapshot), tituloCfg);
 
             var renderer = new PdfDocumentRenderer() { Document = doc };
             renderer.RenderDocument();
@@ -272,6 +274,7 @@ namespace SOPRO.WinForms.Services
             IReadOnlyList<ReportColumnDefinition> cols,
             ReportTableStyle estiloTabla,
             ReportColumnSnapshot snapshot,
+            ReportColumnSnapshot snapshotBase,
             ConfiguracionTituloReporte? tituloCfg)
         {
             var pTitle = section.AddParagraph("ANÁLISIS DE COSTO HORARIO DE MAQUINARIA Y EQUIPO", "CostoHorarioTitle");
@@ -321,6 +324,7 @@ namespace SOPRO.WinForms.Services
                 row.Shading.Color = ParseColor(estiloTabla.FilaAlterna.ColorFondoAlterno
                     ?? estiloTabla.EstiloContenido.ColorFondo ?? "#FFFFFF");
 
+                var claveFila = ClaveFilaReporte.Insumo(m.Id);
                 for (int i = 0; i < cols.Count; i++)
                 {
                     var c = cols[i];
@@ -334,6 +338,11 @@ namespace SOPRO.WinForms.Services
                     p.Format.SpaceBefore = 0;
                     PdfFontHelper.ApplyFont(p.Format.Font, cont.Fuente, cont.Tamano <= 0 ? 9 : cont.Tamano, cont.Negrita, cont.Cursiva);
                     p.Format.Font.Color = ParseColor(cont.ColorFuente);
+
+                    // Override de celda (máxima precedencia) sobre el estilo de columna.
+                    AplicarOverlayPdf(p, cell, ReportCellOverlayResolver.OverrideEfectivo(
+                        snapshot, snapshotBase, CostoHorarioReportSnapshotBuilder.ClaveVista,
+                        claveFila, c.Identificador));
                 }
 
                 alt = !alt;
@@ -453,6 +462,31 @@ namespace SOPRO.WinForms.Services
             {
                 return MColors.Black;
             }
+        }
+
+        /// <summary>
+        /// Aplica al párrafo/celda SOLO las propiedades no nulas del override. Un
+        /// override numérico (<c>FormatoNumerico</c>) se IGNORA: el formato numérico
+        /// se conserva por columna vía <see cref="ReportColumnGridFormat"/>.
+        /// </summary>
+        private static void AplicarOverlayPdf(Paragraph p, Cell cell, ReportStyleOverlay overrideEfectivo)
+        {
+            if (overrideEfectivo is null) return;
+
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.Fuente))
+                p.Format.Font.Name = PdfFontHelper.NormalizeFontName(overrideEfectivo.Fuente);
+            if (overrideEfectivo.TamanoFuente is float tamano && tamano > 0)
+                p.Format.Font.Size = tamano;
+            if (overrideEfectivo.Negrita is bool negrita)
+                p.Format.Font.Bold = negrita;
+            if (overrideEfectivo.Cursiva is bool cursiva)
+                p.Format.Font.Italic = cursiva;
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFuente))
+                p.Format.Font.Color = ParseColor(overrideEfectivo.ColorFuente);
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFondo))
+                cell.Shading.Color = ParseColor(overrideEfectivo.ColorFondo);
+            if (overrideEfectivo.AlineacionHorizontal is ReportTextAlignment alineacion)
+                p.Format.Alignment = ConvertirAlineacion(alineacion);
         }
     }
 

@@ -1,6 +1,7 @@
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -264,6 +265,12 @@ namespace SOPRO.WinForms.Forms
                 var colPorcentaje = ResolverColumna(snapshot, UtilidadReportColumns.Porcentaje);
                 var colImporteFinal = ResolverColumna(snapshot, UtilidadReportColumns.ImporteFinal);
 
+                // Colores de las filas de CIERRE por ROL: fuente única de verdad
+                // compartida con el PDF (no se hardcodean aquí).
+                var estiloSubtotal = EstilosFilaPredeterminados.Utilidad(RolFilaReporte.Subtotal);
+                var estiloTotal = EstilosFilaPredeterminados.Utilidad(RolFilaReporte.Total);
+                var estiloResumen = EstilosFilaPredeterminados.Utilidad(RolFilaReporte.Resumen);
+
                 using var dlg = new SaveFileDialog
                 {
                     Title = "Guardar reporte de utilidad",
@@ -305,7 +312,7 @@ namespace SOPRO.WinForms.Forms
                 EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "COSTO DIRECTO", costoDirecto, colBase, snapshot);
                 EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "COSTO INDIRECTO", costoIndirecto, colBase, snapshot);
                 EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "FINANCIAMIENTO", financiamiento, colBase, snapshot);
-                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "SUBTOTAL", subtotal, colBase, snapshot, true, "#FFF2CC", "#C00000");
+                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "SUBTOTAL", subtotal, colBase, snapshot, true, estiloSubtotal.ColorFondo, estiloSubtotal.ColorFuente);
 
                 fila++;
 
@@ -339,17 +346,17 @@ namespace SOPRO.WinForms.Forms
                 ws.Cell(fila, 1).Value = "IMPORTE DE UTILIDAD =";
                 ws.Cell(fila, 1).Style.Font.Bold = true;
                 ws.Cell(fila, 1).Style.Font.FontColor = XLColor.Black;
-                ws.Cell(fila, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#92D050");
+                ws.Cell(fila, 1).Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(estiloTotal.ColorFondo);
                 ws.Cell(fila, 4).Value = _resultado.ImporteUtilidad;
                 ws.Cell(fila, 4).Style.NumberFormat.Format = ReportColumnGridFormat.ResolveExcelFormat(colImporteFinal, snapshot);
                 ws.Cell(fila, 4).Style.Font.Bold = true;
-                ws.Cell(fila, 4).Style.Fill.BackgroundColor = XLColor.FromHtml("#92D050");
+                ws.Cell(fila, 4).Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(estiloTotal.ColorFondo);
                 AplicarBordeCaja(ws.Range(fila, 1, fila, 4));
                 fila += 2;
 
                 EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "IMPORTE ISR", _resultado.ImporteIsr, colImporteFinal, snapshot);
                 EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "IMPORTE PTU", _resultado.ImportePtu, colImporteFinal, snapshot);
-                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "UTILIDAD NETA ESTIMADA", _resultado.UtilidadNetaEstimada, colImporteFinal, snapshot, true, "#D9EAD3", null);
+                EscribirFilaMoneda(ws, fila++, etiquetaCol, valorCol, "UTILIDAD NETA ESTIMADA", _resultado.UtilidadNetaEstimada, colImporteFinal, snapshot, true, estiloResumen.ColorFondo, null);
 
                 for (int col = 1; col <= totalCols; col++)
                     ws.Column(col).Width = col switch { 1 => 30, 2 => 4, 3 => 18, 4 => 18, 5 => 14, _ => 12 };

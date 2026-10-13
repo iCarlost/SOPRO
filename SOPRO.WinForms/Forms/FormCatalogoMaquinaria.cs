@@ -16,7 +16,7 @@ using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
 {
-    public partial class FormCatalogoMaquinaria : Form, IGridFormato, IBusquedaGrid, IRecalculable, IConsolidacionInsumos
+    public partial class FormCatalogoMaquinaria : Form, IGridFormato, IBusquedaGrid, IRecalculable, IConsolidacionInsumos, IGridSeleccionFormato
     {
         public static event EventHandler InsumosModificados;
 

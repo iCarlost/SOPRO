@@ -123,8 +123,12 @@ namespace SOPRO.WinForms.Forms
             
             // Suscribirse a cambios de configuración
             FormatoHelper.ConfiguracionCambiada += OnConfiguracionCambiada;
-            // Ribbon: detectar click en encabezado de columna
-            dgvExplosion.ColumnHeaderMouseClick += (s, e) => NotificarColumnaSeleccionada(e.ColumnIndex);
+            // Ribbon: detectar click en encabezado de columna (destino = COLUMNA)
+            dgvExplosion.ColumnHeaderMouseClick += (s, e) =>
+            {
+                _seleccionPorEncabezado = true;
+                NotificarColumnaSeleccionada(e.ColumnIndex);
+            };
             dgvExplosion.ColumnWidthChanged += DgvExplosion_ColumnWidthChanged;
 
             ControlRenderHelper.HabilitarDobleBuffer(this);

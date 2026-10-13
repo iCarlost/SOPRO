@@ -1,0 +1,451 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
+using System.Windows.Forms;
+using SOPRO.Application.DTOs.Programacion;
+using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services.Reporting;
+using SOPRO.Application.UseCases.Reporting;
+using SOPRO.Core.Entities;
+using SOPRO.WinForms.Helpers;
+using SOPRO.WinForms.Undo;
+
+namespace SOPRO.WinForms.Forms
+{
+    /// <summary>
+    /// Formato por celda/rol del Programa de Obra (paso 6.2). Replica el patrón de
+    /// Presupuesto (4.1) e Indirectos/Matrices (5.1): selección del grid → direcciones
+    /// ESTABLES (<c>ACT:{Id}</c> actividades, <c>RES:{Clave}</c> agrupadores) →
+    /// persistencia por lote con <see cref="FormatoReporteService"/> → undo/redo como
+    /// UNA acción compuesta. Los generadores PDF/Excel consumen el snapshot neutral
+    /// (con overrides) sin leer el <c>DataGridView</c>.
+    /// </summary>
+    public partial class FormProgramaObra
+    {
+        /// <summary>Tipo de reporte estable de este módulo para la persistencia de formato.</summary>
+        internal const string FormatoTipoReporte = "ProgramaObra";
+
+        /// <summary>
+        /// Vista por defecto del programa. Se usa "" (comodín de vista) para que el
+        /// override guardado desde el grid resuelva en cualquier vista del reporte
+        /// (<c>ReportCellStyleResolver</c> trata "" como comodín).
+        /// </summary>
+        internal const string FormatoVista = "";
+
+        private FormatoReporteService? _formatoReporteService;
+        private Dictionary<ReportCellAddress, ReportStyleOverlay>? _overlaysFormato;
+        private readonly List<CambioFormatoSeleccion> _pendientesFormato = new();
+        private bool _flushFormatoProgramado;
+        private bool _seleccionPorEncabezado;
+
+        private Dictionary<string, ReportStyleOverlay>? _estilosFilaFormato;
+        private int _estilosFilaFormatoProyectoId = -1;
+
+        private FormatoReporteService FormatoService
+            => _formatoReporteService ??= new FormatoReporteService(_context);
+
+        /// <summary>
+        /// Identificadores ESTABLES de las columnas formateables del Programa de Obra.
+        /// Coinciden con el identificador neutral (<see cref="ReportColumnDefinition.Identificador"/>)
+        /// que emite <c>ProgramaObraReportSnapshotBuilder</c>.
+        /// </summary>
+        private static readonly HashSet<string> ColumnasFormateables = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ProgramaObraReportSnapshotBuilder.ColOrden,
+            ProgramaObraReportSnapshotBuilder.ColClave,
+            ProgramaObraReportSnapshotBuilder.ColDescripcion,
+            ProgramaObraReportSnapshotBuilder.ColUnidad,
+            ProgramaObraReportSnapshotBuilder.ColPredecesora,
+            ProgramaObraReportSnapshotBuilder.ColCantidad,
+            ProgramaObraReportSnapshotBuilder.ColFechaInicio,
+            ProgramaObraReportSnapshotBuilder.ColFechaFin,
+            ProgramaObraReportSnapshotBuilder.ColDuracionDias,
+            ProgramaObraReportSnapshotBuilder.ColRendimientoDiario,
+            ProgramaObraReportSnapshotBuilder.ColFrentes,
+            ProgramaObraReportSnapshotBuilder.ColPrecioUnitario,
+            ProgramaObraReportSnapshotBuilder.ColImporte,
+            ProgramaObraReportSnapshotBuilder.ColRutaCritica,
+        };
+
+        /// <summary>Conecta los eventos del grid con el formato por celda.</summary>
+        private void InicializarFormatoProgramaObra()
+        {
+            // Distinguir interacción de cuerpo (=> destino CELDAS) de encabezado
+            // (=> destino COLUMNA). CellMouseDown se dispara ANTES del cambio de selección.
+            dgvActividades.CellMouseDown += DgvActividades_CellMouseDownFormato;
+            dgvActividades.SelectionChanged += DgvActividades_SelectionChangedFormato;
+            dgvActividades.CellFormatting += DgvActividades_CellFormattingFormato;
+        }
+
+        /// <summary>Mapa estable nombre de columna del grid → identificador neutral.</summary>
+        internal static string? ObtenerNombreColumnaFormato(DataGridView grid, int columnIndex)
+        {
+            if (grid is null || columnIndex < 0 || columnIndex >= grid.Columns.Count) return null;
+            var nombre = grid.Columns[columnIndex].Name;
+            return ColumnasFormateables.Contains(nombre) ? nombre : null;
+        }
+
+        /// <summary>
+        /// Clave ESTABLE de la fila para el formato de celdas, o <c>null</c> si la
+        /// fila no tiene una entidad persistida. Los agrupadores usan
+        /// <c>RES:{Clave}</c> y las actividades <c>ACT:{Id}</c>.
+        /// </summary>
+        internal static string? ObtenerClaveFilaFormato(DataGridView grid, int rowIndex)
+        {
+            if (grid is null) return null;
+            if (rowIndex < 0 || rowIndex >= grid.Rows.Count) return null;
+            var fila = grid.Rows[rowIndex];
+            if ((fila.DataBoundItem as ActivityGridRowDto ?? fila.Tag as ActivityGridRowDto) is not ActivityGridRowDto dto)
+                return null;
+            if (!dto.EsResumen && dto.Id <= 0) return null;
+
+            return ProgramaObraReportSnapshotBuilder.ClaveFila(dto.EsResumen, dto.Id, dto.Clave);
+        }
+
+        /// <summary>
+        /// Convierte las celdas seleccionadas en direcciones estables, descartando
+        /// filas sin entidad y columnas no formateables. NO deduplica: el coordinador
+        /// (Ctrl / rangos discontinuos) es quien deduplica y filtra.
+        /// </summary>
+        internal static IReadOnlyList<ReportCellAddress> ConstruirDireccionesSeleccionadas(
+            DataGridView grid,
+            IEnumerable<DataGridViewCell> celdas)
+        {
+            var direcciones = new List<ReportCellAddress>();
+            if (grid is null || celdas is null) return direcciones;
+
+            foreach (var celda in celdas)
+            {
+                if (celda is null || celda.RowIndex < 0 || celda.ColumnIndex < 0) continue;
+
+                var clave = ObtenerClaveFilaFormato(grid, celda.RowIndex);
+                if (clave is null) continue;
+
+                var columna = ObtenerNombreColumnaFormato(grid, celda.ColumnIndex);
+                if (columna is null) continue;
+
+                direcciones.Add(new ReportCellAddress(FormatoVista, clave, columna));
+            }
+
+            return direcciones;
+        }
+
+        /// <summary>
+        /// Construye el lote que <see cref="FormatoReporteService.AplicarCeldas"/>
+        /// persiste: con <paramref name="aplicarAntes"/> se toma el estado "antes"
+        /// (undo) y en otro caso el "después" (do/redo). Un overlay <c>null</c> indica
+        /// BORRAR el override de esa celda.
+        /// </summary>
+        internal static IReadOnlyList<CambioFormatoCelda> ConstruirLoteCambios(
+            IEnumerable<CambioFormatoSeleccion> cambios,
+            bool aplicarAntes)
+        {
+            var lote = new List<CambioFormatoCelda>();
+            if (cambios is null) return lote;
+
+            foreach (var cambio in cambios)
+            {
+                if (cambio is null || cambio.Direccion is null) continue;
+
+                var vista = string.IsNullOrEmpty(cambio.Direccion.ClaveVista)
+                    ? FormatoVista
+                    : cambio.Direccion.ClaveVista;
+
+                lote.Add(new CambioFormatoCelda(
+                    vista,
+                    cambio.Direccion.ClaveFila,
+                    cambio.Direccion.NombreColumna,
+                    aplicarAntes ? cambio.Antes : cambio.Despues));
+            }
+
+            return lote;
+        }
+
+        // ── IGridSeleccionFormato ─────────────────────────────────────────────
+
+        public bool TieneSeleccionCeldas
+        {
+            get
+            {
+                if (_seleccionPorEncabezado) return false;
+                foreach (DataGridViewCell celda in dgvActividades.SelectedCells)
+                    if (celda.RowIndex >= 0) return true;
+                return false;
+            }
+        }
+
+        public IReadOnlyList<ReportCellAddress> ObtenerDireccionesSeleccionadas()
+        {
+            if (_seleccionPorEncabezado) return Array.Empty<ReportCellAddress>();
+            return ConstruirDireccionesSeleccionadas(
+                dgvActividades,
+                dgvActividades.SelectedCells.Cast<DataGridViewCell>());
+        }
+
+        public bool EsCeldaFormateable(ReportCellAddress direccion)
+        {
+            if (direccion is null) return false;
+            if (string.IsNullOrWhiteSpace(direccion.ClaveFila)) return false;
+            return ColumnasFormateables.Contains(direccion.NombreColumna);
+        }
+
+        public ReportStyleOverlay? ObtenerOverlayActual(ReportCellAddress direccion)
+        {
+            if (direccion is null) return null;
+            var overlays = _overlaysFormato ?? CargarOverlaysFormato();
+            return overlays.TryGetValue(direccion, out var overlay) ? overlay : null;
+        }
+
+        public void AplicarOverlayCelda(ReportCellAddress direccion, ReportStyleOverlay overlay)
+        {
+            if (direccion is null || overlay is null) return;
+
+            var overlays = _overlaysFormato ?? CargarOverlaysFormato();
+            var antes = overlays.TryGetValue(direccion, out var previo) ? previo : null;
+            overlays[direccion] = overlay;
+            _pendientesFormato.Add(new CambioFormatoSeleccion(direccion, antes, overlay));
+
+            dgvActividades.Invalidate();
+            ProgramarFlushFormato();
+        }
+
+        private void DgvActividades_CellMouseDownFormato(object? sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.RowIndex >= 0) _seleccionPorEncabezado = false;
+            else if (e.ColumnIndex >= 0) _seleccionPorEncabezado = true;
+        }
+
+        private void DgvActividades_SelectionChangedFormato(object? sender, EventArgs e)
+        {
+            if (_seleccionPorEncabezado) return;
+            if (_columnaRibbon is null) return;
+
+            // Al interactuar con el cuerpo del grid, el destino deja de ser la
+            // columna y pasa a ser la selección de celdas.
+            _columnaRibbon = null;
+            _colProgRibbon = null;
+            ColumnaSeleccionadaCambiada?.Invoke(this, EventArgs.Empty);
+        }
+
+        // ── Estilos por ROL de fila (default + override persistido) ───────────
+
+        /// <summary>
+        /// Overrides de estilo por rol persistidos del (proyecto, tipo), cargados con
+        /// UNA sola consulta y memoizados por proyecto. El pintado los combina sobre
+        /// los defaults de <see cref="EstilosFilaPredeterminados"/> (override &gt; default).
+        /// </summary>
+        internal IReadOnlyDictionary<string, ReportStyleOverlay> ObtenerEstilosFilaUsuario()
+        {
+            if (_estilosFilaFormato is not null && _estilosFilaFormatoProyectoId == _proyecto.Id)
+                return _estilosFilaFormato;
+
+            try
+            {
+                _estilosFilaFormato = new Dictionary<string, ReportStyleOverlay>(
+                    FormatoService.CargarEstilosFila(_proyecto.Id, FormatoTipoReporte),
+                    StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ObtenerEstilosFilaUsuario(ProgramaObra): {ex.Message}");
+                _estilosFilaFormato = new Dictionary<string, ReportStyleOverlay>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            _estilosFilaFormatoProyectoId = _proyecto.Id;
+            return _estilosFilaFormato;
+        }
+
+        /// <summary>Rol funcional de fila del Programa de Obra (agrupador → Resumen).</summary>
+        internal static string RolFilaFormato(bool esResumen)
+            => ProgramaObraReportSnapshotBuilder.RolFila(esResumen);
+
+        /// <summary>
+        /// Vuelca el estilo EFECTIVO del rol (default + override persistido) sobre el
+        /// estilo de la celda. Sólo pisa las propiedades presentes en el overlay.
+        /// </summary>
+        internal static void AplicarEstiloRolProgramaObra(
+            DataGridViewCellStyle estilo,
+            Font fontBase,
+            bool esResumen,
+            IReadOnlyDictionary<string, ReportStyleOverlay>? estilosFilaUsuario)
+        {
+            if (estilo is null) return;
+            if (estilo.Font is null) estilo.Font = fontBase;
+
+            var overlay = EstilosFilaPredeterminados.CombinarProgramas(
+                RolFilaFormato(esResumen), estilosFilaUsuario);
+
+            FormPresupuesto.AplicarOverlayACellStyle(estilo, overlay);
+        }
+
+        private void DgvActividades_CellFormattingFormato(object? sender, DataGridViewCellFormattingEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            if (dgvActividades.Rows[e.RowIndex].DataBoundItem is not ActivityGridRowDto dto) return;
+
+            // Estilo por ROL de fila (default + override persistido) y, encima,
+            // el override de celda del paso 6.2 (máxima precedencia).
+            AplicarEstiloRolProgramaObra(e.CellStyle, dgvActividades.Font, dto.EsResumen, ObtenerEstilosFilaUsuario());
+            AplicarOverrideFormatoCeldaProgramaObra(dgvActividades, e);
+        }
+
+        /// <summary>
+        /// Aplica, si existe, el override en memoria de la celda (fila × columna)
+        /// sobre el estilo del evento. Sólo consulta el diccionario en memoria.
+        /// </summary>
+        private void AplicarOverrideFormatoCeldaProgramaObra(DataGridView grid, DataGridViewCellFormattingEventArgs e)
+        {
+            var overlays = _overlaysFormato;
+            if (overlays is null || overlays.Count == 0) return;
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+
+            var clave = ObtenerClaveFilaFormato(grid, e.RowIndex);
+            var columna = ObtenerNombreColumnaFormato(grid, e.ColumnIndex);
+            if (clave is null || columna is null) return;
+
+            var direccion = new ReportCellAddress(FormatoVista, clave, columna);
+            if (!overlays.TryGetValue(direccion, out var overlay) || overlay is null) return;
+
+            FormPresupuesto.AplicarOverlayACellStyle(e.CellStyle, overlay);
+        }
+
+        // ── Persistencia por lote + undo compuesto ─────────────────────────────
+
+        /// <summary>
+        /// Carga (UNA sola consulta por proyecto/tipo) los overrides persistidos en el
+        /// diccionario en memoria que consume el pintado.
+        /// </summary>
+        private Dictionary<ReportCellAddress, ReportStyleOverlay> CargarOverlaysFormato()
+        {
+            try
+            {
+                _overlaysFormato = new Dictionary<ReportCellAddress, ReportStyleOverlay>(
+                    FormatoService.CargarCeldas(_proyecto.Id, FormatoTipoReporte));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"CargarOverlaysFormato(ProgramaObra): {ex.Message}");
+                _overlaysFormato = new Dictionary<ReportCellAddress, ReportStyleOverlay>();
+            }
+
+            return _overlaysFormato;
+        }
+
+        private void ProgramarFlushFormato()
+        {
+            if (_flushFormatoProgramado) return;
+            _flushFormatoProgramado = true;
+
+            if (IsHandleCreated && !IsDisposed)
+                BeginInvoke(new Action(FlushFormatoPendiente));
+            else
+                FlushFormatoPendiente();
+        }
+
+        private void FlushFormatoPendiente()
+        {
+            _flushFormatoProgramado = false;
+            if (_pendientesFormato.Count == 0) return;
+
+            var cambios = ColapsarCambiosFormato(_pendientesFormato);
+            _pendientesFormato.Clear();
+
+            var cambiosUndo = cambios
+                .Select(c => new UndoChange(c.Antes, c.Despues))
+                .ToList();
+
+            var accion = new CompositeUndoableAction(
+                $"Formato de {cambios.Count} celda(s) en el programa de obra",
+                cambiosUndo,
+                _ => AplicarCambiosFormato(cambios, aplicarAntes: true),
+                _ => AplicarCambiosFormato(cambios, aplicarAntes: false));
+
+            try
+            {
+                _undoManager.Execute(accion);
+            }
+            catch (Exception ex)
+            {
+                RevertirCambiosFormato(cambios);
+                MessageBox.Show(
+                    $"No se pudo guardar el formato de las celdas:\n{ex.Message}",
+                    "Formato",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// Colapsa los cambios pendientes a UNA entrada por dirección: el primer
+        /// "antes" observado y el último "después".
+        /// </summary>
+        private static List<CambioFormatoSeleccion> ColapsarCambiosFormato(
+            IEnumerable<CambioFormatoSeleccion> pendientes)
+        {
+            var orden = new List<ReportCellAddress>();
+            var antes = new Dictionary<ReportCellAddress, ReportStyleOverlay?>();
+            var despues = new Dictionary<ReportCellAddress, ReportStyleOverlay>();
+
+            foreach (var cambio in pendientes)
+            {
+                if (cambio is null || cambio.Direccion is null) continue;
+
+                if (!antes.ContainsKey(cambio.Direccion))
+                {
+                    orden.Add(cambio.Direccion);
+                    antes[cambio.Direccion] = cambio.Antes;
+                }
+                despues[cambio.Direccion] = cambio.Despues;
+            }
+
+            var resultado = new List<CambioFormatoSeleccion>(orden.Count);
+            foreach (var direccion in orden)
+                resultado.Add(new CambioFormatoSeleccion(direccion, antes[direccion], despues[direccion]));
+
+            return resultado;
+        }
+
+        private void AplicarCambiosFormato(IReadOnlyList<CambioFormatoSeleccion> cambios, bool aplicarAntes)
+        {
+            FormatoService.AplicarCeldas(
+                _proyecto.Id,
+                FormatoTipoReporte,
+                ConstruirLoteCambios(cambios, aplicarAntes));
+
+            foreach (var cambio in cambios)
+                EstablecerOverlayEnMemoria(cambio.Direccion, aplicarAntes ? cambio.Antes : cambio.Despues);
+
+            dgvActividades.Invalidate();
+        }
+
+        private void RevertirCambiosFormato(IReadOnlyList<CambioFormatoSeleccion> cambios)
+        {
+            foreach (var cambio in cambios)
+                EstablecerOverlayEnMemoria(cambio.Direccion, cambio.Antes);
+
+            dgvActividades.Invalidate();
+        }
+
+        private void EstablecerOverlayEnMemoria(ReportCellAddress direccion, ReportStyleOverlay? overlay)
+        {
+            var overlays = _overlaysFormato ?? CargarOverlaysFormato();
+            if (overlay is null)
+                overlays.Remove(direccion);
+            else
+                overlays[direccion] = overlay;
+        }
+
+        /// <summary>
+        /// Construye el snapshot neutral del Programa de Obra poblado con los overrides
+        /// de celda/rol persistidos. NO lee del <c>DataGridView</c>.
+        /// </summary>
+        private ReportColumnSnapshot ConstruirSnapshotProgramaObra(string tituloReporte)
+        {
+            var snapshot = new ProgramaObraReportSnapshotBuilder()
+                .Build(_proyecto, tituloReporte, _columnasConfig);
+
+            return ProgramaObraReportSnapshotBuilder.ConEstilos(snapshot, FormatoService);
+        }
+    }
+}

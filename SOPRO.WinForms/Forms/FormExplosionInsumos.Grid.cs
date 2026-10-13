@@ -33,7 +33,9 @@ namespace SOPRO.WinForms.Forms
             dgvExplosion.AllowUserToAddRows = false;
             dgvExplosion.AllowUserToDeleteRows = false;
             dgvExplosion.ReadOnly = true;
-            dgvExplosion.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            // Selección tipo Excel por CELDAS (rango con Shift, multi-rango con Ctrl)
+            // para que el ribbon formatee celdas concretas (paso 6.1).
+            dgvExplosion.SelectionMode = DataGridViewSelectionMode.CellSelect;
             dgvExplosion.MultiSelect = true;
             // RowHeadersVisible habilitado por DgvCeldaHelper
             dgvExplosion.EnableHeadersVisualStyles = false;
@@ -45,6 +47,15 @@ namespace SOPRO.WinForms.Forms
             dgvExplosion.AplicarEstiloSOPRO();
             Helpers.DgvCeldaHelper.Aplicar(dgvExplosion);
             _gridRenderService.ConfigureGrid(dgvExplosion);
+
+            // Formato por celda: distinguir cuerpo (celdas) de encabezado (columna)
+            // y pintar el override persistido en cada celda.
+            dgvExplosion.CellMouseDown -= DgvExplosion_CellMouseDownFormato;
+            dgvExplosion.CellMouseDown += DgvExplosion_CellMouseDownFormato;
+            dgvExplosion.SelectionChanged -= DgvExplosion_SelectionChangedFormato;
+            dgvExplosion.SelectionChanged += DgvExplosion_SelectionChangedFormato;
+            dgvExplosion.CellFormatting -= DgvExplosion_CellFormattingFormato;
+            dgvExplosion.CellFormatting += DgvExplosion_CellFormattingFormato;
 
             // Columnas desde BD
             dgvExplosion.Columns.Clear();

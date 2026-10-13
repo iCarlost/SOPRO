@@ -16,7 +16,7 @@ using SOPRO.WinForms.Undo;
 
 namespace SOPRO.WinForms.Forms
 {
-    public partial class FormProgramaObra : Form, IGridFormato, IRecalculable, IBusquedaGrid
+    public partial class FormProgramaObra : Form, IGridFormato, IRecalculable, IBusquedaGrid, IGridSeleccionFormato
     {
         private readonly SOPROContext _context;
         private readonly Proyecto _proyecto;
@@ -122,6 +122,7 @@ namespace SOPRO.WinForms.Forms
             InitializeComponent();
             ConfigurarFormulario();
             ConfigurarGrids();
+            InicializarFormatoProgramaObra();
             _columnasConfig = ColumnasProgramaObraHelper.ObtenerColumnas(_context, _proyecto.Id);
             AplicarConfiguracionColumnas();
 

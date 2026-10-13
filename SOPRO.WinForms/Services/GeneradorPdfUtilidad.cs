@@ -7,6 +7,7 @@ using MigraDoc.Rendering;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Reporting.Formatting;
@@ -270,7 +271,9 @@ namespace SOPRO.WinForms.Services
             AgregarFilaMonedaPdf(t, "COSTO DIRECTO", costoDirecto, colBase, snapshot, bordes, false, null, null, estiloBase);
             AgregarFilaMonedaPdf(t, "COSTO INDIRECTO", costoIndirecto, colBase, snapshot, bordes, false, null, null, estiloBase);
             AgregarFilaMonedaPdf(t, "FINANCIAMIENTO", financiamiento, colBase, snapshot, bordes, false, null, null, estiloBase);
-            AgregarFilaMonedaPdf(t, "SUBTOTAL", subtotal, colBase, snapshot, bordes, true, "#FFF2CC", "#C00000", estiloBase);
+            AgregarFilaMonedaPdf(t, "SUBTOTAL", subtotal, colBase, snapshot, bordes, true,
+                EstilosFilaPredeterminados.Utilidad(RolFilaReporte.Subtotal).ColorFondo,
+                EstilosFilaPredeterminados.Utilidad(RolFilaReporte.Subtotal).ColorFuente, estiloBase);
 
             t.AddRow().Height = Unit.FromCentimeter(0.18);
 
@@ -289,7 +292,8 @@ namespace SOPRO.WinForms.Services
             t.AddRow().Height = Unit.FromCentimeter(0.18);
             AgregarFilaMonedaPdf(t, "IMPORTE ISR", resultado.ImporteIsr, colImporteFinal, snapshot, bordes, false, "#F2F2F2", null, estiloBase);
             AgregarFilaMonedaPdf(t, "IMPORTE PTU", resultado.ImportePtu, colImporteFinal, snapshot, bordes, false, "#F2F2F2", null, estiloBase);
-            AgregarFilaMonedaPdf(t, "UTILIDAD NETA ESTIMADA", resultado.UtilidadNetaEstimada, colImporteFinal, snapshot, bordes, true, "#DDEBF7", null, estiloBase);
+            AgregarFilaMonedaPdf(t, "UTILIDAD NETA ESTIMADA", resultado.UtilidadNetaEstimada, colImporteFinal, snapshot, bordes, true,
+                EstilosFilaPredeterminados.Utilidad(RolFilaReporte.Resumen).ColorFondo, null, estiloBase);
         }
 
         /// <summary>

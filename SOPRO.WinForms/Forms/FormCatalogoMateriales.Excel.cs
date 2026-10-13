@@ -14,6 +14,8 @@ using ClosedXML.Excel;
 using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
 using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services.Reporting;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Application.UseCases.Materials;
 using SOPRO.Application.Models.Catalogs;
 using SOPRO.Reporting.Formatting;
@@ -59,9 +61,8 @@ namespace SOPRO.WinForms.Forms
                     : new Proyecto { Nombre = "Materiales" };
 
                 // ── Snapshot neutral compartido con el PDF ────────────────
-                var snapshot = MaterialCatalogExportResolver.BuildSnapshot(
-                    _proyectoId ?? 0, lblTitulo.Text, _columnasConfig,
-                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+                var snapshot = ConstruirSnapshotMateriales(_columnasConfig);
+                var snapshotBase = ReportCellOverlayResolver.SinEstilos(snapshot);
                 var estiloTabla = snapshot.EstiloTabla;
                 var colsVis = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
                 if (colsVis.Count == 0)
@@ -106,6 +107,7 @@ namespace SOPRO.WinForms.Forms
                 bool alt = false;
                 foreach (var m in materiales)
                 {
+                    var claveFila = ClaveFilaReporte.Insumo(m.Id);
                     for (int i = 0; i < colsVis.Count; i++)
                     {
                         var def = colsVis[i];
@@ -136,6 +138,11 @@ namespace SOPRO.WinForms.Forms
                         {
                             cell.Value = MaterialCatalogExportResolver.ResolveValue(m, def);
                         }
+
+                        // Override de celda (máxima precedencia) sobre el estilo de columna.
+                        AplicarOverlayExcel(cell.Style, ReportCellOverlayResolver.OverrideEfectivo(
+                            snapshot, snapshotBase, MaterialesReportSnapshotBuilder.ClaveVista,
+                            claveFila, def.Identificador));
                     }
 
                     ws.Row(fila).Height = CalcularAlturaFilaCatalogoNeutral(colsVis, fila, ws, 14);
@@ -167,13 +174,41 @@ namespace SOPRO.WinForms.Forms
             ReportTextAlignment.Justificado => XLAlignmentHorizontalValues.Justify,
             _ => XLAlignmentHorizontalValues.Left,
         };
-
         private static XLAlignmentVerticalValues ConvertirAlineacionVertical(ReportVerticalAlignment v) => v switch
         {
             ReportVerticalAlignment.Superior => XLAlignmentVerticalValues.Top,
             ReportVerticalAlignment.Inferior => XLAlignmentVerticalValues.Bottom,
             _ => XLAlignmentVerticalValues.Center,
         };
+
+        /// <summary>
+        /// Aplica al estilo SOLO las propiedades no nulas del override (fuente,
+        /// tamaño, negrita, cursiva, colores, alineaciones y wrap). No toca el
+        /// formato numérico: lo resuelve <see cref="ReportColumnGridFormat"/>.
+        /// </summary>
+        private static void AplicarOverlayExcel(IXLStyle estilo, ReportStyleOverlay overrideEfectivo)
+        {
+            if (estilo is null || overrideEfectivo is null) return;
+
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.Fuente))
+                estilo.Font.FontName = overrideEfectivo.Fuente;
+            if (overrideEfectivo.TamanoFuente is float tamano && tamano > 0)
+                estilo.Font.FontSize = tamano;
+            if (overrideEfectivo.Negrita is bool negrita)
+                estilo.Font.Bold = negrita;
+            if (overrideEfectivo.Cursiva is bool cursiva)
+                estilo.Font.Italic = cursiva;
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFuente))
+                estilo.Font.FontColor = ExcelColorHelper.SafeFromHtml(overrideEfectivo.ColorFuente);
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFondo))
+                estilo.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(overrideEfectivo.ColorFondo);
+            if (overrideEfectivo.AlineacionHorizontal is ReportTextAlignment alineacion)
+                estilo.Alignment.Horizontal = ConvertirAlineacion(alineacion);
+            if (overrideEfectivo.AlineacionVertical is ReportVerticalAlignment alineacionV)
+                estilo.Alignment.Vertical = ConvertirAlineacionVertical(alineacionV);
+            if (overrideEfectivo.Wrap is bool wrap)
+                estilo.Alignment.WrapText = wrap;
+        }
 
         private static double CalcularAlturaFilaCatalogoNeutral(IReadOnlyList<ReportColumnDefinition> colsVis, int fila, IXLWorksheet ws, double alturaBase)
         {

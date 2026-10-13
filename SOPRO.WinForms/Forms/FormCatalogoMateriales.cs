@@ -18,7 +18,7 @@ using SOPRO.Data.Factories;
 
 namespace SOPRO.WinForms.Forms
 {
-    public partial class FormCatalogoMateriales : Form, IGridFormato, IBusquedaGrid, IRecalculable, IConsolidacionInsumos
+    public partial class FormCatalogoMateriales : Form, IGridFormato, IBusquedaGrid, IRecalculable, IConsolidacionInsumos, IGridSeleccionFormato
     {
         public static event EventHandler InsumosModificados;
 

@@ -1,5 +1,6 @@
 using ClosedXML.Excel;
 using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Reporting.Formatting;
@@ -38,6 +39,7 @@ namespace SOPRO.WinForms.Services
 
             var maquinas = lista.ToList();
             var estiloTabla = snapshot.EstiloTabla;
+            var snapshotBase = ReportCellOverlayResolver.SinEstilos(snapshot);
             var colsVis = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
             if (colsVis.Count == 0)
                 colsVis = CostoHorarioReportSnapshotBuilder.DefaultColumns()
@@ -84,6 +86,7 @@ namespace SOPRO.WinForms.Services
             bool alt = false;
             foreach (var maq in maquinas)
             {
+                var claveFila = ClaveFilaReporte.Insumo(maq.Id);
                 for (int i = 0; i < colsVis.Count; i++)
                 {
                     var def = colsVis[i];
@@ -114,6 +117,11 @@ namespace SOPRO.WinForms.Services
                     {
                         cell.Value = MaquinariaReportValues.ResolveTexto(maq, def.Identificador);
                     }
+
+                    // Override de celda (máxima precedencia) sobre el estilo de columna.
+                    AplicarOverlayExcel(cell.Style, ReportCellOverlayResolver.OverrideEfectivo(
+                        snapshot, snapshotBase, CostoHorarioReportSnapshotBuilder.ClaveVista,
+                        claveFila, def.Identificador));
                 }
 
                 ws.Row(fila).Height = CalcularAlturaFilaCatalogoNeutral(colsVis, fila, ws, 14);
@@ -169,6 +177,34 @@ namespace SOPRO.WinForms.Services
             ReportVerticalAlignment.Inferior => XLAlignmentVerticalValues.Bottom,
             _ => XLAlignmentVerticalValues.Center,
         };
+
+        /// <summary>
+        /// Aplica al estilo SOLO las propiedades no nulas del override. No toca el
+        /// formato numérico: lo resuelve <see cref="ReportColumnGridFormat"/>.
+        /// </summary>
+        private static void AplicarOverlayExcel(IXLStyle estilo, ReportStyleOverlay overrideEfectivo)
+        {
+            if (estilo is null || overrideEfectivo is null) return;
+
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.Fuente))
+                estilo.Font.FontName = overrideEfectivo.Fuente;
+            if (overrideEfectivo.TamanoFuente is float tamano && tamano > 0)
+                estilo.Font.FontSize = tamano;
+            if (overrideEfectivo.Negrita is bool negrita)
+                estilo.Font.Bold = negrita;
+            if (overrideEfectivo.Cursiva is bool cursiva)
+                estilo.Font.Italic = cursiva;
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFuente))
+                estilo.Font.FontColor = ExcelColorHelper.SafeFromHtml(overrideEfectivo.ColorFuente);
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFondo))
+                estilo.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(overrideEfectivo.ColorFondo);
+            if (overrideEfectivo.AlineacionHorizontal is ReportTextAlignment alineacion)
+                estilo.Alignment.Horizontal = ConvertirAlineacion(alineacion);
+            if (overrideEfectivo.AlineacionVertical is ReportVerticalAlignment alineacionV)
+                estilo.Alignment.Vertical = ConvertirAlineacionVertical(alineacionV);
+            if (overrideEfectivo.Wrap is bool wrap)
+                estilo.Alignment.WrapText = wrap;
+        }
 
         private static double CalcularAlturaFilaCatalogoNeutral(IReadOnlyList<ReportColumnDefinition> colsVis, int fila, IXLWorksheet ws, double alturaBase)
         {

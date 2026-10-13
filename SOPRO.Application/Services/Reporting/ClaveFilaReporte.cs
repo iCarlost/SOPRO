@@ -10,6 +10,8 @@ namespace SOPRO.Application.Services.Reporting;
 ///   <item>Presupuesto: <c>C:{ConceptoPresupuesto.Id}</c>, <c>SUB:{Clave}</c>, <c>TOTAL</c>, <c>IVA</c>.</item>
 ///   <item>Indirectos: <c>G:{GrupoIndirecto.Id}</c>, <c>IC:{ConceptoIndirecto.Id}</c>.</item>
 ///   <item>APU / Matrices: <c>C:{ConceptoPresupuesto.Id}</c>, <c>COMP:{ComponenteMatriz.Id}</c>, <c>PU:{ConceptoId}</c>.</item>
+///   <item>Programa de Obra: <c>ACT:{ActividadProgramada.Id}</c>, <c>RES:{Clave}</c> (agrupadores).</item>
+///   <item>Programa de Insumos: <c>INS:{InsumoId}</c>; las columnas de período usan el identificador estable del período (<c>per_</c>,<c>acu_</c>,<c>imp_</c>,<c>iacu_</c> + PeriodoId), NO el índice visual.</item>
 /// </list>
 /// </summary>
 public static class ClaveFilaReporte
@@ -31,6 +33,14 @@ public static class ClaveFilaReporte
 
     /// <summary>Prefijo de fila sintética de precio unitario integrado del APU.</summary>
     public const string PrefijoPrecioUnitario = "PU:";
+    /// <summary>Prefijo de fila de actividad programada (Programa de Obra).</summary>
+    public const string PrefijoActividad = "ACT:";
+
+    /// <summary>Prefijo de fila de agrupador/resumen (Programa de Obra).</summary>
+    public const string PrefijoResumen = "RES:";
+
+    /// <summary>Prefijo de fila de insumo programado (Programa de Insumos).</summary>
+    public const string PrefijoInsumo = "INS:";
 
     /// <summary>Clave sintética de la fila de TOTAL del presupuesto.</summary>
     public const string Total = "TOTAL";
@@ -55,4 +65,22 @@ public static class ClaveFilaReporte
 
     /// <summary>Fila sintética de precio unitario integrado del APU del concepto dado.</summary>
     public static string PrecioUnitario(int conceptoPresupuestoId) => PrefijoPrecioUnitario + conceptoPresupuestoId;
+
+    /// <summary>
+    /// Fila de actividad programada del Programa de Obra: <c>ACT:{Id}</c>. Deriva del
+    /// identificador de la <c>ActividadProgramada</c> (nunca del índice visual).
+    /// </summary>
+    public static string Actividad(int actividadId) => PrefijoActividad + actividadId;
+
+    /// <summary>
+    /// Fila de agrupador/resumen del Programa de Obra: <c>RES:{Clave}</c>. Usa la
+    /// clave del agrupador (columna Clave del presupuesto) para sobrevivir a la
+    /// regeneración de las actividades resumen.
+    /// </summary>
+    public static string Resumen(string? clave) => PrefijoResumen + (clave ?? string.Empty);
+
+    /// <summary>
+    /// Fila de insumo programado del Programa de Insumos: <c>INS:{InsumoId}</c>.
+    /// </summary>
+    public static string Insumo(int insumoId) => PrefijoInsumo + insumoId;
 }

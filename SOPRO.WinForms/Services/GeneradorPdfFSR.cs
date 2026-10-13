@@ -7,6 +7,7 @@ using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
 using SOPRO.Application.Models.Reporting.Fsr;
 using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Reporting.Formatting;
@@ -38,9 +39,6 @@ namespace SOPRO.WinForms.Services
         public string Generar(Proyecto proyecto, PlantillaReporte plantilla, ReportColumnSnapshot snapshot, List<FsrRow> filas, decimal factorFsr, string rutaDestino = null, ConfiguracionTituloReporte? tituloCfg = null)
         {
             if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
-            if (plantilla == null) throw new ArgumentNullException(nameof(plantilla));
-            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
-            if (filas == null || filas.Count == 0) throw new InvalidOperationException("No hay datos de FSR para exportar.");
 
             if (string.IsNullOrWhiteSpace(rutaDestino))
             {
@@ -48,6 +46,27 @@ namespace SOPRO.WinForms.Services
                 Directory.CreateDirectory(carpeta);
                 rutaDestino = Path.Combine(carpeta, $"CalculoFSR_{DateTime.Now:yyyyMMdd_HHmm}.pdf");
             }
+
+            var doc = ConstruirDocumento(proyecto, plantilla, snapshot, filas, factorFsr, tituloCfg);
+
+            var renderer = new PdfDocumentRenderer() { Document = doc };
+            renderer.RenderDocument();
+            renderer.PdfDocument.Save(rutaDestino);
+            return rutaDestino;
+        }
+
+        /// <summary>
+        /// Construye el documento MigraDoc del AE-2(A) SIN serializarlo: seam puro
+        /// que permite inspeccionar el shading/fuente reales en las pruebas (paridad
+        /// grid↔PDF↔Excel) sin depender del binario PDF. Los colores de
+        /// sección/subsección/total provienen de <see cref="EstilosFilaPredeterminados.Fsr"/>.
+        /// </summary>
+        public Document ConstruirDocumento(Proyecto proyecto, PlantillaReporte plantilla, ReportColumnSnapshot snapshot, List<FsrRow> filas, decimal factorFsr, ConfiguracionTituloReporte? tituloCfg = null)
+        {
+            if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
+            if (plantilla == null) throw new ArgumentNullException(nameof(plantilla));
+            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
+            if (filas == null || filas.Count == 0) throw new InvalidOperationException("No hay datos de FSR para exportar.");
 
             var doc = new Document();
             DefinirEstilos(doc);
@@ -71,10 +90,7 @@ namespace SOPRO.WinForms.Services
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
             ConstruirCuerpo(section, proyecto, snapshot, filas, factorFsr, tituloCfg);
 
-            var renderer = new PdfDocumentRenderer() { Document = doc };
-            renderer.RenderDocument();
-            renderer.PdfDocument.Save(rutaDestino);
-            return rutaDestino;
+            return doc;
         }
 
         private static void DefinirEstilos(Document doc)
@@ -277,6 +293,14 @@ namespace SOPRO.WinForms.Services
 
             int lastCol = cols.Count - 1;
 
+            // Colores de las bandas de sección, subsección y total: se leen de
+            // la tabla neutral de defaults por rol (EstilosFilaPredeterminados.Fsr),
+            // ÚNICA fuente de verdad compartida con Excel. Se retiran las constantes
+            // locales y PDF y Excel convergen.
+            var estiloSeccion = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Seccion);
+            var estiloSubseccion = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Referencia);
+            var estiloTotal = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Total);
+
             var h = t.AddRow();
             h.HeadingFormat = true;
             h.Shading.Color = ParseColor(estilo.EstiloEncabezado.ColorFondo ?? "#1F4E78");
@@ -291,10 +315,12 @@ namespace SOPRO.WinForms.Services
                 {
                     var r = t.AddRow();
                     r.Cells[0].MergeRight = lastCol;
-                    r.Cells[0].Shading.Color = ParseColor("#D9E2F3");
+                    r.Cells[0].Shading.Color = ParseColor(estiloSeccion.ColorFondo!);
                     r.Cells[0].VerticalAlignment = VerticalAlignment.Center;
                     var p = r.Cells[0].AddParagraph(fila.Descripcion ?? string.Empty);
-                    p.Format.Font.Bold = true;
+                    p.Format.Font.Bold = estiloSeccion.Negrita ?? true;
+                    if (!string.IsNullOrWhiteSpace(estiloSeccion.ColorFuente))
+                        p.Format.Font.Color = ParseColor(estiloSeccion.ColorFuente);
                     p.Format.SpaceAfter = 0;
                     p.Format.SpaceBefore = 0;
                     continue;
@@ -303,10 +329,12 @@ namespace SOPRO.WinForms.Services
                 {
                     var r = t.AddRow();
                     r.Cells[0].MergeRight = lastCol;
-                    r.Cells[0].Shading.Color = ParseColor("#EDEDED");
+                    r.Cells[0].Shading.Color = ParseColor(estiloSubseccion.ColorFondo!);
                     var p = r.Cells[0].AddParagraph(fila.Descripcion ?? string.Empty);
-                    p.Format.Font.Bold = true;
+                    p.Format.Font.Bold = estiloSubseccion.Negrita ?? true;
                     p.Format.Font.Italic = true;
+                    if (!string.IsNullOrWhiteSpace(estiloSubseccion.ColorFuente))
+                        p.Format.Font.Color = ParseColor(estiloSubseccion.ColorFuente);
                     p.Format.SpaceAfter = 0;
                     p.Format.SpaceBefore = 0;
                     continue;
@@ -325,15 +353,15 @@ namespace SOPRO.WinForms.Services
             var fin = t.AddRow();
             fin.Height = Unit.FromCentimeter(0.75);
             fin.Cells[0].MergeRight = Math.Max(0, lastCol - 1);
-            fin.Cells[0].Shading.Color = ParseColor("#C00000");
-            fin.Cells[lastCol].Shading.Color = ParseColor("#C00000");
+            fin.Cells[0].Shading.Color = ParseColor(estiloTotal.ColorFondo!);
+            fin.Cells[lastCol].Shading.Color = ParseColor(estiloTotal.ColorFondo!);
             var pfin = fin.Cells[0].AddParagraph("FACTOR DE SALARIO REAL");
-            pfin.Format.Font.Bold = true;
-            pfin.Format.Font.Color = ParseColor("#FFFFFF");
+            pfin.Format.Font.Bold = estiloTotal.Negrita ?? true;
+            pfin.Format.Font.Color = ParseColor(estiloTotal.ColorFuente ?? "#FFFFFF");
             pfin.Format.Alignment = MParagraphAlignment.Center;
             var vfin = fin.Cells[lastCol].AddParagraph(ReportColumnGridFormat.FormatearPdf(factorFsr, valorCol, snapshot));
-            vfin.Format.Font.Bold = true;
-            vfin.Format.Font.Color = ParseColor("#FFFFFF");
+            vfin.Format.Font.Bold = estiloTotal.Negrita ?? true;
+            vfin.Format.Font.Color = ParseColor(estiloTotal.ColorFuente ?? "#FFFFFF");
             vfin.Format.Alignment = MParagraphAlignment.Center;
         }
 

@@ -127,7 +127,16 @@ namespace SOPRO.WinForms.Forms
             dgvFlujo.ScrollBars = ScrollBars.Both;
             DgvCeldaHelper.Aplicar(dgvFlujo);
             dgvFlujo.ColumnWidthChanged += dgvFlujo_ColumnWidthChanged;
-            dgvFlujo.ColumnHeaderMouseClick += (s, e) => NotificarColumnaSeleccionada(e.ColumnIndex);
+            dgvFlujo.ColumnHeaderMouseClick += (s, e) =>
+            {
+                _seleccionPorEncabezado = true;
+                NotificarColumnaSeleccionada(e.ColumnIndex);
+            };
+            // Paso 6.4: distinguir interacción de cuerpo (destino CELDAS) de
+            // encabezado (destino COLUMNA) y pintar los overrides de celda.
+            dgvFlujo.CellMouseDown += DgvFlujo_CellMouseDownFormato;
+            dgvFlujo.SelectionChanged += DgvFlujo_SelectionChangedFormato;
+            dgvFlujo.CellFormatting += DgvFlujo_CellFormattingFormato;
 
             foreach (DataGridViewColumn col in dgvFlujo.Columns)
                 col.SortMode = DataGridViewColumnSortMode.NotSortable;

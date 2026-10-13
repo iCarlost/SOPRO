@@ -5,6 +5,7 @@ using System.Linq;
 using SOPRO.Application.DTOs.Programacion;
 using SOPRO.Application.Models.Reporting.Programa;
 using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Core.Entities;
 
 namespace SOPRO.Application.UseCases.Reporting;
@@ -29,6 +30,14 @@ public sealed class ProgramaObraReportSnapshotBuilder
 {
     /// <summary>Tipo de reporte que produce este builder.</summary>
     public const string TipoReporte = "ProgramaObra";
+
+    /// <summary>
+    /// Clave de vista canónica del Programa de Obra. Es la vista por defecto
+    /// (<c>""</c>), la MISMA que persiste el grid en <c>FormatoCeldaReporte.ClaveVista</c>
+    /// (ver <c>FormProgramaObra.FormatoVista</c>), de modo que el resolver coincide
+    /// por igualdad exacta en PDF/Excel.
+    /// </summary>
+    public const string ClaveVista = "";
 
     // Identificadores internos canónicos de las columnas del Programa de Obra.
     public const string ColOrden = "colOrden";
@@ -182,6 +191,47 @@ public sealed class ProgramaObraReportSnapshotBuilder
             Filas = ConstruirFilas(actividades, gantt),
             Periodos = ConstruirPeriodos(gantt)
         };
+
+    // ═══════════════ Claves estables de fila y roles (paridad grid↔reporte) ═══════════════
+
+    /// <summary>
+    /// Clave de fila ESTABLE de una actividad del programa. Los AGRUPADORES usan
+    /// <c>RES:{Clave}</c> (la clave del presupuesto, estable ante la regeneración de
+    /// las filas resumen) y las actividades normales <c>ACT:{Id}</c>. Coincide con
+    /// la que persiste el grid en <c>FormProgramaObra.ObtenerClaveFilaFormato</c>.
+    /// </summary>
+    public static string ClaveFila(bool esResumen, int actividadId, string? clave)
+        => esResumen
+            ? ClaveFilaReporte.Resumen(clave)
+            : ClaveFilaReporte.Actividad(actividadId);
+
+    /// <summary>Clave de fila estable de una fila neutral del programa.</summary>
+    public static string ClaveFila(ProgramaRow fila)
+    {
+        ArgumentNullException.ThrowIfNull(fila);
+        return ClaveFila(fila.EsResumen, fila.ItemId ?? 0, fila.ObtenerTexto(ColClave));
+    }
+
+    /// <summary>
+    /// Rol funcional de fila (<see cref="RolFilaReporte"/>) de un renglón del
+    /// programa: los agrupadores son <c>Resumen</c> y las actividades <c>Concepto</c>.
+    /// </summary>
+    public static string RolFila(bool esResumen)
+        => esResumen ? RolFilaReporte.Resumen : RolFilaReporte.Concepto;
+
+    /// <summary>
+    /// Devuelve una copia del snapshot con <see cref="ReportColumnSnapshot.EstilosCelda"/>
+    /// y <see cref="ReportColumnSnapshot.EstilosFila"/> poblados desde la
+    /// configuración persistida del (proyecto, tipo) —overrides de celda y estilos de
+    /// rol del usuario—. Si no hay overrides ambas colecciones quedan <c>null</c>
+    /// (retrocompatibilidad total). Es el mecanismo de composición aplicado a los Programas.
+    /// </summary>
+    public static ReportColumnSnapshot ConEstilos(ReportColumnSnapshot snapshot, FormatoReporteService formatos)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(formatos);
+        return new ReportStyleSnapshotBuilder(formatos).Build(snapshot);
+    }
 
     private static void VaciarColumnasDeResumen(ProgramaRow fila)
     {

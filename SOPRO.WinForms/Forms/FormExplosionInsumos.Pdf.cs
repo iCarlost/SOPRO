@@ -40,9 +40,9 @@ namespace SOPRO.WinForms.Forms
                     .Where(c => c.ProyectoId == _proyectoId)
                     .OrderBy(c => c.Orden)
                     .ToList();
-                var snapshot = ExplosionExportResolver.BuildSnapshot(
-                    _proyectoId, lblTitulo.Text, columnas,
-                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+                // Snapshot neutral poblado con los overrides de celda/rol persistidos
+                // (paso 6.1): misma fuente que Excel.
+                var snapshot = ConstruirSnapshotExplosion(columnas);
                 string filtro = cmbFiltro.SelectedItem?.ToString() ?? "Todos";
 
                 using var dlg = new SaveFileDialog

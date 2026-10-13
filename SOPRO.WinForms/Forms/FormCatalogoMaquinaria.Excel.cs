@@ -54,9 +54,7 @@ namespace SOPRO.WinForms.Forms
                     ? new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyectoId.Value, ReportTitleModuleKeys.CatalogoMaquinaria, lblTitulo.Text)
                     : null;
                 // Snapshot neutral compartido con el PDF (misma lista/orden/ancho/formato/estilo).
-                var snapshot = new CostoHorarioReportSnapshotBuilder().Build(
-                    _proyectoId ?? 0, lblTitulo.Text, _columnasConfig,
-                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+                var snapshot = ConstruirSnapshotMaquinaria(_columnasConfig);
                 GeneradorExcelCostoHorario.Generar(wb, _listaActual, proyecto, plantilla, snapshot, svcRep, tituloCfg);
                 wb.SaveAs(dlg.FileName);
 

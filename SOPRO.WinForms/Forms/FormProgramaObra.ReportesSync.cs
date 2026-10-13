@@ -62,7 +62,7 @@ namespace SOPRO.WinForms.Forms
 
                 Cursor = Cursors.WaitCursor;
                 var builder = new ProgramaObraReportSnapshotBuilder();
-                var snapshot = builder.Build(_proyecto, tituloReporte, _columnasConfig);
+                var snapshot = ConstruirSnapshotProgramaObra(tituloReporte);
                 ProgramaReportData datos = builder.ConstruirDatos(_actividades, ganttModel);
                 var generador = new Services.GeneradorExcelProgramaObra(svc);
                 var ruta = generador.Generar(
@@ -120,7 +120,7 @@ namespace SOPRO.WinForms.Forms
 
                 Cursor = Cursors.WaitCursor;
                 var builder = new ProgramaObraReportSnapshotBuilder();
-                var snapshot = builder.Build(_proyecto, tituloReporte, _columnasConfig);
+                var snapshot = ConstruirSnapshotProgramaObra(tituloReporte);
                 ProgramaReportData datos = builder.ConstruirDatos(_actividades, _ganttControl.RenderModel);
                 var generador = new Services.GeneradorPdfProgramaObra(svc);
                 var ruta = generador.Generar(

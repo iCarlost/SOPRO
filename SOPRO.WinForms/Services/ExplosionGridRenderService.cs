@@ -2,20 +2,28 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using SOPRO.Application.Models.Explosion;
+using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services.Reporting;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
+using SOPRO.WinForms.Forms;
 
 namespace SOPRO.WinForms.Services
 {
+    /// <summary>
+    /// Identidad ESTABLE de una fila del grid de explosión para el formato de
+    /// celdas: la clave neutral de la fila (<c>FormatoCeldaReporte.ClaveFila</c>) y
+    /// el rol funcional de la fila (<see cref="RolFilaReporte"/>). Se guarda en
+    /// <see cref="DataGridViewRow.Tag"/> al construir las filas, de modo que el
+    /// mapeo selección → dirección no dependa de índices visuales.
+    /// </summary>
+    internal sealed record ExplosionFilaInfo(string? Clave, string? Rol);
+
     internal sealed class ExplosionGridRenderService
     {
         private static readonly Color HeaderBaseBackColor = Color.FromArgb(51, 51, 76);
         private static readonly Color HeaderBaseForeColor = Color.White;
         private static readonly Color HeaderBorderColor = Color.FromArgb(200, 200, 200);
-        private static readonly Color TotalBackColor = Color.FromArgb(240, 240, 240);
-        private static readonly Color TotalGeneralBackColor = Color.FromArgb(45, 45, 48);
-        private static readonly Color ReferenceBackColor = Color.FromArgb(240, 240, 240);
-        private static readonly Color ReferenceForeColor = Color.FromArgb(100, 100, 100);
-        private static readonly Color SectionBackColor = Color.FromArgb(70, 130, 180);
 
         public void ConfigureGrid(DataGridView dgv)
         {
@@ -32,14 +40,22 @@ namespace SOPRO.WinForms.Services
             dgv.ScrollBars = ScrollBars.Both;
         }
 
-        public DataGridViewRow[] BuildRows(DataGridView dgv, IReadOnlyList<ExplosionRowDisplay> rows)
+        public DataGridViewRow[] BuildRows(
+            DataGridView dgv,
+            IReadOnlyList<ExplosionRowDisplay> rows,
+            IReadOnlyDictionary<string, ReportStyleOverlay>? estilosFilaUsuario = null)
         {
             if (dgv == null || rows == null || rows.Count == 0)
                 return System.Array.Empty<DataGridViewRow>();
 
             var gridRows = new List<DataGridViewRow>(rows.Count);
+            string? seccion = null;
+            int referenciaIndice = 0;
             foreach (var item in rows)
             {
+                if (item.Kind == ExplosionRowKind.Encabezado)
+                    seccion = item.Descripcion;
+
                 var row = new DataGridViewRow();
                 row.CreateCells(dgv,
                     item.Clave,
@@ -51,11 +67,39 @@ namespace SOPRO.WinForms.Services
                     item.Porcentaje,
                     string.Empty);
 
-                ApplyRowStyle(row, item);
+                row.Tag = ConstruirFilaInfo(item, seccion, ref referenciaIndice);
+                ApplyRowStyle(dgv, row, item, estilosFilaUsuario);
                 gridRows.Add(row);
             }
 
             return gridRows.ToArray();
+        }
+
+        /// <summary>
+        /// Identidad estable de la fila (clave neutral + rol) según su tipo y la
+        /// sección vigente. Devuelve una clave <c>null</c> para filas no formateables
+        /// (filas vacías).
+        /// </summary>
+        private static ExplosionFilaInfo ConstruirFilaInfo(
+            ExplosionRowDisplay item, string? seccion, ref int referenciaIndice)
+        {
+            var rol = ExplosionReportSnapshotBuilder.RolFila(item.Kind);
+            string? clave = item.Kind switch
+            {
+                ExplosionRowKind.Encabezado when !string.IsNullOrWhiteSpace(seccion)
+                    => ExplosionReportSnapshotBuilder.ClaveFilaSeccion(seccion),
+                ExplosionRowKind.Detalle when !string.IsNullOrWhiteSpace(seccion)
+                    => ExplosionReportSnapshotBuilder.ClaveFilaDetalle(seccion, item.Clave),
+                ExplosionRowKind.Total when !string.IsNullOrWhiteSpace(seccion)
+                    => ExplosionReportSnapshotBuilder.ClaveFilaTotalSeccion(seccion),
+                ExplosionRowKind.TotalGeneral
+                    => ExplosionReportSnapshotBuilder.ClaveFilaTotalGeneral,
+                ExplosionRowKind.Referencia
+                    => ExplosionReportSnapshotBuilder.ClaveFilaReferencia(referenciaIndice++),
+                _ => null,
+            };
+
+            return new ExplosionFilaInfo(clave, rol);
         }
 
         public bool PaintHeader(DataGridViewCellPaintingEventArgs e, ColumnaExplosion colDef)
@@ -117,27 +161,33 @@ namespace SOPRO.WinForms.Services
             try { target = ColorTranslator.FromHtml(html); } catch { }
         }
 
-        private static void ApplyRowStyle(DataGridViewRow row, ExplosionRowDisplay item)
+        private static void ApplyRowStyle(
+            DataGridView dgv,
+            DataGridViewRow row,
+            ExplosionRowDisplay item,
+            IReadOnlyDictionary<string, ReportStyleOverlay>? estilosFilaUsuario)
         {
+            // Base tipográfica del grid: el overlay de rol sólo pisa las propiedades
+            // que define (fuente/tamaño/negrita/colores); las demás heredan la base.
+            row.DefaultCellStyle.Font = dgv.Font;
+
+            var rol = ExplosionReportSnapshotBuilder.RolFila(item.Kind);
+            var overlay = EstilosFilaPredeterminados.CombinarExplosion(rol, estilosFilaUsuario);
+            FormPresupuesto.AplicarOverlayACellStyle(row.DefaultCellStyle, overlay);
+
             switch (item.Kind)
             {
                 case ExplosionRowKind.Encabezado:
-                    row.DefaultCellStyle.BackColor = SectionBackColor;
-                    row.DefaultCellStyle.ForeColor = Color.White;
-                    row.DefaultCellStyle.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+                    // La banda de sección alinea su título a la izquierda (el color y
+                    // la tipografía los aporta el default del rol Encabezado).
                     row.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
                     row.Height = 30;
                     row.Frozen = false;
                     break;
                 case ExplosionRowKind.Total:
-                    row.DefaultCellStyle.BackColor = TotalBackColor;
-                    row.DefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
                     SetRightAlignment(row);
                     break;
                 case ExplosionRowKind.TotalGeneral:
-                    row.DefaultCellStyle.BackColor = TotalGeneralBackColor;
-                    row.DefaultCellStyle.ForeColor = Color.White;
-                    row.DefaultCellStyle.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
                     SetRightAlignment(row);
                     row.Height = 30;
                     break;
@@ -148,9 +198,7 @@ namespace SOPRO.WinForms.Services
                     row.Height = 10;
                     break;
                 case ExplosionRowKind.Referencia:
-                    row.DefaultCellStyle.BackColor = ReferenceBackColor;
-                    row.DefaultCellStyle.ForeColor = ReferenceForeColor;
-                    row.DefaultCellStyle.Font = new Font("Segoe UI", 8.5F, FontStyle.Italic);
+                    // Fondo/texto/cursiva los aporta el default del rol Referencia.
                     break;
             }
         }

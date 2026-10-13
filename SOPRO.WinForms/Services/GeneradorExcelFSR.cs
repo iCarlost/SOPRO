@@ -9,6 +9,7 @@ using System.Text.Json;
 using SOPRO.Application.Models.Reporting.Fsr;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Reporting.Formatting;
 using SOPRO.Reporting.Layout;
@@ -29,12 +30,14 @@ namespace SOPRO.WinForms.Services
     /// </summary>
     public static class GeneradorExcelFSR
     {
-        private const string ColorEncabezado  = "#33334C";
-        private const string ColorSeccion     = "#4A4A6A";
-        private const string ColorSubtotal    = "#E8EAF6";
-        private const string ColorTotal       = "#1A237E";
-        private const string ColorFilaAlterna = "#F5F5F5";
-        private const string ColorTituloTabla = "#C5CAE9";
+        // Los colores de secciones/subtotales/totales del FSR NO viven aquí: se
+        // leen de la tabla neutral de defaults por rol
+        // (EstilosFilaPredeterminados.Fsr), única fuente de verdad compartida por
+        // PDF y Excel. Así se retiran las constantes locales y ambos medios convergen.
+        private static readonly ReportStyleOverlay EstiloEncabezadoFsr = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Encabezado);
+        private static readonly ReportStyleOverlay EstiloSeccionFsr    = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Seccion);
+        private static readonly ReportStyleOverlay EstiloTotalFsr      = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Total);
+        private static readonly ReportStyleOverlay EstiloReferenciaFsr = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Referencia);
 
         // ─────────────────────────────────────────────────────────────────────
         // Tabla de cálculo del FSR (parámetros + fórmulas)
@@ -75,8 +78,8 @@ namespace SOPRO.WinForms.Services
 
             // Título tabla
             Merge(ws, f, 1, f, totalCols, string.Empty,
-                ColorEncabezado, "#FFFFFF", 11, bold: true, height: 22);
-            ReportTitleStyleHelper.ApplyToClosedXmlTitle(ws.Range(f, 1, f, totalCols), tituloCfg, "TABLA DE CALCULO DEL FACTOR DE SALARIO REAL", ColorEncabezado);
+                EstiloEncabezadoFsr.ColorFondo!, "#FFFFFF", 11, bold: true, height: 22);
+            ReportTitleStyleHelper.ApplyToClosedXmlTitle(ws.Range(f, 1, f, totalCols), tituloCfg, "TABLA DE CALCULO DEL FACTOR DE SALARIO REAL", EstiloEncabezadoFsr.ColorFondo!);
             f++;
 
             // Encabezado columnas (desde el snapshot neutral)
@@ -91,7 +94,7 @@ namespace SOPRO.WinForms.Services
                     hc.Style.Font.FontName = enc.Fuente;
                 if (enc.Tamano > 0)
                     hc.Style.Font.FontSize = enc.Tamano;
-                hc.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(enc.ColorFondo ?? ColorSeccion);
+                hc.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(enc.ColorFondo ?? EstiloSeccionFsr.ColorFondo);
                 hc.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(enc.ColorFuente, "#FFFFFF");
                 hc.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                 hc.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
@@ -203,7 +206,7 @@ namespace SOPRO.WinForms.Services
             rFinal.Value = "FACTOR DE SALARIO REAL";
             rFinal.Style.Font.Bold = true;
             rFinal.Style.Font.FontSize = 12;
-            rFinal.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorTotal);
+            rFinal.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(EstiloTotalFsr.ColorFondo);
             rFinal.Style.Font.FontColor = XLColor.White;
             rFinal.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             rFinal.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
@@ -212,7 +215,7 @@ namespace SOPRO.WinForms.Services
             vFinal.Style.NumberFormat.Format = formatoValor;
             vFinal.Style.Font.Bold = true;
             vFinal.Style.Font.FontSize = 12;
-            vFinal.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorTotal);
+            vFinal.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(EstiloTotalFsr.ColorFondo);
             vFinal.Style.Font.FontColor = XLColor.White;
             vFinal.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             vFinal.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
@@ -268,7 +271,7 @@ namespace SOPRO.WinForms.Services
 
             // Título
             Merge(ws, f, 1, f, totalCols, "TABLA DE CÁLCULO DEL FACTOR DE SALARIO REAL",
-                ColorEncabezado, "#FFFFFF", 11, bold: true, height: 22);
+                EstiloEncabezadoFsr.ColorFondo!, "#FFFFFF", 11, bold: true, height: 22);
             f++;
 
             // Encabezados desde el snapshot neutral
@@ -283,7 +286,7 @@ namespace SOPRO.WinForms.Services
                     hc.Style.Font.FontName = enc.Fuente;
                 if (enc.Tamano > 0)
                     hc.Style.Font.FontSize = enc.Tamano;
-                hc.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(enc.ColorFondo ?? ColorSeccion);
+                hc.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(enc.ColorFondo ?? EstiloSeccionFsr.ColorFondo);
                 hc.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(enc.ColorFuente, "#FFFFFF");
                 hc.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                 hc.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
@@ -298,10 +301,12 @@ namespace SOPRO.WinForms.Services
 
             // Datos — FSR individual por insumo; valores crudos formateados por el contrato
             var filas = CalcularFilasAE2C(proyecto, manoDeObras);
+            // El bandeado proviene del estilo de tabla NEUTRAL del snapshot (no de una constante local).
+            string fondoAlterno = snapshot.EstiloTabla.FilaAlterna.ColorFondoAlterno ?? "#FFFFFF";
             bool alt = false;
             foreach (var r in filas)
             {
-                string fondo = alt ? ColorFilaAlterna : "#FFFFFF";
+                string fondo = alt ? fondoAlterno : "#FFFFFF";
                 alt = !alt;
 
                 for (int i = 0; i < totalCols; i++)
@@ -495,10 +500,10 @@ namespace SOPRO.WinForms.Services
             var rng = ws.Range(f, 1, f, 4);
             rng.Merge();
             rng.Value = titulo;
-            rng.Style.Font.Bold = true;
+            rng.Style.Font.Bold = EstiloSeccionFsr.Negrita ?? true;
             rng.Style.Font.FontSize = 10;
-            rng.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorSeccion);
-            rng.Style.Font.FontColor = XLColor.White;
+            rng.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(EstiloSeccionFsr.ColorFondo);
+            rng.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(EstiloSeccionFsr.ColorFuente);
             rng.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
             rng.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             ws.Row(f).Height = 16;
@@ -509,10 +514,10 @@ namespace SOPRO.WinForms.Services
             var rng = ws.Range(f, 1, f, 4);
             rng.Merge();
             rng.Value = titulo;
-            rng.Style.Font.Bold = true;
+            rng.Style.Font.Bold = EstiloReferenciaFsr.Negrita ?? true;
             rng.Style.Font.FontSize = 9;
-            rng.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorTituloTabla);
-            rng.Style.Font.FontColor = XLColor.FromHtml("#1A237E");
+            rng.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(EstiloReferenciaFsr.ColorFondo);
+            rng.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(EstiloReferenciaFsr.ColorFuente);
             rng.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
             rng.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             ws.Row(f).Height = 15;

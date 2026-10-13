@@ -14,7 +14,7 @@ using SOPRO.Application.Services;
 
 namespace SOPRO.WinForms.Forms
 {
-    public partial class FormCatalogoHerramientas : Form, IGridFormato, IBusquedaGrid, IRecalculable, IConsolidacionInsumos
+    public partial class FormCatalogoHerramientas : Form, IGridFormato, IBusquedaGrid, IRecalculable, IConsolidacionInsumos, IGridSeleccionFormato
     {
         public static event EventHandler InsumosModificados;
 

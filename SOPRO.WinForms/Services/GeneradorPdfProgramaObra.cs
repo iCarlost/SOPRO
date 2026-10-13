@@ -5,6 +5,8 @@ using PdfSharp.Pdf;
 using SOPRO.Application.DTOs.Programacion;
 using SOPRO.Application.Models.Reporting.Programa;
 using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services.Reporting;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Reporting.Formatting;
 using SOPRO.WinForms.Models;
@@ -79,9 +81,17 @@ namespace SOPRO.WinForms.Services
             ArgumentNullException.ThrowIfNull(snapshot);
             ArgumentNullException.ThrowIfNull(datos);
 
+            // Defaults NEUTRALES por rol de fila (única fuente de verdad compartida con
+            // grid/Excel) combinados con la config persistida del usuario. El override
+            // de celda del snapshot sigue teniendo la máxima precedencia.
+            snapshot = snapshot with
+            {
+                EstilosFila = EstilosFilaPredeterminados.CombinarProgramas(snapshot.EstilosFila)
+            };
+
             var columnas = MapearColumnas(snapshot);
             var filas = MapearFilas(datos, snapshot);
-            return GenerarCore(proyecto, plantilla, columnas, filas, datos.Periodos, ganttModel, ganttVisualSettings, tituloReporte, rutaDestino, tituloCfg);
+            return GenerarCore(proyecto, plantilla, columnas, filas, datos.Periodos, ganttModel, ganttVisualSettings, tituloReporte, rutaDestino, tituloCfg, snapshot);
         }
 
         /// <summary>
@@ -99,7 +109,7 @@ namespace SOPRO.WinForms.Services
             string tituloReporte,
             string? rutaDestino = null,
             ConfiguracionTituloReporte? tituloCfg = null)
-            => GenerarCore(proyecto, plantilla, columnas, filas, periodos, ganttModel, ganttVisualSettings, tituloReporte, rutaDestino, tituloCfg);
+            => GenerarCore(proyecto, plantilla, columnas, filas, periodos, ganttModel, ganttVisualSettings, tituloReporte, rutaDestino, tituloCfg, null);
 
         private string GenerarCore(
             Proyecto proyecto,
@@ -111,7 +121,8 @@ namespace SOPRO.WinForms.Services
             GanttVisualSettings ganttVisualSettings,
             string tituloReporte,
             string? rutaDestino,
-            ConfiguracionTituloReporte? tituloCfg)
+            ConfiguracionTituloReporte? tituloCfg,
+            ReportColumnSnapshot? snapshot)
         {
             ArgumentNullException.ThrowIfNull(proyecto);
             ArgumentNullException.ThrowIfNull(plantilla);
@@ -172,7 +183,7 @@ namespace SOPRO.WinForms.Services
                     if (y + rowHeight > layout.BodyBottom)
                         break;
 
-                    DrawRow(gfx, y, rowHeight, fila, columnas, ganttModel, resources, bands);
+                    DrawRow(gfx, y, rowHeight, fila, columnas, ganttModel, resources, bands, snapshot);
                     y += rowHeight;
                     rowIndex++;
                 }
@@ -676,16 +687,39 @@ namespace SOPRO.WinForms.Services
         }
 
         private void DrawRow(XGraphics gfx, double y, double rowHeight, ProgramaPdfRow fila,
-            List<ProgramaPdfColumn> columnas, GanttRenderModel ganttModel, DrawResources resources, TimelineBands bands)
+            List<ProgramaPdfColumn> columnas, GanttRenderModel ganttModel, DrawResources resources, TimelineBands bands,
+            ReportColumnSnapshot? snapshot)
         {
             double x = bands.LeftX;
             for (int i = 0; i < columnas.Count; i++)
             {
                 var rect = new XRect(x, y, bands.LeftWidths[i], rowHeight);
-                if (fila.EsResumen)
+
+                // Estilo efectivo de la celda: default de rol + override de rol del
+                // usuario + override de celda (cascada neutral del paso 6.2).
+                ReportStyleOverlay? overlay = null;
+                if (snapshot is not null)
+                {
+                    var rol = fila.EsResumen ? RolFilaReporte.Resumen : RolFilaReporte.Concepto;
+                    overlay = ResolverOverlayPdf(snapshot, ClaveFilaPdf(snapshot, fila), rol, columnas[i].Name);
+                }
+
+                if (overlay is not null && !string.IsNullOrWhiteSpace(overlay.ColorFondo))
+                    gfx.DrawRectangle(new XSolidBrush(ParseColor(overlay.ColorFondo, DrawingColor.White)), rect);
+                else if (fila.EsResumen)
                     gfx.DrawRectangle(new XSolidBrush(XColor.FromArgb(248, 248, 248)), rect);
-                var font = fila.EsResumen ? resources.ColumnBoldFonts[i] : resources.ColumnFonts[i];
-                var brush = resources.ColumnBrushes[i];
+
+                var font = overlay is null
+                    ? (fila.EsResumen ? resources.ColumnBoldFonts[i] : resources.ColumnFonts[i])
+                    : CrearFuenteEfectiva(columnas[i], overlay, resources, i, fila.EsResumen);
+
+                XBrush brush = resources.ColumnBrushes[i];
+                if (overlay is not null && !string.IsNullOrWhiteSpace(overlay.ColorFuente))
+                {
+                    var color = ParseColor(overlay.ColorFuente, DrawingColor.Black);
+                    brush = new XSolidBrush(XColor.FromArgb(color.R, color.G, color.B));
+                }
+
                 var textRect = new XRect(rect.Left + 3, rect.Top + 4, rect.Width - 6, rect.Height - 8);
                 DrawCellText(gfx, fila.GetTexto(columnas[i].Name), columnas[i], font, brush, textRect);
                 x += bands.LeftWidths[i];
@@ -698,6 +732,59 @@ namespace SOPRO.WinForms.Services
             DrawTimelineGrid(gfx, timelineRect, ganttModel, resources, fila.EsResumen);
             DrawTimelineContent(gfx, timelineRect, fila, ganttModel, resources);
         }
+
+        /// <summary>
+        /// Clave de fila ESTABLE del programa según su tipo: Programa de Obra usa
+        /// <c>ACT:{Id}</c>/<c>RES:{Clave}</c>; Programa de Insumos usa <c>INS:{InsumoId}</c>.
+        /// </summary>
+        private static string ClaveFilaPdf(ReportColumnSnapshot snapshot, ProgramaPdfRow fila)
+        {
+            if (string.Equals(snapshot.TipoReporte, ProgramaInsumosReportSnapshotBuilder.TipoReporte, StringComparison.OrdinalIgnoreCase))
+                return ClaveFilaReporte.Insumo(fila.ItemId ?? 0);
+
+            return fila.EsResumen
+                ? ClaveFilaReporte.Resumen(fila.GetTexto("colClave"))
+                : ClaveFilaReporte.Actividad(fila.ItemId ?? 0);
+        }
+
+        /// <summary>
+        /// Resuelve el estilo efectivo de la celda (default de rol + override de rol del
+        /// usuario + override de celda) con la cascada neutral.
+        /// </summary>
+        internal static ReportStyleOverlay ResolverOverlayPdf(
+            ReportColumnSnapshot snapshot,
+            string claveFila,
+            string rolFila,
+            string nombreColumna)
+            => ReportCellStyleResolver.Resolve(snapshot, "", claveFila, nombreColumna, rolFila, false);
+
+        /// <summary>
+        /// Fuente efectiva de la celda: si el overlay no aporta tipografía se usa la
+        /// fuente cacheada por columna; en otro caso se construye la fuente combinada.
+        /// </summary>
+        private static XFont CrearFuenteEfectiva(ProgramaPdfColumn col, ReportStyleOverlay overlay, DrawResources resources, int index, bool esResumen)
+        {
+            bool tieneTipografia = !string.IsNullOrWhiteSpace(overlay.Fuente)
+                || overlay.TamanoFuente is > 0
+                || overlay.Negrita is not null
+                || overlay.Cursiva is not null;
+
+            if (!tieneTipografia)
+                return esResumen ? resources.ColumnBoldFonts[index] : resources.ColumnFonts[index];
+
+            var nombre = string.IsNullOrWhiteSpace(overlay.Fuente) ? col.FontName : overlay.Fuente!;
+            var tamano = overlay.TamanoFuente is > 0 ? overlay.TamanoFuente!.Value : col.FontSize;
+            bool bold = overlay.Negrita ?? (esResumen || col.Bold);
+            bool italic = overlay.Cursiva ?? col.Italic;
+
+            var normalized = PdfFontHelper.NormalizeFontName(nombre);
+            var style = XFontStyleEx.Regular;
+            if (bold && italic) style = XFontStyleEx.BoldItalic;
+            else if (bold) style = XFontStyleEx.Bold;
+            else if (italic) style = XFontStyleEx.Italic;
+            return new XFont(normalized, Math.Max(6.4, tamano - 0.6), style);
+        }
+
 
         private void DrawTimelineGrid(XGraphics gfx, XRect rect, GanttRenderModel model, DrawResources resources, bool summary)
         {
