@@ -83,7 +83,10 @@ namespace SOPRO.WinForms.Helpers
 
         /// <summary>
         /// <c>true</c> cuando las celdas formateables seleccionadas NO comparten
-        /// el mismo overlay actual (el ribbon puede pintar un estado mixto).
+        /// el mismo ESTILO EFECTIVO (el ribbon debe pintar un estado mixto /
+        /// indeterminado). Se compara el estilo efectivo (no sólo el override
+        /// puntual) para que dos celdas de columnas o roles distintos se traten
+        /// como distintas, igual que haría Excel.
         /// </summary>
         public bool EstadoMixto
         {
@@ -96,18 +99,54 @@ namespace SOPRO.WinForms.Helpers
                 bool primera = true;
                 foreach (var direccion in celdas)
                 {
-                    var overlay = grid.ObtenerOverlayActual(direccion);
+                    var estilo = grid.ObtenerEstiloEfectivo(direccion);
                     if (primera)
                     {
-                        referencia = overlay;
+                        referencia = estilo;
                         primera = false;
                         continue;
                     }
 
-                    if (!Equals(referencia, overlay)) return true;
+                    if (!Equals(referencia, estilo)) return true;
                 }
 
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Estilo EFECTIVO UNIFORME de la selección de celdas: el de una única
+        /// celda, o el de todas cuando comparten el MISMO estilo efectivo. Devuelve
+        /// <c>null</c> cuando no hay selección o cuando las celdas difieren
+        /// (estado MIXTO) — en ambos casos el ribbon muestra un estado neutro sin
+        /// arrastrar el valor de la celda anterior. Lo consume
+        /// <c>ActualizarEstadoFormatoRibbon</c> para volcar el formato a los
+        /// controles (P2).
+        /// </summary>
+        public ReportStyleOverlay? EstiloEfectivoSeleccion
+        {
+            get
+            {
+                var celdas = ObtenerCeldasFormateables();
+                if (celdas.Count == 0 || GridCeldas is not { } grid) return null;
+
+                ReportStyleOverlay? referencia = null;
+                bool primera = true;
+                foreach (var direccion in celdas)
+                {
+                    var estilo = grid.ObtenerEstiloEfectivo(direccion);
+                    if (primera)
+                    {
+                        referencia = estilo;
+                        primera = false;
+                        continue;
+                    }
+
+                    // Cualquier diferencia => estado mixto: sin estilo uniforme.
+                    if (!Equals(referencia, estilo)) return null;
+                }
+
+                return referencia;
             }
         }
 

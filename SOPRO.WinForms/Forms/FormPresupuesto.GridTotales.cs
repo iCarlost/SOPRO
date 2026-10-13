@@ -186,9 +186,23 @@ namespace SOPRO.WinForms.Forms
         /// columna.
         /// </summary>
         private ReportStyleOverlay? ObtenerOverlayColumnaPresupuesto(int columnIndex, string tipo)
+            => ObtenerOverlayColumnaPresupuesto(dgvPresupuesto, columnIndex, tipo);
+
+        /// <summary>
+        /// Variante pura (sin estado de instancia) del nivel INFERIOR de la cascada:
+        /// el formato configurado de la COLUMNA del <paramref name="grid"/>, o
+        /// <c>null</c> si la columna no es personalizada. La comparte el pintado
+        /// (<see cref="DgvPresupuesto_CellFormatting"/>) y la resolución del estilo
+        /// EFECTIVO que el ribbon refleja (P2).
+        /// </summary>
+        internal static ReportStyleOverlay? ObtenerOverlayColumnaPresupuesto(
+            DataGridView grid,
+            int columnIndex,
+            string tipo)
         {
-            if (columnIndex < 0 || columnIndex >= dgvPresupuesto.Columns.Count) return null;
-            if (dgvPresupuesto.Columns[columnIndex].Tag is not ColumnaPersonalizada colDef) return null;
+            if (grid is null) return null;
+            if (columnIndex < 0 || columnIndex >= grid.Columns.Count) return null;
+            if (grid.Columns[columnIndex].Tag is not ColumnaPersonalizada colDef) return null;
 
             var overlay = new ReportStyleOverlay(
                 AlineacionHorizontal: (ReportTextAlignment)colDef.Alineacion,
@@ -209,6 +223,83 @@ namespace SOPRO.WinForms.Forms
             }
 
             return overlay;
+        }
+
+        /// <summary>
+        /// Resuelve el estilo EFECTIVO de una celda del presupuesto con la MISMA
+        /// precedencia que el pintado del grid: override de celda &gt; rol de fila
+        /// (default + override persistido) &gt; columna. Es pura y verificable sin
+        /// UI real: sólo depende del grid (para localizar la fila por su clave
+        /// ESTABLE y leer su Tipo) y de los overlays en memoria. La consume
+        /// <see cref="FormPresupuesto.ObtenerEstiloEfectivo"/> para que el ribbon
+        /// refleje el formato de la selección (P2).
+        /// </summary>
+        internal static ReportStyleOverlay? ResolverEstiloEfectivoPresupuesto(
+            DataGridView grid,
+            IReadOnlyDictionary<ReportCellAddress, ReportStyleOverlay> overlays,
+            IReadOnlyDictionary<string, ReportStyleOverlay>? estilosFilaUsuario,
+            ReportCellAddress direccion)
+        {
+            if (grid is null || direccion is null) return null;
+
+            int rowIndex = -1;
+            for (int i = 0; i < grid.Rows.Count; i++)
+            {
+                if (string.Equals(ObtenerClaveFilaFormato(grid, i), direccion.ClaveFila, StringComparison.Ordinal))
+                {
+                    rowIndex = i;
+                    break;
+                }
+            }
+
+            string tipo = rowIndex >= 0 ? ObtenerTipoFilaPresupuesto(grid, rowIndex) : string.Empty;
+
+            var columnaOverlay = ObtenerOverlayColumnaPresupuestoPorNombre(grid, direccion.NombreColumna, tipo);
+            var rolOverlay = EstilosFilaPredeterminados.CombinarPresupuesto(
+                ObtenerRolFilaFormato(tipo), estilosFilaUsuario);
+
+            ReportStyleOverlay? celdaOverlay = null;
+            if (overlays is not null && overlays.TryGetValue(direccion, out var encontrado))
+                celdaOverlay = encontrado;
+
+            return ReportCellStyleResolver.Combinar(
+                columnaOverlay,
+                ReportCellStyleResolver.Combinar(rolOverlay, celdaOverlay));
+        }
+
+        private static ReportStyleOverlay? ObtenerOverlayColumnaPresupuestoPorNombre(
+            DataGridView grid,
+            string nombreInterno,
+            string tipo)
+        {
+            if (grid is null || string.IsNullOrWhiteSpace(nombreInterno)) return null;
+
+            for (int i = 0; i < grid.Columns.Count; i++)
+            {
+                if (grid.Columns[i].Tag is ColumnaPersonalizada colDef
+                    && string.Equals(colDef.NombreInterno, nombreInterno, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ObtenerOverlayColumnaPresupuesto(grid, i, tipo);
+                }
+            }
+
+            return null;
+        }
+
+        private static string ObtenerTipoFilaPresupuesto(DataGridView grid, int rowIndex)
+        {
+            if (grid is null || rowIndex < 0 || rowIndex >= grid.Rows.Count) return string.Empty;
+
+            foreach (DataGridViewColumn col in grid.Columns)
+            {
+                if (col.Tag is ColumnaPersonalizada colDef
+                    && string.Equals(colDef.NombreInterno, "Tipo", StringComparison.OrdinalIgnoreCase))
+                {
+                    return grid.Rows[rowIndex].Cells[col.Index].Value?.ToString() ?? string.Empty;
+                }
+            }
+
+            return string.Empty;
         }
 
         /// <summary>

@@ -72,6 +72,19 @@ namespace SOPRO.WinForms.Helpers
         ReportStyleOverlay? ObtenerOverlayActual(ReportCellAddress direccion);
 
         /// <summary>
+        /// Estilo EFECTIVO de una celda con la MISMA precedencia que el pintado del
+        /// grid (override de celda &gt; rol de fila &gt; columna &gt; banda &gt;
+        /// tabla), o <c>null</c> si no resuelve ningún nivel. Lo consume el ribbon
+        /// para REFLEJAR el formato de la selección tipo Excel (comportamiento
+        /// tipo Excel). La implementación por defecto degrada al override puntual
+        /// de la celda; los grids que resuelven rol/columna lo sobreescriben para
+        /// reflejar EXACTAMENTE lo que pintan. Se añade con implementación por
+        /// defecto para no romper los implementadores existentes.
+        /// </summary>
+        ReportStyleOverlay? ObtenerEstiloEfectivo(ReportCellAddress direccion)
+            => ObtenerOverlayActual(direccion);
+
+        /// <summary>
         /// Aplica (upsert parcial) el overlay a UNA celda y pinta el cambio de
         /// inmediato en el control.
         /// </summary>

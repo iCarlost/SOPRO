@@ -50,16 +50,40 @@ public class FormatoSeleccionCoordinatorTests
         public Dictionary<ReportCellAddress, ReportStyleOverlay> Overlays { get; } = new();
         public List<ReportCellAddress> Pintadas { get; } = new();
 
+        /// <summary>Estilo efectivo (rol/columna/override) por celda. Si no se define, degrada al override.</summary>
+        public Dictionary<ReportCellAddress, ReportStyleOverlay> EstilosEfectivos { get; } = new();
+
         public IReadOnlyList<ReportCellAddress> ObtenerDireccionesSeleccionadas() => Direcciones;
         public bool EsCeldaFormateable(ReportCellAddress direccion) => !NoFormateables.Contains(direccion);
         public ReportStyleOverlay? ObtenerOverlayActual(ReportCellAddress direccion)
             => Overlays.TryGetValue(direccion, out var overlay) ? overlay : null;
+
+        public ReportStyleOverlay? ObtenerEstiloEfectivo(ReportCellAddress direccion)
+            => EstilosEfectivos.TryGetValue(direccion, out var estilo) ? estilo : ObtenerOverlayActual(direccion);
 
         public void AplicarOverlayCelda(ReportCellAddress direccion, ReportStyleOverlay overlay)
         {
             Pintadas.Add(direccion);
             Overlays[direccion] = overlay;
         }
+    }
+
+    /// <summary>
+    /// Grid que NO sobreescribe <c>ObtenerEstiloEfectivo</c>: debe usar la
+    /// implementación POR DEFECTO del contrato (degrada al override de celda).
+    /// </summary>
+    private sealed class GridCeldasSinEfectivo : GridSoloColumna, IGridSeleccionFormato
+    {
+        public bool TieneSeleccionCeldas { get; set; } = true;
+        public List<ReportCellAddress> Direcciones { get; } = new();
+        public Dictionary<ReportCellAddress, ReportStyleOverlay> Overlays { get; } = new();
+
+        public IReadOnlyList<ReportCellAddress> ObtenerDireccionesSeleccionadas() => Direcciones;
+        public bool EsCeldaFormateable(ReportCellAddress direccion) => true;
+        public ReportStyleOverlay? ObtenerOverlayActual(ReportCellAddress direccion)
+            => Overlays.TryGetValue(direccion, out var overlay) ? overlay : null;
+        public void AplicarOverlayCelda(ReportCellAddress direccion, ReportStyleOverlay overlay)
+            => Overlays[direccion] = overlay;
     }
 
     private static FormatoSeleccionCoordinator Coordinador(IGridFormato grid)
@@ -216,6 +240,143 @@ public class FormatoSeleccionCoordinatorTests
         var coordinador = Coordinador(grid);
 
         Assert.IsFalse(coordinador.EstadoMixto);
+    }
+
+    // ═══════════════ P1: habilitado del ribbon por selección de celdas ═══════════════
+
+    [TestMethod]
+    public void UnaCeldaSeleccionada_HabilitaComandos_DestinoCeldas()
+    {
+        var grid = new GridCeldas { TieneSeleccionCeldas = true };
+        grid.Direcciones.Add(Dir("C:1", "Importe"));
+        var coordinador = Coordinador(grid);
+
+        Assert.AreEqual(DestinoFormatoGrid.Celdas, coordinador.Destino);
+        Assert.IsTrue(coordinador.PuedeAplicarASeleccion, "Con una celda formateable los comandos quedan habilitados.");
+    }
+
+    [TestMethod]
+    public void RangoContiguoShift_HabilitaComandos()
+    {
+        var grid = new GridCeldas { TieneSeleccionCeldas = true };
+        grid.Direcciones.AddRange(new[] { Dir("C:1", "Importe"), Dir("C:2", "Importe"), Dir("C:3", "Importe") });
+        var coordinador = Coordinador(grid);
+
+        Assert.AreEqual(DestinoFormatoGrid.Celdas, coordinador.Destino);
+        Assert.IsTrue(coordinador.PuedeAplicarASeleccion);
+    }
+
+    [TestMethod]
+    public void MultiRangoCtrl_HabilitaComandos()
+    {
+        var grid = new GridCeldas { TieneSeleccionCeldas = true };
+        var d1 = Dir("C:1", "Importe");
+        var d2 = Dir("C:2", "Importe");
+        grid.Direcciones.AddRange(new[] { d1, d2, d1 });
+        var coordinador = Coordinador(grid);
+
+        Assert.AreEqual(DestinoFormatoGrid.Celdas, coordinador.Destino);
+        Assert.IsTrue(coordinador.PuedeAplicarASeleccion);
+    }
+
+    [TestMethod]
+    public void EncabezadoSeleccionado_SinCeldas_DestinoColumna()
+    {
+        var grid = new GridCeldas
+        {
+            TieneSeleccionCeldas = false,
+            ColumnaSeleccionada = new ColumnaPersonalizada { Nombre = "Costo" },
+        };
+        var coordinador = Coordinador(grid);
+
+        Assert.AreEqual(DestinoFormatoGrid.Columna, coordinador.Destino);
+        Assert.IsFalse(coordinador.PuedeAplicarASeleccion);
+    }
+
+    [TestMethod]
+    public void SinSeleccion_EstiloEfectivoNuloYDestinoNinguno()
+    {
+        var grid = new GridCeldas { TieneSeleccionCeldas = false };
+        var coordinador = Coordinador(grid);
+
+        Assert.AreEqual(DestinoFormatoGrid.Ninguno, coordinador.Destino);
+        Assert.IsNull(coordinador.EstiloEfectivoSeleccion);
+        Assert.IsFalse(coordinador.EstadoMixto);
+    }
+
+    // ═══════════════ P2: el ribbon refleja el estilo de la celda ═══════════════
+
+    [TestMethod]
+    public void EstiloEfectivo_UnaCelda_ReflejaNegritaCentradoYFondo()
+    {
+        var grid = new GridCeldas { TieneSeleccionCeldas = true };
+        var direccion = Dir("C:1", "Importe");
+        grid.Direcciones.Add(direccion);
+        grid.EstilosEfectivos[direccion] = new ReportStyleOverlay(
+            Negrita: true,
+            AlineacionHorizontal: ReportTextAlignment.Centro,
+            ColorFondo: "#008000");
+        var coordinador = Coordinador(grid);
+
+        var estilo = coordinador.EstiloEfectivoSeleccion;
+
+        Assert.IsNotNull(estilo, "Una celda con estilo uniforme debe exponerlo.");
+        Assert.IsTrue(estilo!.Negrita);
+        Assert.AreEqual(ReportTextAlignment.Centro, estilo.AlineacionHorizontal);
+        Assert.AreEqual("#008000", estilo.ColorFondo);
+        Assert.IsFalse(coordinador.EstadoMixto);
+    }
+
+    [TestMethod]
+    public void SeleccionMixta_EstiloNeutroIndeterminado_NoArrastraCeldaAnterior()
+    {
+        var grid = new GridCeldas { TieneSeleccionCeldas = true };
+        var d1 = Dir("C:1", "Importe");
+        var d2 = Dir("C:2", "Importe");
+        grid.Direcciones.AddRange(new[] { d1, d2 });
+        grid.EstilosEfectivos[d1] = new ReportStyleOverlay(ColorFondo: "#008000", Negrita: true);
+        grid.EstilosEfectivos[d2] = new ReportStyleOverlay(ColorFondo: "#FFFFFF", Negrita: false);
+        var coordinador = Coordinador(grid);
+
+        Assert.IsTrue(coordinador.EstadoMixto);
+        Assert.IsNull(coordinador.EstiloEfectivoSeleccion,
+            "Con valores distintos NO debe devolver el de la celda anterior (neutro).");
+    }
+
+    [TestMethod]
+    public void CambiarSeleccionDeCeldaConFondo_DejaDeMostrarVerde()
+    {
+        var grid = new GridCeldas { TieneSeleccionCeldas = true };
+        var celdaA = Dir("C:1", "Importe");
+        var celdaB = Dir("C:2", "Importe");
+        grid.EstilosEfectivos[celdaA] = new ReportStyleOverlay(ColorFondo: "#008000");
+        grid.EstilosEfectivos[celdaB] = new ReportStyleOverlay();
+        var coordinador = Coordinador(grid);
+
+        // Selecciona A (verde).
+        grid.Direcciones.Add(celdaA);
+        Assert.AreEqual("#008000", coordinador.EstiloEfectivoSeleccion!.ColorFondo);
+
+        // Cambia la selección a B (sin formato): el ribbon deja de mostrar verde.
+        grid.Direcciones.Clear();
+        grid.Direcciones.Add(celdaB);
+        Assert.IsNull(coordinador.EstiloEfectivoSeleccion!.ColorFondo,
+            "Al cambiar a la celda B el verde de A NO debe quedar reflejado.");
+    }
+
+    [TestMethod]
+    public void ContratoPorDefecto_EstiloEfectivoDegradaAlOverrideDeCelda()
+    {
+        var grid = new GridCeldasSinEfectivo();
+        var direccion = Dir("C:1", "Importe");
+        grid.Direcciones.Add(direccion);
+        grid.Overlays[direccion] = new ReportStyleOverlay(Negrita: true);
+        var coordinador = Coordinador(grid);
+
+        var estilo = coordinador.EstiloEfectivoSeleccion;
+
+        Assert.IsNotNull(estilo);
+        Assert.IsTrue(estilo!.Negrita, "El miembro por defecto del contrato usa el override de celda.");
     }
 
     [TestMethod]

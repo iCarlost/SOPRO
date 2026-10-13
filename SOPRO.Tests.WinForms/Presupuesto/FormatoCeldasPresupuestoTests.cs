@@ -520,6 +520,94 @@ public class FormatoCeldasPresupuestoTests
             "Editar la celda de un agrupador NO cambia el equivalente de otro.");
     }
 
+    // ═══════════════════ Estilo EFECTIVO de la selección (P2) ═══════════════════
+
+    private static DataGridViewTextBoxColumn Col(string nombre, AlineacionColumna alineacion = AlineacionColumna.Izquierda)
+        => new()
+        {
+            Name = nombre,
+            Tag = new ColumnaPersonalizada { Nombre = nombre, NombreInterno = nombre, Alineacion = alineacion },
+        };
+
+    private static DataGridView CrearGridConTipo(params (string nombre, AlineacionColumna alin)[] columnas)
+    {
+        var grid = new DataGridView { AllowUserToAddRows = false };
+        foreach (var (nombre, alin) in columnas)
+            grid.Columns.Add(Col(nombre, alin));
+        return grid;
+    }
+
+    private static int AgregarFilaTipo(DataGridView grid, ConceptoPresupuesto? concepto, string tipo)
+    {
+        var idx = grid.Rows.Add();
+        grid.Rows[idx].Tag = concepto;
+        grid.Rows[idx].Cells["Tipo"].Value = tipo;
+        return idx;
+    }
+
+    [TestMethod]
+    public void EstiloEfectivo_ColumnaSeReflejaSinOverride()
+    {
+        using var grid = CrearGridConTipo(("Tipo", AlineacionColumna.Izquierda), ("Importe", AlineacionColumna.Centro));
+        AgregarFilaTipo(grid, Concepto(7), "Concepto");
+
+        var dir = new ReportCellAddress(Vista, "C:7", "Importe");
+        var estilo = FormPresupuesto.ResolverEstiloEfectivoPresupuesto(
+            grid, new Dictionary<ReportCellAddress, ReportStyleOverlay>(), null, dir);
+
+        Assert.IsNotNull(estilo);
+        Assert.AreEqual(ReportTextAlignment.Centro, estilo!.AlineacionHorizontal,
+            "Sin override, el ribbon debe reflejar la alineación de la columna.");
+    }
+
+    [TestMethod]
+    public void EstiloEfectivo_OverrideDeCeldaGanaSobreColumnaYrol()
+    {
+        using var grid = CrearGridConTipo(("Tipo", AlineacionColumna.Izquierda), ("Importe", AlineacionColumna.Izquierda));
+        AgregarFilaTipo(grid, Concepto(7), "Concepto");
+
+        var dir = new ReportCellAddress(Vista, "C:7", "Importe");
+        var overlays = new Dictionary<ReportCellAddress, ReportStyleOverlay>
+        {
+            [dir] = new ReportStyleOverlay(Negrita: true, ColorFondo: "#008000", AlineacionHorizontal: ReportTextAlignment.Centro),
+        };
+
+        var estilo = FormPresupuesto.ResolverEstiloEfectivoPresupuesto(grid, overlays, null, dir);
+
+        Assert.IsNotNull(estilo);
+        Assert.IsTrue(estilo!.Negrita);
+        Assert.AreEqual("#008000", estilo.ColorFondo);
+        Assert.AreEqual(ReportTextAlignment.Centro, estilo.AlineacionHorizontal);
+    }
+
+    [TestMethod]
+    public void EstiloEfectivo_RolDeAgrupadorAportaFondoYNegrita()
+    {
+        using var grid = CrearGridConTipo(("Tipo", AlineacionColumna.Izquierda), ("Importe", AlineacionColumna.Derecha));
+        AgregarFilaTipo(grid, Concepto(5, agrupador: true, clave: "01"), "Capitulo");
+
+        var dir = new ReportCellAddress(Vista, "SUB:5", "Importe");
+        var estilo = FormPresupuesto.ResolverEstiloEfectivoPresupuesto(
+            grid, new Dictionary<ReportCellAddress, ReportStyleOverlay>(), null, dir);
+
+        Assert.IsNotNull(estilo);
+        Assert.AreEqual("#800080", estilo!.ColorFondo, "El rol Capítulo aporta su fondo por defecto.");
+        Assert.IsTrue(estilo.Negrita);
+    }
+
+    [TestMethod]
+    public void EstiloEfectivo_CeldaSinFilaResoluble_NoLanza()
+    {
+        using var grid = CrearGridConTipo(("Tipo", AlineacionColumna.Izquierda), ("Importe", AlineacionColumna.Izquierda));
+        AgregarFilaTipo(grid, Concepto(7), "Concepto");
+
+        var inexistente = new ReportCellAddress(Vista, "C:999", "Importe");
+        var estilo = FormPresupuesto.ResolverEstiloEfectivoPresupuesto(
+            grid, new Dictionary<ReportCellAddress, ReportStyleOverlay>(), null, inexistente);
+
+        Assert.IsNotNull(estilo, "Sin fila resoluble igualmente resuelve columna/rol vacío.");
+    }
+
     // ═════════════════════════════════ Fakes ═════════════════════════════════
 
     /// <summary>

@@ -22,6 +22,9 @@ namespace SOPRO.WinForms.Forms
 
         private bool _cargandoRibbon = false;
         private IGridFormato _formActivo = null;
+        // Grid cuyo evento SelectionChanged está suscrito para refrescar el estado
+        // contextual del ribbon al cambiar la selección de CELDAS (P1).
+        private DataGridView _gridActivoSeleccion = null;
         private IRecalculable _formActivoRecalculable = null;
         private IBusquedaGrid _formActivoBuscable = null;
         private IConsolidacionInsumos _formActivoConsolidable = null;
@@ -40,7 +43,7 @@ namespace SOPRO.WinForms.Forms
 
         public FormProyecto(SOPROContext context, Proyecto proyecto)
         {
-            _context  = context  ?? throw new ArgumentNullException(nameof(context));
+            _context = context ?? throw new ArgumentNullException(nameof(context));
             _proyecto = proyecto ?? throw new ArgumentNullException(nameof(proyecto));
             InitializeComponent();
             SoproTheme.ApplyFormProyecto(this);

@@ -353,6 +353,19 @@ namespace SOPRO.WinForms.Forms
             return _overlaysFormato.TryGetValue(direccion, out var overlay) ? overlay : null;
         }
 
+        /// <summary>
+        /// Estilo EFECTIVO (override de celda &gt; rol de fila &gt; columna) de la
+        /// celda, resuelto con la MISMA precedencia que el pintado del grid. Lo
+        /// consume el ribbon para REFLEJAR el formato de la celda seleccionada
+        /// (comportamiento tipo Excel, P2).
+        /// </summary>
+        public ReportStyleOverlay? ObtenerEstiloEfectivo(ReportCellAddress direccion)
+            => ResolverEstiloEfectivoPresupuesto(
+                dgvPresupuesto,
+                _overlaysFormato,
+                ObtenerEstilosFilaUsuario(),
+                direccion);
+
         public void AplicarOverlayCelda(ReportCellAddress direccion, ReportStyleOverlay overlay)
         {
             if (direccion is null || overlay is null) return;

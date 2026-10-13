@@ -11,6 +11,7 @@ using SOPRO.Data.Context;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.UI.Controls;
 using SOPRO.Application.Services;
+using SOPRO.Application.Models.Reporting.ReportColumns;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -69,6 +70,7 @@ namespace SOPRO.WinForms.Forms
                 if (_formActivoConsolidable != null) _formActivoConsolidable.EstadoConsolidacionCambiado -= FormActivoConsolidacionCambiada;
                 _formActivoConsolidable = null;
             }
+            DesuscribirSeleccionGrid();
 
             // Buscar si el form activo implementa IGridFormato
             if (tabControl.SelectedTab?.Controls.Count > 0
@@ -80,6 +82,9 @@ namespace SOPRO.WinForms.Forms
                 _formActivoConsolidable = tabControl.SelectedTab.Controls[0] as IConsolidacionInsumos;
                 if (_formActivoConsolidable != null) _formActivoConsolidable.EstadoConsolidacionCambiado += FormActivoConsolidacionCambiada;
                 _formActivo.ColumnaSeleccionadaCambiada += FormActivo_ColumnaSeleccionadaCambiada;
+                // P1: además del encabezado, un cambio de SELECCIÓN de celdas del
+                // grid debe refrescar el ribbon (compartido para todos los grids).
+                SuscribirSeleccionGrid(_formActivo);
                 btnExcelRibbon.Enabled = true;
                 btnPdfRibbon.Enabled = true;
                 btnBuscarRibbon.Enabled = _formActivoBuscable?.GridBusqueda != null;
@@ -122,6 +127,45 @@ namespace SOPRO.WinForms.Forms
             {
                 DesactivarRibbon();
             }
+        }
+
+        /// <summary>
+        /// Suscribe al <c>SelectionChanged</c> del grid PRINCIPAL del form activo,
+        /// de modo que un cambio de selección de CELDAS (1 celda, rango con Shift o
+        /// multi-rango con Ctrl) refresque el estado contextual del ribbon. Es
+        /// COMPARTIDO para todos los grids: no requiere que cada form notifique.
+        /// </summary>
+        private void SuscribirSeleccionGrid(IGridFormato form)
+        {
+            DesuscribirSeleccionGrid();
+            if (form?.GridPrincipal is DataGridView grid)
+            {
+                _gridActivoSeleccion = grid;
+                grid.SelectionChanged += FormActivo_SeleccionCeldasCambiada;
+            }
+        }
+
+        private void DesuscribirSeleccionGrid()
+        {
+            if (_gridActivoSeleccion is null) return;
+            _gridActivoSeleccion.SelectionChanged -= FormActivo_SeleccionCeldasCambiada;
+            _gridActivoSeleccion = null;
+        }
+
+        /// <summary>
+        /// El grid activo cambió su selección de celdas: se refresca TODO el estado
+        /// contextual del ribbon de formato (habilitados + estilo efectivo). El
+        /// guard <c>_cargandoRibbon</c> evita bucles de reentrancia (cargar el
+        /// ribbon no cambia la selección del grid, pero se blinda igualmente).
+        /// </summary>
+        private void FormActivo_SeleccionCeldasCambiada(object? sender, EventArgs e)
+        {
+            if (_cargandoRibbon) return;
+
+            if (_formActivo != null)
+                ActualizarEstadoFormatoRibbon();
+            else
+                DesactivarRibbon();
         }
 
 
@@ -556,19 +600,12 @@ namespace SOPRO.WinForms.Forms
             _formatoSeleccionCoordinator.EstablecerGrid(_formActivo);
             bool destinoCeldas = _formatoSeleccionCoordinator.Destino == DestinoFormatoGrid.Celdas;
 
-            if (_formActivo?.ColumnaSeleccionada != null)
+            if (destinoCeldas)
             {
-                // Encabezado activo: comportamiento histórico (cargar valores de la
-                // columna en el ribbon). Si además hay celdas seleccionadas, el
-                // coordinador prioriza CELDAS como destino: los valores cargados
-                // sirven de referencia y el tooltip/indicador así lo aclaran.
-                HabilitarControlesFormato(true);
-                CargarColumnaEnRibbon(_formActivo.ColumnaSeleccionada);
-            }
-            else
-            {
-                // Sin encabezado: los comandos de formato se habilitan SOLO si el
-                // grid expone una selección de celdas formateable (IGridSeleccionFormato).
+                // P2 (tipo Excel): la SELECCIÓN DE CELDAS manda sobre el encabezado
+                // (mismo criterio que el coordinador). Se habilitan los comandos y se
+                // VUELCA a los controles el estilo EFECTIVO de la selección; con
+                // estado mixto o sin estilo resoluble se muestra un estado neutro.
                 _cargandoRibbon = true;
                 panelRibbon.Enabled = true;
                 btnExcelRibbon.Enabled = true;
@@ -577,17 +614,108 @@ namespace SOPRO.WinForms.Forms
                 btnRecalcularRibbon.Enabled = _formActivoRecalculable != null;
                 btnDepurarRibbon.Enabled = true;
                 btnConsolidarInsumos.Enabled = _formActivoConsolidable?.ConsolidacionDisponible == true;
-                HabilitarControlesFormato(destinoCeldas);
-
-                lblColumna.Text = destinoCeldas
-                    ? _formatoSeleccionCoordinator.DescripcionDestino
-                    : ObtenerTextoIndicadorSinDestinoRibbon();
-                lblColumna.ForeColor = destinoCeldas ? Color.White : Color.Gray;
+                HabilitarControlesFormato(true);
+                CargarEstiloEfectivoEnRibbon(
+                    _formatoSeleccionCoordinator.EstiloEfectivoSeleccion,
+                    _formatoSeleccionCoordinator.EstadoMixto);
+                lblColumna.Text = _formatoSeleccionCoordinator.DescripcionDestino;
+                lblColumna.ForeColor = Color.White;
+                _cargandoRibbon = false;
+                ActualizarOverflowRibbon();
+            }
+            else if (_formActivo?.ColumnaSeleccionada != null)
+            {
+                // Encabezado activo sin celdas: comportamiento histórico (cargar los
+                // valores de la columna en el ribbon).
+                HabilitarControlesFormato(true);
+                CargarColumnaEnRibbon(_formActivo.ColumnaSeleccionada);
+            }
+            else
+            {
+                // Sin encabezado ni selección de celdas formateable: comandos
+                // deshabilitados y estado NEUTRO (sin arrastrar el valor anterior).
+                _cargandoRibbon = true;
+                panelRibbon.Enabled = true;
+                btnExcelRibbon.Enabled = true;
+                btnPdfRibbon.Enabled = true;
+                btnBuscarRibbon.Enabled = _formActivoBuscable?.GridBusqueda != null;
+                btnRecalcularRibbon.Enabled = _formActivoRecalculable != null;
+                btnDepurarRibbon.Enabled = true;
+                btnConsolidarInsumos.Enabled = _formActivoConsolidable?.ConsolidacionDisponible == true;
+                HabilitarControlesFormato(false);
+                AplicarEstiloNeutroRibbon();
+                lblColumna.Text = ObtenerTextoIndicadorSinDestinoRibbon();
+                lblColumna.ForeColor = Color.Gray;
                 _cargandoRibbon = false;
                 ActualizarOverflowRibbon();
             }
 
             ActualizarTooltipsDestinoRibbon();
+        }
+
+        /// <summary>
+        /// Vuelca el estilo EFECTIVO de la selección de celdas a los controles del
+        /// ribbon (P2, comportamiento tipo Excel): fuente, tamaño, negrita, cursiva,
+        /// colores de texto/fondo, alineación H/V y ajuste. Con estado MIXTO o sin
+        /// estilo resoluble pinta un estado NEUTRO/indeterminado para NO arrastrar el
+        /// valor de la celda anterior. Debe invocarse con <c>_cargandoRibbon</c> en
+        /// <c>true</c> para no disparar la aplicación de formato.
+        /// </summary>
+        private void CargarEstiloEfectivoEnRibbon(ReportStyleOverlay? estilo, bool mixto)
+        {
+            if (mixto || estilo is null)
+            {
+                AplicarEstiloNeutroRibbon();
+                return;
+            }
+
+            int idx = cboFuente.FindStringExact(estilo.Fuente ?? "Segoe UI");
+            cboFuente.SelectedIndex = idx >= 0 ? idx : 0;
+            nudTamano.Value = estilo.TamanoFuente is >= 6
+                ? (decimal)estilo.TamanoFuente.Value
+                : nudTamano.Minimum;
+
+            AplicarTemaBotonRibbon(btnNegrita, estilo.Negrita == true);
+            AplicarTemaBotonRibbon(btnCursiva, estilo.Cursiva == true);
+            AplicarTemaBotonRibbon(btnWrapRibbon, estilo.Wrap == true);
+
+            var horizontal = estilo.AlineacionHorizontal ?? ReportTextAlignment.Izquierda;
+            ActualizarBotonesAlin((AlineacionColumna)horizontal);
+
+            var vertical = estilo.AlineacionVertical ?? ReportVerticalAlignment.Medio;
+            ActualizarBotonesAlinVertical(
+                FormatoHelper.ConvertirAlineacionDgv((AlineacionColumna)horizontal, (int)vertical));
+
+            _colorMuestraFondoRibbon = TryColor(estilo.ColorFondo ?? string.Empty, Color.White);
+            _colorMuestraTextoRibbon = TryColor(estilo.ColorFuente ?? string.Empty, Color.Black);
+            AplicarTemaBotonColor(btnColorFondo, _colorMuestraFondoRibbon, "■");
+            AplicarTemaBotonColor(btnColorTexto, _colorMuestraTextoRibbon, "A");
+        }
+
+        /// <summary>
+        /// Estado NEUTRO/indeterminado del bloque de formato: toggles apagados,
+        /// colores y alineación por defecto. Se usa sin selección o con estado
+        /// mixto, para que el ribbon NO conserve el valor de la celda anterior.
+        /// </summary>
+        private void AplicarEstiloNeutroRibbon()
+        {
+            cboFuente.SelectedIndex = cboFuente.Items.Count > 0 ? 0 : -1;
+            nudTamano.Value = nudTamano.Minimum;
+
+            AplicarTemaBotonRibbon(btnNegrita, false);
+            AplicarTemaBotonRibbon(btnCursiva, false);
+            AplicarTemaBotonRibbon(btnWrapRibbon, false);
+            AplicarTemaBotonRibbon(btnAlinIzq, false);
+            AplicarTemaBotonRibbon(btnAlinCen, false);
+            AplicarTemaBotonRibbon(btnAlinDer, false);
+            AplicarTemaBotonRibbon(btnAlinJus, false);
+            AplicarTemaBotonRibbon(btnAlinMed, false);
+            AplicarTemaBotonRibbon(btnAlinAba, false);
+
+            _colorMuestraFondoRibbon = Color.White;
+            _colorMuestraTextoRibbon = Color.Black;
+            AplicarTemaBotonColor(btnColorFondo, _colorMuestraFondoRibbon, "■");
+            AplicarTemaBotonColor(btnColorTexto, _colorMuestraTextoRibbon, "A");
         }
 
         /// <summary>
@@ -652,6 +780,7 @@ namespace SOPRO.WinForms.Forms
 
         private void DesactivarRibbon()
         {
+            DesuscribirSeleccionGrid();
             _cargandoRibbon = true;
             panelRibbon.Enabled = true;
             btnExcelRibbon.Enabled = false;
