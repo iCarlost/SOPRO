@@ -47,6 +47,8 @@ dotnet test SOPRO.sln -c Release
 
 El versionado se define en `SOPRO.WinForms.csproj` y en `installer/SOPRO-InnoSetup.iss`.
 
+Cambios de esquema: toda migracion nueva debe registrarse en `SchemaManager` (entidad + mapeo EF + metodo M0XX) y actualizar `VersionActual` (formato `AAAA.MM.revision`, actualmente `2026.04.4`). Ver [SCHEMA_MANTENIMIENTO.md](SCHEMA_MANTENIMIENTO.md).
+
 ## Reportar problemas
 
 Usa el template de issues del repositorio e incluye:

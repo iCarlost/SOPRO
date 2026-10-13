@@ -66,7 +66,7 @@ La aplicacion consulta actualizaciones desde `iCarlost/SOPRO-Releases`. Cada ver
 ## Persistencia
 
 - Base de datos: SQLite, un archivo por proyecto (extension `.soproproj`; ver [Formato de proyecto](#formato-de-proyecto)).
-- Esquema gestionado por `SchemaManager`.
+- Esquema gestionado por `SchemaManager` (version actual de esquema: `2026.04.4`).
 
 ## Formato de proyecto
 
@@ -75,6 +75,18 @@ Los proyectos SOPRO se guardan en un archivo SQLite con extension **`.soproproj`
 - **Compatibilidad**: los proyectos antiguos en formato `.db` siguen abriéndose; `.sopro` se acepta como alias. No se renombran automaticamente los archivos existentes.
 - **Apertura por doble clic**: tras instalar la aplicacion, los proyectos se pueden abrir con doble clic desde el Explorador. El instalador registra la asociacion por usuario, sin permisos de administrador; el icono mostrado es el de la aplicacion. Al desinstalar se elimina la asociacion, pero se conservan los documentos de proyecto.
 - **Catalogos internos**: el formato de los catalogos (p. ej. el catalogo maestro) no cambia; siguen siendo `.db`.
+
+## Formato de celdas en reportes
+
+SOPRO permite personalizar el formato (fuente, tamano, negrita, cursiva, alineacion, colores, ajuste de texto y formato numerico) de columnas y de celdas individuales en los reportes, con seleccion estilo Excel desde el ribbon:
+
+- **Columna completa**: clic en el encabezado de la columna y aplicar el formato.
+- **Celdas**: seleccionar una o mas celdas; el formato aplica solo a la seleccion. Shift extiende un rango contiguo; Ctrl selecciona celdas o rangos discontinuos. El indicador del ribbon muestra "selección de N celda(s)" y avisa cuando las celdas tienen formatos distintos (estado mixto).
+- **Deshacer/rehacer**: Ctrl+Z / Ctrl+Y. Un rango aplicado se deshace como UNA sola accion.
+
+Disponible en Presupuesto, Indirectos, APU/Matrices, Explosion de Insumos, Programas de Obra/Insumos, Analisis de Financiamiento y los catalogos de Materiales, Mano de Obra, Herramientas y Maquinaria. Los estilos se guardan en el archivo del proyecto y se aplican igual en pantalla, PDF y Excel (los generadores consumen un snapshot neutral, no el grid).
+
+Guia completa (precedencia de estilos, claves estables y migracion): [docs/formato-celdas-reportes.md](docs/formato-celdas-reportes.md).
 
 ## Versionado
 

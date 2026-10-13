@@ -189,6 +189,15 @@ public sealed class FormatoReporteService
         using var transaccion = _context.Database.BeginTransaction();
         try
         {
+            // UNA consulta: se cargan las filas existentes del (proyecto, tipo)
+            // indexadas por dirección estable. El upsert del lote resuelve cada celda
+            // en memoria (sin SELECT por celda) y se persiste con UN solo SaveChanges
+            // (sin uno por celda): así el costo es O(n), no O(n²).
+            var existentes = _context.FormatosCeldaReporte
+                .Where(f => f.ProyectoId == proyectoId && f.TipoReporte == tipoReporte)
+                .ToDictionary(f => new ReportCellAddress(
+                    f.ClaveVista ?? string.Empty, f.ClaveFila, f.NombreColumna));
+
             foreach (var cambio in cambios)
             {
                 ArgumentNullException.ThrowIfNull(cambio);
@@ -198,9 +207,12 @@ public sealed class FormatoReporteService
                     cambio.ClaveVista,
                     cambio.ClaveFila,
                     cambio.NombreColumna,
-                    cambio.Estilo);
+                    cambio.Estilo,
+                    guardar: false,
+                    indice: existentes);
             }
 
+            _context.SaveChanges();
             transaccion.Commit();
         }
         catch
@@ -222,12 +234,20 @@ public sealed class FormatoReporteService
         using var transaccion = _context.Database.BeginTransaction();
         try
         {
+            // Una consulta + un SaveChanges por lote (ver AplicarCeldas).
+            var existentes = _context.ConfiguracionesEstiloFilaReporte
+                .Where(f => f.ProyectoId == proyectoId && f.TipoReporte == tipoReporte)
+                .ToDictionary(f => f.RolFila, StringComparer.Ordinal);
+
             foreach (var cambio in cambios)
             {
                 ArgumentNullException.ThrowIfNull(cambio);
-                AplicarCambioEstiloFila(proyectoId, tipoReporte, cambio.RolFila, cambio.Estilo);
+                AplicarCambioEstiloFila(
+                    proyectoId, tipoReporte, cambio.RolFila, cambio.Estilo,
+                    guardar: false, indice: existentes);
             }
 
+            _context.SaveChanges();
             transaccion.Commit();
         }
         catch
@@ -246,22 +266,32 @@ public sealed class FormatoReporteService
         string? claveVista,
         string? claveFila,
         string? nombreColumna,
-        ReportStyleOverlay? cambios)
+        ReportStyleOverlay? cambios,
+        bool guardar = true,
+        Dictionary<ReportCellAddress, FormatoCeldaReporte>? indice = null)
     {
         ValidarCabecera(proyectoId, tipoReporte);
 
         var vista = claveVista ?? string.Empty;
         var fila = NormalizarClaveFila(claveFila);
         var columna = NormalizarColumna(nombreColumna);
+        var direccion = new ReportCellAddress(vista, fila, columna);
 
-        var entidad = BuscarCelda(proyectoId, tipoReporte, vista, fila, columna);
+        // Con índice (lote) la resolución es en memoria; sin él (upsert único) se
+        // consulta la base.
+        FormatoCeldaReporte? entidad;
+        if (indice is not null)
+            indice.TryGetValue(direccion, out entidad);
+        else
+            entidad = BuscarCelda(proyectoId, tipoReporte, vista, fila, columna);
 
         // Overlay ausente o totalmente vacío = borrar el override (no hay nada que aplicar).
         if (cambios is null || OverlayVacio(cambios))
         {
             if (entidad is null) return null;
             _context.FormatosCeldaReporte.Remove(entidad);
-            _context.SaveChanges();
+            indice?.Remove(direccion);
+            if (guardar) _context.SaveChanges();
             return null;
         }
 
@@ -277,13 +307,14 @@ public sealed class FormatoReporteService
             };
             AplicarOverlay(entidad, cambios);
             _context.FormatosCeldaReporte.Add(entidad);
+            if (indice is not null) indice[direccion] = entidad;
         }
         else
         {
             AplicarOverlay(entidad, cambios);
         }
 
-        _context.SaveChanges();
+        if (guardar) _context.SaveChanges();
         return entidad;
     }
 
@@ -291,19 +322,26 @@ public sealed class FormatoReporteService
         int proyectoId,
         string tipoReporte,
         string? rolFila,
-        ReportStyleOverlay? cambios)
+        ReportStyleOverlay? cambios,
+        bool guardar = true,
+        Dictionary<string, ConfiguracionEstiloFilaReporte>? indice = null)
     {
         ValidarCabecera(proyectoId, tipoReporte);
         var rol = NormalizarRolFila(rolFila);
 
-        var entidad = BuscarEstiloFila(proyectoId, tipoReporte, rol);
+        ConfiguracionEstiloFilaReporte? entidad;
+        if (indice is not null)
+            indice.TryGetValue(rol, out entidad);
+        else
+            entidad = BuscarEstiloFila(proyectoId, tipoReporte, rol);
 
         // Overlay ausente o totalmente vacío = borrar el estilo (no hay nada que aplicar).
         if (cambios is null || OverlayVacio(cambios))
         {
             if (entidad is null) return null;
             _context.ConfiguracionesEstiloFilaReporte.Remove(entidad);
-            _context.SaveChanges();
+            indice?.Remove(rol);
+            if (guardar) _context.SaveChanges();
             return null;
         }
 
@@ -317,13 +355,14 @@ public sealed class FormatoReporteService
             };
             AplicarOverlay(entidad, cambios);
             _context.ConfiguracionesEstiloFilaReporte.Add(entidad);
+            if (indice is not null) indice[rol] = entidad;
         }
         else
         {
             AplicarOverlay(entidad, cambios);
         }
 
-        _context.SaveChanges();
+        if (guardar) _context.SaveChanges();
         return entidad;
     }
 
