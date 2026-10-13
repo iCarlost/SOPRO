@@ -88,19 +88,29 @@ public sealed class PresupuestoReportSnapshotBuilder
     /// <summary>
     /// Clave de fila ESTABLE de un renglón del reporte de Presupuesto, derivada del
     /// dominio (nunca del índice visual del grid): <c>C:{Id}</c> para conceptos
-    /// terminales y <c>SUB:{Clave}</c> para agrupadores (Capítulo/Subcapítulo/Nivel)
-    /// y filas sintéticas de subtotal. Es EXACTAMENTE la clave que persiste el grid
-    /// en <c>FormatoCeldaReporte.ClaveFila</c> (ver
+    /// terminales y <c>SUB:{Id}</c> para agrupadores persistidos (Capítulo/
+    /// Subcapítulo/Nivel); las filas SINTÉTICAS de subtotal (sin Id persistido) usan
+    /// <c>SUB:{Clave}</c>. Es EXACTAMENTE la clave que persiste el grid en
+    /// <c>FormatoCeldaReporte.ClaveFila</c> (ver
     /// <c>FormPresupuesto.ObtenerClaveFilaFormato</c>), de modo que los overrides de
-    /// celda sobreviven a reordenamientos, filtros y paginación.
+    /// celda sobreviven a reordenamientos, filtros y paginación, y el override de un
+    /// agrupador NO se contamina con el de otro aunque compartan <c>Clave</c>.
     /// </summary>
     public static string ClaveFila(ConceptoPresupuesto concepto)
     {
         ArgumentNullException.ThrowIfNull(concepto);
 
-        return concepto.EsAgrupador
-            ? ClaveFilaReporte.Subtotal(concepto.Clave)
-            : ClaveFilaReporte.Concepto(concepto.Id);
+        if (concepto.EsAgrupador)
+        {
+            // Un agrupador persistido tiene Id > 0 (clave única por fila). Las filas
+            // sintéticas de subtotal (creadas por los generadores PDF/Excel) tienen
+            // Id 0 y conservan la clave basada en Clave.
+            return concepto.Id > 0
+                ? ClaveFilaReporte.Agrupador(concepto.Id)
+                : ClaveFilaReporte.Subtotal(concepto.Clave);
+        }
+
+        return ClaveFilaReporte.Concepto(concepto.Id);
     }
 
     /// <summary>

@@ -173,7 +173,7 @@ public class GeneradorPresupuestoEstilosRolTests
         var svc = new ReporteService(ctx);
         var snapshot = ConOverrideCelda(
             SnapshotConColumnas(proyecto.Id),
-            ClaveFilaReporte.Subtotal("1"),
+            ClaveFilaReporte.Agrupador(CapituloId),
             "ImporteTotal",
             new ReportStyleOverlay(ColorFondo: ColorOverrideCelda));
 
@@ -218,7 +218,7 @@ public class GeneradorPresupuestoEstilosRolTests
         var proyecto = CrearProyecto(ctx);
         var snapshot = ConOverrideCelda(
             SnapshotConColumnas(proyecto.Id),
-            ClaveFilaReporte.Subtotal("1"),
+            ClaveFilaReporte.Agrupador(CapituloId),
             "ImporteTotal",
             new ReportStyleOverlay(ColorFondo: ColorOverrideCelda));
         var ruta = GenerarExcel(ctx, proyecto, snapshot);

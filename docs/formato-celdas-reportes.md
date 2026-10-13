@@ -57,6 +57,10 @@ Notas:
 - Las filas vacias y las columnas no exportables se ignoran al aplicar formato.
 - Si una propiedad no se configura (o se vacia), la celda hereda ese aspecto del
   nivel inferior de la jerarquia de estilos.
+- Al formatear CELDAS, cada comando del ribbon (fuente, tamano, negrita, cursiva,
+  alineacion, color de texto, color de fondo) aplica SOLO esa propiedad sobre la
+  seleccion: el resto del formato de cada celda se conserva. Asi una edicion (p.
+  ej. alinear) NO arrastra ni pisa otra propiedad (p. ej. el fondo) de otra celda.
 
 ## Precedencia de estilos
 
@@ -94,11 +98,18 @@ y paginacion:
 
   | Reporte | Token | Ejemplo |
   |---------|-------|---------|
-  | Presupuesto | `C:{Id}`, `SUB:{Clave}`, `TOTAL`, `IVA` | `C:15`, `SUB:IV` |
+  | Presupuesto | `C:{Id}` (conceptos), `SUB:{Id}` (agrupadores), `SUB:` (cierre), `TOTAL`, `IVA` | `C:15`, `SUB:42` |
   | Indirectos | `G:{Id}`, `IC:{Id}` | `G:2`, `IC:7` |
   | APU / Matrices | `C:{Id}`, `COMP:{Id}`, `PU:{ConceptoId}` | `COMP:42` |
   | Programa de Obra | `ACT:{Id}`, `RES:{Clave}` | `ACT:103` |
   | Programa de Insumos | `INS:{InsumoId}` | `INS:8` |
+
+  Las claves de fila de los AGRUPADORES del Presupuesto se derivan del Id de la
+  entidad (`SUB:{Id}`), no de la `Clave` visible: dos agrupadores (Capítulo/
+  Subcapítulo/Nivel) que compartan la misma `Clave` —o la tengan vacía— siguen
+  teniendo claves DISTINTAS, de modo que editar la celda de uno NO cambia la de
+  otro. Un estilo por ROL de fila sigue existiendo, pero solo se aplica cuando no
+  hay override de celda para esa posición (precedencia celda &gt; rol).
 
 - **Roles de fila** (`RolFilaReporte`): `Capitulo`, `Subcapitulo`, `Nivel1`,
   `Nivel2`, `Nivel3`, `Concepto`, `Subtotal`, `Total`, `Grupo`, `Resumen`,

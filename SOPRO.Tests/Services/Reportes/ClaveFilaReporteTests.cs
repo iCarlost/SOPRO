@@ -29,6 +29,22 @@ public class ClaveFilaReporteTests
     }
 
     [TestMethod]
+    public void Agrupador_UsaIdDeDominio_UnicoPorFila()
+    {
+        // A diferencia de Subtotal (parametrizado por una clave que puede repetirse),
+        // la fila de un AGRUPADOR persistido se identifica por su Id: dos agrupadores
+        // con la misma Clave (o vacía) producen claves DISTINTAS.
+        Assert.AreEqual("SUB:7", ClaveFilaReporte.Agrupador(7));
+        Assert.AreEqual("SUB:8", ClaveFilaReporte.Agrupador(8));
+        CollectionAssert.AllItemsAreUnique(new[]
+        {
+            ClaveFilaReporte.Agrupador(7),
+            ClaveFilaReporte.Agrupador(8),
+            ClaveFilaReporte.Subtotal(string.Empty),
+        });
+    }
+
+    [TestMethod]
     public void Sinteticas_TotalEIva_SonConstantes()
     {
         string claveTotal = ClaveFilaReporte.Total;

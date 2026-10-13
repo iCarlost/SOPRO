@@ -17,8 +17,9 @@ namespace SOPRO.Tests.WinForms.Presupuesto;
 
 /// <summary>
 /// Paso 4.1: formato de celdas por SELECCIÓN en el grid de Presupuesto.
-/// Verifica el mapeo selección → direcciones ESTABLES (C:{Id}, SUB:{Clave}),
-/// el filtrado de filas sin entidad / columnas no exportables, la persistencia
+/// Verifica el mapeo selección → direcciones ESTABLES (C:{Id} para conceptos,
+/// SUB:{Id} para agrupadores), el filtrado de filas sin entidad / columnas no
+/// exportables, la persistencia
 /// con <see cref="FormatoReporteService"/> y el undo/redo como UNA sola acción
 /// compuesta. Se usan grids fake / controles no mostrados para no depender de UI
 /// real, igual que las pruebas del coordinador (paso 3.1).
@@ -179,7 +180,7 @@ public class FormatoCeldasPresupuestoTests
     }
 
     [TestMethod]
-    public void Agrupador_UsaClaveSinteticaSubtotal()
+    public void Agrupador_UsaClaveUnicaPorId_NoPorClave()
     {
         using var grid = CrearGrid("Importe");
         var fila = AgregarFila(grid, Concepto(5, agrupador: true, clave: "01"));
@@ -188,7 +189,28 @@ public class FormatoCeldasPresupuestoTests
             grid, new[] { grid.Rows[fila].Cells[0] });
 
         Assert.AreEqual(1, direcciones.Count);
-        Assert.AreEqual("SUB:01", direcciones[0].ClaveFila);
+        // La clave del agrupador es ÚNICA por fila (deriva del Id), no de la Clave
+        // visible: así dos agrupadores con la misma Clave NO colisionan.
+        Assert.AreEqual("SUB:5", direcciones[0].ClaveFila);
+    }
+
+    [TestMethod]
+    public void AgrupadoresConMismaClave_GeneranClavesDistintas()
+    {
+        using var grid = CrearGrid("Tipo");
+        var iA = AgregarFila(grid, Concepto(31, agrupador: true, clave: string.Empty));
+        var iB = AgregarFila(grid, Concepto(32, agrupador: true, clave: string.Empty));
+
+        var direcciones = FormPresupuesto.ConstruirDireccionesSeleccionadas(grid, new[]
+        {
+            grid.Rows[iA].Cells[0],
+            grid.Rows[iB].Cells[0],
+        });
+
+        CollectionAssert.AreEqual(
+            new[] { "SUB:31", "SUB:32" },
+            direcciones.Select(d => d.ClaveFila).ToArray());
+        CollectionAssert.AllItemsAreUnique(direcciones.Select(d => d.ClaveFila).ToArray());
     }
 
     // ═══════════════════ Persistencia + undo/reproducir pintado ═══════════════════
@@ -348,6 +370,154 @@ public class FormatoCeldasPresupuestoTests
         Assert.AreEqual(Color.LightBlue, estilo.BackColor, "Una propiedad null debe heredar (no pisar).");
         Assert.AreEqual(Color.Black, estilo.ForeColor);
         Assert.IsTrue(estilo.Font!.Bold);
+    }
+
+    // ═══════════════ Regresión: ediciones de celda independientes (Bug A) ═══════════
+
+    /// <summary>
+    /// BUG A: aplicar el fondo a una celda y luego cambiar SÓLO la alineación de
+    /// otra NO debe arrastrar el fondo (retenido en el ribbon) ni contaminar la
+    /// primera celda. Se comprueba con el delta por propiedad + la fusión del
+    /// coordinador, que es lo que hace el ribbon real.
+    /// </summary>
+    [TestMethod]
+    public void EditarAlineacion_NoArrastraNiPisaElFondoDeOtraCelda()
+    {
+        using var grid = CrearGrid("Importe");
+        var iX = AgregarFila(grid, Concepto(1));
+        var iY = AgregarFila(grid, Concepto(2));
+        var dirX = new ReportCellAddress(Vista, "C:1", "Importe");
+        var dirY = new ReportCellAddress(Vista, "C:2", "Importe");
+
+        // Estado del ribbon: primero fondo amarillo; después el usuario sólo cambia
+        // la alineación, pero el color de fondo queda RETENIDO en el ribbon.
+        var fmtFondo = new ColumnaPersonalizada
+        {
+            ColorFondo = "#FFFF00",
+            ColorFuente = "#000000",
+            Alineacion = AlineacionColumna.Izquierda,
+        };
+        var fmtAlineacion = new ColumnaPersonalizada
+        {
+            ColorFondo = "#FFFF00",
+            ColorFuente = "#000000",
+            Alineacion = AlineacionColumna.Centro,
+        };
+
+        var deltaFondo = FormProyecto.RestringirAPropiedad(
+            FormatoSeleccionCoordinator.ConstruirOverlay(fmtFondo),
+            FormProyecto.PropiedadFormatoRibbon.ColorFondo);
+        var deltaAlineacion = FormProyecto.RestringirAPropiedad(
+            FormatoSeleccionCoordinator.ConstruirOverlay(fmtAlineacion),
+            FormProyecto.PropiedadFormatoRibbon.AlineacionHorizontal);
+
+        Assert.IsNull(deltaAlineacion.ColorFondo,
+            "El delta de alineación NO debe arrastrar el color de fondo retenido en el ribbon.");
+
+        var fakeX = new GridSeleccionFake(grid, new[] { grid.Rows[iX].Cells[0] });
+        var coordX = new FormatoSeleccionCoordinator();
+        coordX.EstablecerGrid(fakeX);
+        coordX.AplicarASeleccion(deltaFondo);
+
+        var fakeY = new GridSeleccionFake(grid, new[] { grid.Rows[iY].Cells[0] });
+        var coordY = new FormatoSeleccionCoordinator();
+        coordY.EstablecerGrid(fakeY);
+        coordY.AplicarASeleccion(deltaAlineacion);
+
+        var overlayX = fakeX.ObtenerOverlayActual(dirX);
+        var overlayY = fakeY.ObtenerOverlayActual(dirY);
+
+        Assert.IsNotNull(overlayX);
+        Assert.AreEqual("#FFFF00", overlayX!.ColorFondo, "La celda X conserva su fondo.");
+        Assert.IsNull(overlayX.AlineacionHorizontal,
+            "La edición de Y NO contamina la alineación de X.");
+
+        Assert.IsNotNull(overlayY);
+        Assert.AreEqual(ReportTextAlignment.Centro, overlayY!.AlineacionHorizontal,
+            "La celda Y tiene su alineación.");
+        Assert.IsNull(overlayY.ColorFondo,
+            "La alineación de Y NO arrastra el fondo de X.");
+    }
+
+    [TestMethod]
+    public void SegundoDelta_FusionaSinPerderLoYaAplicadoALaMismaCelda()
+    {
+        using var grid = CrearGrid("Importe");
+        var iX = AgregarFila(grid, Concepto(1));
+        var dirX = new ReportCellAddress(Vista, "C:1", "Importe");
+
+        var fake = new GridSeleccionFake(grid, new[] { grid.Rows[iX].Cells[0] });
+        var coord = new FormatoSeleccionCoordinator();
+        coord.EstablecerGrid(fake);
+
+        coord.AplicarASeleccion(new ReportStyleOverlay(ColorFondo: "#FFFF00"));
+        coord.AplicarASeleccion(new ReportStyleOverlay(AlineacionHorizontal: ReportTextAlignment.Centro));
+
+        var overlay = fake.ObtenerOverlayActual(dirX);
+        Assert.IsNotNull(overlay);
+        Assert.AreEqual("#FFFF00", overlay!.ColorFondo, "El fondo aplicado antes se conserva.");
+        Assert.AreEqual(ReportTextAlignment.Centro, overlay.AlineacionHorizontal,
+            "La alineación nueva gana y convive con el fondo previo.");
+    }
+
+    [TestMethod]
+    public void PersistenciaYRecarga_EdicionesPorCeldaQuedanSinContaminarse()
+    {
+        using var ctx = CrearContexto();
+        var proyectoId = AgregarProyecto(ctx);
+        var service = new FormatoReporteService(ctx);
+
+        var dirX = new ReportCellAddress(Vista, ClaveFilaReporte.Concepto(1), "Importe");
+        var dirY = new ReportCellAddress(Vista, ClaveFilaReporte.Concepto(2), "Importe");
+
+        service.AplicarCeldas(proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(
+            new[] { new CambioFormatoSeleccion(dirX, null, new ReportStyleOverlay(ColorFondo: "#FFFF00")) },
+            aplicarAntes: false));
+        service.AplicarCeldas(proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(
+            new[] { new CambioFormatoSeleccion(dirY, null, new ReportStyleOverlay(AlineacionHorizontal: ReportTextAlignment.Centro)) },
+            aplicarAntes: false));
+
+        var recargado = new FormatoReporteService(ctx).CargarCeldas(proyectoId, Tipo);
+
+        Assert.AreEqual("#FFFF00", recargado[dirX].ColorFondo, "X conserva su fondo tras recargar.");
+        Assert.IsNull(recargado[dirX].AlineacionHorizontal, "X no recibió la alineación de Y.");
+        Assert.AreEqual(ReportTextAlignment.Centro, recargado[dirY].AlineacionHorizontal, "Y conserva su alineación.");
+        Assert.IsNull(recargado[dirY].ColorFondo, "Y no recibió el fondo de X.");
+    }
+
+    // ═══════════════ Regresión: agrupadores con clave única (Bug B) ═══════════════
+
+    /// <summary>
+    /// BUG B: editar la celda de un agrupador/subcapítulo (Clave vacía o repetida)
+    /// NO debe afectar al equivalente de OTRO agrupador. La clave del agrupador
+    /// deriva del Id (única por fila), de modo que la persistencia no se pisa.
+    /// </summary>
+    [TestMethod]
+    public void PersistenciaYRecarga_AgrupadoresVecinosQuedanIndependientes()
+    {
+        using var ctx = CrearContexto();
+        var proyectoId = AgregarProyecto(ctx);
+        var service = new FormatoReporteService(ctx);
+
+        using var grid = CrearGrid("Tipo");
+        var iA = AgregarFila(grid, Concepto(31, agrupador: true, clave: string.Empty));
+        var iB = AgregarFila(grid, Concepto(32, agrupador: true, clave: string.Empty));
+
+        var dirA = FormPresupuesto.ConstruirDireccionesSeleccionadas(
+            grid, new[] { grid.Rows[iA].Cells[0] }).Single();
+        var dirB = FormPresupuesto.ConstruirDireccionesSeleccionadas(
+            grid, new[] { grid.Rows[iB].Cells[0] }).Single();
+        Assert.AreNotEqual(dirA, dirB, "Las claves de agrupadores distintos deben ser únicas.");
+
+        service.AplicarCeldas(proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(
+            new[] { new CambioFormatoSeleccion(dirA, null, new ReportStyleOverlay(ColorFondo: "#FFFF00")) },
+            aplicarAntes: false));
+
+        var recargado = new FormatoReporteService(ctx).CargarCeldas(proyectoId, Tipo);
+
+        Assert.IsTrue(recargado.ContainsKey(dirA), "El agrupador editado conserva su override.");
+        Assert.IsFalse(recargado.ContainsKey(dirB),
+            "Editar la celda de un agrupador NO cambia el equivalente de otro.");
     }
 
     // ═════════════════════════════════ Fakes ═════════════════════════════════

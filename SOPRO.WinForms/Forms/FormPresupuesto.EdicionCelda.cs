@@ -519,7 +519,8 @@ namespace SOPRO.WinForms.Forms
         /// Clave RESTABLE de la fila para el formato de celdas, o <c>null</c> si la
         /// fila no tiene una entidad persistida (fila vacía / sin concepto). Los
         /// conceptos usan <c>C:{Id}</c>; los agrupadores (Capítulo/Subcapítulo/Nivel)
-        /// usan la clave sintética <c>SUB:{Clave}</c>.
+        /// usan <c>SUB:{Id}</c> (único por fila), de modo que editar la celda de un
+        /// agrupador NO afecta a los demás aunque compartan <c>Clave</c>.
         /// </summary>
         internal static string? ObtenerClaveFilaFormato(DataGridView grid, int rowIndex)
         {
@@ -529,7 +530,7 @@ namespace SOPRO.WinForms.Forms
             if (concepto.Id <= 0) return null;
 
             return concepto.EsAgrupador
-                ? ClaveFilaReporte.Subtotal(concepto.Clave)
+                ? ClaveFilaReporte.Agrupador(concepto.Id)
                 : ClaveFilaReporte.Concepto(concepto.Id);
         }
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Core.Entities;
+using SOPRO.Reporting.Formatting;
 
 namespace SOPRO.WinForms.Helpers
 {
@@ -114,6 +115,14 @@ namespace SOPRO.WinForms.Helpers
         /// Aplica el overlay a la selección de celdas (pintado inmediato) y
         /// devuelve los pares antes/después, deduplicados y filtrados. Si el
         /// destino no es la selección, no modifica nada y devuelve lista vacía.
+        /// <para>
+        /// El overlay entrante se interpreta como un DELTA PARCIAL: se FUSIONA
+        /// propiedad a propiedad sobre el overlay PREVIO de CADA celda (una
+        /// propiedad <c>null</c> deja intacto el valor anterior y una no nula gana).
+        /// Así cada celda conserva EXACTAMENTE las propiedades que se le han
+        /// aplicado y una edición (p. ej. alineación) NO arrastra ni pisa el estado
+        /// de otra celda (p. ej. su color de fondo).
+        /// </para>
         /// </summary>
         public IReadOnlyList<CambioFormatoSeleccion> AplicarASeleccion(ReportStyleOverlay overlay)
         {
@@ -130,8 +139,11 @@ namespace SOPRO.WinForms.Helpers
             foreach (var direccion in ObtenerCeldasFormateables())
             {
                 var antes = grid.ObtenerOverlayActual(direccion);
-                grid.AplicarOverlayCelda(direccion, overlay);
-                cambios.Add(new CambioFormatoSeleccion(direccion, antes, overlay));
+                // Fusión parcial: el overlay entrante (delta) gana sobre el previo
+                // celda a celda, sin tocar otras celdas.
+                var despues = ReportCellStyleResolver.Combinar(antes, overlay);
+                grid.AplicarOverlayCelda(direccion, despues);
+                cambios.Add(new CambioFormatoSeleccion(direccion, antes, despues));
             }
 
             _ultimosCambios = cambios;

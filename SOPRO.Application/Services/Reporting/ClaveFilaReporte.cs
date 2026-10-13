@@ -7,7 +7,7 @@ namespace SOPRO.Application.Services.Reporting;
 ///
 /// Tokens (planificados y validados contra los Id reales del dominio):
 /// <list type="bullet">
-///   <item>Presupuesto: <c>C:{ConceptoPresupuesto.Id}</c>, <c>SUB:{Clave}</c>, <c>TOTAL</c>, <c>IVA</c>.</item>
+///   <item>Presupuesto: <c>C:{ConceptoPresupuesto.Id}</c> (conceptos), <c>SUB:{ConceptoPresupuesto.Id}</c> (agrupadores), <c>SUB:</c> (cierre global), <c>TOTAL</c>, <c>IVA</c>.</item>
 ///   <item>Indirectos: <c>G:{GrupoIndirecto.Id}</c>, <c>IC:{ConceptoIndirecto.Id}</c>.</item>
 ///   <item>APU / Matrices: <c>C:{ConceptoPresupuesto.Id}</c>, <c>COMP:{ComponenteMatriz.Id}</c>, <c>PU:{ConceptoId}</c>.</item>
 ///   <item>Programa de Obra: <c>ACT:{ActividadProgramada.Id}</c>, <c>RES:{Clave}</c> (agrupadores).</item>
@@ -51,8 +51,23 @@ public static class ClaveFilaReporte
     /// <summary>Fila de concepto del presupuesto (o de la matriz APU del concepto).</summary>
     public static string Concepto(int conceptoPresupuestoId) => PrefijoConcepto + conceptoPresupuestoId;
 
-    /// <summary>Fila sintética de subtotal de un agrupador, parametrizada por su clave.</summary>
+    /// <summary>
+    /// Fila sintética de subtotal, parametrizada por su clave. Se usa para la fila
+    /// de cierre global del presupuesto (<c>SUB:</c> con clave vacía) y para los
+    /// subtotales de sección de Indirectos. NO se usa ya para los agrupadores
+    /// persistidos: éstos emplean <see cref="Agrupador"/> para garantizar unicidad.
+    /// </summary>
     public static string Subtotal(string? claveAgrupador) => PrefijoSubtotal + (claveAgrupador ?? string.Empty);
+
+    /// <summary>
+    /// Fila de un AGRUPADOR persistido del presupuesto (Capítulo/Subcapítulo/Nivel):
+    /// <c>SUB:{ConceptoPresupuestoId}</c>. Se deriva del Id de dominio (único por
+    /// fila y estable ante reordenamientos) de modo que el override de una celda de
+    /// un agrupador afecta SOLO a esa fila, aunque varios agrupadores compartan la
+    /// misma <c>Clave</c> (o la tengan vacía). El estilo por ROL sigue existiendo y
+    /// solo se aplica cuando no hay override de celda (precedencia celda &gt; rol).
+    /// </summary>
+    public static string Agrupador(int conceptoPresupuestoId) => PrefijoSubtotal + conceptoPresupuestoId;
 
     /// <summary>Fila de grupo de indirectos.</summary>
     public static string GrupoIndirecto(int grupoIndirectoId) => PrefijoGrupoIndirecto + grupoIndirectoId;

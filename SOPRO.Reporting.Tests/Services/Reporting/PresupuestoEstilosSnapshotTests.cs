@@ -14,7 +14,8 @@ namespace SOPRO.Reporting.Tests.Services.Reporting;
 /// en SOPRO.WinForms y se ejercen en SOPRO.Tests.WinForms):
 /// <list type="bullet">
 ///   <item>las claves estables de fila del Presupuesto (<c>C:{Id}</c> para conceptos,
-///   <c>SUB:{Clave}</c> para agrupadores y subtotales, <c>TOTAL</c>/<c>IVA</c>) y los
+///   <c>SUB:{Id}</c> para agrupadores persistidos, <c>SUB:{Clave}</c> para subtotales
+///   sintéticos, <c>TOTAL</c>/<c>IVA</c>) y los
 ///   roles de fila coinciden con los que persiste el grid;</item>
 ///   <item>el resolver de precedencia (celda &gt; rol &gt; columna &gt; banding &gt; tabla)
 ///   resuelve correctamente sobre un snapshot construido por el builder de Presupuesto;</item>
@@ -80,10 +81,12 @@ public class PresupuestoEstilosSnapshotTests
     }
 
     [TestMethod]
-    public void ClaveFila_Agrupador_UsaClaveSinteticaSub()
+    public void ClaveFila_Agrupador_UsaClaveSinteticaUnicaPorId()
     {
-        // El grid persiste los agrupadores (Capítulo/Subcapítulo/Nivel) como SUB:{Clave}.
-        Assert.AreEqual("SUB:1", PresupuestoReportSnapshotBuilder.ClaveFila(Concepto(1, "1", agrupador: true, nivel: 0)));
+        // El grid persiste los agrupadores (Capítulo/Subcapítulo/Nivel) como SUB:{Id}:
+        // la clave es ÚNICA por fila y no depende de la Clave visible (que puede
+        // repetirse o estar vacía).
+        Assert.AreEqual("SUB:42", PresupuestoReportSnapshotBuilder.ClaveFila(Concepto(42, "1", agrupador: true, nivel: 0)));
     }
 
     [TestMethod]
