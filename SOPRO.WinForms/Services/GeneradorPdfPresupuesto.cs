@@ -9,6 +9,8 @@ using MigraDoc.Rendering;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Reporting;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Reporting.Columns;
 using SOPRO.Reporting.Formatting;
@@ -34,14 +36,6 @@ namespace SOPRO.WinForms.Services
             decimal factorPU = 1m,
             ConfiguracionTituloReporte? tituloCfg = null)
         {
-            var cols = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
-            if (!cols.Any())
-                throw new InvalidOperationException("No hay columnas visibles para exportar.");
-
-            // Paridad por defecto con el grid legacy: la columna sintética de
-            // numeración "#" se antepone cuando el snapshot no la define.
-            cols = ReportColumnDefaults.ConPrefijoNumeroPresupuesto(cols);
-
             if (string.IsNullOrWhiteSpace(rutaDestino))
             {
                 var carpeta = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SOPRO", "Reportes");
@@ -49,6 +43,47 @@ namespace SOPRO.WinForms.Services
                 rutaDestino = Path.Combine(carpeta,
                     $"Presupuesto_{SanitizarNombre(proyecto.Nombre)}_{DateTime.Now:yyyyMMdd_HHmm}.pdf");
             }
+
+            var doc = ConstruirDocumento(proyecto, conceptos, plantilla, snapshot, factorPU, tituloCfg);
+
+            var renderer = new PdfDocumentRenderer()
+            {
+                Document = doc
+            };
+            renderer.RenderDocument();
+            renderer.PdfDocument.Save(rutaDestino);
+            return rutaDestino;
+        }
+
+        /// <summary>
+        /// Construye el documento MigraDoc del reporte SIN serializarlo. Es el SEAM
+        /// que permite a las pruebas inspeccionar las propiedades de las celdas
+        /// (fuentes, colores, shading) antes de generar el PDF. Sólo lee el snapshot
+        /// neutral + el dominio; nunca el grid.
+        /// </summary>
+        public Document ConstruirDocumento(
+            Proyecto proyecto,
+            List<ConceptoPresupuesto> conceptos,
+            PlantillaReporte plantilla,
+            ReportColumnSnapshot snapshot,
+            decimal factorPU = 1m,
+            ConfiguracionTituloReporte? tituloCfg = null)
+        {
+            // Defaults NEUTRALES por rol de fila (única fuente de verdad, compartida
+            // con grid/Excel) combinados con la config persistida del usuario. El
+            // override de celda del snapshot sigue teniendo la máxima precedencia.
+            snapshot = snapshot with
+            {
+                EstilosFila = EstilosFilaPredeterminados.CombinarPresupuesto(snapshot.EstilosFila)
+            };
+
+            var cols = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
+            if (!cols.Any())
+                throw new InvalidOperationException("No hay columnas visibles para exportar.");
+
+            // Paridad por defecto con el grid legacy: la columna sintética de
+            // numeración "#" se antepone cuando el snapshot no la define.
+            cols = ReportColumnDefaults.ConPrefijoNumeroPresupuesto(cols);
 
             var doc = new Document();
             DefinirEstilos(doc);
@@ -77,13 +112,7 @@ namespace SOPRO.WinForms.Services
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
             ConstruirTablaPresupuesto(section, proyecto, conceptos, cols, snapshot, factorPU, tituloCfg);
 
-            var renderer = new PdfDocumentRenderer()
-            {
-                Document = doc
-            };
-            renderer.RenderDocument();
-            renderer.PdfDocument.Save(rutaDestino);
-            return rutaDestino;
+            return doc;
         }
 
         private static void DefinirEstilos(Document doc)
@@ -220,6 +249,11 @@ namespace SOPRO.WinForms.Services
         private void ConstruirTablaPresupuesto(Section section, Proyecto proyecto, List<ConceptoPresupuesto> conceptos, List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot, decimal factorPU, ConfiguracionTituloReporte? tituloCfg = null)
         {
             var estiloTabla = snapshot.EstiloTabla;
+            // Snapshot sin overrides: sirve de línea base para aislar QUÉ propiedad
+            // aportó realmente un override de celda/rol (delta contra la cascada de
+            // tabla/columna). Con snapshots sin estilos el delta es siempre vacío y
+            // el render conserva EXACTAMENTE el comportamiento legacy.
+            var snapshotBase = snapshot with { EstilosCelda = null, EstilosFila = null };
             var titulo = string.IsNullOrWhiteSpace(tituloCfg?.TextoTitulo) ? "PRESUPUESTO" : tituloCfg!.TextoTitulo;
             var pTitle = section.AddParagraph(titulo);
             ReportTitleStyleHelper.ApplyToParagraph(pTitle, tituloCfg, titulo);
@@ -270,19 +304,19 @@ namespace SOPRO.WinForms.Services
             foreach (var c in conceptosOrdenados)
             {
                 if (!c.EsAgrupador) consecutivo++;
-                if (c.Notas == "__subtotal__")
+                if (c.Notas == SOPRO.Application.UseCases.Reporting.PresupuestoReportSnapshotBuilder.MarcaSubtotalSintetico)
                 {
-                    AgregarFilaSubtotal(table, c, cols, snapshot);
+                    AgregarFilaSubtotal(table, c, cols, snapshot, snapshotBase);
                     continue;
                 }
 
-                AgregarFilaConcepto(table, proyecto, c, cols, snapshot, consecutivo, factorPU);
+                AgregarFilaConcepto(table, proyecto, c, cols, snapshot, snapshotBase, consecutivo, factorPU);
             }
 
-            AgregarTotales(table, proyecto, conceptos, cols, snapshot);
+            AgregarTotales(table, proyecto, conceptos, cols, snapshot, snapshotBase);
         }
 
-        private void AgregarFilaConcepto(Table table, Proyecto proyecto, ConceptoPresupuesto c, List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot, int consecutivo, decimal factorPU)
+        private void AgregarFilaConcepto(Table table, Proyecto proyecto, ConceptoPresupuesto c, List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot, ReportColumnSnapshot snapshotBase, int consecutivo, decimal factorPU)
         {
             var row = table.AddRow();
             row.HeightRule = RowHeightRule.AtLeast;
@@ -290,27 +324,23 @@ namespace SOPRO.WinForms.Services
             var rowDisplay = BudgetLoadService.BuildRowDisplay(proyecto, c);
             string indent = new(' ', Math.Max(0, c.Nivel * 2));
 
-            if (c.EsAgrupador)
-            {
-                row.Shading.Color = c.Nivel switch
-                {
-                    0 => MColor.Parse("#D9EAF7"),
-                    1 => MColor.Parse("#EFEFEF"),
-                    _ => MColor.Parse("#FAFAFA")
-                };
-                row.Format.Font.Bold = true;
-            }
-            else
-            {
-                row.Shading.Color = MColor.Parse("#FFFFFF");
-            }
+            var claveFila = PresupuestoReportSnapshotBuilder.ClaveFila(c);
+            var rolFila = PresupuestoReportSnapshotBuilder.RolFila(c);
+
+            // El fondo/estilo de las filas AGRUPADOR lo aporta el DEFAULT del rol
+            // (EstilosFilaPredeterminados) a través del resolver, por celda; ya no
+            // hay colores hardcodeados aquí. La negrita de los agrupadores también
+            // proviene del rol (ver el bucle de celdas).
 
             for (int i = 0; i < cols.Count; i++)
             {
                 var col = cols[i];
                 var cell = row.Cells[i];
                 cell.VerticalAlignment = VerticalAlignment.Center;
-                var alignment = col.Identificador == "Descripcion" ? MParagraphAlignment.Justify : ConvertirAlineacion(col.Alineacion);
+                var overrideEfectivo = OverrideEfectivo(snapshot, snapshotBase, claveFila, col.Identificador, rolFila);
+                var alignment = overrideEfectivo.AlineacionHorizontal is ReportTextAlignment alineacionOverride
+                    ? ConvertirAlineacion(alineacionOverride)
+                    : (col.Identificador == "Descripcion" ? MParagraphAlignment.Justify : ConvertirAlineacion(col.Alineacion));
                 cell.Format.Alignment = alignment;
                 cell.Format.Font.Name = PdfFontHelper.NormalizeFontName(string.IsNullOrWhiteSpace(col.EstiloContenido.Fuente) ? "Segoe UI" : col.EstiloContenido.Fuente);
                 cell.Format.Font.Size = col.EstiloContenido.Tamano <= 0 ? 8.2f : col.EstiloContenido.Tamano;
@@ -319,6 +349,7 @@ namespace SOPRO.WinForms.Services
                 cell.Format.Font.Color = ParseColorSafe(col.EstiloContenido.ColorFuente, "#000000");
                 if (!c.EsAgrupador)
                     cell.Shading.Color = ParseColorSafe(col.EstiloContenido.ColorFondo, "#FFFFFF");
+                AplicarOverlayPdf(cell, overrideEfectivo);
                 var p = cell.AddParagraph();
                 p.Format.Alignment = alignment;
 
@@ -336,28 +367,34 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private void AgregarFilaSubtotal(Table table, ConceptoPresupuesto c, List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot)
+        private void AgregarFilaSubtotal(Table table, ConceptoPresupuesto c, List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot, ReportColumnSnapshot snapshotBase)
         {
             var row = table.AddRow();
             row.HeightRule = RowHeightRule.AtLeast;
             row.Height = Unit.FromCentimeter(0.55);
-            row.Shading.Color = MColor.Parse("#F2F7FD");
-            row.Format.Font.Bold = true;
+            // Fondo y negrita del subtotal sintético: DEFAULT del rol Subtotal vía resolver.
+
+            var claveFila = PresupuestoReportSnapshotBuilder.ClaveFila(c);
+            var rolFila = PresupuestoReportSnapshotBuilder.RolFila(c);
 
             for (int i = 0; i < cols.Count; i++)
             {
                 var col = cols[i];
                 var cell = row.Cells[i];
                 cell.VerticalAlignment = VerticalAlignment.Center;
+                var overrideEfectivo = OverrideEfectivo(snapshot, snapshotBase, claveFila, col.Identificador, rolFila);
                 cell.Format.Font.Name = PdfFontHelper.NormalizeFontName(string.IsNullOrWhiteSpace(col.EstiloContenido.Fuente) ? "Segoe UI" : col.EstiloContenido.Fuente);
                 cell.Format.Font.Size = col.EstiloContenido.Tamano <= 0 ? 8.2f : col.EstiloContenido.Tamano;
                 cell.Format.Font.Italic = col.EstiloContenido.Cursiva;
                 cell.Format.Font.Color = ParseColorSafe(col.EstiloContenido.ColorFuente, "#000000");
-                var alignment = col.Identificador == "Descripcion"
-                                ? MParagraphAlignment.Justify
-                                : ConvertirAlineacion(col.Alineacion);
+                var alignment = overrideEfectivo.AlineacionHorizontal is ReportTextAlignment alineacionOverride
+                                ? ConvertirAlineacion(alineacionOverride)
+                                : (col.Identificador == "Descripcion"
+                                    ? MParagraphAlignment.Justify
+                                    : ConvertirAlineacion(col.Alineacion));
 
                 cell.Format.Alignment = alignment;
+                AplicarOverlayPdf(cell, overrideEfectivo);
 
                 var p = cell.AddParagraph();
                 p.Format.Alignment = alignment;
@@ -371,39 +408,50 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private void AgregarTotales(Table table, Proyecto proyecto, List<ConceptoPresupuesto> conceptos, List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot)
+        private void AgregarTotales(Table table, Proyecto proyecto, List<ConceptoPresupuesto> conceptos, List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot, ReportColumnSnapshot snapshotBase)
         {
             var terminales = conceptos.Where(c => !c.EsAgrupador).ToList();
             decimal subtotal = terminales.Sum(c => c.ImporteTotal);
             decimal iva = subtotal * proyecto.PorcentajeIVA / 100m;
             decimal total = subtotal + iva;
 
-            AgregarFilaTotal(table, cols, snapshot, "SUBTOTAL:", subtotal, "#E3F2FD", true, proyecto.PorcentajeIVA);
-            AgregarFilaTotal(table, cols, snapshot, $"IVA ({proyecto.PorcentajeIVA:N0}%):", iva, "#F5F5F5", false, proyecto.PorcentajeIVA);
-            AgregarFilaTotal(table, cols, snapshot, "TOTAL:", total, "#BBDEFB", true, proyecto.PorcentajeIVA);
+            // Claves estables de las filas de cierre (coinciden con las que persiste
+            // el grid): SUB:{clave} para el subtotal global, IVA y TOTAL. El fondo de
+            // cada fila lo aporta el DEFAULT del rol (Subtotal/Total) vía resolver.
+            AgregarFilaTotal(table, cols, snapshot, snapshotBase, "SUBTOTAL:", subtotal, true, ClaveFilaReporte.Subtotal(string.Empty), RolFilaReporte.Subtotal);
+            AgregarFilaTotal(table, cols, snapshot, snapshotBase, $"IVA ({proyecto.PorcentajeIVA:N0}%):", iva, false, ClaveFilaReporte.Iva, RolFilaReporte.Total);
+            AgregarFilaTotal(table, cols, snapshot, snapshotBase, "TOTAL:", total, true, ClaveFilaReporte.Total, RolFilaReporte.Total);
         }
 
-        private void AgregarFilaTotal(Table table, List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot, string etiqueta, decimal monto, string fondo, bool negrita, decimal iva)
+        private void AgregarFilaTotal(Table table, List<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot, ReportColumnSnapshot snapshotBase, string etiqueta, decimal monto, bool negrita, string claveFila, string rolFila)
         {
             var row = table.AddRow();
             row.HeightRule = RowHeightRule.AtLeast;
             row.Height = Unit.FromCentimeter(0.55);
-            row.Shading.Color = MColor.Parse(fondo);
             row.Format.Font.Bold = negrita;
 
             for (int i = 0; i < cols.Count; i++)
             {
                 var col = cols[i];
                 var cell = row.Cells[i];
+                var overrideEfectivo = OverrideEfectivo(snapshot, snapshotBase, claveFila, col.Identificador, rolFila);
                 cell.Format.Font.Name = PdfFontHelper.NormalizeFontName(string.IsNullOrWhiteSpace(col.EstiloContenido.Fuente) ? "Segoe UI" : col.EstiloContenido.Fuente);
                 cell.Format.Font.Size = col.EstiloContenido.Tamano <= 0 ? 8.2f : col.EstiloContenido.Tamano;
                 cell.Format.Font.Italic = col.EstiloContenido.Cursiva;
                 cell.Format.Font.Color = ParseColorSafe(col.EstiloContenido.ColorFuente, "#000000");
-                var alignment = col.Identificador == "Descripcion"
-                                 ? MParagraphAlignment.Justify
-                                 : ConvertirAlineacion(col.Alineacion);
+                var alignment = overrideEfectivo.AlineacionHorizontal is ReportTextAlignment alineacionOverride
+                                 ? ConvertirAlineacion(alineacionOverride)
+                                 : (col.Identificador == "Descripcion"
+                                     ? MParagraphAlignment.Justify
+                                     : ConvertirAlineacion(col.Alineacion));
 
                 cell.Format.Alignment = alignment;
+                AplicarOverlayPdf(cell, overrideEfectivo);
+
+                // La negrita de la fila de cierre es un rasgo de la fila (IVA no va
+                // en negrita aunque comparta el rol Total), por eso se reafirma
+                // después de aplicar el default del rol.
+                cell.Format.Font.Bold = negrita;
 
                 var p = cell.AddParagraph();
                 p.Format.Alignment = alignment;
@@ -459,6 +507,61 @@ namespace SOPRO.WinForms.Services
             ReportTextAlignment.Justificado => MParagraphAlignment.Justify,
             _ => MParagraphAlignment.Left,
         };
+
+        /// <summary>
+        /// Aísla las propiedades que un override de celda o un estilo de rol
+        /// REALMENTE aportaron, comparando el estilo resuelto con el de la cascada
+        /// base (tabla + columna, sin celda/rol). Con <paramref name="snapshotBase"/>
+        /// sin estilos, TODAS las propiedades quedan <c>null</c> (retrocompatibilidad
+        /// exacta con el render legacy).
+        /// </summary>
+        private static ReportStyleOverlay OverrideEfectivo(
+            ReportColumnSnapshot snapshot,
+            ReportColumnSnapshot snapshotBase,
+            string claveFila,
+            string nombreColumna,
+            string? rolFila)
+        {
+            var claveVista = PresupuestoReportSnapshotBuilder.ClaveVista;
+            var completo = ReportCellStyleResolver.Resolve(snapshot, claveVista, claveFila, nombreColumna, rolFila, false);
+            var baseStyle = ReportCellStyleResolver.Resolve(snapshotBase, claveVista, claveFila, nombreColumna, null, false);
+
+            return new ReportStyleOverlay(
+                Fuente: completo.Fuente != baseStyle.Fuente ? completo.Fuente : null,
+                TamanoFuente: completo.TamanoFuente != baseStyle.TamanoFuente ? completo.TamanoFuente : null,
+                Negrita: completo.Negrita != baseStyle.Negrita ? completo.Negrita : null,
+                Cursiva: completo.Cursiva != baseStyle.Cursiva ? completo.Cursiva : null,
+                ColorFuente: completo.ColorFuente != baseStyle.ColorFuente ? completo.ColorFuente : null,
+                ColorFondo: completo.ColorFondo != baseStyle.ColorFondo ? completo.ColorFondo : null,
+                AlineacionHorizontal: completo.AlineacionHorizontal != baseStyle.AlineacionHorizontal ? completo.AlineacionHorizontal : null,
+                AlineacionVertical: completo.AlineacionVertical != baseStyle.AlineacionVertical ? completo.AlineacionVertical : null,
+                Wrap: completo.Wrap != baseStyle.Wrap ? completo.Wrap : null,
+                FormatoNumerico: completo.FormatoNumerico != baseStyle.FormatoNumerico ? completo.FormatoNumerico : null);
+        }
+
+        /// <summary>
+        /// Aplica al cell SOLO las propiedades no nulas del override (fuente, tamaño,
+        /// negrita, cursiva, color de texto, color de fondo). La alineación se aplica
+        /// por separado porque debe replicarse también en el párrafo. Un override
+        /// numérico (<c>FormatoNumerico</c>) se IGNORA en PDF: el formato numérico se
+        /// conserva por columna vía <see cref="ReportColumnGridFormat"/>, que es la
+        /// autoridad de cantidades/importes (decisión documentada de 4.2).
+        /// </summary>
+        private static void AplicarOverlayPdf(Cell cell, ReportStyleOverlay overrideEfectivo)
+        {
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.Fuente))
+                cell.Format.Font.Name = PdfFontHelper.NormalizeFontName(overrideEfectivo.Fuente);
+            if (overrideEfectivo.TamanoFuente is float tamano && tamano > 0)
+                cell.Format.Font.Size = tamano;
+            if (overrideEfectivo.Negrita is bool negrita)
+                cell.Format.Font.Bold = negrita;
+            if (overrideEfectivo.Cursiva is bool cursiva)
+                cell.Format.Font.Italic = cursiva;
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFuente))
+                cell.Format.Font.Color = ParseColorSafe(overrideEfectivo.ColorFuente, "#000000");
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFondo))
+                cell.Shading.Color = ParseColorSafe(overrideEfectivo.ColorFondo, "#FFFFFF");
+        }
 
         private static MColor ParseColorSafe(string? html, string fallback)
         {

@@ -5,7 +5,9 @@ using SOPRO.Application.DTOs.Presupuesto;
 using SOPRO.Application.DTOs.Catalog;
 using SOPRO.Application.DTOs.Matrices;
 using SOPRO.Application.Models.ExternalProjects;
+using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Services;
@@ -24,6 +26,96 @@ namespace SOPRO.WinForms.Forms
     /// </summary>
     public partial class FormPresupuesto
     {
+        // ── Estilos por ROL de fila persistidos (paso 4.3) ────────────────────
+        // Overrides semánticos del usuario indexados por rol (CargarEstilosFila),
+        // memoizados para no consultar la BD en cada CellFormatting.
+        private Dictionary<string, ReportStyleOverlay>? _estilosFilaFormato;
+        private int _estilosFilaFormatoProyectoId = -1;
+
+        /// <summary>
+        /// Overrides de estilo por rol persistidos del (proyecto, tipo), cargados
+        /// con UNA sola consulta y memoizados por proyecto. El pintado los combina
+        /// sobre los defaults de <see cref="EstilosFilaPredeterminados"/>
+        /// (override del usuario &gt; default).
+        /// </summary>
+        private IReadOnlyDictionary<string, ReportStyleOverlay> ObtenerEstilosFilaUsuario()
+        {
+            if (_estilosFilaFormato is not null && _estilosFilaFormatoProyectoId == _proyecto.Id)
+                return _estilosFilaFormato;
+
+            try
+            {
+                _estilosFilaFormato = new Dictionary<string, ReportStyleOverlay>(
+                    _formatoReporteService.CargarEstilosFila(_proyecto.Id, FormatoTipoReporte),
+                    StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ObtenerEstilosFilaUsuario: {ex.Message}");
+                _estilosFilaFormato = new Dictionary<string, ReportStyleOverlay>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            _estilosFilaFormatoProyectoId = _proyecto.Id;
+            return _estilosFilaFormato;
+        }
+
+        /// <summary>
+        /// Rol funcional de fila (ver <see cref="RolFilaReporte"/>) correspondiente
+        /// al tipo de renglón del grid. Coincide con el que expone
+        /// <see cref="Application.UseCases.Reporting.PresupuestoReportSnapshotBuilder.RolFila"/>
+        /// para PDF/Excel, de modo que los tres renderers resuelven el MISMO default.
+        /// </summary>
+        internal static string? ObtenerRolFilaFormato(string? tipo) => tipo switch
+        {
+            "Capitulo" => RolFilaReporte.Capitulo,
+            "Subcapitulo" => RolFilaReporte.Subcapitulo,
+            "Nivel 1" => RolFilaReporte.Nivel1,
+            "Nivel 2" => RolFilaReporte.Nivel2,
+            "Nivel 3" => RolFilaReporte.Nivel3,
+            "Concepto" => RolFilaReporte.Concepto,
+            _ => null,
+        };
+
+        /// <summary>
+        /// Vuelca el estilo EFECTIVO del rol (default + override persistido del
+        /// usuario) sobre el estilo de la celda. Sin configuración reproduce el
+        /// pintado histórico del grid.
+        /// </summary>
+        internal static void AplicarEstiloRolPresupuesto(
+            DataGridViewCellStyle estilo,
+            Font fontBase,
+            string? tipo,
+            IReadOnlyDictionary<string, ReportStyleOverlay>? estilosFilaUsuario)
+        {
+            if (estilo is null) return;
+
+            var overlay = EstilosFilaPredeterminados.CombinarPresupuesto(
+                ObtenerRolFilaFormato(tipo), estilosFilaUsuario);
+
+            var backColor = Color.White;
+            var foreColor = Color.Black;
+
+            if (!string.IsNullOrWhiteSpace(overlay.ColorFondo))
+            {
+                try { backColor = ColorTranslator.FromHtml(overlay.ColorFondo); } catch { }
+            }
+
+            if (!string.IsNullOrWhiteSpace(overlay.ColorFuente))
+            {
+                try { foreColor = ColorTranslator.FromHtml(overlay.ColorFuente); } catch { }
+            }
+
+            var fontStyle = FontStyle.Regular;
+            if (overlay.Negrita == true) fontStyle |= FontStyle.Bold;
+            if (overlay.Cursiva == true) fontStyle |= FontStyle.Italic;
+
+            var nombre = string.IsNullOrWhiteSpace(overlay.Fuente) ? fontBase.Name : overlay.Fuente!;
+            var tamano = overlay.TamanoFuente is > 0 ? overlay.TamanoFuente!.Value : fontBase.Size;
+
+            estilo.BackColor = backColor;
+            estilo.ForeColor = foreColor;
+            try { estilo.Font = new Font(nombre, tamano, fontStyle); } catch { }
+        }
 
         private void DgvPresupuesto_CurrentCellDirtyStateChanged(object sender, EventArgs e)
         {
@@ -55,41 +147,12 @@ namespace SOPRO.WinForms.Forms
 
             string tipo = tipoCell.Value.ToString();
 
-            // ── 1. Formato por tipo de renglón (agrupadores) ──────────────────
-            Color backColor = Color.White;
-            Color foreColor = Color.Black;
-            FontStyle fontStyle = FontStyle.Regular;
-
-            switch (tipo)
-            {
-                case "Capitulo":
-                    backColor = Color.Purple;
-                    foreColor = Color.White;
-                    fontStyle = FontStyle.Bold;
-                    break;
-                case "Subcapitulo":
-                    backColor = Color.LightBlue;
-                    foreColor = Color.Black;
-                    fontStyle = FontStyle.Bold;
-                    break;
-                case "Nivel 1":
-                case "Nivel 2":
-                case "Nivel 3":
-                    backColor = Color.LightGray;
-                    foreColor = Color.Black;
-                    fontStyle = FontStyle.Bold;
-                    break;
-                case "Concepto":
-                    backColor = Color.White;
-                    foreColor = Color.Black;
-                    fontStyle = FontStyle.Regular;
-                    break;
-            }
-
-            // Aplicar el estilo de renglón base
-            e.CellStyle.BackColor = backColor;
-            e.CellStyle.ForeColor = foreColor;
-            e.CellStyle.Font = new Font(dgvPresupuesto.Font, fontStyle);
+            // ── 1. Estilo semántico por ROL de fila ───────────────────────────
+            // Los colores/estilos de agrupador (Capitulo/Subcapitulo/Nivel) y de
+            // cierre salen de EstilosFilaPredeterminados (ÚNICA fuente de verdad,
+            // compartida por grid/PDF/Excel) combinados con el override PERSISTIDO
+            // del usuario. El override de celda del paso 3 SIGUE ganando a todo.
+            AplicarEstiloRolPresupuesto(e.CellStyle, dgvPresupuesto.Font, tipo, ObtenerEstilosFilaUsuario());
 
             // ── 2. Sobreponer formato de columna (solo para conceptos) ─────────
             // Para agrupadores mantenemos su color de fondo, pero sí aplicamos
@@ -138,14 +201,101 @@ namespace SOPRO.WinForms.Forms
                         string nombreFuente = !string.IsNullOrEmpty(colDef.NombreFuente)
                             ? colDef.NombreFuente : dgvPresupuesto.Font.Name;
                         float tamaño = colDef.TamanoFuente > 0 ? colDef.TamanoFuente : dgvPresupuesto.Font.Size;
-                        // Para agrupadores siempre negrita + configuración de columna
-                        FontStyle fs = FontStyle.Bold
+                        // La negrita/cursiva proviene del ROL (default o config del
+                        // usuario) ya aplicado en el paso 1; la columna sólo ajusta
+                        // la fuente/tamaño y puede añadir cursiva.
+                        FontStyle fs = (e.CellStyle.Font?.Style ?? FontStyle.Regular)
                                      | (colDef.Cursiva ? FontStyle.Italic : FontStyle.Regular);
                         e.CellStyle.Font = new Font(nombreFuente, tamaño, fs);
                     }
                     catch { }
                 }
             }
+
+            // ── 3. Override por celda (máxima precedencia) ────────────────────
+            // Si la celda tiene un override persistido/aplicado, GANA sobre el
+            // color hardcodeado del agrupador y sobre el formato de columna.
+            AplicarOverrideFormatoCelda(e);
+        }
+
+        /// <summary>
+        /// Aplica, si existe, el override en memoria de la celda (fila × columna)
+        /// sobre el estilo del evento. Sólo consulta el diccionario en memoria: no
+        /// hace ninguna consulta a la base de datos por celda.
+        /// </summary>
+        private void AplicarOverrideFormatoCelda(DataGridViewCellFormattingEventArgs e)
+        {
+            if (_overlaysFormato.Count == 0) return;
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+
+            var clave = ObtenerClaveFilaFormato(dgvPresupuesto, e.RowIndex);
+            var columna = ObtenerNombreColumnaFormato(dgvPresupuesto, e.ColumnIndex);
+            if (clave is null || columna is null) return;
+
+            var direccion = new ReportCellAddress(FormatoVistaPresupuesto, clave, columna);
+            if (!_overlaysFormato.TryGetValue(direccion, out var overlay) || overlay is null) return;
+
+            AplicarOverlayACellStyle(e.CellStyle, overlay);
+        }
+
+        /// <summary>
+        /// Vuelca un <see cref="ReportStyleOverlay"/> neutral sobre un
+        /// <see cref="DataGridViewCellStyle"/>: sólo pisa las propiedades NO nulas
+        /// (null = heredar el estilo base que ya trae la celda).
+        /// </summary>
+        internal static void AplicarOverlayACellStyle(DataGridViewCellStyle estilo, ReportStyleOverlay overlay)
+        {
+            if (estilo is null || overlay is null) return;
+
+            if (!string.IsNullOrWhiteSpace(overlay.ColorFondo))
+            {
+                try { estilo.BackColor = ColorTranslator.FromHtml(overlay.ColorFondo); } catch { }
+            }
+
+            if (!string.IsNullOrWhiteSpace(overlay.ColorFuente))
+            {
+                try { estilo.ForeColor = ColorTranslator.FromHtml(overlay.ColorFuente); } catch { }
+            }
+
+            if (overlay.Negrita is not null || overlay.Cursiva is not null
+                || !string.IsNullOrWhiteSpace(overlay.Fuente) || overlay.TamanoFuente is not null)
+            {
+                var baseFont = estilo.Font ?? SystemFonts.DefaultFont;
+                var estiloFuente = FontStyle.Regular;
+                if (overlay.Negrita == true) estiloFuente |= FontStyle.Bold;
+                if (overlay.Cursiva == true) estiloFuente |= FontStyle.Italic;
+
+                var nombre = string.IsNullOrWhiteSpace(overlay.Fuente) ? baseFont.Name : overlay.Fuente!;
+                var tamano = overlay.TamanoFuente is > 0 ? overlay.TamanoFuente!.Value : baseFont.Size;
+                try { estilo.Font = new Font(nombre, tamano, estiloFuente); } catch { }
+            }
+
+            if (overlay.AlineacionHorizontal is not null || overlay.AlineacionVertical is not null)
+                estilo.Alignment = CombinarAlineacionDgv(overlay.AlineacionHorizontal, overlay.AlineacionVertical);
+
+            if (overlay.Wrap is not null)
+                estilo.WrapMode = overlay.Wrap.Value ? DataGridViewTriState.True : DataGridViewTriState.False;
+        }
+
+        private static DataGridViewContentAlignment CombinarAlineacionDgv(
+            ReportTextAlignment? horizontal,
+            ReportVerticalAlignment? vertical)
+        {
+            bool arriba = vertical == ReportVerticalAlignment.Superior;
+            bool abajo = vertical == ReportVerticalAlignment.Inferior;
+
+            return horizontal switch
+            {
+                ReportTextAlignment.Centro => arriba ? DataGridViewContentAlignment.TopCenter
+                    : abajo ? DataGridViewContentAlignment.BottomCenter
+                    : DataGridViewContentAlignment.MiddleCenter,
+                ReportTextAlignment.Derecha => arriba ? DataGridViewContentAlignment.TopRight
+                    : abajo ? DataGridViewContentAlignment.BottomRight
+                    : DataGridViewContentAlignment.MiddleRight,
+                _ => arriba ? DataGridViewContentAlignment.TopLeft
+                    : abajo ? DataGridViewContentAlignment.BottomLeft
+                    : DataGridViewContentAlignment.MiddleLeft,
+            };
         }
 
         private void DgvPresupuesto_CellValueChanged(object sender, DataGridViewCellEventArgs e)

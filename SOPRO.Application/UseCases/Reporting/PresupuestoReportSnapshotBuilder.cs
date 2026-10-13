@@ -1,4 +1,5 @@
 using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Core.Entities;
 
 namespace SOPRO.Application.UseCases.Reporting;
@@ -17,6 +18,21 @@ public sealed class PresupuestoReportSnapshotBuilder
 {
     /// <summary>Tipo de reporte que produce este builder.</summary>
     public const string TipoReporte = "Presupuesto";
+
+    /// <summary>
+    /// Clave de vista canónica del reporte de Presupuesto. Es la vista por defecto
+    /// (<c>""</c>), la MISMA que persiste el grid en
+    /// <c>FormatoCeldaReporte.ClaveVista</c> (ver <c>FormPresupuesto.FormatoVistaPresupuesto</c>),
+    /// de modo que el resolver de estilos coincide por igualdad exacta en PDF/Excel.
+    /// </summary>
+    public const string ClaveVista = "";
+
+    /// <summary>
+    /// Marca interna de las filas sintéticas de subtotal que los reportes de
+    /// Presupuesto insertan tras cerrar cada agrupador (no son conceptos
+    /// persistidos).
+    /// </summary>
+    public const string MarcaSubtotalSintetico = "__subtotal__";
 
     /// <summary>
     /// Construye el snapshot desde las columnas personalizadas del proyecto y su
@@ -68,4 +84,53 @@ public sealed class PresupuestoReportSnapshotBuilder
             DecimalesPorcentaje = decimalesPorcentaje
         };
     }
+
+    /// <summary>
+    /// Clave de fila ESTABLE de un renglón del reporte de Presupuesto, derivada del
+    /// dominio (nunca del índice visual del grid): <c>C:{Id}</c> para conceptos
+    /// terminales y <c>SUB:{Clave}</c> para agrupadores (Capítulo/Subcapítulo/Nivel)
+    /// y filas sintéticas de subtotal. Es EXACTAMENTE la clave que persiste el grid
+    /// en <c>FormatoCeldaReporte.ClaveFila</c> (ver
+    /// <c>FormPresupuesto.ObtenerClaveFilaFormato</c>), de modo que los overrides de
+    /// celda sobreviven a reordenamientos, filtros y paginación.
+    /// </summary>
+    public static string ClaveFila(ConceptoPresupuesto concepto)
+    {
+        ArgumentNullException.ThrowIfNull(concepto);
+
+        return concepto.EsAgrupador
+            ? ClaveFilaReporte.Subtotal(concepto.Clave)
+            : ClaveFilaReporte.Concepto(concepto.Id);
+    }
+
+    /// <summary>
+    /// Rol funcional de fila del renglón (correspondiente a
+    /// <see cref="RolFilaReporte"/>), usado por el resolver para aplicar los
+    /// estilos semánticos de <c>ConfiguracionEstiloFilaReporte</c>. Los agrupadores
+    /// se clasifican por nivel (Capítulo/Subcapítulo/NivelN) y los conceptos
+    /// terminales como <c>Concepto</c>; las filas sintéticas de subtotal como
+    /// <c>Subtotal</c>.
+    /// </summary>
+    public static string RolFila(ConceptoPresupuesto concepto)
+    {
+        ArgumentNullException.ThrowIfNull(concepto);
+
+        if (EsSubtotalSintetico(concepto))
+            return RolFilaReporte.Subtotal;
+
+        if (!concepto.EsAgrupador)
+            return RolFilaReporte.Concepto;
+
+        return concepto.Nivel switch
+        {
+            0 => RolFilaReporte.Capitulo,
+            1 => RolFilaReporte.Subcapitulo,
+            2 => RolFilaReporte.Nivel1,
+            3 => RolFilaReporte.Nivel2,
+            _ => RolFilaReporte.Nivel3,
+        };
+    }
+
+    private static bool EsSubtotalSintetico(ConceptoPresupuesto concepto)
+        => string.Equals(concepto.Notas, MarcaSubtotalSintetico, StringComparison.Ordinal);
 }

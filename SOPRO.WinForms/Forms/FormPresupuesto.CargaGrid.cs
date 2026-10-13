@@ -164,6 +164,7 @@ namespace SOPRO.WinForms.Forms
                 RecalcularTodosLosTotales();
                 GuardarCambios();       // Persistir totales de agrupadores recalculados en BD
                 ReasignarNumerosConceptos();
+                CargarOverlaysFormato(); // Formato de celdas persistido (UNA consulta)
                 ActualizarEstadisticas();
 
                 if (stateToRestore != null && dgvPresupuesto.Rows.Count > 0)
