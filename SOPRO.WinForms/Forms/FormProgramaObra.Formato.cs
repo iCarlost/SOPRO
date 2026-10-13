@@ -90,7 +90,8 @@ namespace SOPRO.WinForms.Forms
         /// <summary>
         /// Clave ESTABLE de la fila para el formato de celdas, o <c>null</c> si la
         /// fila no tiene una entidad persistida. Los agrupadores usan
-        /// <c>RES:{Clave}</c> y las actividades <c>ACT:{Id}</c>.
+        /// <c>RES:{ConceptoPresupuestoId}</c> (fallback <c>RES:{Clave}</c>) y las
+        /// actividades <c>ACT:{Id}</c>.
         /// </summary>
         internal static string? ObtenerClaveFilaFormato(DataGridView grid, int rowIndex)
         {
@@ -101,7 +102,8 @@ namespace SOPRO.WinForms.Forms
                 return null;
             if (!dto.EsResumen && dto.Id <= 0) return null;
 
-            return ProgramaObraReportSnapshotBuilder.ClaveFila(dto.EsResumen, dto.Id, dto.Clave);
+            return ProgramaObraReportSnapshotBuilder.ClaveFila(
+                dto.EsResumen, dto.ConceptoPresupuestoId ?? 0, dto.Id, dto.Clave);
         }
 
         /// <summary>

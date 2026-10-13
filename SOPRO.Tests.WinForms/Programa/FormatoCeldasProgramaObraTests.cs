@@ -103,6 +103,16 @@ public class FormatoCeldasProgramaObraTests
         Orden = id
     };
 
+    private static ActivityGridRowDto ResumenConcepto(int actividadId, int conceptoPresupuestoId, string clave = "") => new()
+    {
+        Id = actividadId,
+        ConceptoPresupuestoId = conceptoPresupuestoId,
+        Clave = clave,
+        Descripcion = $"Agrupador concepto {conceptoPresupuestoId}",
+        EsResumen = true,
+        Orden = actividadId
+    };
+
     // ═════════════════════════ Selección → direcciones ═════════════════════════
 
     [TestMethod]
@@ -133,6 +143,87 @@ public class FormatoCeldasProgramaObraTests
 
         Assert.AreEqual(1, direcciones.Count);
         Assert.AreEqual("RES:2", direcciones[0].ClaveFila);
+    }
+
+    // ── Bug B (misma clase que Presupuesto): agrupadores con Clave="" colisionaban ──
+
+    [TestMethod]
+    public void Resumen_ConClaveVacia_DerivaLaClaveDelConceptoPresupuestoId()
+    {
+        using var grid = CrearGrid();
+        var fila = AgregarFila(grid, ResumenConcepto(actividadId: 10, conceptoPresupuestoId: 101));
+
+        var direcciones = FormProgramaObra.ConstruirDireccionesSeleccionadas(
+            grid, new[] { grid.Rows[fila].Cells[ProgramaObraReportSnapshotBuilder.ColImporte] });
+
+        Assert.AreEqual(1, direcciones.Count);
+        Assert.AreEqual("RES:101", direcciones[0].ClaveFila);
+    }
+
+    [TestMethod]
+    public void DosResumenesConClaveVacia_GeneranDireccionesDistintas()
+    {
+        using var grid = CrearGrid();
+        var a = AgregarFila(grid, ResumenConcepto(actividadId: 10, conceptoPresupuestoId: 101));
+        var b = AgregarFila(grid, ResumenConcepto(actividadId: 11, conceptoPresupuestoId: 102));
+
+        var direcciones = FormProgramaObra.ConstruirDireccionesSeleccionadas(grid, new[]
+        {
+            grid.Rows[a].Cells[ProgramaObraReportSnapshotBuilder.ColImporte],
+            grid.Rows[b].Cells[ProgramaObraReportSnapshotBuilder.ColImporte],
+        });
+
+        Assert.AreEqual(2, direcciones.Count);
+        Assert.AreEqual("RES:101", direcciones[0].ClaveFila);
+        Assert.AreEqual("RES:102", direcciones[1].ClaveFila);
+        Assert.AreNotEqual(direcciones[0].ClaveFila, direcciones[1].ClaveFila,
+            "Editar una fila resumen no debe afectar a otra (claves únicas por concepto).");
+    }
+
+    [TestMethod]
+    public void ClaveDeResumen_EsLaMismaEnElGridYEnElSnapshot()
+    {
+        using var grid = CrearGrid();
+        var fila = AgregarFila(grid, ResumenConcepto(actividadId: 10, conceptoPresupuestoId: 101, clave: "1"));
+
+        var claveGrid = FormProgramaObra.ObtenerClaveFilaFormato(grid, fila);
+
+        var datos = new ProgramaObraReportSnapshotBuilder().ConstruirFilas(
+            new[] { ResumenConcepto(actividadId: 10, conceptoPresupuestoId: 101, clave: "1") },
+            new GanttRenderModel());
+        var claveSnapshot = ProgramaObraReportSnapshotBuilder.ClaveFila(datos[0]);
+
+        Assert.AreEqual("RES:101", claveGrid);
+        Assert.AreEqual(claveGrid, claveSnapshot,
+            "El grid y el snapshot (generadores PDF/Excel) deben usar la MISMA clave de fila.");
+    }
+
+    [TestMethod]
+    public void ClaveDeResumen_SobreviveARegenerarLaActividad()
+    {
+        // La regeneración recrea la ActividadProgramada (nuevo Id) pero conserva el
+        // vínculo al concepto de presupuesto: la identidad de formato NO cambia.
+        using var gridAntes = CrearGrid();
+        var antes = AgregarFila(gridAntes, ResumenConcepto(actividadId: 10, conceptoPresupuestoId: 101));
+        using var gridDespues = CrearGrid();
+        var despues = AgregarFila(gridDespues, ResumenConcepto(actividadId: 999, conceptoPresupuestoId: 101));
+
+        var claveAntes = FormProgramaObra.ObtenerClaveFilaFormato(gridAntes, antes);
+        var claveDespues = FormProgramaObra.ObtenerClaveFilaFormato(gridDespues, despues);
+
+        Assert.AreEqual("RES:101", claveAntes);
+        Assert.AreEqual(claveAntes, claveDespues,
+            "El formato del resumen debe sobrevivir a la regeneración de periodos/actividades.");
+    }
+
+    [TestMethod]
+    public void ResumenSinConcepto_ConservaElFallbackPorClave()
+    {
+        using var grid = CrearGrid();
+        var fila = AgregarFila(grid, Resumen(3, "2"));
+
+        Assert.AreEqual("RES:2", FormProgramaObra.ObtenerClaveFilaFormato(grid, fila),
+            "Sin concepto de presupuesto se conserva el fallback RES:{Clave}.");
     }
 
     [TestMethod]
@@ -213,6 +304,28 @@ public class FormatoCeldasProgramaObraTests
         var leido = recargado[new ReportCellAddress(Vista, "ACT:1", "colImporte")];
         Assert.IsTrue(leido.Negrita);
         Assert.AreEqual("#112233", leido.ColorFondo);
+    }
+
+    [TestMethod]
+    public void DosResumenesConClaveVacia_PersistenConIndependenciaTrasRecargar()
+    {
+        using var ctx = CrearContexto();
+        var proyectoId = AgregarProyecto(ctx);
+        var service = new FormatoReporteService(ctx);
+
+        // Dos agrupadores con Clave="" (el escenario del bug B) con conceptos distintos.
+        service.UpsertCelda(proyectoId, Tipo, Vista, "RES:101", "colImporte", new ReportStyleOverlay(ColorFondo: "#111111"));
+        service.UpsertCelda(proyectoId, Tipo, Vista, "RES:102", "colImporte", new ReportStyleOverlay(ColorFondo: "#222222"));
+
+        var recargado = new FormatoReporteService(ctx).CargarCeldas(proyectoId, Tipo);
+
+        Assert.AreEqual(2, recargado.Count);
+        var a = recargado[new ReportCellAddress(Vista, "RES:101", "colImporte")];
+        var b = recargado[new ReportCellAddress(Vista, "RES:102", "colImporte")];
+        Assert.AreEqual("#111111", a.ColorFondo);
+        Assert.AreEqual("#222222", b.ColorFondo);
+        Assert.AreNotEqual(a.ColorFondo, b.ColorFondo,
+            "El override de un resumen no se contamina con el de otro.");
     }
 
     [TestMethod]

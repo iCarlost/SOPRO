@@ -10,7 +10,7 @@ namespace SOPRO.Application.Services.Reporting;
 ///   <item>Presupuesto: <c>C:{ConceptoPresupuesto.Id}</c> (conceptos), <c>SUB:{ConceptoPresupuesto.Id}</c> (agrupadores), <c>SUB:</c> (cierre global), <c>TOTAL</c>, <c>IVA</c>.</item>
 ///   <item>Indirectos: <c>G:{GrupoIndirecto.Id}</c>, <c>IC:{ConceptoIndirecto.Id}</c>.</item>
 ///   <item>APU / Matrices: <c>C:{ConceptoPresupuesto.Id}</c>, <c>COMP:{ComponenteMatriz.Id}</c>, <c>PU:{ConceptoId}</c>.</item>
-///   <item>Programa de Obra: <c>ACT:{ActividadProgramada.Id}</c>, <c>RES:{Clave}</c> (agrupadores).</item>
+///   <item>Programa de Obra: <c>ACT:{ActividadProgramada.Id}</c>, <c>RES:{ConceptoPresupuestoId}</c> (agrupadores; fallback <c>RES:{Clave}</c> si no hay concepto).</item>
 ///   <item>Programa de Insumos: <c>INS:{InsumoId}</c>; las columnas de período usan el identificador estable del período (<c>per_</c>,<c>acu_</c>,<c>imp_</c>,<c>iacu_</c> + PeriodoId), NO el índice visual.</item>
 /// </list>
 /// </summary>
@@ -88,11 +88,24 @@ public static class ClaveFilaReporte
     public static string Actividad(int actividadId) => PrefijoActividad + actividadId;
 
     /// <summary>
-    /// Fila de agrupador/resumen del Programa de Obra: <c>RES:{Clave}</c>. Usa la
-    /// clave del agrupador (columna Clave del presupuesto) para sobrevivir a la
-    /// regeneración de las actividades resumen.
+    /// Fila de agrupador/resumen del Programa de Obra identificada por su Clave:
+    /// <c>RES:{Clave}</c>. Se conserva como FALLBACK para las filas resumen sin
+    /// vínculo a un concepto del presupuesto (por ejemplo, agrupadores manuales).
     /// </summary>
     public static string Resumen(string? clave) => PrefijoResumen + (clave ?? string.Empty);
+
+    /// <summary>
+    /// Fila de agrupador/resumen del Programa de Obra identificada por el Id de su
+    /// concepto de presupuesto de origen: <c>RES:{ConceptoPresupuestoId}</c>. Se
+    /// deriva de un Id de dominio (único por fila y ESTABLE ante la regeneración de
+    /// las actividades resumen, que recrean su <c>Id</c> de actividad pero conservan
+    /// el vínculo al concepto) de modo que el override de una celda de un agrupador
+    /// afecta SOLO a esa fila aunque varios agrupadores compartan la misma
+    /// <c>Clave</c> (o la tengan vacía). Es EXACTAMENTE la clave que persiste el
+    /// grid en <c>FormatoCeldaReporte.ClaveFila</c> (ver
+    /// <c>FormProgramaObra.ObtenerClaveFilaFormato</c>).
+    /// </summary>
+    public static string Resumen(int conceptoPresupuestoId) => PrefijoResumen + conceptoPresupuestoId;
 
     /// <summary>
     /// Fila de insumo programado del Programa de Insumos: <c>INS:{InsumoId}</c>.

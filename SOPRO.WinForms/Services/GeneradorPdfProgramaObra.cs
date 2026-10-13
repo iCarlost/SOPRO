@@ -48,6 +48,7 @@ namespace SOPRO.WinForms.Services
         internal sealed class ProgramaPdfRow
         {
             public int? ItemId { get; set; }
+            public int? ConceptoPresupuestoId { get; set; }
             public Dictionary<string, string> Valores { get; set; } = new(StringComparer.OrdinalIgnoreCase);
             public DateTime? Inicio { get; set; }
             public DateTime? Fin { get; set; }
@@ -467,6 +468,7 @@ namespace SOPRO.WinForms.Services
                 resultado.Add(new ProgramaPdfRow
                 {
                     ItemId = fila.ItemId,
+                    ConceptoPresupuestoId = fila.ConceptoPresupuestoId,
                     Valores = valores,
                     Inicio = fila.Inicio,
                     Fin = fila.Fin,
@@ -735,16 +737,17 @@ namespace SOPRO.WinForms.Services
 
         /// <summary>
         /// Clave de fila ESTABLE del programa según su tipo: Programa de Obra usa
-        /// <c>ACT:{Id}</c>/<c>RES:{Clave}</c>; Programa de Insumos usa <c>INS:{InsumoId}</c>.
+        /// <c>ACT:{Id}</c>/<c>RES:{ConceptoPresupuestoId}</c> (fallback
+        /// <c>RES:{Clave}</c>); Programa de Insumos usa <c>INS:{InsumoId}</c>. Delega
+        /// en la MISMA fábrica que el grid y el snapshot para garantizar paridad.
         /// </summary>
         private static string ClaveFilaPdf(ReportColumnSnapshot snapshot, ProgramaPdfRow fila)
         {
             if (string.Equals(snapshot.TipoReporte, ProgramaInsumosReportSnapshotBuilder.TipoReporte, StringComparison.OrdinalIgnoreCase))
                 return ClaveFilaReporte.Insumo(fila.ItemId ?? 0);
 
-            return fila.EsResumen
-                ? ClaveFilaReporte.Resumen(fila.GetTexto("colClave"))
-                : ClaveFilaReporte.Actividad(fila.ItemId ?? 0);
+            return ProgramaObraReportSnapshotBuilder.ClaveFila(
+                fila.EsResumen, fila.ConceptoPresupuestoId ?? 0, fila.ItemId ?? 0, fila.GetTexto("colClave"));
         }
 
         /// <summary>

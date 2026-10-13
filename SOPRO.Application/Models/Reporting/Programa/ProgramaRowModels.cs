@@ -38,6 +38,15 @@ public sealed class ProgramaRow
     /// <summary>Identificador de la actividad (nulo para bandas/totales).</summary>
     public int? ItemId { get; set; }
 
+    /// <summary>
+    /// Identificador del concepto de presupuesto de origen de la actividad (nulo para
+    /// bandas/totales o cuando la fila no proviene del presupuesto). Es la identidad
+    /// ESTABLE de las filas resumen del Programa de Obra: sobrevive a la regeneración
+    /// de las actividades resumen (que recrean su <see cref="ItemId"/>) porque el
+    /// vínculo al concepto persiste. Se usa para derivar la clave de fila de formato.
+    /// </summary>
+    public int? ConceptoPresupuestoId { get; set; }
+
     /// <summary>Nivel de jerarquía de la actividad (0 = raíz).</summary>
     public int Nivel { get; set; }
 

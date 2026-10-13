@@ -3,6 +3,7 @@ using SOPRO.Application.DTOs.Programacion;
 using SOPRO.Application.Models.Reporting.Programa;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Reporting.Formatting;
 using SOPRO.Reporting.Layout;
@@ -251,16 +252,17 @@ namespace SOPRO.WinForms.Services
 
         /// <summary>
         /// Clave de fila ESTABLE del programa según su tipo: Programa de Obra usa
-        /// <c>ACT:{Id}</c>/<c>RES:{Clave}</c>; Programa de Insumos usa <c>INS:{InsumoId}</c>.
+        /// <c>ACT:{Id}</c>/<c>RES:{ConceptoPresupuestoId}</c> (fallback
+        /// <c>RES:{Clave}</c>); Programa de Insumos usa <c>INS:{InsumoId}</c>. Delega
+        /// en la MISMA fábrica que el grid y el snapshot para garantizar paridad.
         /// </summary>
         private static string ClaveFilaPrograma(ProgramaExcelRowExport fila, string tipoReporte)
         {
             if (string.Equals(tipoReporte, "ProgramaInsumos", StringComparison.OrdinalIgnoreCase))
                 return ClaveFilaReporte.Insumo(fila.ItemId ?? 0);
 
-            return fila.EsResumen
-                ? ClaveFilaReporte.Resumen(fila.GetTexto("colClave"))
-                : ClaveFilaReporte.Actividad(fila.ItemId ?? 0);
+            return ProgramaObraReportSnapshotBuilder.ClaveFila(
+                fila.EsResumen, fila.ConceptoPresupuestoId ?? 0, fila.ItemId ?? 0, fila.GetTexto("colClave"));
         }
 
         /// <summary>
@@ -372,6 +374,7 @@ namespace SOPRO.WinForms.Services
                 resultado.Add(new ProgramaExcelRowExport
                 {
                     ItemId = fila.ItemId,
+                    ConceptoPresupuestoId = fila.ConceptoPresupuestoId,
                     Valores = valores,
                     RawValores = rawValores,
                     Inicio = fila.Inicio,
@@ -709,6 +712,7 @@ namespace SOPRO.WinForms.Services
         protected sealed class ProgramaExcelRowExport
         {
             public int? ItemId { get; set; }
+            public int? ConceptoPresupuestoId { get; set; }
             public Dictionary<string, string> Valores { get; set; } = new(StringComparer.OrdinalIgnoreCase);
             public Dictionary<string, object?> RawValores { get; set; } = new(StringComparer.OrdinalIgnoreCase);
             public DateTime? Inicio { get; set; }

@@ -138,6 +138,7 @@ public sealed class ProgramaObraReportSnapshotBuilder
             {
                 Kind = ProgramaRowKind.Actividad,
                 ItemId = actividad.Id,
+                ConceptoPresupuestoId = actividad.ConceptoPresupuestoId,
                 Nivel = actividad.Nivel,
                 Orden = actividad.Orden,
                 EsResumen = actividad.EsResumen
@@ -196,20 +197,28 @@ public sealed class ProgramaObraReportSnapshotBuilder
 
     /// <summary>
     /// Clave de fila ESTABLE de una actividad del programa. Los AGRUPADORES usan
-    /// <c>RES:{Clave}</c> (la clave del presupuesto, estable ante la regeneración de
-    /// las filas resumen) y las actividades normales <c>ACT:{Id}</c>. Coincide con
-    /// la que persiste el grid en <c>FormProgramaObra.ObtenerClaveFilaFormato</c>.
+    /// <c>RES:{ConceptoPresupuestoId}</c> (el Id del concepto del presupuesto de
+    /// origen, único por fila y estable ante la regeneración de las actividades
+    /// resumen) y las actividades normales <c>ACT:{Id}</c>. Como FALLBACK, un
+    /// agrupador sin concepto usa <c>RES:{Clave}</c>. Coincide con la que persiste el
+    /// grid en <c>FormProgramaObra.ObtenerClaveFilaFormato</c>.
     /// </summary>
-    public static string ClaveFila(bool esResumen, int actividadId, string? clave)
+    public static string ClaveFila(bool esResumen, int conceptoPresupuestoId, int actividadId, string? clave)
         => esResumen
-            ? ClaveFilaReporte.Resumen(clave)
+            ? (conceptoPresupuestoId > 0
+                ? ClaveFilaReporte.Resumen(conceptoPresupuestoId)
+                : ClaveFilaReporte.Resumen(clave))
             : ClaveFilaReporte.Actividad(actividadId);
 
     /// <summary>Clave de fila estable de una fila neutral del programa.</summary>
     public static string ClaveFila(ProgramaRow fila)
     {
         ArgumentNullException.ThrowIfNull(fila);
-        return ClaveFila(fila.EsResumen, fila.ItemId ?? 0, fila.ObtenerTexto(ColClave));
+        return ClaveFila(
+            fila.EsResumen,
+            fila.ConceptoPresupuestoId ?? 0,
+            fila.ItemId ?? 0,
+            fila.ObtenerTexto(ColClave));
     }
 
     /// <summary>

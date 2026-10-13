@@ -12,8 +12,9 @@ namespace SOPRO.Reporting.Tests.Services.Reporting;
 /// Paso 6.2 — contrato de claves estables y estilos NEUTROS de los PROGRAMAS
 /// (Obra e Insumos) que consumen el grid, PDF y Excel.
 ///
-/// Fija: las claves estables de fila (<c>ACT:{Id}</c> actividad, <c>RES:{Clave}</c>
-/// agrupador, <c>INS:{InsumoId}</c> insumo); que la vista por defecto coincide con
+/// Fija: las claves estables de fila (<c>ACT:{Id}</c> actividad,
+/// <c>RES:{ConceptoPresupuestoId}</c> agrupador con fallback <c>RES:{Clave}</c>,
+/// <c>INS:{InsumoId}</c> insumo); que la vista por defecto coincide con
 /// la que persiste el grid (<c>""</c>); que un snapshot SIN overrides conserva los
 /// estilos en <c>null</c>; y la precedencia override de celda &gt; rol &gt; columna.
 /// </summary>
@@ -32,11 +33,28 @@ public class ProgramaEstilosSnapshotTests
 
     [TestMethod]
     public void ClaveFila_Obra_ActividadUsaPrefijoAct()
-        => Assert.AreEqual("ACT:5", ProgramaObraReportSnapshotBuilder.ClaveFila(esResumen: false, actividadId: 5, clave: "1.2"));
+        => Assert.AreEqual("ACT:5", ProgramaObraReportSnapshotBuilder.ClaveFila(esResumen: false, conceptoPresupuestoId: 0, actividadId: 5, clave: "1.2"));
 
     [TestMethod]
-    public void ClaveFila_Obra_ResumenUsaPrefijoResYLaClave()
-        => Assert.AreEqual("RES:1", ProgramaObraReportSnapshotBuilder.ClaveFila(esResumen: true, actividadId: 9, clave: "1"));
+    public void ClaveFila_Obra_ResumenUsaElConceptoPresupuestoId()
+        => Assert.AreEqual("RES:42", ProgramaObraReportSnapshotBuilder.ClaveFila(esResumen: true, conceptoPresupuestoId: 42, actividadId: 9, clave: ""));
+
+    [TestMethod]
+    public void ClaveFila_Obra_ResumenSinConcepto_UsaLaClaveComoFallback()
+        => Assert.AreEqual("RES:1", ProgramaObraReportSnapshotBuilder.ClaveFila(esResumen: true, conceptoPresupuestoId: 0, actividadId: 9, clave: "1"));
+
+    [TestMethod]
+    public void ClaveFila_Obra_DosResumenesConClaveVacia_NoColisionan()
+    {
+        // Bug B (misma clase que Presupuesto): varios agrupadores con Clave=""
+        // deben producir claves DISTINTAS derivadas de su concepto de presupuesto.
+        var a = ProgramaObraReportSnapshotBuilder.ClaveFila(esResumen: true, conceptoPresupuestoId: 101, actividadId: 1, clave: "");
+        var b = ProgramaObraReportSnapshotBuilder.ClaveFila(esResumen: true, conceptoPresupuestoId: 102, actividadId: 2, clave: "");
+
+        Assert.AreEqual("RES:101", a);
+        Assert.AreEqual("RES:102", b);
+        Assert.AreNotEqual(a, b);
+    }
 
     [TestMethod]
     public void ClaveFila_Insumos_UsaPrefijoIns()
