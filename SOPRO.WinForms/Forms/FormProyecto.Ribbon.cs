@@ -38,6 +38,9 @@ namespace SOPRO.WinForms.Forms
 
             ConfigurarIconosRibbon();
             AplicarTemaCompletoRibbon();
+            // ShowAlways permite que los comandos DESHABILITADOS también muestren
+            // su tooltip: así el tooltip explica por qué el comando está inactivo.
+            toolTipRibbon.ShowAlways = true;
             panelRibbon.Resize += (_, __) =>
             {
                 AjustarLayoutAccionesRibbon();
@@ -80,7 +83,6 @@ namespace SOPRO.WinForms.Forms
                 btnExcelRibbon.Enabled = true;
                 btnPdfRibbon.Enabled = true;
                 btnBuscarRibbon.Enabled = _formActivoBuscable?.GridBusqueda != null;
-                btnWrapRibbon.Enabled = _formActivo.GridPrincipal != null;
                 btnRecalcularRibbon.Enabled = _formActivoRecalculable != null;
                 btnDepurarRibbon.Enabled = true;
                 btnConsolidarInsumos.Enabled = _formActivoConsolidable?.ConsolidacionDisponible == true;
@@ -93,22 +95,9 @@ namespace SOPRO.WinForms.Forms
                 if (_formActivo.GridPrincipal != null)
                     FormatoHelper.AjustarAutoAlturaFilas(_formActivo.GridPrincipal);
 
-                if (_formActivo.ColumnaSeleccionada != null)
-                {
-                    HabilitarControlesFormato(true);
-                    CargarColumnaEnRibbon(_formActivo.ColumnaSeleccionada);
-                }
-                else
-                {
-                    _cargandoRibbon = true;
-                    panelRibbon.Enabled = true;
-                    HabilitarControlesFormato(false);
-                    lblColumna.Text = tabControl.SelectedTab.Controls[0] is FormFSR
-                        ? "Factor de Salario Real"
-                        : "Clic en encabezado de columna para formatear";
-                    lblColumna.ForeColor = System.Drawing.Color.Gray;
-                    _cargandoRibbon = false;
-                }
+                // Habilitados + indicador + tooltips según el DESTINO real
+                // (columna / celdas / ninguno) decidido por el coordinador (3.1).
+                ActualizarEstadoFormatoRibbon();
 
                 ActualizarOverflowRibbon();
             }
@@ -118,31 +107,16 @@ namespace SOPRO.WinForms.Forms
             }
         }
 
+        /// <summary>
+        /// El grid activo notificó un cambio de selección (encabezado de columna
+        /// hoy; también celdas cuando el grid implemente IGridSeleccionFormato).
+        /// Se refresca TODO el estado contextual del ribbon de formato.
+        /// </summary>
         private void FormActivo_ColumnaSeleccionadaCambiada(object sender, EventArgs e)
         {
-            if (_formActivo?.ColumnaSeleccionada != null)
+            if (_formActivo != null)
             {
-                HabilitarControlesFormato(true);
-                CargarColumnaEnRibbon(_formActivo.ColumnaSeleccionada);
-            }
-            else if (_formActivo != null)
-            {
-                _cargandoRibbon = true;
-                panelRibbon.Enabled = true;
-                btnExcelRibbon.Enabled = true;
-                btnPdfRibbon.Enabled = true;
-                btnBuscarRibbon.Enabled = _formActivoBuscable?.GridBusqueda != null;
-                btnWrapRibbon.Enabled = _formActivo.GridPrincipal != null;
-                btnRecalcularRibbon.Enabled = _formActivoRecalculable != null;
-                btnDepurarRibbon.Enabled = true;
-                btnConsolidarInsumos.Enabled = _formActivoConsolidable?.ConsolidacionDisponible == true;
-                HabilitarControlesFormato(false);
-                lblColumna.Text = tabControl.SelectedTab?.Controls.Count > 0 && tabControl.SelectedTab.Controls[0] is FormFSR
-                    ? "Factor de Salario Real"
-                    : "Clic en encabezado de columna para formatear";
-                lblColumna.ForeColor = Color.Gray;
-                _cargandoRibbon = false;
-                ActualizarOverflowRibbon();
+                ActualizarEstadoFormatoRibbon();
             }
             else
             {
@@ -541,6 +515,141 @@ namespace SOPRO.WinForms.Forms
             ActualizarOverflowRibbon();
         }
 
+        // ════════════════ Estado contextual del ribbon de formato (Paso 3.2) ════════════════
+        //
+        // El DESTINO real (columna vs celdas vs ninguno) lo decide exclusivamente
+        // FormatoSeleccionCoordinator (Paso 3.1); aquí sólo se REFLEJA en la UI:
+        // habilitados, indicador lblColumna y tooltips contextuales por comando.
+        //
+        // Fase 4.3 (formato por TIPO DE FILA): cuando el contrato exponga ese
+        // destino, añadir su caso al switch de ActualizarTooltipsDestinoRibbon y
+        // su texto al indicador. Mientras, no se inventa UI para él.
+
+        /// <summary>
+        /// Comandos de formato del ribbon con su texto base de tooltip (idéntico
+        /// al estático del Designer, para que al sobreescribirlos con el destino
+        /// la UI no cambie de vocabulario).
+        /// </summary>
+        private IEnumerable<(Control Control, string TextoBase)> ObtenerComandosFormatoRibbon()
+        {
+            yield return (cboFuente, "Tipo de fuente");
+            yield return (nudTamano, "Tamano de fuente");
+            yield return (btnNegrita, "Negrita");
+            yield return (btnCursiva, "Cursiva");
+            yield return (btnColorTexto, "Color de texto");
+            yield return (btnColorFondo, "Color de fondo de celda");
+            yield return (btnAlinIzq, "Alinear a la izquierda");
+            yield return (btnAlinCen, "Centrar");
+            yield return (btnAlinDer, "Alinear a la derecha");
+            yield return (btnAlinJus, "Alinear arriba");
+            yield return (btnAlinMed, "Alinear al medio");
+            yield return (btnAlinAba, "Alinear abajo");
+            yield return (btnWrapRibbon, "Ajustar texto");
+        }
+
+        /// <summary>
+        /// Sincroniza al coordinador con el grid activo y refresca habilitados,
+        /// indicador de destino y tooltips contextuales del bloque de formato.
+        /// </summary>
+        private void ActualizarEstadoFormatoRibbon()
+        {
+            _formatoSeleccionCoordinator.EstablecerGrid(_formActivo);
+            bool destinoCeldas = _formatoSeleccionCoordinator.Destino == DestinoFormatoGrid.Celdas;
+
+            if (_formActivo?.ColumnaSeleccionada != null)
+            {
+                // Encabezado activo: comportamiento histórico (cargar valores de la
+                // columna en el ribbon). Si además hay celdas seleccionadas, el
+                // coordinador prioriza CELDAS como destino: los valores cargados
+                // sirven de referencia y el tooltip/indicador así lo aclaran.
+                HabilitarControlesFormato(true);
+                CargarColumnaEnRibbon(_formActivo.ColumnaSeleccionada);
+            }
+            else
+            {
+                // Sin encabezado: los comandos de formato se habilitan SOLO si el
+                // grid expone una selección de celdas formateable (IGridSeleccionFormato).
+                _cargandoRibbon = true;
+                panelRibbon.Enabled = true;
+                btnExcelRibbon.Enabled = true;
+                btnPdfRibbon.Enabled = true;
+                btnBuscarRibbon.Enabled = _formActivoBuscable?.GridBusqueda != null;
+                btnRecalcularRibbon.Enabled = _formActivoRecalculable != null;
+                btnDepurarRibbon.Enabled = true;
+                btnConsolidarInsumos.Enabled = _formActivoConsolidable?.ConsolidacionDisponible == true;
+                HabilitarControlesFormato(destinoCeldas);
+
+                lblColumna.Text = destinoCeldas
+                    ? _formatoSeleccionCoordinator.DescripcionDestino
+                    : ObtenerTextoIndicadorSinDestinoRibbon();
+                lblColumna.ForeColor = destinoCeldas ? Color.White : Color.Gray;
+                _cargandoRibbon = false;
+                ActualizarOverflowRibbon();
+            }
+
+            ActualizarTooltipsDestinoRibbon();
+        }
+
+        /// <summary>
+        /// Texto del indicador cuando no hay ningún destino de formato activo.
+        /// Mantiene longitud similar al actual (lblColumna tiene ancho fijo).
+        /// </summary>
+        private string ObtenerTextoIndicadorSinDestinoRibbon()
+            => _formActivo is FormFSR
+                ? "Factor de Salario Real"
+                : "Clic en encabezado o selecciona celdas";
+
+        /// <summary>
+        /// Reescribe los tooltips de los comandos de formato para que cada uno
+        /// declare SOBRE QUÉ se aplicará: la columna X, la selección de N
+        /// celda(s), o la guía de qué hay que seleccionar. Coherentes con
+        /// <see cref="FormatoSeleccionCoordinator.DescripcionDestino"/>.
+        /// </summary>
+        private void ActualizarTooltipsDestinoRibbon()
+        {
+            if (toolTipRibbon == null) return;
+
+            string sufijo;
+            switch (_formatoSeleccionCoordinator.Destino)
+            {
+                case DestinoFormatoGrid.Columna:
+                    sufijo = $"Aplicar a la {_formatoSeleccionCoordinator.DescripcionDestino}";
+                    break;
+                case DestinoFormatoGrid.Celdas:
+                    sufijo = $"Aplicar a la {_formatoSeleccionCoordinator.DescripcionDestino}";
+                    if (_formatoSeleccionCoordinator.EstadoMixto)
+                        sufijo += " · las celdas tienen formatos distintos";
+                    break;
+                default:
+                    // Ninguno (y futuros destinos sin UI aún, p. ej. tipo de fila en 4.3):
+                    // tooltip guía, con ShowAlways también visible con el comando deshabilitado.
+                    sufijo = _formActivo is FormFSR
+                        ? "Este módulo no admite formato"
+                        : "Selecciona una columna o un rango de celdas";
+                    break;
+            }
+
+            foreach (var (control, textoBase) in ObtenerComandosFormatoRibbon())
+            {
+                if (control == null) continue;
+                toolTipRibbon.SetToolTip(control, $"{textoBase} — {sufijo}");
+            }
+        }
+
+        /// <summary>
+        /// Restaura los tooltips estáticos (sin destino) de los comandos de formato.
+        /// </summary>
+        private void RestaurarTooltipsBaseRibbon()
+        {
+            if (toolTipRibbon == null) return;
+
+            foreach (var (control, textoBase) in ObtenerComandosFormatoRibbon())
+            {
+                if (control == null) continue;
+                toolTipRibbon.SetToolTip(control, textoBase);
+            }
+        }
+
         private void DesactivarRibbon()
         {
             _cargandoRibbon = true;
@@ -555,10 +664,19 @@ namespace SOPRO.WinForms.Forms
             HabilitarControlesFormato(false);
             lblColumna.Text      = "-- sin seleccion --";
             lblColumna.ForeColor = Color.Gray;
+            // Sin form activo no hay destino posible: tooltips al texto base.
+            _formatoSeleccionCoordinator.EstablecerGrid(null);
+            RestaurarTooltipsBaseRibbon();
             _cargandoRibbon = false;
             ActualizarOverflowRibbon();
         }
 
+        /// <summary>
+        /// Encendido/apagado del bloque de formato. Se llama SIEMPRE junto con
+        /// <see cref="ActualizarTooltipsDestinoRibbon"/> (vía
+        /// <see cref="ActualizarEstadoFormatoRibbon"/>) para que un comando
+        /// inactivo explique su motivo en el tooltip.
+        /// </summary>
         private void HabilitarControlesFormato(bool enabled)
         {
             cboFuente.Enabled = enabled;
@@ -574,6 +692,9 @@ namespace SOPRO.WinForms.Forms
             btnColorFondo.Enabled = enabled;
             btnColorTexto.Enabled = enabled;
             btnAplicarATodas.Enabled = enabled;
+            // Ajustar texto TAMBIÉN depende del destino: sin columna ni celdas su
+            // aplicación era un no-op silencioso (AplicarRibbon salía sin hacer nada).
+            btnWrapRibbon.Enabled = enabled;
             AplicarTemaCompletoRibbon();
             ActualizarOverflowRibbon();
         }
