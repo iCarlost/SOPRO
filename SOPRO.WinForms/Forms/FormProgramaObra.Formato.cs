@@ -8,6 +8,7 @@ using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
+using SOPRO.Reporting.Formatting;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Undo;
 
@@ -273,8 +274,12 @@ namespace SOPRO.WinForms.Forms
             if (estilo is null) return;
             if (estilo.Font is null) estilo.Font = fontBase;
 
-            var overlay = EstilosFilaPredeterminados.CombinarProgramas(
-                RolFilaFormato(esResumen), estilosFilaUsuario);
+            // La fusión del nivel de rol se hace con la MISMA semántica del resolver
+            // neutral compartido (punto único de precedencia).
+            var overlay = ReportCellStyleResolver.Combinar(
+                null,
+                EstilosFilaPredeterminados.CombinarProgramas(
+                    RolFilaFormato(esResumen), estilosFilaUsuario));
 
             FormPresupuesto.AplicarOverlayACellStyle(estilo, overlay);
         }
@@ -282,32 +287,41 @@ namespace SOPRO.WinForms.Forms
         private void DgvActividades_CellFormattingFormato(object? sender, DataGridViewCellFormattingEventArgs e)
         {
             if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            if (e.CellStyle is null) return;
             if (dgvActividades.Rows[e.RowIndex].DataBoundItem is not ActivityGridRowDto dto) return;
 
-            // Estilo por ROL de fila (default + override persistido) y, encima,
-            // el override de celda del paso 6.2 (máxima precedencia).
-            AplicarEstiloRolProgramaObra(e.CellStyle, dgvActividades.Font, dto.EsResumen, ObtenerEstilosFilaUsuario());
-            AplicarOverrideFormatoCeldaProgramaObra(dgvActividades, e);
+            // Precedencia ÚNICA (override de celda > estilo de rol, default + override
+            // persistido) resuelta por el resolver neutral compartido; la UI no
+            // recompone la cascada en dos pasos.
+            if (e.CellStyle.Font is null) e.CellStyle.Font = dgvActividades.Font;
+
+            var rolOverlay = EstilosFilaPredeterminados.CombinarProgramas(
+                RolFilaFormato(dto.EsResumen), ObtenerEstilosFilaUsuario());
+            var celdaOverlay = ObtenerOverlayFormatoCeldaProgramaObra(dgvActividades, e);
+
+            var overlay = ReportCellStyleResolver.Combinar(rolOverlay, celdaOverlay);
+            FormPresupuesto.AplicarOverlayACellStyle(e.CellStyle, overlay);
         }
 
         /// <summary>
-        /// Aplica, si existe, el override en memoria de la celda (fila × columna)
-        /// sobre el estilo del evento. Sólo consulta el diccionario en memoria.
+        /// Devuelve, si existe, el override en memoria de la celda (fila × columna),
+        /// o <c>null</c>. Sólo consulta el diccionario en memoria. La fusión con el
+        /// estilo de rol la resuelve <see cref="ReportCellStyleResolver"/>.
         /// </summary>
-        private void AplicarOverrideFormatoCeldaProgramaObra(DataGridView grid, DataGridViewCellFormattingEventArgs e)
+        private ReportStyleOverlay? ObtenerOverlayFormatoCeldaProgramaObra(
+            DataGridView grid,
+            DataGridViewCellFormattingEventArgs e)
         {
             var overlays = _overlaysFormato;
-            if (overlays is null || overlays.Count == 0) return;
-            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            if (overlays is null || overlays.Count == 0) return null;
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return null;
 
             var clave = ObtenerClaveFilaFormato(grid, e.RowIndex);
             var columna = ObtenerNombreColumnaFormato(grid, e.ColumnIndex);
-            if (clave is null || columna is null) return;
+            if (clave is null || columna is null) return null;
 
             var direccion = new ReportCellAddress(FormatoVista, clave, columna);
-            if (!overlays.TryGetValue(direccion, out var overlay) || overlay is null) return;
-
-            FormPresupuesto.AplicarOverlayACellStyle(e.CellStyle, overlay);
+            return overlays.TryGetValue(direccion, out var overlay) ? overlay : null;
         }
 
         // ── Persistencia por lote + undo compuesto ─────────────────────────────

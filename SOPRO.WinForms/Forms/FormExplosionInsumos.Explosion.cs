@@ -40,9 +40,9 @@ namespace SOPRO.WinForms.Forms
                     return;
                 }
 
-                _ultMateriales   = ConvertirDatos(data.Materiales);
-                _ultManoObra     = ConvertirDatos(data.ManoObra);
-                _ultMaquinaria   = ConvertirDatos(data.Maquinaria);
+                _ultMateriales = ConvertirDatos(data.Materiales);
+                _ultManoObra = ConvertirDatos(data.ManoObra);
+                _ultMaquinaria = ConvertirDatos(data.Maquinaria);
                 _ultHerramientas = ConvertirDatos(data.Herramientas);
                 _ultCostoDirectoTotal = data.CostoDirectoTotal;
 

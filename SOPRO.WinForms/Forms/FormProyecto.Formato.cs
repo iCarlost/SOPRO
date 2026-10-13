@@ -51,12 +51,12 @@ namespace SOPRO.WinForms.Forms
         {
             NombreFuente = cboFuente.SelectedItem?.ToString() ?? "Segoe UI",
             TamanoFuente = (int)nudTamano.Value,
-            Negrita      = EstaBotonActivo(btnNegrita),
-            Cursiva      = EstaBotonActivo(btnCursiva),
-            Alineacion   = ObtenerAlin(),
-            ColorFondo   = HexColor(_colorMuestraFondoRibbon),
-            ColorFuente  = HexColor(_colorMuestraTextoRibbon),
-            WrapTexto    = EstaBotonActivo(btnWrapRibbon),
+            Negrita = EstaBotonActivo(btnNegrita),
+            Cursiva = EstaBotonActivo(btnCursiva),
+            Alineacion = ObtenerAlin(),
+            ColorFondo = HexColor(_colorMuestraFondoRibbon),
+            ColorFuente = HexColor(_colorMuestraTextoRibbon),
+            WrapTexto = EstaBotonActivo(btnWrapRibbon),
             AlineacionVertical = EstaBotonActivo(btnAlinAba) ? 2 : EstaBotonActivo(btnAlinJus) ? 0 : 1,
         };
 

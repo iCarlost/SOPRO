@@ -25,7 +25,7 @@ namespace SOPRO.WinForms.Forms
             ConfigurarGrid();
             CargarFiltros(); // Ya dispara GenerarExplosion() al hacer SelectedIndex = 0
         }
-        
+
         private void ConfigurarGrid()
         {
             dgvExplosion.SuspendLayout();
@@ -80,12 +80,12 @@ namespace SOPRO.WinForms.Forms
 
                 var dgvCol = new DataGridViewTextBoxColumn
                 {
-                    Name       = colName,
+                    Name = colName,
                     HeaderText = colExp.Nombre,
-                    Width      = colExp.AnchoColumna,
-                    Visible    = colExp.Visible,
-                    Tag        = colExp,
-                    SortMode   = DataGridViewColumnSortMode.NotSortable,
+                    Width = colExp.AnchoColumna,
+                    Visible = colExp.Visible,
+                    Tag = colExp,
+                    SortMode = DataGridViewColumnSortMode.NotSortable,
                     DefaultCellStyle =
                     {
                         Alignment = AlineacionADGV(colExp.Alineacion),
@@ -99,11 +99,11 @@ namespace SOPRO.WinForms.Forms
             // Columna dummy al final para llenar espacio
             dgvExplosion.Columns.Add(new DataGridViewTextBoxColumn
             {
-                Name         = "colDummy",
-                HeaderText   = "",
+                Name = "colDummy",
+                HeaderText = "",
                 AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
-                ReadOnly     = true,
-                SortMode     = DataGridViewColumnSortMode.NotSortable,
+                ReadOnly = true,
+                SortMode = DataGridViewColumnSortMode.NotSortable,
             });
 
             // Estilo de encabezados (base — CellPainting lo sobreescribe por columna)
@@ -118,7 +118,7 @@ namespace SOPRO.WinForms.Forms
             dgvExplosion.CellPainting += DgvExplosion_CellPainting;
             dgvExplosion.ResumeLayout();
         }
-        
+
 
         private void DgvExplosion_ColumnWidthChanged(object sender, DataGridViewColumnEventArgs e)
         {
@@ -163,7 +163,7 @@ namespace SOPRO.WinForms.Forms
                              | (col.Cursiva ? FontStyle.Italic : FontStyle.Regular);
                 string fuente = !string.IsNullOrEmpty(col.NombreFuente) ? col.NombreFuente : "Segoe UI";
                 float tam = col.TamanoFuente > 0 ? col.TamanoFuente : 9f;
-                dgvCol.DefaultCellStyle.Font      = new Font(fuente, tam, fs);
+                dgvCol.DefaultCellStyle.Font = new Font(fuente, tam, fs);
                 dgvCol.DefaultCellStyle.BackColor = TryColor(col.ColorFondo, Color.White);
                 dgvCol.DefaultCellStyle.ForeColor = TryColor(col.ColorFuente, Color.Black);
                 dgvCol.DefaultCellStyle.Alignment = FormatoHelper.ConvertirAlineacionDgv(col.Alineacion, col.AlineacionVertical);
@@ -175,10 +175,10 @@ namespace SOPRO.WinForms.Forms
         private static DataGridViewContentAlignment AlineacionADGV(AlineacionColumna alin) =>
             alin switch
             {
-                AlineacionColumna.Centro      => DataGridViewContentAlignment.MiddleCenter,
-                AlineacionColumna.Derecha     => DataGridViewContentAlignment.MiddleRight,
+                AlineacionColumna.Centro => DataGridViewContentAlignment.MiddleCenter,
+                AlineacionColumna.Derecha => DataGridViewContentAlignment.MiddleRight,
                 AlineacionColumna.Justificado => DataGridViewContentAlignment.MiddleLeft,
-                _                             => DataGridViewContentAlignment.MiddleLeft,
+                _ => DataGridViewContentAlignment.MiddleLeft,
             };
 
         private static Color TryColor(string hex, Color fallback)
@@ -200,7 +200,7 @@ namespace SOPRO.WinForms.Forms
             _gridRenderService.PaintHeader(e, colDef);
         }
 
-                private void CargarFiltros()
+        private void CargarFiltros()
         {
             cmbFiltro.Items.Clear();
             cmbFiltro.Items.Add("Todos");

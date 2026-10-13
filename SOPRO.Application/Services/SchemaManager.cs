@@ -169,7 +169,7 @@ namespace SOPRO.Application.Services
                 INSERT INTO __MigracionesCustom (Clave, FechaAplicacion)
                 VALUES (@v, @f)";
             var p1 = cmdIns.CreateParameter(); p1.ParameterName = "@v"; p1.Value = $"SchemaVersion_{VersionActual}"; cmdIns.Parameters.Add(p1);
-            var p2 = cmdIns.CreateParameter(); p2.ParameterName = "@f"; p2.Value = DateTime.Now.ToString("o");         cmdIns.Parameters.Add(p2);
+            var p2 = cmdIns.CreateParameter(); p2.ParameterName = "@f"; p2.Value = DateTime.Now.ToString("o"); cmdIns.Parameters.Add(p2);
             cmdIns.ExecuteNonQuery();
         }
 
@@ -486,7 +486,7 @@ namespace SOPRO.Application.Services
                     InteresPeriodo                REAL    NOT NULL DEFAULT 0,
                     FOREIGN KEY (ConfiguracionFinanciamientoId) REFERENCES ConfiguracionesFinanciamiento(Id) ON DELETE CASCADE
                 );", tx);
-            AgregarColumna(conn, "FilasFlujoCajaFinanciamiento", "DiasPeriodo",   "INTEGER NOT NULL DEFAULT 0", tx);
+            AgregarColumna(conn, "FilasFlujoCajaFinanciamiento", "DiasPeriodo", "INTEGER NOT NULL DEFAULT 0", tx);
             AgregarColumna(conn, "FilasFlujoCajaFinanciamiento", "InteresPeriodo", "REAL NOT NULL DEFAULT 0", tx);
 
             Exec(conn, @"
@@ -547,7 +547,7 @@ namespace SOPRO.Application.Services
             };
             foreach (var tabla in tablas)
             {
-                AgregarColumna(conn, tabla, "WrapTexto",          "INTEGER NOT NULL DEFAULT 0", tx);
+                AgregarColumna(conn, tabla, "WrapTexto", "INTEGER NOT NULL DEFAULT 0", tx);
                 AgregarColumna(conn, tabla, "AlineacionVertical", "INTEGER NOT NULL DEFAULT 1", tx);
             }
         }
@@ -576,12 +576,12 @@ namespace SOPRO.Application.Services
 
             // Columnas que EF Core requiere y pueden faltar en DBs creados antes
             // de que se agregaran a la entidad
-            AgregarColumna(conn, "ConceptosPresupuesto", "Nivel",                     "INTEGER NOT NULL DEFAULT 0", tx);
-            AgregarColumna(conn, "ConceptosPresupuesto", "CargosAdicionales",          "REAL NOT NULL DEFAULT 0", tx);
+            AgregarColumna(conn, "ConceptosPresupuesto", "Nivel", "INTEGER NOT NULL DEFAULT 0", tx);
+            AgregarColumna(conn, "ConceptosPresupuesto", "CargosAdicionales", "REAL NOT NULL DEFAULT 0", tx);
             AgregarColumna(conn, "ConceptosPresupuesto", "ColumnasPersonalizadasJSON", "TEXT NOT NULL DEFAULT '{}'", tx);
-            AgregarColumna(conn, "ConceptosPresupuesto", "Notas",                     "TEXT NOT NULL DEFAULT ''", tx);
-            AgregarColumna(conn, "ConceptosPresupuesto", "FechaCreacion",              "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP", tx);
-            AgregarColumna(conn, "ConceptosPresupuesto", "FechaModificacion",          "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP", tx);
+            AgregarColumna(conn, "ConceptosPresupuesto", "Notas", "TEXT NOT NULL DEFAULT ''", tx);
+            AgregarColumna(conn, "ConceptosPresupuesto", "FechaCreacion", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP", tx);
+            AgregarColumna(conn, "ConceptosPresupuesto", "FechaModificacion", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP", tx);
 
             TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_ConceptosPresupuesto_MatrizId ON ConceptosPresupuesto(MatrizId);", tx);
         }

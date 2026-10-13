@@ -87,12 +87,20 @@ public class FormatoCeldasProgramaObraTests
 
     private static ActivityGridRowDto Actividad(int id, string clave) => new()
     {
-        Id = id, Clave = clave, Descripcion = $"Actividad {id}", EsResumen = false, Orden = id
+        Id = id,
+        Clave = clave,
+        Descripcion = $"Actividad {id}",
+        EsResumen = false,
+        Orden = id
     };
 
     private static ActivityGridRowDto Resumen(int id, string clave) => new()
     {
-        Id = id, Clave = clave, Descripcion = $"Agrupador {clave}", EsResumen = true, Orden = id
+        Id = id,
+        Clave = clave,
+        Descripcion = $"Agrupador {clave}",
+        EsResumen = true,
+        Orden = id
     };
 
     // ═════════════════════════ Selección → direcciones ═════════════════════════

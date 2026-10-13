@@ -394,4 +394,3 @@ public class GeneradorPresupuestoEstilosTests
         return (celdaImporte.Address.RowNumber, celdaClave.Address.ColumnNumber, celdaImporte.Address.ColumnNumber);
     }
 }
-

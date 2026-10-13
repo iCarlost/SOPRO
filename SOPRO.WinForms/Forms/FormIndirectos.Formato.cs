@@ -8,6 +8,7 @@ using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Reporting.Formatting;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using SOPRO.Application.Services;
@@ -411,30 +412,35 @@ namespace SOPRO.WinForms.Forms
 
             if (estilo.Font is null) estilo.Font = fontBase;
 
-            var overlay = EstilosFilaPredeterminados.CombinarIndirectos(
-                ObtenerRolFilaFormato(tipo), estilosFilaUsuario);
+            // La fusión del nivel de rol se hace con la MISMA semántica del resolver
+            // neutral compartido (punto único de precedencia).
+            var overlay = ReportCellStyleResolver.Combinar(
+                null,
+                EstilosFilaPredeterminados.CombinarIndirectos(
+                    ObtenerRolFilaFormato(tipo), estilosFilaUsuario));
 
             FormPresupuesto.AplicarOverlayACellStyle(estilo, overlay);
         }
 
         /// <summary>
-        /// Aplica, si existe, el override en memoria de la celda (fila × columna)
-        /// sobre el estilo del evento. Sólo consulta el diccionario en memoria: no
-        /// hace ninguna consulta a la base de datos por celda.
+        /// Devuelve, si existe, el override en memoria de la celda (fila × columna),
+        /// o <c>null</c>. Sólo consulta el diccionario en memoria: no hace ninguna
+        /// consulta a la base de datos por celda. La fusión con el estilo de rol la
+        /// resuelve <see cref="ReportCellStyleResolver"/> en el punto de pintado.
         /// </summary>
-        private void AplicarOverrideFormatoCeldaIndirectos(DataGridView grid, DataGridViewCellFormattingEventArgs e)
+        private ReportStyleOverlay? ObtenerOverlayFormatoCeldaIndirectos(
+            DataGridView grid,
+            DataGridViewCellFormattingEventArgs e)
         {
-            if (_overlaysFormato.Count == 0) return;
-            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            if (_overlaysFormato.Count == 0) return null;
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return null;
 
             var clave = ObtenerClaveFilaFormato(grid, e.RowIndex);
             var columna = ObtenerNombreColumnaFormato(grid, e.ColumnIndex);
-            if (clave is null || columna is null) return;
+            if (clave is null || columna is null) return null;
 
             var direccion = new ReportCellAddress(FormatoVistaIndirectos, clave, columna);
-            if (!_overlaysFormato.TryGetValue(direccion, out var overlay) || overlay is null) return;
-
-            FormPresupuesto.AplicarOverlayACellStyle(e.CellStyle, overlay);
+            return _overlaysFormato.TryGetValue(direccion, out var overlay) ? overlay : null;
         }
 
         // ── Persistencia por lote + undo compuesto ─────────────────────────────

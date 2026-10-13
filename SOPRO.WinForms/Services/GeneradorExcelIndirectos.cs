@@ -130,12 +130,12 @@ namespace SOPRO.WinForms.Services
 
             // ── IMPRESIÓN ─────────────────────────────────────────────────────
             ws.PageSetup.PageOrientation = XLPageOrientation.Portrait;
-            ws.PageSetup.PaperSize       = XLPaperSize.LetterPaper;
+            ws.PageSetup.PaperSize = XLPaperSize.LetterPaper;
             ws.PageSetup.FitToPages(1, 0);
-            ws.PageSetup.Margins.Left    = 0.5;
-            ws.PageSetup.Margins.Right   = 0.5;
-            ws.PageSetup.Margins.Top     = 0.75;
-            ws.PageSetup.Margins.Bottom  = 0.75;
+            ws.PageSetup.Margins.Left = 0.5;
+            ws.PageSetup.Margins.Right = 0.5;
+            ws.PageSetup.Margins.Top = 0.75;
+            ws.PageSetup.Margins.Bottom = 0.75;
 
             wb.SaveAs(rutaDestino);
             return rutaDestino;
@@ -159,8 +159,8 @@ namespace SOPRO.WinForms.Services
 
             ws.Row(fila).Height = p.EncabezadoAltura * 0.75;
             fila++;
-            ws.Range(fila, 1, fila, N).Style.Border.TopBorder      = XLBorderStyleValues.Medium;
-            ws.Range(fila, 1, fila, N).Style.Border.TopBorderColor  = XLColor.FromHtml("#1565C0");
+            ws.Range(fila, 1, fila, N).Style.Border.TopBorder = XLBorderStyleValues.Medium;
+            ws.Range(fila, 1, fila, N).Style.Border.TopBorderColor = XLColor.FromHtml("#1565C0");
             return fila + 1;
         }
 
@@ -225,14 +225,14 @@ namespace SOPRO.WinForms.Services
                 var enc = col.EstiloEncabezado;
                 var cell = ws.Cell(fila, i + 1);
                 cell.Value = col.Encabezado ?? string.Empty;
-                cell.Style.Font.Bold     = enc.Negrita;
-                cell.Style.Font.Italic   = enc.Cursiva;
+                cell.Style.Font.Bold = enc.Negrita;
+                cell.Style.Font.Italic = enc.Cursiva;
                 cell.Style.Font.FontName = enc.Fuente ?? "Segoe UI";
                 cell.Style.Font.FontSize = enc.Tamano > 0 ? enc.Tamano : 9;
                 cell.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(enc.ColorFondo ?? "#4A4A6A");
-                cell.Style.Font.FontColor       = ExcelColorHelper.SafeFromHtml(enc.ColorFuente, "#FFFFFF");
+                cell.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(enc.ColorFuente, "#FFFFFF");
                 cell.Style.Alignment.Horizontal = AlineacionXL(col.Alineacion);
-                cell.Style.Border.BottomBorder  = XLBorderStyleValues.Medium;
+                cell.Style.Border.BottomBorder = XLBorderStyleValues.Medium;
                 cell.Style.Border.BottomBorderColor = XLColor.FromHtml("#1565C0");
             }
             ws.Row(fila).Height = 18;
@@ -258,7 +258,7 @@ namespace SOPRO.WinForms.Services
                 var claveGrupo = ClaveFilaReporte.GrupoIndirecto(grupo.Id);
                 for (int i = 0; i < cols.Count; i++)
                 {
-                    var col  = cols[i];
+                    var col = cols[i];
                     var cont = col.EstiloContenido;
                     var cell = ws.Cell(fila, i + 1);
 
@@ -273,10 +273,10 @@ namespace SOPRO.WinForms.Services
                     }
 
                     AplicarEstiloCelda(cell, cont);
-                    cell.Style.Font.Bold            = true;
+                    cell.Style.Font.Bold = true;
                     cell.Style.Alignment.Horizontal = AlineacionXL(col.Alineacion);
                     AplicarOverlayExcel(cell.Style, OverrideEfectivo(snapshot, snapshotBase, claveGrupo, col.Identificador, RolFilaReporte.Grupo));
-                    cell.Style.Border.BottomBorder      = XLBorderStyleValues.Thin;
+                    cell.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
                     cell.Style.Border.BottomBorderColor = XLColor.Gray;
                 }
                 ws.Row(fila).Height = 15; fila++;
@@ -287,7 +287,7 @@ namespace SOPRO.WinForms.Services
                     var claveConcepto = ClaveFilaReporte.ConceptoIndirecto(concepto.Id);
                     for (int i = 0; i < cols.Count; i++)
                     {
-                        var col  = cols[i];
+                        var col = cols[i];
                         var cont = col.EstiloContenido;
                         var cell = ws.Cell(fila, i + 1);
 
@@ -304,7 +304,7 @@ namespace SOPRO.WinForms.Services
                         AplicarEstiloCelda(cell, cont);
                         cell.Style.Alignment.Horizontal = AlineacionXL(col.Alineacion);
                         AplicarOverlayExcel(cell.Style, OverrideEfectivo(snapshot, snapshotBase, claveConcepto, col.Identificador, RolFilaReporte.Concepto));
-                        cell.Style.Border.BottomBorder      = XLBorderStyleValues.Hair;
+                        cell.Style.Border.BottomBorder = XLBorderStyleValues.Hair;
                         cell.Style.Border.BottomBorderColor = XLColor.LightGray;
                     }
                     ws.Row(fila).Height = 13; fila++;
@@ -315,12 +315,12 @@ namespace SOPRO.WinForms.Services
 
         private static void AplicarEstiloCelda(IXLCell cell, ReportTextStyle cont)
         {
-            cell.Style.Font.Bold   = cont.Negrita;
+            cell.Style.Font.Bold = cont.Negrita;
             cell.Style.Font.Italic = cont.Cursiva;
             cell.Style.Font.FontName = cont.Fuente ?? "Segoe UI";
             cell.Style.Font.FontSize = cont.Tamano > 0 ? cont.Tamano : 9;
             cell.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(cont.ColorFondo ?? "#FFFFFF");
-            cell.Style.Font.FontColor       = ExcelColorHelper.SafeFromHtml(cont.ColorFuente, "#000000");
+            cell.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(cont.ColorFuente, "#000000");
         }
 
         private int EscribirResumenSeccion(IXLWorksheet ws, string etiquetaTotal,
@@ -330,7 +330,7 @@ namespace SOPRO.WinForms.Services
             var efectivo = OverrideEfectivo(snapshot, snapshotBase, claveFila, string.Empty, RolFilaReporte.Subtotal);
 
             // Línea separadora
-            ws.Range(fila, 1, fila, N).Style.Border.TopBorder      = XLBorderStyleValues.Medium;
+            ws.Range(fila, 1, fila, N).Style.Border.TopBorder = XLBorderStyleValues.Medium;
             ws.Range(fila, 1, fila, N).Style.Border.TopBorderColor = XLColor.FromHtml("#1565C0");
 
             var rEtiq = ws.Range(fila, 1, fila, N - 1); rEtiq.Merge();
@@ -399,7 +399,7 @@ namespace SOPRO.WinForms.Services
             FilaResumen("% Gastos de Campo:", config.PorcentajeCampo, "#F5F5F5");
 
             // Separador antes del total
-            ws.Range(fila, 1, fila, N).Style.Border.TopBorder      = XLBorderStyleValues.Medium;
+            ws.Range(fila, 1, fila, N).Style.Border.TopBorder = XLBorderStyleValues.Medium;
             ws.Range(fila, 1, fila, N).Style.Border.TopBorderColor = XLColor.FromHtml("#1565C0");
 
             FilaResumen("% TOTAL INDIRECTOS:", config.PorcentajeTotal, "#BBDEFB", bold: true, efectivoResumen);
@@ -411,7 +411,7 @@ namespace SOPRO.WinForms.Services
         private void EscribirPie(IXLWorksheet ws, PlantillaReporte p,
                                   Proyecto proyecto, int N, int fila)
         {
-            ws.Range(fila, 1, fila, N).Style.Border.TopBorder      = XLBorderStyleValues.Thin;
+            ws.Range(fila, 1, fila, N).Style.Border.TopBorder = XLBorderStyleValues.Thin;
             ws.Range(fila, 1, fila, N).Style.Border.TopBorderColor = XLColor.FromHtml("#1565C0");
             fila++;
 
@@ -443,24 +443,24 @@ namespace SOPRO.WinForms.Services
                 rango.FirstCell().Value = _svc.ResolverCampos(contenido, proyecto, plantilla);
 
             var est = rango.Style;
-            est.Font.FontName  = fuente; est.Font.FontSize  = tamaño;
-            est.Font.Bold      = negrita; est.Font.Italic   = cursiva;
+            est.Font.FontName = fuente; est.Font.FontSize = tamaño;
+            est.Font.Bold = negrita; est.Font.Italic = cursiva;
             est.Alignment.WrapText = true;
             est.Alignment.Vertical = XLAlignmentVerticalValues.Center;
             est.Alignment.Horizontal = alineacion switch
             {
-                "Centro"  => XLAlignmentHorizontalValues.Center,
+                "Centro" => XLAlignmentHorizontalValues.Center,
                 "Derecha" => XLAlignmentHorizontalValues.Right,
-                _         => XLAlignmentHorizontalValues.Left,
+                _ => XLAlignmentHorizontalValues.Left,
             };
         }
 
         private static XLAlignmentHorizontalValues AlineacionXL(ReportTextAlignment a) => a switch
         {
-            ReportTextAlignment.Centro      => XLAlignmentHorizontalValues.Center,
-            ReportTextAlignment.Derecha     => XLAlignmentHorizontalValues.Right,
+            ReportTextAlignment.Centro => XLAlignmentHorizontalValues.Center,
+            ReportTextAlignment.Derecha => XLAlignmentHorizontalValues.Right,
             ReportTextAlignment.Justificado => XLAlignmentHorizontalValues.Left,
-            _                               => XLAlignmentHorizontalValues.Left,
+            _ => XLAlignmentHorizontalValues.Left,
         };
 
         private string Sanitizar(string nombre)
@@ -533,7 +533,7 @@ namespace SOPRO.WinForms.Services
         {
             ReportVerticalAlignment.Superior => XLAlignmentVerticalValues.Top,
             ReportVerticalAlignment.Inferior => XLAlignmentVerticalValues.Bottom,
-            _                                => XLAlignmentVerticalValues.Center,
+            _ => XLAlignmentVerticalValues.Center,
         };
 
         private static XLColor ObtenerColorXL(string? valor, string fallbackHex)

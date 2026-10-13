@@ -222,16 +222,16 @@ namespace SOPRO.WinForms.Services
 
         private void ConstruirCuerpo(Section section, Proyecto proyecto, BudgetPercentagePreviewResult preview, UtilidadCalculationResult resultado, ReportColumnSnapshot snapshot, ColumnaPersonalizada? estiloBase, ConfiguracionTituloReporte? tituloCfg)
         {
-            decimal costoDirecto   = BudgetPricingService.RoundImporte(proyecto, preview.CostoDirecto);
+            decimal costoDirecto = BudgetPricingService.RoundImporte(proyecto, preview.CostoDirecto);
             decimal costoIndirecto = BudgetPricingService.RoundImporte(proyecto, preview.Subtotal1 - preview.CostoDirecto);
             decimal financiamiento = BudgetPricingService.RoundImporte(proyecto, preview.MontoFinanciamiento);
-            decimal subtotal       = BudgetPricingService.RoundImporte(proyecto, resultado.BaseUtilidad);
+            decimal subtotal = BudgetPricingService.RoundImporte(proyecto, resultado.BaseUtilidad);
 
             // Columnas y borde de tabla del MISMO snapshot neutral que la ruta Excel.
-            var colBase         = ResolverColumna(snapshot, UtilidadReportColumns.Base);
-            var colPorcentaje   = ResolverColumna(snapshot, UtilidadReportColumns.Porcentaje);
+            var colBase = ResolverColumna(snapshot, UtilidadReportColumns.Base);
+            var colPorcentaje = ResolverColumna(snapshot, UtilidadReportColumns.Porcentaje);
             var colImporteFinal = ResolverColumna(snapshot, UtilidadReportColumns.ImporteFinal);
-            var bordes          = snapshot.EstiloTabla.Bordes;
+            var bordes = snapshot.EstiloTabla.Bordes;
 
             var titulo = section.AddTable();
             titulo.Borders.Visible = false;

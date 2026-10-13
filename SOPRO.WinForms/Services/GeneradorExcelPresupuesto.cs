@@ -108,12 +108,12 @@ namespace SOPRO.WinForms.Services
 
             // ── CONFIGURACIÓN DE IMPRESIÓN ────────────────────────────────────
             ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
-            ws.PageSetup.PaperSize       = XLPaperSize.LetterPaper;
+            ws.PageSetup.PaperSize = XLPaperSize.LetterPaper;
             ws.PageSetup.FitToPages(1, 0);   // 1 página de ancho, alto libre
-            ws.PageSetup.Margins.Left    = 0.5;
-            ws.PageSetup.Margins.Right   = 0.5;
-            ws.PageSetup.Margins.Top     = 0.75;
-            ws.PageSetup.Margins.Bottom  = 0.75;
+            ws.PageSetup.Margins.Left = 0.5;
+            ws.PageSetup.Margins.Right = 0.5;
+            ws.PageSetup.Margins.Top = 0.75;
+            ws.PageSetup.Margins.Bottom = 0.75;
             ws.SheetView.FreezeRows(filaInicioDatos - 1); // Congelar encabezado
 
             wb.SaveAs(rutaDestino);
@@ -188,17 +188,17 @@ namespace SOPRO.WinForms.Services
             }
 
             var estilo = rango.Style;
-            estilo.Font.FontName  = fuente;
-            estilo.Font.FontSize  = tamaño;
-            estilo.Font.Bold      = negrita;
-            estilo.Font.Italic    = cursiva;
-            estilo.Alignment.WrapText   = true;
-            estilo.Alignment.Vertical   = XLAlignmentVerticalValues.Center;
+            estilo.Font.FontName = fuente;
+            estilo.Font.FontSize = tamaño;
+            estilo.Font.Bold = negrita;
+            estilo.Font.Italic = cursiva;
+            estilo.Alignment.WrapText = true;
+            estilo.Alignment.Vertical = XLAlignmentVerticalValues.Center;
             estilo.Alignment.Horizontal = alineacion switch
             {
-                "Centro"  => XLAlignmentHorizontalValues.Center,
+                "Centro" => XLAlignmentHorizontalValues.Center,
                 "Derecha" => XLAlignmentHorizontalValues.Right,
-                _         => XLAlignmentHorizontalValues.Left,
+                _ => XLAlignmentHorizontalValues.Left,
             };
         }
 
@@ -217,12 +217,12 @@ namespace SOPRO.WinForms.Services
                 cell.Value = col.Encabezado;
 
                 var estilo = cell.Style;
-                estilo.Font.FontName   = enc.Fuente;
-                estilo.Font.FontSize   = enc.Tamano;
-                estilo.Font.Bold       = enc.Negrita;
+                estilo.Font.FontName = enc.Fuente;
+                estilo.Font.FontSize = enc.Tamano;
+                estilo.Font.Bold = enc.Negrita;
                 estilo.Fill.BackgroundColor = ObtenerColorXL(enc.ColorFondo, encabezadoDefault.ColorFondo ?? "#1565C0");
-                estilo.Font.FontColor       = ObtenerColorXL(enc.ColorFuente, encabezadoDefault.ColorFuente);
-                estilo.Font.Italic          = enc.Cursiva;
+                estilo.Font.FontColor = ObtenerColorXL(enc.ColorFuente, encabezadoDefault.ColorFuente);
+                estilo.Font.Italic = enc.Cursiva;
                 estilo.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                 estilo.Border.BottomBorder = XLBorderStyleValues.Medium;
                 estilo.Border.BottomBorderColor = ObtenerColorXL(enc.ColorFondo, encabezadoDefault.ColorFondo ?? "#1565C0");
@@ -251,7 +251,7 @@ namespace SOPRO.WinForms.Services
 
                 for (int i = 0; i < cols.Count; i++)
                 {
-                    var col  = cols[i];
+                    var col = cols[i];
                     var cont = col.EstiloContenido;
                     var cell = ws.Cell(fila, i + 1);
                     var overrideEfectivo = OverrideEfectivo(snapshot, snapshotBase, claveFila, col.Identificador, rolFila);
@@ -270,8 +270,8 @@ namespace SOPRO.WinForms.Services
                     var estilo = cell.Style;
                     estilo.Font.FontName = cont.Fuente;
                     estilo.Font.FontSize = cont.Tamano;
-                    estilo.Font.Bold     = true;
-                    estilo.Font.Italic   = cont.Cursiva;
+                    estilo.Font.Bold = true;
+                    estilo.Font.Italic = cont.Cursiva;
                     estilo.Font.FontColor = ObtenerColorXL(cont.ColorFuente, "#000000");
                     estilo.Alignment.Horizontal = ConvertirAlineacionXL(col.Alineacion);
                     estilo.Alignment.Vertical = XLAlignmentVerticalValues.Center;
@@ -282,7 +282,7 @@ namespace SOPRO.WinForms.Services
                     // Fondo del subtotal sintético: DEFAULT del rol Subtotal vía overlay.
                     AplicarOverlayExcel(estilo, overrideEfectivo);
 
-                    estilo.Border.TopBorder      = XLBorderStyleValues.Hair;
+                    estilo.Border.TopBorder = XLBorderStyleValues.Hair;
                     estilo.Border.TopBorderColor = XLColor.Gray;
                 }
 
@@ -296,7 +296,7 @@ namespace SOPRO.WinForms.Services
 
             for (int i = 0; i < cols.Count; i++)
             {
-                var col  = cols[i];
+                var col = cols[i];
                 var cont = col.EstiloContenido;
                 var cell = ws.Cell(fila, i + 1);
                 var overrideEfectivo = OverrideEfectivo(snapshot, snapshotBase, claveFila, col.Identificador, rolFila);
@@ -322,8 +322,8 @@ namespace SOPRO.WinForms.Services
                 var estilo = cell.Style;
                 estilo.Font.FontName = cont.Fuente;
                 estilo.Font.FontSize = cont.Tamano;
-                estilo.Font.Bold     = esAgrupador || cont.Negrita;
-                estilo.Font.Italic   = cont.Cursiva;
+                estilo.Font.Bold = esAgrupador || cont.Negrita;
+                estilo.Font.Italic = cont.Cursiva;
                 estilo.Alignment.Horizontal = ConvertirAlineacionXL(col.Alineacion);
                 estilo.Alignment.Vertical = XLAlignmentVerticalValues.Center;
                 estilo.Alignment.WrapText = col.Wrap;
@@ -336,7 +336,7 @@ namespace SOPRO.WinForms.Services
 
                 AplicarOverlayExcel(estilo, overrideEfectivo);
 
-                estilo.Border.BottomBorder      = XLBorderStyleValues.Hair;
+                estilo.Border.BottomBorder = XLBorderStyleValues.Hair;
                 estilo.Border.BottomBorderColor = XLColor.Gray;
             }
 
@@ -389,13 +389,13 @@ namespace SOPRO.WinForms.Services
             var terminales = conceptos.Where(c => !c.EsAgrupador).ToList();
 
             decimal totalImporte = terminales.Sum(c => c.ImporteTotal);
-            decimal totalIVA     = totalImporte * proyecto.PorcentajeIVA / 100m;
-            decimal totalConIVA  = totalImporte + totalIVA;
+            decimal totalIVA = totalImporte * proyecto.PorcentajeIVA / 100m;
+            decimal totalConIVA = totalImporte + totalIVA;
 
             // Índice de columna ImporteTotal
             int colImporte = cols.FindIndex(c => c.Identificador == "ImporteTotal") + 1;
             var colImporteDef = colImporte > 0 ? cols[colImporte - 1] : null;
-            int colDesc    = cols.FindIndex(c => c.Identificador == "Descripcion") + 1;
+            int colDesc = cols.FindIndex(c => c.Identificador == "Descripcion") + 1;
             if (colDesc < 1) colDesc = 1;
             var colDescDef = cols[colDesc - 1];
             var snapshotBase = snapshot with { EstilosCelda = null, EstilosFila = null };
@@ -448,9 +448,9 @@ namespace SOPRO.WinForms.Services
 
             // Claves estables de las filas de cierre (coinciden con las que persiste
             // el grid): SUB:{clave} para el subtotal global, IVA y TOTAL.
-            FilaTotal("SUBTOTAL:", totalImporte, true,  ClaveFilaReporte.Subtotal(string.Empty), RolFilaReporte.Subtotal);
+            FilaTotal("SUBTOTAL:", totalImporte, true, ClaveFilaReporte.Subtotal(string.Empty), RolFilaReporte.Subtotal);
             FilaTotal($"IVA ({proyecto.PorcentajeIVA:N0}%):", totalIVA, false, ClaveFilaReporte.Iva, RolFilaReporte.Total);
-            FilaTotal("TOTAL:",    totalConIVA,  true,  ClaveFilaReporte.Total, RolFilaReporte.Total);
+            FilaTotal("TOTAL:", totalConIVA, true, ClaveFilaReporte.Total, RolFilaReporte.Total);
 
             return fila + 1;
         }
@@ -568,12 +568,12 @@ namespace SOPRO.WinForms.Services
                         pilaAgrup.RemoveAt(k);
                         resultado.Add(new ConceptoPresupuesto
                         {
-                            Descripcion  = agr.desc,
-                            Clave        = agr.clave,
-                            EsAgrupador  = true,
-                            Notas        = "__subtotal__",
+                            Descripcion = agr.desc,
+                            Clave = agr.clave,
+                            EsAgrupador = true,
+                            Notas = "__subtotal__",
                             ImporteTotal = agr.importe,
-                            Nivel        = agr.nivel
+                            Nivel = agr.nivel
                         });
                     }
                 }
@@ -601,12 +601,12 @@ namespace SOPRO.WinForms.Services
                 var agr = pilaAgrup[k];
                 resultado.Add(new ConceptoPresupuesto
                 {
-                    Descripcion  = agr.desc,
-                    Clave        = agr.clave,
-                    EsAgrupador  = true,
-                    Notas        = "__subtotal__",
+                    Descripcion = agr.desc,
+                    Clave = agr.clave,
+                    EsAgrupador = true,
+                    Notas = "__subtotal__",
                     ImporteTotal = agr.importe,
-                    Nivel        = agr.nivel
+                    Nivel = agr.nivel
                 });
             }
         }
@@ -637,15 +637,15 @@ namespace SOPRO.WinForms.Services
         private static XLAlignmentHorizontalValues ConvertirAlineacionXL(ReportTextAlignment alineacion) => alineacion switch
         {
             ReportTextAlignment.Derecha => XLAlignmentHorizontalValues.Right,
-            ReportTextAlignment.Centro  => XLAlignmentHorizontalValues.Center,
-            _                           => XLAlignmentHorizontalValues.Left,
+            ReportTextAlignment.Centro => XLAlignmentHorizontalValues.Center,
+            _ => XLAlignmentHorizontalValues.Left,
         };
 
         private static XLAlignmentVerticalValues ConvertirAlineacionVerticalXL(ReportVerticalAlignment alineacion) => alineacion switch
         {
             ReportVerticalAlignment.Superior => XLAlignmentVerticalValues.Top,
             ReportVerticalAlignment.Inferior => XLAlignmentVerticalValues.Bottom,
-            _                                => XLAlignmentVerticalValues.Center,
+            _ => XLAlignmentVerticalValues.Center,
         };
 
         /// <summary>

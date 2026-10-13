@@ -35,8 +35,8 @@ namespace SOPRO.WinForms.Services
         // (EstilosFilaPredeterminados.Fsr), única fuente de verdad compartida por
         // PDF y Excel. Así se retiran las constantes locales y ambos medios convergen.
         private static readonly ReportStyleOverlay EstiloEncabezadoFsr = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Encabezado);
-        private static readonly ReportStyleOverlay EstiloSeccionFsr    = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Seccion);
-        private static readonly ReportStyleOverlay EstiloTotalFsr      = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Total);
+        private static readonly ReportStyleOverlay EstiloSeccionFsr = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Seccion);
+        private static readonly ReportStyleOverlay EstiloTotalFsr = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Total);
         private static readonly ReportStyleOverlay EstiloReferenciaFsr = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Referencia);
 
         // ─────────────────────────────────────────────────────────────────────
@@ -114,26 +114,26 @@ namespace SOPRO.WinForms.Services
             SeccionFSR(ws, f++, "DATOS BASICOS");
 
             SubseccionFSR(ws, f++, "Para el cálculo de días pagados");
-            FilaFSR(ws, f++, "Días Calendario (DC)",          "", "días", Get("DiasCalendario", 365));
-            FilaFSR(ws, f++, "Días Aguinaldo",                "", "días", Get("DiasAguinaldo", 15));
+            FilaFSR(ws, f++, "Días Calendario (DC)", "", "días", Get("DiasCalendario", 365));
+            FilaFSR(ws, f++, "Días Aguinaldo", "", "días", Get("DiasAguinaldo", 15));
             FilaFSR(ws, f++, "Días de vacaciones para calcular prima vacacional", "", "días", Get("DiasVacaciones", 12));
-            FilaFSR(ws, f++, "Prima vacacional",              "", "%",    Get("PrimaVacacional", 25));
-            FilaFSR(ws, f++, "Otros días",                    "", "días", Get("OtrosDiasPagados", 0));
+            FilaFSR(ws, f++, "Prima vacacional", "", "%", Get("PrimaVacacional", 25));
+            FilaFSR(ws, f++, "Otros días", "", "días", Get("OtrosDiasPagados", 0));
             FilaFSR(ws, f++, "Días de Descanso (Ley Federal del Trabajo)", "", "días", Get("DiasDescanso", 52));
             FilaFSR(ws, f++, "Festivos oficiales (Ley Federal del Trabajo)", "", "días", Get("DiasFestivos", 7));
             FilaFSR(ws, f++, "Días no laborables según contrato colectivo", "", "días", Get("DiasContrato", 0));
-            FilaFSR(ws, f++, "Días Sindicato",                "", "días", Get("DiasSindicato", 0));
-            FilaFSR(ws, f++, "Enfermedad no profesional",     "", "días", Get("DiasEnfermedad", 0));
+            FilaFSR(ws, f++, "Días Sindicato", "", "días", Get("DiasSindicato", 0));
+            FilaFSR(ws, f++, "Enfermedad no profesional", "", "días", Get("DiasEnfermedad", 0));
             FilaFSR(ws, f++, "Condiciones Climat. (Lluvias y otros) Contr. Colec", "", "días", Get("DiasClima", 0));
             FilaFSR(ws, f++, "Otros Días no trabajados por costumbre", "", "días", Get("OtrosDiasNL", 0));
 
             SubseccionFSR(ws, f++, "Para el calculo de cuotas del IMSS");
-            FilaFSR(ws, f++, "Guarderías",         "", "%", Get("PctGuarderias", 1));
-            FilaFSR(ws, f++, "Retiro",             "", "%", Get("PctRetiro", 2));
+            FilaFSR(ws, f++, "Guarderías", "", "%", Get("PctGuarderias", 1));
+            FilaFSR(ws, f++, "Retiro", "", "%", Get("PctRetiro", 2));
             FilaFSR(ws, f++, "Riesgos de trabajo", "", "%", Get("PctRiesgos", 4.58875m));
             FilaFSR(ws, f++, "Impuesto INFONAVIT", "", "%", Get("PctINFONAVIT", 5));
-            FilaFSR(ws, f++, "Impuesto Nómina",    "", "%", Get("PctNomina", 2.4m));
-            FilaFSR(ws, f++, "Otros impuestos",    "", "%", Get("OtrosImpuestos", 0));
+            FilaFSR(ws, f++, "Impuesto Nómina", "", "%", Get("PctNomina", 2.4m));
+            FilaFSR(ws, f++, "Otros impuestos", "", "%", Get("OtrosImpuestos", 0));
 
             // ── CALCULO ───────────────────────────────────────────────────────
             f++;
@@ -144,11 +144,11 @@ namespace SOPRO.WinForms.Services
             FilaFSR(ws, f++, "Salario Nominal por jornada (SND)", "", "", c.FSR_SACAL);
 
             SubseccionFSR(ws, f++, "De días realmente pagados y SBC");
-            FilaFSR(ws, f++, "Vacaciones",    "", "días", c.FSR_DVAC);
+            FilaFSR(ws, f++, "Vacaciones", "", "días", c.FSR_DVAC);
             FilaFSR(ws, f++, "Prima vacacional", "", "días", c.FSR_DPPVA);
-            FilaFSR(ws, f++, "Prima Dominical",  "", "días", c.FSR_DPPDO);
+            FilaFSR(ws, f++, "Prima Dominical", "", "días", c.FSR_DPPDO);
             FilaFSR(ws, f++, "Días equivalentes por horas extras al año", "", "días", c.FSR_DPHEX);
-            FilaFSR(ws, f++, "SUMA de días pagados",    "", "días", c.FSR_DPA);
+            FilaFSR(ws, f++, "SUMA de días pagados", "", "días", c.FSR_DPA);
             FilaFSR(ws, f++, "SUMA de días no laborados", "", "días", c.FSR_DNLA);
             FilaFSROperacion(ws, f++, "Días realmente laborados  (TL = DC - DNLA)",
                 $"{c.FSR_DPCAL:N6}días-{c.FSR_DNLA:N6}días", "días", c.FSR_DLA);
@@ -172,14 +172,14 @@ namespace SOPRO.WinForms.Services
                 $"3.15+IIF({c.FSR_SACAL:N6}>1.000000,0,1.125)", "%", c.FSR_IMCE_p);
             FilaFSR(ws, f++, "Límite de prest. Inv., vida, cesantía y vejez", "", "", c.AS_lim);
             FilaFSR(ws, f++, "Enfermedad y maternidad. Cuota fija especie", "", "", c.AC);
-            FilaFSR(ws, f++, "Enferm.-matern. Exc. a 3 S.M.D.F. especie",    "", "", c.AD);
+            FilaFSR(ws, f++, "Enferm.-matern. Exc. a 3 S.M.D.F. especie", "", "", c.AD);
 
             // Página 2 — continuación
             FilaFSR(ws, f++, "Enfermedad y maternidad. Prestaciones en dinero", "", "", c.AE);
             FilaFSR(ws, f++, "Enfermedad y maternidad gastos médicos pensionados", "", "", c.AF);
-            FilaFSR(ws, f++, "Invalidez y vida",  "", "", c.AG);
-            FilaFSR(ws, f++, "Guarderías",         "", "", c.AH);
-            FilaFSR(ws, f++, "Retiro",              "", "", c.AI);
+            FilaFSR(ws, f++, "Invalidez y vida", "", "", c.AG);
+            FilaFSR(ws, f++, "Guarderías", "", "", c.AH);
+            FilaFSR(ws, f++, "Retiro", "", "", c.AI);
             FilaFSR(ws, f++, "Cesantía en edad avanzada y vejez", "", "", c.AJ);
             FilaFSR(ws, f++, "Riesgos de trabajo", "", "", c.AK);
             FilaFSR(ws, f++, "Cuota patronal del IMSS", "", "", c.AL);
@@ -188,9 +188,9 @@ namespace SOPRO.WinForms.Services
 
             SubseccionFSR(ws, f++, "De INFONAVIT y otras cuotas");
             FilaFSRSinVal(ws, f++, "Limite de Aportaciones INFONAVIT", "", "", $"{c.AZ:N0}");
-            FilaFSR(ws, f++, "INFONAVIT",              "", "", c.AM);
-            FilaFSR(ws, f++, "Impuesto sobre Nómina",  "", "", c.AN);
-            FilaFSR(ws, f++, "Otros impuestos",         "", "", c.AO);
+            FilaFSR(ws, f++, "INFONAVIT", "", "", c.AM);
+            FilaFSR(ws, f++, "Impuesto sobre Nómina", "", "", c.AN);
+            FilaFSR(ws, f++, "Otros impuestos", "", "", c.AO);
             FilaFSR(ws, f++, "Obligaciones patronales (IOP)", "", "", c.AP);
             FilaFSROperacion(ws, f++, "Obligaciones patronales entre SN",
                 $"{c.AP:N6}/{c.FSR_SACAL:N6}", "", c.AQ);
@@ -419,46 +419,46 @@ namespace SOPRO.WinForms.Services
 
             return new FSRCalc
             {
-                FSR_SAMI  = b.MinimumSalaryUnit,
+                FSR_SAMI = b.MinimumSalaryUnit,
                 FSR_SACAL = b.AdjustedNominalSalaryInMinimumSalaryUnits,
                 FSR_DPCAL = b.CalendarDays,
-                FSR_DVAC  = b.VacationDays,
+                FSR_DVAC = b.VacationDays,
                 FSR_DPPVA = b.VacationPremiumDays,
                 FSR_DPPDO = b.SundayPremiumEquivalentDays,
                 FSR_DPHEX = b.OvertimeEquivalentDays,
-                FSR_DPA   = b.PaidDays,
-                FSR_DNLA  = b.NonWorkingDays,
-                FSR_DLA   = b.WorkedDays,
-                FSR_FSI   = b.PaidToWorkedDaysFactor,
-                FSR_FSBC  = b.ContributionBaseFactor,
-                FSR_SABC  = b.ContributionBaseSalaryInMinimumSalaryUnits,
-                AA        = b.FixedFeePercentage,
-                AB        = b.ExcessPercentage,
-                AU        = b.ThreeMinimumSalaryExcess,
-                AS_lim    = b.LifeAndRetirementCap,
-                AZ        = b.InfonavitSalaryLimit,
-                FSR_IMPE_p  = b.CashBenefitsPercentage,
-                FSR_IMGM_p  = b.PensionerMedicalExpensesPercentage,
+                FSR_DPA = b.PaidDays,
+                FSR_DNLA = b.NonWorkingDays,
+                FSR_DLA = b.WorkedDays,
+                FSR_FSI = b.PaidToWorkedDaysFactor,
+                FSR_FSBC = b.ContributionBaseFactor,
+                FSR_SABC = b.ContributionBaseSalaryInMinimumSalaryUnits,
+                AA = b.FixedFeePercentage,
+                AB = b.ExcessPercentage,
+                AU = b.ThreeMinimumSalaryExcess,
+                AS_lim = b.LifeAndRetirementCap,
+                AZ = b.InfonavitSalaryLimit,
+                FSR_IMPE_p = b.CashBenefitsPercentage,
+                FSR_IMGM_p = b.PensionerMedicalExpensesPercentage,
                 FSR_IMINV_p = b.DisabilityAndLifePercentage,
-                FSR_IMCE_p  = b.SeveranceAndOldAgePercentage,
-                AC        = b.FixedFee,
-                AD        = b.ThreeMinimumSalaryExcessContribution,
-                AE        = b.CashBenefitsContribution,
-                AF        = b.PensionerMedicalExpensesContribution,
-                AG        = b.DisabilityAndLifeContribution,
-                AH        = b.DaycareContribution,
-                AI        = b.RetirementContribution,
-                AJ        = b.SeveranceAndOldAgeContribution,
-                AK        = b.OccupationalRiskContribution,
-                AL        = b.EmployerImssTotal,
+                FSR_IMCE_p = b.SeveranceAndOldAgePercentage,
+                AC = b.FixedFee,
+                AD = b.ThreeMinimumSalaryExcessContribution,
+                AE = b.CashBenefitsContribution,
+                AF = b.PensionerMedicalExpensesContribution,
+                AG = b.DisabilityAndLifeContribution,
+                AH = b.DaycareContribution,
+                AI = b.RetirementContribution,
+                AJ = b.SeveranceAndOldAgeContribution,
+                AK = b.OccupationalRiskContribution,
+                AL = b.EmployerImssTotal,
                 FSR_IMIMS = b.EmployerImssFactor,
-                AM        = b.InfonavitContribution,
-                AN        = b.PayrollTax,
-                AO        = b.OtherTaxes,
-                AP        = b.EmployerObligations,
-                AQ        = b.EmployerObligationsFactor,
-                BH        = b.EmployerObligationsWeightedByPaidToWorkedDays,
-                FSR_FSR   = b.Factor
+                AM = b.InfonavitContribution,
+                AN = b.PayrollTax,
+                AO = b.OtherTaxes,
+                AP = b.EmployerObligations,
+                AQ = b.EmployerObligationsFactor,
+                BH = b.EmployerObligationsWeightedByPaidToWorkedDays,
+                FSR_FSR = b.Factor
             };
         }
 

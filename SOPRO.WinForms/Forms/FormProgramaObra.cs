@@ -149,8 +149,8 @@ namespace SOPRO.WinForms.Forms
             var proyFresco = _context.Proyectos.Find(_proyecto.Id);
             if (proyFresco != null)
             {
-                _proyecto.DecimalesCantidad   = proyFresco.DecimalesCantidad;
-                _proyecto.DecimalesImporte    = proyFresco.DecimalesImporte;
+                _proyecto.DecimalesCantidad = proyFresco.DecimalesCantidad;
+                _proyecto.DecimalesImporte = proyFresco.DecimalesImporte;
                 _proyecto.DecimalesPorcentaje = proyFresco.DecimalesPorcentaje;
             }
             // Reaplicar formatos de columnas con los nuevos decimales

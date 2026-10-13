@@ -86,6 +86,23 @@ public static class ReportCellStyleResolver
     }
 
     /// <summary>
+    /// Combina dos niveles ADYACENTES de la cascada con la MISMA semántica que
+    /// <see cref="Resolve"/>: <paramref name="superior"/> gana propiedad a propiedad
+    /// y un valor <c>null</c> (o inválido) hereda de <paramref name="baseStyle"/>.
+    ///
+    /// Es el punto ÚNICO para recomponer niveles FUERA de un
+    /// <see cref="ReportColumnSnapshot"/>: el grid ya trae el estilo de columna en la
+    /// celda y sólo necesita fundir el estilo EFECTIVO de rol con el override
+    /// puntual de celda, de modo que la precedencia NO se duplique en la UI.
+    /// </summary>
+    /// <param name="baseStyle">Nivel inferior (se hereda), o <c>null</c> para vacío.</param>
+    /// <param name="superior">Nivel superior (gana), o <c>null</c> para no cambiar nada.</param>
+    public static ReportStyleOverlay Combinar(
+        ReportStyleOverlay? baseStyle,
+        ReportStyleOverlay? superior)
+        => Aplicar(baseStyle ?? new ReportStyleOverlay(), superior);
+
+    /// <summary>
     /// Normaliza un color a "#RRGGBB" o "#AARRGGBB" en mayúsculas. Devuelve
     /// <c>null</c> si la entrada es nula, vacía o no es un hexadecimal válido
     /// precedido por '#'. Un <c>null</c> en la cascada significa "heredar".

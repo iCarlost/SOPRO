@@ -44,14 +44,14 @@ namespace SOPRO.WinForms.Services
         private ReportColumnSnapshot? _snapshotBase;
 
         // Colores de sección por tipo de insumo
-        private static readonly string ColorSeccionMaterial    = "#E3F2FD"; // Azul muy claro
-        private static readonly string ColorSeccionManoObra    = "#F3E5F5"; // Morado muy claro
-        private static readonly string ColorSeccionMaquinaria  = "#FFF3E0"; // Naranja muy claro
+        private static readonly string ColorSeccionMaterial = "#E3F2FD"; // Azul muy claro
+        private static readonly string ColorSeccionManoObra = "#F3E5F5"; // Morado muy claro
+        private static readonly string ColorSeccionMaquinaria = "#FFF3E0"; // Naranja muy claro
         private static readonly string ColorSeccionHerramienta = "#E8F5E9"; // Verde muy claro
-        private static readonly string ColorSeccionAuxiliar    = "#FFF9C4"; // Amarillo muy claro
-        private static readonly string ColorSubtotal           = "#ECEFF1"; // Gris claro
-        private static readonly string ColorResumen            = "#1565C0"; // Azul oscuro (encabezado)
-        private static readonly string ColorPU                 = "#FFF176"; // Amarillo PU final
+        private static readonly string ColorSeccionAuxiliar = "#FFF9C4"; // Amarillo muy claro
+        private static readonly string ColorSubtotal = "#ECEFF1"; // Gris claro
+        private static readonly string ColorResumen = "#1565C0"; // Azul oscuro (encabezado)
+        private static readonly string ColorPU = "#FFF176"; // Amarillo PU final
 
         public GeneradorExcelAPU(ReporteService svc, SOPROContext ctx)
         {
@@ -130,7 +130,7 @@ namespace SOPRO.WinForms.Services
             Proyecto proyecto, ReportColumnSnapshot snapshot)
         {
             ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
-            ws.PageSetup.PaperSize       = XLPaperSize.LetterPaper;
+            ws.PageSetup.PaperSize = XLPaperSize.LetterPaper;
             ws.PageSetup.FitToPages(1, 0);
 
             int fila = 1;
@@ -148,7 +148,7 @@ namespace SOPRO.WinForms.Services
 
             // Encabezados del índice
             string[] encabezados = { "No.", "Clave", "Descripción", "Unidad", "P.U." };
-            int[] anchos         = {   5,     14,        60,           10,      16    };
+            int[] anchos = { 5, 14, 60, 10, 16 };
             for (int c = 0; c < encabezados.Length; c++)
             {
                 var cell = ws.Cell(fila, c + 1);
@@ -192,7 +192,7 @@ namespace SOPRO.WinForms.Services
 
             // Borde general
             ws.Range(2, 1, fila - 1, 5).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-            ws.Range(2, 1, fila - 1, 5).Style.Border.InsideBorder  = XLBorderStyleValues.Hair;
+            ws.Range(2, 1, fila - 1, 5).Style.Border.InsideBorder = XLBorderStyleValues.Hair;
         }
 
         private void AplicarFuenteBase(IXLStyle style, bool boldOverride = false, string? colorOverride = null)
@@ -213,7 +213,7 @@ namespace SOPRO.WinForms.Services
             IReadOnlyList<ReportColumnDefinition> cols, ReportColumnSnapshot snapshot, int numero)
         {
             ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
-            ws.PageSetup.PaperSize       = XLPaperSize.LetterPaper;
+            ws.PageSetup.PaperSize = XLPaperSize.LetterPaper;
             ws.PageSetup.FitToPages(1, 0);
 
             int nCols = cols.Count;
@@ -420,17 +420,17 @@ namespace SOPRO.WinForms.Services
             }
 
             var est = rango.Style;
-            est.Font.FontName  = fuente;
-            est.Font.FontSize  = tamaño;
-            est.Font.Bold      = negrita;
-            est.Font.Italic    = cursiva;
-            est.Alignment.WrapText   = true;
-            est.Alignment.Vertical   = XLAlignmentVerticalValues.Center;
+            est.Font.FontName = fuente;
+            est.Font.FontSize = tamaño;
+            est.Font.Bold = negrita;
+            est.Font.Italic = cursiva;
+            est.Alignment.WrapText = true;
+            est.Alignment.Vertical = XLAlignmentVerticalValues.Center;
             est.Alignment.Horizontal = alineacion switch
             {
-                "Centro"  => XLAlignmentHorizontalValues.Center,
+                "Centro" => XLAlignmentHorizontalValues.Center,
                 "Derecha" => XLAlignmentHorizontalValues.Right,
-                _         => XLAlignmentHorizontalValues.Left,
+                _ => XLAlignmentHorizontalValues.Left,
             };
         }
 
@@ -471,7 +471,7 @@ namespace SOPRO.WinForms.Services
             fila++;
 
             // Cantidad / P.U. / Total del concepto en el presupuesto
-            decimal puConcepto    = concepto.PrecioUnitario; // se muestra el guardado en BD
+            decimal puConcepto = concepto.PrecioUnitario; // se muestra el guardado en BD
             decimal totalConcepto = concepto.Cantidad * puConcepto;
             int midCol = COLS / 3;
 

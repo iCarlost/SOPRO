@@ -32,12 +32,12 @@ namespace SOPRO.WinForms.Forms
         public System.Windows.Forms.DataGridView GridPrincipal => dgvExplosion;
         public System.Windows.Forms.DataGridView GridBusqueda => dgvExplosion;
 
-        
-        
 
 
 
-        
+
+
+
 
 
 

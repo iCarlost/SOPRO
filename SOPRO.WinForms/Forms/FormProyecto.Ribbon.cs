@@ -30,11 +30,11 @@ namespace SOPRO.WinForms.Forms
 
             // Eventos de controles del ribbon
             cboFuente.SelectedIndexChanged += Ribbon_Changed;
-            nudTamano.ValueChanged          += Ribbon_Changed;
-            btnNegrita.Click                += Ribbon_ToggleEstilo;
-            btnCursiva.Click                += Ribbon_ToggleEstilo;
-            btnColorFondo.Click             += BtnColorFondo_Click;
-            btnColorTexto.Click             += BtnColorTexto_Click;
+            nudTamano.ValueChanged += Ribbon_Changed;
+            btnNegrita.Click += Ribbon_ToggleEstilo;
+            btnCursiva.Click += Ribbon_ToggleEstilo;
+            btnColorFondo.Click += BtnColorFondo_Click;
+            btnColorTexto.Click += BtnColorTexto_Click;
 
             ConfigurarIconosRibbon();
             AplicarTemaCompletoRibbon();
@@ -507,9 +507,9 @@ namespace SOPRO.WinForms.Forms
             AplicarTemaBotonRibbon(btnWrapRibbon, col.WrapTexto);
             ActualizarBotonesAlinVertical(FormatoHelper.ConvertirAlineacionDgv(col.Alineacion, col.AlineacionVertical));
 
-            lblColumna.Text      = col.Nombre;
+            lblColumna.Text = col.Nombre;
             lblColumna.ForeColor = Color.White;
-            panelRibbon.Enabled  = true;
+            panelRibbon.Enabled = true;
 
             _cargandoRibbon = false;
             ActualizarOverflowRibbon();
@@ -662,7 +662,7 @@ namespace SOPRO.WinForms.Forms
             btnDepurarRibbon.Enabled = true;
             btnConsolidarInsumos.Enabled = false;
             HabilitarControlesFormato(false);
-            lblColumna.Text      = "-- sin seleccion --";
+            lblColumna.Text = "-- sin seleccion --";
             lblColumna.ForeColor = Color.Gray;
             // Sin form activo no hay destino posible: tooltips al texto base.
             _formatoSeleccionCoordinator.EstablecerGrid(null);

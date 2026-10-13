@@ -596,7 +596,7 @@ public class SchemaManagerMigrationTests
     {
         using var cmd = ctx.Database.GetDbConnection().CreateCommand();
         cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type=$1 AND name=$2";
-        var p1 = cmd.CreateParameter(); p1.ParameterName = "$1"; p1.Value = tipo;   cmd.Parameters.Add(p1);
+        var p1 = cmd.CreateParameter(); p1.ParameterName = "$1"; p1.Value = tipo; cmd.Parameters.Add(p1);
         var p2 = cmd.CreateParameter(); p2.ParameterName = "$2"; p2.Value = nombre; cmd.Parameters.Add(p2);
         if (cmd.Connection!.State != System.Data.ConnectionState.Open)
             cmd.Connection.Open();
