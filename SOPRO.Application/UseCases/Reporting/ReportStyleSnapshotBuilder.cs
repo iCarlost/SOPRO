@@ -42,10 +42,40 @@ public sealed class ReportStyleSnapshotBuilder
         {
             EstilosCelda = celdas.Count == 0
                 ? null
-                : celdas.Select(kv => new ReportCellStyleOverride(kv.Key, kv.Value)).ToList(),
+                : NormalizarCeldas(celdas),
             EstilosFila = filas.Count == 0
                 ? null
                 : filas.Select(kv => new ReportRowRoleStyle(kv.Key, kv.Value)).ToList(),
         };
+    }
+
+    /// <summary>
+    /// Proyecta los overrides de celda persistidos al contrato del snapshot,
+    /// normalizando la clave de columna a su IDENTIFICADOR CANÓNICO (el MISMO que
+    /// expone <see cref="ReportColumnDefinition.Identificador"/>). Sin esta
+    /// normalización, la clave que el grid persiste (p. ej. el alias legacy
+    /// <c>Importe</c>) NO coincidiría con la que los generadores PDF/Excel pasan al
+    /// resolver (<c>ImporteTotal</c>) y el override se perdería en los reportes.
+    ///
+    /// Si un alias normalizado choca con la clave canónica ya persistida, gana la
+    /// canónica (la que ya es idéntica a su identificador normalizado).
+    /// </summary>
+    private static List<ReportCellStyleOverride> NormalizarCeldas(
+        IReadOnlyDictionary<ReportCellAddress, ReportStyleOverlay> celdas)
+    {
+        var porDireccion = new Dictionary<ReportCellAddress, ReportStyleOverlay>();
+        foreach (var kv in celdas)
+        {
+            var claveCanonica = ReportColumnDefinitionMapper.NormalizarIdentificador(kv.Key.NombreColumna);
+            var direccion = kv.Key with { NombreColumna = claveCanonica };
+
+            if (!porDireccion.ContainsKey(direccion)
+                || string.Equals(kv.Key.NombreColumna, claveCanonica, StringComparison.OrdinalIgnoreCase))
+            {
+                porDireccion[direccion] = kv.Value;
+            }
+        }
+
+        return porDireccion.Select(kv => new ReportCellStyleOverride(kv.Key, kv.Value)).ToList();
     }
 }

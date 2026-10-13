@@ -12,6 +12,7 @@ using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Reporting.Columns;
 using SOPRO.WinForms.Services;
 
 namespace SOPRO.Tests.WinForms.Services.Reportes;
@@ -165,6 +166,190 @@ public class GeneradorPresupuestoEstilosTests
             EstilosCelda = new[] { celda },
             EstilosFila = new[] { rolConcepto },
         };
+    }
+
+    /// <summary>
+    /// Snapshot con la columna de importe definida con el alias legacy
+    /// <c>Importe</c> (el <c>NombreInterno</c> que usa el grid real), de modo que el
+    /// builder la normalice a <c>ImporteTotal</c>. Reproduce el escenario de H2.
+    /// </summary>
+    private static ReportColumnSnapshot SnapshotConImporteAlias(int proyectoId)
+        => new PresupuestoReportSnapshotBuilder().Build(
+            proyectoId,
+            "Presupuesto de prueba",
+            new[]
+            {
+                ColumnaP("Clave", "Clave", 0, TipoDatoColumna.Texto),
+                ColumnaP("Descripcion", "Descripción", 1, TipoDatoColumna.Texto),
+                ColumnaP("Cantidad", "Cantidad", 2, TipoDatoColumna.Numerico),
+                ColumnaP(ReportColumnDefinitionMapper.AliasImporte, "Importe", 3, TipoDatoColumna.Moneda),
+            });
+
+    // ────────────────── Regresión H2: Importe del grid → PDF/Excel ──────────────────
+
+    /// <summary>
+    /// H2: el grid persiste el override de la columna Importe con el alias legacy
+    /// <c>Importe</c> (su <c>NombreInterno</c>), pero el PDF resuelve con el
+    /// identificador canónico <c>ImporteTotal</c>. La normalización del snapshot debe
+    /// hacer que el override EFECTIVO se resuelva (no nulo) y se aplique en el PDF.
+    /// </summary>
+    [TestMethod]
+    public void Pdf_OverrideDeImporteConAliasLegacyDelGrid_SeNormalizaYAplica()
+    {
+        using var ctx = CreateContext();
+        var proyecto = CrearProyecto(ctx);
+        var svc = new ReporteService(ctx);
+        var plantilla = svc.ObtenerPlantillaSoloLectura(proyecto.Id);
+        var conceptos = CrearConceptos(proyecto);
+
+        var formatos = new FormatoReporteService(ctx);
+        // El grid escribe la clave con el alias legacy "Importe".
+        formatos.UpsertCelda(
+            proyecto.Id,
+            PresupuestoReportSnapshotBuilder.TipoReporte,
+            PresupuestoReportSnapshotBuilder.ClaveVista,
+            ClaveFilaReporte.Concepto(ConceptoUnoId),
+            ReportColumnDefinitionMapper.AliasImporte,
+            new ReportStyleOverlay(ColorFondo: "#FF00AA", Negrita: true));
+
+        var snapshot = new ReportStyleSnapshotBuilder(formatos).Build(SnapshotConImporteAlias(proyecto.Id));
+
+        var celda = snapshot.EstilosCelda!.Single();
+        Assert.AreEqual(ReportColumnDefinitionMapper.ImporteTotal, celda.Direccion.NombreColumna,
+            "La clave del override debe normalizarse al identificador canónico del snapshot (ImporteTotal).");
+
+        var doc = new GeneradorPdfPresupuesto(svc).ConstruirDocumento(proyecto, conceptos, plantilla, snapshot);
+
+        int colImporte = ColumnaImporteEnTabla(snapshot);
+        var celdaUno = TablaCuerpo(doc).Rows[1].Cells[colImporte];
+        var color = celdaUno.Shading.Color;
+        Assert.IsTrue(color.R == 0xFF && color.G == 0x00 && color.B == 0xAA,
+            "El override de Importe (persistido con alias) debe aplicarse en el PDF.");
+    }
+
+    /// <summary>
+    /// H2 (paridad Excel): mismo escenario que el PDF; el override de Importe
+    /// persistido con el alias legacy debe escribirse en la celda del .xlsx.
+    /// </summary>
+    [TestMethod]
+    public void Excel_OverrideDeImporteConAliasLegacyDelGrid_SeNormalizaYAplica()
+    {
+        using var ctx = CreateContext();
+        var proyecto = CrearProyecto(ctx);
+        var svc = new ReporteService(ctx);
+        var plantilla = svc.ObtenerPlantillaSoloLectura(proyecto.Id);
+        var conceptos = CrearConceptos(proyecto);
+
+        var formatos = new FormatoReporteService(ctx);
+        formatos.UpsertCelda(
+            proyecto.Id,
+            PresupuestoReportSnapshotBuilder.TipoReporte,
+            PresupuestoReportSnapshotBuilder.ClaveVista,
+            ClaveFilaReporte.Concepto(ConceptoUnoId),
+            ReportColumnDefinitionMapper.AliasImporte,
+            new ReportStyleOverlay(ColorFondo: "#FF00AA", Negrita: true));
+
+        var snapshot = new ReportStyleSnapshotBuilder(formatos).Build(SnapshotConImporteAlias(proyecto.Id));
+
+        var ruta = Path.Combine(Path.GetTempPath(), $"sopro_presupuesto_alias_{Guid.NewGuid():N}.xlsx");
+        try
+        {
+            new GeneradorExcelPresupuesto(svc).Generar(proyecto, conceptos, plantilla, snapshot, ruta, factorPU: 1m);
+
+            using var wb = new XLWorkbook(ruta);
+            var ws = wb.Worksheet(1);
+            var (filaTitulos, _, colImporte) = LocalizarTitulos(ws);
+            var celdaUno = ws.Cell(filaTitulos + 1, colImporte);
+
+            Assert.AreEqual(XLColor.FromHtml("#FF00AA").Color.ToArgb(),
+                celdaUno.Style.Fill.BackgroundColor.Color.ToArgb(),
+                "El override de Importe (persistido con alias) debe escribirse en Excel.");
+            Assert.IsTrue(celdaUno.Style.Font.Bold, "La negrita del override debe escribirse en Excel.");
+        }
+        finally
+        {
+            try { if (File.Exists(ruta)) File.Delete(ruta); } catch { /* best effort */ }
+        }
+    }
+
+    // ────────────────── Regresión H1: columna "#" → PDF/Excel ──────────────────
+
+    /// <summary>
+    /// H1: la columna sintética de numeración "#" (clave canónica <c>Numero</c>) es
+    /// formateable por celda; su override debe llegar a la columna que PDF antepone.
+    /// </summary>
+    [TestMethod]
+    public void Pdf_OverrideDeColumnaNumero_SeAplicaEnLaColumnaSintetica()
+    {
+        using var ctx = CreateContext();
+        var proyecto = CrearProyecto(ctx);
+        var svc = new ReporteService(ctx);
+        var plantilla = svc.ObtenerPlantillaSoloLectura(proyecto.Id);
+        var conceptos = CrearConceptos(proyecto);
+
+        var formatos = new FormatoReporteService(ctx);
+        formatos.UpsertCelda(
+            proyecto.Id,
+            PresupuestoReportSnapshotBuilder.TipoReporte,
+            PresupuestoReportSnapshotBuilder.ClaveVista,
+            ClaveFilaReporte.Concepto(ConceptoUnoId),
+            ReportColumnDefaults.NumeroIdentificador,
+            new ReportStyleOverlay(ColorFondo: "#FF00AA"));
+
+        var snapshot = new ReportStyleSnapshotBuilder(formatos).Build(SnapshotConColumnas(proyecto.Id));
+        var doc = new GeneradorPdfPresupuesto(svc).ConstruirDocumento(proyecto, conceptos, plantilla, snapshot);
+
+        // La columna "#" se antepone en el índice 0.
+        var celdaUno = TablaCuerpo(doc).Rows[1].Cells[0];
+        var color = celdaUno.Shading.Color;
+        Assert.IsTrue(color.R == 0xFF && color.G == 0x00 && color.B == 0xAA,
+            "El override de la columna '#' debe llegar al PDF.");
+    }
+
+    /// <summary>
+    /// H1 (paridad Excel): el override de la columna "#" debe escribirse en la
+    /// primera columna del .xlsx.
+    /// </summary>
+    [TestMethod]
+    public void Excel_OverrideDeColumnaNumero_SeAplicaEnLaColumnaSintetica()
+    {
+        using var ctx = CreateContext();
+        var proyecto = CrearProyecto(ctx);
+        var svc = new ReporteService(ctx);
+        var plantilla = svc.ObtenerPlantillaSoloLectura(proyecto.Id);
+        var conceptos = CrearConceptos(proyecto);
+
+        var formatos = new FormatoReporteService(ctx);
+        formatos.UpsertCelda(
+            proyecto.Id,
+            PresupuestoReportSnapshotBuilder.TipoReporte,
+            PresupuestoReportSnapshotBuilder.ClaveVista,
+            ClaveFilaReporte.Concepto(ConceptoUnoId),
+            ReportColumnDefaults.NumeroIdentificador,
+            new ReportStyleOverlay(ColorFondo: "#FF00AA"));
+
+        var snapshot = new ReportStyleSnapshotBuilder(formatos).Build(SnapshotConColumnas(proyecto.Id));
+
+        var ruta = Path.Combine(Path.GetTempPath(), $"sopro_presupuesto_numero_{Guid.NewGuid():N}.xlsx");
+        try
+        {
+            new GeneradorExcelPresupuesto(svc).Generar(proyecto, conceptos, plantilla, snapshot, ruta, factorPU: 1m);
+
+            using var wb = new XLWorkbook(ruta);
+            var ws = wb.Worksheet(1);
+            var (filaTitulos, _, _) = LocalizarTitulos(ws);
+            Assert.AreEqual("#", ws.Cell(filaTitulos, 1).GetString(),
+                "La columna '#' debe ser la primera del reporte.");
+
+            var celdaUno = ws.Cell(filaTitulos + 1, 1);
+            Assert.AreEqual(XLColor.FromHtml("#FF00AA").Color.ToArgb(),
+                celdaUno.Style.Fill.BackgroundColor.Color.ToArgb(),
+                "El override de la columna '#' debe escribirse en Excel.");
+        }
+        finally
+        {
+            try { if (File.Exists(ruta)) File.Delete(ruta); } catch { /* best effort */ }
+        }
     }
 
     // ─────────────────────────── PDF (MigraDoc seam) ───────────────────────────

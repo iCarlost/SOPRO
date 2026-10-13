@@ -8,6 +8,7 @@ using SOPRO.Application.Models.ExternalProjects;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
 using SOPRO.Application.Services.Reporting;
+using SOPRO.Reporting.Columns;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Services;
@@ -535,19 +536,68 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
+        /// Nombre del control de la columna sintética de numeración ("#") del grid.
+        /// No es data-bound (no tiene <see cref="ColumnaPersonalizada"/>), pero SÍ es
+        /// formateable y exportable con la clave canónica <c>Numero</c>.
+        /// </summary>
+        internal const string ColNumeroNombre = "colNumero";
+
+        /// <summary>
+        /// Clave ESTABLE de una columna del grid para el formato por celda
+        /// (direcciones <see cref="ReportCellAddress"/>), o <c>null</c> si la columna
+        /// no es exportable/formateable.
+        ///
+        /// Las columnas personalizadas usan su <see cref="ColumnaPersonalizada.NombreInterno"/>.
+        /// La columna sintética de numeración "#" (<c>colNumero</c>) no es data-bound
+        /// pero SÍ es exportable: se le asigna la clave canónica
+        /// <see cref="ReportColumnDefaults.NumeroIdentificador"/> (<c>Numero</c>), la
+        /// MISMA que anteponen PDF/Excel, de modo que el formato aplicado en el grid
+        /// también aparece en los reportes.
+        /// </summary>
+        internal static string? ObtenerClaveColumnaFormato(DataGridViewColumn? columna)
+        {
+            if (columna is null) return null;
+
+            if (columna.Tag is ColumnaPersonalizada col && !string.IsNullOrWhiteSpace(col.NombreInterno))
+                return col.NombreInterno;
+
+            if (string.Equals(columna.Name, ColNumeroNombre, StringComparison.OrdinalIgnoreCase))
+                return ReportColumnDefaults.NumeroIdentificador;
+
+            return null;
+        }
+
+        /// <summary>
         /// Identificador ESTABLE de la columna, o <c>null</c> si la columna no es
         /// exportable/formateable (p. ej. las columnas auxiliares sin
-        /// <see cref="ColumnaPersonalizada"/>: colId, colNumero).
+        /// <c>ColumnaPersonalizada</c>: colId). La columna de numeración "#" SÍ lo es
+        /// (clave canónica <c>Numero</c>).
         /// </summary>
         internal static string? ObtenerNombreColumnaFormato(DataGridView grid, int columnIndex)
         {
             if (grid is null) return null;
             if (columnIndex < 0 || columnIndex >= grid.Columns.Count) return null;
 
-            return grid.Columns[columnIndex].Tag is ColumnaPersonalizada col
-                && !string.IsNullOrWhiteSpace(col.NombreInterno)
-                ? col.NombreInterno
-                : null;
+            return ObtenerClaveColumnaFormato(grid.Columns[columnIndex]);
+        }
+
+        /// <summary>
+        /// <c>true</c> si alguna columna del grid tiene la clave estable
+        /// <paramref name="nombreColumna"/>. Es la lógica de <c>EsCeldaFormateable</c>
+        /// extraída como función pura (verificable sin UI) y reutilizada por el grid.
+        /// </summary>
+        internal static bool EsNombreColumnaFormateable(DataGridView grid, string? nombreColumna)
+        {
+            if (grid is null || string.IsNullOrWhiteSpace(nombreColumna)) return false;
+
+            foreach (DataGridViewColumn col in grid.Columns)
+            {
+                var clave = ObtenerClaveColumnaFormato(col);
+                if (clave is not null && string.Equals(clave, nombreColumna, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>

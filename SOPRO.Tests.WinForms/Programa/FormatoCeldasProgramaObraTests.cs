@@ -8,7 +8,9 @@ using SOPRO.Application.DTOs.Programacion;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Reporting;
+using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Reporting.Formatting;
 using SOPRO.WinForms.Forms;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Undo;
@@ -399,5 +401,132 @@ public class FormatoCeldasProgramaObraTests
             "El override de celda gana sobre el color de rol/hardcodeado.");
         Assert.IsTrue(estilo.Font!.Bold);
         Assert.AreEqual(DataGridViewTriState.True, estilo.WrapMode);
+    }
+
+    // ═══════════════════ H3 — formato POR CELDA (no por fila) ═══════════════════
+
+    [TestMethod]
+    public void ConfigurarSeleccionPorCelda_FijaCellSelect()
+    {
+        using var grid = CrearGrid();
+
+        FormProgramaObra.ConfigurarSeleccionPorCelda(grid);
+
+        Assert.AreEqual(DataGridViewSelectionMode.CellSelect, grid.SelectionMode,
+            "El grid debe seleccionar POR CELDAS; con FullRowSelect el ribbon pintaba el override en TODA la fila.");
+        Assert.IsTrue(grid.MultiSelect, "Se conserva la selección de rango (Shift) / multi-rango (Ctrl).");
+    }
+
+    [TestMethod]
+    public void SeleccionarUnaCelda_GeneraUnaSolaDireccionDeCelda()
+    {
+        using var grid = CrearGrid();
+        FormProgramaObra.ConfigurarSeleccionPorCelda(grid);
+        var fila = AgregarFila(grid, Actividad(22, "1.1"));
+
+        grid.CurrentCell = grid.Rows[fila].Cells[ProgramaObraReportSnapshotBuilder.ColImporte];
+
+        var direcciones = FormProgramaObra.ConstruirDireccionesSeleccionadas(
+            grid, grid.SelectedCells.Cast<DataGridViewCell>());
+
+        Assert.AreEqual(1, direcciones.Count,
+            "Seleccionar UNA celda debe producir UNA sola dirección (no toda la fila).");
+        Assert.AreEqual("ACT:22", direcciones[0].ClaveFila);
+        Assert.AreEqual(ProgramaObraReportSnapshotBuilder.ColImporte, direcciones[0].NombreColumna);
+    }
+
+    [TestMethod]
+    public void DosCeldasMismaFila_GeneranDireccionesIndependientesPorColumna()
+    {
+        using var grid = CrearGrid();
+        FormProgramaObra.ConfigurarSeleccionPorCelda(grid);
+        var fila = AgregarFila(grid, Actividad(22, "1.1"));
+
+        grid.CurrentCell = grid.Rows[fila].Cells[ProgramaObraReportSnapshotBuilder.ColImporte];
+        grid.Rows[fila].Cells[ProgramaObraReportSnapshotBuilder.ColCantidad].Selected = true;
+
+        var direcciones = FormProgramaObra.ConstruirDireccionesSeleccionadas(
+            grid, grid.SelectedCells.Cast<DataGridViewCell>());
+
+        Assert.AreEqual(2, direcciones.Count);
+        Assert.IsTrue(direcciones.All(d => d.ClaveFila == "ACT:22"),
+            "Mismo par fila: la identidad de cada celda debe diferir sólo por columna.");
+        CollectionAssert.AreEquivalent(
+            new[]
+            {
+                ProgramaObraReportSnapshotBuilder.ColImporte,
+                ProgramaObraReportSnapshotBuilder.ColCantidad,
+            },
+            direcciones.Select(d => d.NombreColumna).ToArray());
+    }
+
+    [TestMethod]
+    public void OverlayDeUnaCelda_SoloAfectaAEsaCeldaEnElSnapshot()
+    {
+        using var ctx = CrearContexto();
+        var proyectoId = AgregarProyecto(ctx);
+        var service = new FormatoReporteService(ctx);
+        service.UpsertCelda(proyectoId, Tipo, Vista, "ACT:22", "colImporte",
+            new ReportStyleOverlay(ColorFondo: "#FF00AA"));
+
+        var snapshot = new ProgramaObraReportSnapshotBuilder().Build(proyectoId, "Obra", columnas: null);
+        snapshot = new ReportStyleSnapshotBuilder(service).Build(snapshot);
+
+        var importe = ReportCellStyleResolver.Resolve(
+            snapshot, Vista, "ACT:22", "colImporte", RolFilaReporte.Concepto, false);
+        var cantidad = ReportCellStyleResolver.Resolve(
+            snapshot, Vista, "ACT:22", "colCantidad", RolFilaReporte.Concepto, false);
+
+        Assert.AreEqual("#FF00AA", importe.ColorFondo, "El override aplica a la celda destino.");
+        Assert.AreNotEqual("#FF00AA", cantidad.ColorFondo,
+            "Las demás celdas de la MISMA fila NO se contaminan con el override.");
+    }
+
+    [TestMethod]
+    public void EncabezadoSeleccionado_DestinoEsColumna_NoAplicaPorCelda()
+    {
+        // Al seleccionar el encabezado no hay selección de celdas y el destino es la
+        // COLUMNA (sin regresión). Se replica la semántica del grid de Programa.
+        var grid = new GridFakePrograma
+        {
+            TieneSeleccionCeldas = false,
+            ColumnaSeleccionada = new ColumnaPersonalizada { Nombre = "Importe" },
+        };
+        var coordinador = new FormatoSeleccionCoordinator();
+        coordinador.EstablecerGrid(grid);
+
+        Assert.AreEqual(DestinoFormatoGrid.Columna, coordinador.Destino);
+
+        var cambios = coordinador.AplicarASeleccion(new ReportStyleOverlay(Negrita: true));
+
+        Assert.AreEqual(0, cambios.Count, "El encabezado NO debe aplicar formato por celda.");
+    }
+
+    /// <summary>
+    /// Grid FAKE con la semántica de Programa de Obra: implementa los dos contratos
+    /// (columna + selección de celdas) sin depender de UI real.
+    /// </summary>
+    private sealed class GridFakePrograma : IGridFormato, IGridSeleccionFormato
+    {
+        public DataGridView GridPrincipal => null!;
+        public ColumnaPersonalizada? ColumnaSeleccionada { get; set; }
+        public bool TieneSeleccionCeldas { get; set; }
+        public List<ReportCellAddress> Direcciones { get; } = new();
+        public Dictionary<ReportCellAddress, ReportStyleOverlay> Overlays { get; } = new();
+
+        public void AplicarFormato(ColumnaPersonalizada fmt) { }
+        public void AplicarFormatoGlobal(ColumnaPersonalizada fmt) { }
+        public bool GenerarReporteExcel() => false;
+
+#pragma warning disable CS0067 // Evento del contrato; no se dispara en las pruebas.
+        public event EventHandler? ColumnaSeleccionadaCambiada;
+#pragma warning restore CS0067
+
+        public IReadOnlyList<ReportCellAddress> ObtenerDireccionesSeleccionadas() => Direcciones;
+        public bool EsCeldaFormateable(ReportCellAddress direccion) => true;
+        public ReportStyleOverlay? ObtenerOverlayActual(ReportCellAddress direccion)
+            => Overlays.TryGetValue(direccion, out var overlay) ? overlay : null;
+        public void AplicarOverlayCelda(ReportCellAddress direccion, ReportStyleOverlay overlay)
+            => Overlays[direccion] = overlay;
     }
 }

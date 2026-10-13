@@ -72,11 +72,35 @@ namespace SOPRO.WinForms.Forms
         /// <summary>Conecta los eventos del grid con el formato por celda.</summary>
         private void InicializarFormatoProgramaObra()
         {
+            // H3: el formato por celda exige selección tipo Excel. El grid se diseñó
+            // con FullRowSelect, donde un clic sobre UNA celda selecciona TODA la fila:
+            // SelectedCells devolvía todas las columnas y el ribbon aplicaba el
+            // override a la fila completa. Se fija CellSelect (+MultiSelect para
+            // rango con Shift / multi-rango con Ctrl) igual que Explosión, Indirectos
+            // y Presupuesto, de modo que la dirección de celda sea la de la celda
+            // realmente seleccionada. El encabezado sigue resolviéndose por COLUMNA.
+            ConfigurarSeleccionPorCelda(dgvActividades);
+
             // Distinguir interacción de cuerpo (=> destino CELDAS) de encabezado
             // (=> destino COLUMNA). CellMouseDown se dispara ANTES del cambio de selección.
             dgvActividades.CellMouseDown += DgvActividades_CellMouseDownFormato;
             dgvActividades.SelectionChanged += DgvActividades_SelectionChangedFormato;
             dgvActividades.CellFormatting += DgvActividades_CellFormattingFormato;
+        }
+
+        /// <summary>
+        /// Fuerza en el grid la selección POR CELDAS (tipo Excel): fija
+        /// <see cref="DataGridViewSelectionMode.CellSelect"/> y habilita
+        /// multi-selección para que un rango (Shift) o varios rangos (Ctrl) se
+        /// reporten como celdas concretas. Es requisito del formato por celda: con
+        /// <c>FullRowSelect</c> el clic sobre una celda selecciona TODA la fila y el
+        /// ribbon aplicaría el override a todas sus columnas (hallazgo H3).
+        /// </summary>
+        internal static void ConfigurarSeleccionPorCelda(DataGridView grid)
+        {
+            if (grid is null) return;
+            grid.SelectionMode = DataGridViewSelectionMode.CellSelect;
+            grid.MultiSelect = true;
         }
 
         /// <summary>Mapa estable nombre de columna del grid → identificador neutral.</summary>

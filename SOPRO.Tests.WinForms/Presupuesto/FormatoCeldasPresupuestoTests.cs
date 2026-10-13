@@ -77,6 +77,25 @@ public class FormatoCeldasPresupuestoTests
         return grid;
     }
 
+    /// <summary>
+    /// Grid con la columna sintética de numeración "#" (<c>colNumero</c>, SIN
+    /// <see cref="ColumnaPersonalizada"/>) más columnas personalizadas.
+    /// </summary>
+    private static DataGridView CrearGridConNumero(params string[] columnasFormateables)
+    {
+        var grid = new DataGridView { AllowUserToAddRows = false };
+        grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "colNumero", HeaderText = "#", Width = 40 });
+        foreach (var nombre in columnasFormateables)
+        {
+            grid.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = nombre,
+                Tag = new ColumnaPersonalizada { Nombre = nombre, NombreInterno = nombre },
+            });
+        }
+        return grid;
+    }
+
     private static int AgregarFila(DataGridView grid, ConceptoPresupuesto? concepto)
     {
         var index = grid.Rows.Add();
@@ -177,6 +196,58 @@ public class FormatoCeldasPresupuestoTests
         Assert.AreEqual(1, direcciones.Count);
         Assert.AreEqual("C:42", direcciones[0].ClaveFila);
         Assert.AreEqual("Importe", direcciones[0].NombreColumna);
+    }
+
+    // ═══════════ Regresión H1: la columna "#" es formateable ═══════════
+
+    [TestMethod]
+    public void ColumnaNumero_SeMapeaAClaveCanonicaYEsFormateable()
+    {
+        using var grid = CrearGridConNumero("Importe");
+        var fila = AgregarFila(grid, Concepto(9));
+
+        var direcciones = FormPresupuesto.ConstruirDireccionesSeleccionadas(
+            grid, new[] { grid.Rows[fila].Cells["colNumero"] });
+
+        Assert.AreEqual(1, direcciones.Count,
+            "La celda de la columna '#' debe mapearse a una dirección formateable.");
+        Assert.AreEqual("C:9", direcciones[0].ClaveFila);
+        Assert.AreEqual("Numero", direcciones[0].NombreColumna,
+            "La columna '#' usa la clave canónica 'Numero' (paridad con PDF/Excel).");
+
+        Assert.IsTrue(FormPresupuesto.EsNombreColumnaFormateable(grid, "Numero"),
+            "La clave canónica 'Numero' debe ser formateable.");
+        Assert.IsFalse(FormPresupuesto.EsNombreColumnaFormateable(grid, "colNumero"),
+            "El nombre del control no es la clave de formato.");
+    }
+
+    [TestMethod]
+    public void ColumnaNumero_SeleccionDeCeldas_EsDestinoCeldasYAplicaOverride()
+    {
+        using var grid = CrearGridConNumero("Importe");
+        var i0 = AgregarFila(grid, Concepto(1));
+        var i1 = AgregarFila(grid, Concepto(2));
+
+        var fake = new GridSeleccionFake(grid, new[]
+        {
+            grid.Rows[i0].Cells["colNumero"],
+            grid.Rows[i1].Cells["colNumero"],
+        })
+        {
+            // El fake usa la MISMA lógica de formateabilidad del Presupuesto.
+            EsCeldaFormateableOverride = d => FormPresupuesto.EsNombreColumnaFormateable(grid, d.NombreColumna),
+        };
+        var coordinador = new FormatoSeleccionCoordinator();
+        coordinador.EstablecerGrid(fake);
+
+        Assert.AreEqual(DestinoFormatoGrid.Celdas, coordinador.Destino,
+            "Seleccionar la columna '#' debe habilitar el formato por celdas (Destino==Celdas).");
+
+        var cambios = coordinador.AplicarASeleccion(new ReportStyleOverlay(Negrita: true, ColorFondo: "#ABCDEF"));
+
+        Assert.AreEqual(2, cambios.Count);
+        Assert.IsTrue(cambios.All(c => c.Direccion.NombreColumna == "Numero"),
+            "El override de la columna '#' se persiste con la clave canónica 'Numero'.");
     }
 
     [TestMethod]
@@ -630,10 +701,14 @@ public class FormatoCeldasPresupuestoTests
 
         public bool TieneSeleccionCeldas => _celdas.Count > 0;
 
+        /// <summary>Predicado opcional de formateabilidad; por defecto TODA celda lo es.</summary>
+        public Func<ReportCellAddress, bool>? EsCeldaFormateableOverride { get; set; }
+
         public IReadOnlyList<ReportCellAddress> ObtenerDireccionesSeleccionadas()
             => FormPresupuesto.ConstruirDireccionesSeleccionadas(_grid, _celdas);
 
-        public bool EsCeldaFormateable(ReportCellAddress direccion) => true;
+        public bool EsCeldaFormateable(ReportCellAddress direccion)
+            => EsCeldaFormateableOverride?.Invoke(direccion) ?? true;
 
         public ReportStyleOverlay? ObtenerOverlayActual(ReportCellAddress direccion)
             => _overlays.TryGetValue(direccion, out var overlay) ? overlay : null;

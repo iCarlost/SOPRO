@@ -129,4 +129,50 @@ public class GeneradorProgramaEstilosTests
 
         Assert.AreEqual("#FF00AA", overlay.ColorFondo);
     }
+
+    // ───────────────── H3: el override de UNA celda no se derrama a la fila ─────────────────
+
+    private static readonly ReportCellAddress CeldaImporteActividad2 =
+        new(ProgramaObraReportSnapshotBuilder.ClaveVista, "ACT:2", "colImporte");
+
+    private static ReportColumnSnapshot SnapshotConOverrideEnUnaCelda()
+        => SnapshotObraConDefaults() with
+        {
+            EstilosCelda = new[]
+            {
+                new ReportCellStyleOverride(CeldaImporteActividad2, new ReportStyleOverlay(ColorFondo: "#FF00AA")),
+            }
+        };
+
+    [TestMethod]
+    public void Pdf_OverrideDeUnaCelda_NoSeDerramaAOtrasColumnasDeLaFila()
+    {
+        var snapshot = SnapshotConOverrideEnUnaCelda();
+
+        var importe = GeneradorPdfProgramaObra.ResolverOverlayPdf(snapshot, "ACT:2", RolFilaReporte.Concepto, "colImporte");
+        var cantidad = GeneradorPdfProgramaObra.ResolverOverlayPdf(snapshot, "ACT:2", RolFilaReporte.Concepto, "colCantidad");
+
+        Assert.AreEqual("#FF00AA", importe.ColorFondo, "El override aparece SOLO en su celda.");
+        Assert.AreNotEqual("#FF00AA", cantidad.ColorFondo,
+            "Otra columna de la MISMA fila no debe recibir el override (H3).");
+    }
+
+    [TestMethod]
+    public void Excel_OverrideDeUnaCelda_NoSeDerramaAOtrasColumnasDeLaFila()
+    {
+        var snapshot = SnapshotConOverrideEnUnaCelda();
+
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("t");
+        var celdaImporte = ws.Cell(1, 1);
+        var celdaCantidad = ws.Cell(1, 2);
+
+        GeneradorExcelProgramaBase.AplicarEstiloCeldaPrograma(celdaImporte, snapshot, "ACT:2", RolFilaReporte.Concepto, "colImporte");
+        GeneradorExcelProgramaBase.AplicarEstiloCeldaPrograma(celdaCantidad, snapshot, "ACT:2", RolFilaReporte.Concepto, "colCantidad");
+
+        Assert.AreEqual(XLColor.FromHtml("#FF00AA"), celdaImporte.Style.Fill.BackgroundColor,
+            "El override aparece SOLO en su celda.");
+        Assert.AreNotEqual(XLColor.FromHtml("#FF00AA"), celdaCantidad.Style.Fill.BackgroundColor,
+            "Otra columna de la MISMA fila no debe recibir el override (H3).");
+    }
 }

@@ -338,13 +338,9 @@ namespace SOPRO.WinForms.Forms
             if (string.IsNullOrWhiteSpace(direccion.ClaveFila)) return false;
             if (string.IsNullOrWhiteSpace(direccion.NombreColumna)) return false;
 
-            foreach (DataGridViewColumn col in dgvPresupuesto.Columns)
-            {
-                if (col.Tag is ColumnaPersonalizada colDef
-                    && string.Equals(colDef.NombreInterno, direccion.NombreColumna, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-            return false;
+            // Acepta columnas personalizadas Y la columna de numeración "#" (clave
+            // canónica "Numero"); ver ObtenerClaveColumnaFormato.
+            return EsNombreColumnaFormateable(dgvPresupuesto, direccion.NombreColumna);
         }
 
         public ReportStyleOverlay? ObtenerOverlayActual(ReportCellAddress direccion)
