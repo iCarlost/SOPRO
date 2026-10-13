@@ -219,8 +219,12 @@ public static class ReportCellStyleResolver
         Wrap: columna.Wrap,
         FormatoNumerico: columna.FormatoNumerico);
 
-    private static ReportStyleOverlay Aplicar(ReportStyleOverlay baseStyle, ReportStyleOverlay superior)
-        => baseStyle with
+    private static ReportStyleOverlay Aplicar(ReportStyleOverlay baseStyle, ReportStyleOverlay? superior)
+    {
+        // Un nivel superior nulo o ausente no aporta nada: se conserva el base.
+        if (superior is null) return baseStyle;
+
+        return baseStyle with
         {
             Fuente = NormalizarFuente(superior.Fuente) ?? baseStyle.Fuente,
             TamanoFuente = NormalizarTamanoFuente(superior.TamanoFuente) ?? baseStyle.TamanoFuente,
@@ -235,6 +239,7 @@ public static class ReportCellStyleResolver
                 ? baseStyle.FormatoNumerico
                 : superior.FormatoNumerico
         };
+    }
 
     private static bool Coincide(string? a, string? b)
         => string.Equals(a ?? string.Empty, b ?? string.Empty, StringComparison.OrdinalIgnoreCase);

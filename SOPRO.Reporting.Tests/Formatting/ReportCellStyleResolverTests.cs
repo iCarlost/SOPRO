@@ -329,4 +329,126 @@ public class ReportCellStyleResolverTests
         Assert.AreEqual("Segoe UI", resultado.Fuente);
         Assert.IsNull(resultado.AlineacionHorizontal, "Sin columna, la alineación no la aporta la tabla.");
     }
+
+    // ──────────────── Regresión: niveles nulos (NullableReference NRE) ────────────────
+
+    [TestMethod]
+    public void Combinar_BaseConSuperiorNulo_DevuelveElBaseSinLanzar()
+    {
+        var baseStyle = new ReportStyleOverlay(
+            ColorFondo: "#123456", Fuente: "Segoe UI", Negrita: true, FormatoNumerico: "N2");
+
+        var resultado = ReportCellStyleResolver.Combinar(baseStyle, null);
+
+        Assert.AreEqual("#123456", resultado.ColorFondo, "Un superior nulo no aporta nada: se conserva el base.");
+        Assert.AreEqual("Segoe UI", resultado.Fuente);
+        Assert.AreEqual((bool?)true, resultado.Negrita);
+        Assert.AreEqual("N2", resultado.FormatoNumerico);
+    }
+
+    [TestMethod]
+    public void Combinar_AmbosNulos_NoLanzaYDevuelveOverlayVacio()
+    {
+        var resultado = ReportCellStyleResolver.Combinar(null, null);
+
+        Assert.IsNotNull(resultado, "Nunca debe devolver un overlay nulo.");
+        Assert.IsNull(resultado.ColorFondo);
+        Assert.IsNull(resultado.ColorFuente);
+        Assert.IsNull(resultado.Fuente);
+        Assert.IsNull(resultado.TamanoFuente);
+        Assert.IsNull(resultado.Negrita);
+        Assert.IsNull(resultado.Cursiva);
+        Assert.IsNull(resultado.AlineacionHorizontal);
+        Assert.IsNull(resultado.Wrap);
+        Assert.IsNull(resultado.FormatoNumerico);
+    }
+
+    [TestMethod]
+    public void Combinar_BaseNulo_DevuelveElSuperior()
+    {
+        var superior = new ReportStyleOverlay(
+            ColorFondo: "#ABCDEF", Fuente: "Arial", TamanoFuente: 11f, Negrita: true);
+
+        var resultado = ReportCellStyleResolver.Combinar(null, superior);
+
+        Assert.AreEqual("#ABCDEF", resultado.ColorFondo);
+        Assert.AreEqual("Arial", resultado.Fuente);
+        Assert.AreEqual((float?)11f, resultado.TamanoFuente);
+        Assert.AreEqual((bool?)true, resultado.Negrita);
+    }
+
+    [TestMethod]
+    public void Combinar_SuperiorVacio_ConservaElBase()
+    {
+        var baseStyle = new ReportStyleOverlay(ColorFondo: "#123456", Fuente: "Segoe UI");
+
+        var resultado = ReportCellStyleResolver.Combinar(baseStyle, new ReportStyleOverlay());
+
+        Assert.AreEqual("#123456", resultado.ColorFondo, "Un overlay superior vacío deja intacto el base.");
+        Assert.AreEqual("Segoe UI", resultado.Fuente);
+    }
+
+    [TestMethod]
+    public void Resolve_EstiloDeRolNulo_NoLanzaYResuelvePorColumna()
+    {
+        var tabla = Tabla("#AAAAAA");
+        var columna = Columna("Importe", colorFondo: "#CCCCCC");
+        var rol = new ReportRowRoleStyle("Subtotal", null!);
+        var snapshot = Snapshot(tabla, new[] { columna }, estilosFila: new[] { rol });
+
+        var resultado = ReportCellStyleResolver.Resolve(
+            snapshot, "Principal", "F1", "Importe", rolFila: "Subtotal");
+
+        Assert.AreEqual("#CCCCCC", resultado.ColorFondo, "Un rol con estilo nulo se descarta y hereda la columna.");
+    }
+
+    [TestMethod]
+    public void Resolve_OverrideDeCeldaConEstiloNulo_NoLanzaYResuelvePorColumna()
+    {
+        var tabla = Tabla("#AAAAAA");
+        var columna = Columna("Importe", colorFondo: "#CCCCCC");
+        var celda = new ReportCellStyleOverride(new ReportCellAddress("Principal", "F1", "Importe"), null!);
+        var snapshot = Snapshot(tabla, new[] { columna }, estilosCelda: new[] { celda });
+
+        var resultado = ReportCellStyleResolver.Resolve(snapshot, "Principal", "F1", "Importe");
+
+        Assert.AreEqual("#CCCCCC", resultado.ColorFondo, "Un override con estilo nulo se descarta y hereda la columna.");
+    }
+
+    [TestMethod]
+    public void Resolve_CeldaSinOverrideConRolPresente_NoLanzaYConservaElRol()
+    {
+        // Reproduce el crash de producción: FormPresupuesto pinta una celda SIN
+        // override puntual (celdaOverlay == null) mientras el rol sí aporta estilo;
+        // antes, Combinar(rolOverlay, null) desreferenciaba superior y lanzaba NRE.
+        var tabla = Tabla("#AAAAAA");
+        var columna = Columna("Importe", colorFondo: "#CCCCCC");
+        var rol = new ReportRowRoleStyle("Subtotal", new ReportStyleOverlay(ColorFondo: "#DDDDDD"));
+        var snapshot = Snapshot(tabla, new[] { columna }, estilosFila: new[] { rol });
+
+        var resultado = ReportCellStyleResolver.Resolve(
+            snapshot, "Principal", "F1", "Importe", rolFila: "Subtotal");
+
+        Assert.AreEqual("#DDDDDD", resultado.ColorFondo, "Sin override de celda, el rol gana y no se lanza.");
+    }
+
+    [TestMethod]
+    public void Combinar_RolConCeldaNula_ReproduceElFlujoDelGrid_NoLanza()
+    {
+        // Flujo real del grid (FormPresupuesto.GridTotales):
+        // Combinar(columna, Combinar(rol, celda)) con celda == null.
+        var columnaOverlay = new ReportStyleOverlay(AlineacionHorizontal: ReportTextAlignment.Derecha);
+        var rolOverlay = new ReportStyleOverlay(ColorFondo: "#DDDDDD", Negrita: true);
+
+        var overlay = ReportCellStyleResolver.Combinar(
+            columnaOverlay,
+            ReportCellStyleResolver.Combinar(rolOverlay, null));
+
+        Assert.AreEqual("#DDDDDD", overlay.ColorFondo, "El rol se conserva cuando la celda no tiene override.");
+        Assert.AreEqual((bool?)true, overlay.Negrita);
+        Assert.AreEqual(
+            (ReportTextAlignment?)ReportTextAlignment.Derecha,
+            overlay.AlineacionHorizontal,
+            "La columna (base) se conserva.");
+    }
 }
