@@ -8,6 +8,7 @@ using SOPRO.Application.Models.ExternalProjects;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
 using SOPRO.Application.Services.Reporting;
+using SOPRO.Reporting.Formatting;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Services;
@@ -141,101 +142,94 @@ namespace SOPRO.WinForms.Forms
         private void DgvPresupuesto_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
         {
             if (e.RowIndex < 0) return;
+            if (e.CellStyle is null) return;
 
             var tipoCell = ObtenerCeldaPorNombreInterno(e.RowIndex, "Tipo");
             if (tipoCell?.Value == null) return;
 
-            string tipo = tipoCell.Value.ToString();
+            string tipo = tipoCell.Value.ToString() ?? string.Empty;
 
-            // ── 1. Estilo semántico por ROL de fila ───────────────────────────
-            // Los colores/estilos de agrupador (Capitulo/Subcapitulo/Nivel) y de
-            // cierre salen de EstilosFilaPredeterminados (ÚNICA fuente de verdad,
-            // compartida por grid/PDF/Excel) combinados con el override PERSISTIDO
-            // del usuario. El override de celda del paso 3 SIGUE ganando a todo.
-            AplicarEstiloRolPresupuesto(e.CellStyle, dgvPresupuesto.Font, tipo, ObtenerEstilosFilaUsuario());
+            // ── Cascada ÚNICA de precedencia (override de celda > rol > columna) ──
+            // La resuelve el resolver neutral compartido (ReportCellStyleResolver),
+            // el MISMO que usan el grid de Indirectos y el de Programa de Obra: la
+            // UI ya NO recompone la cascada en tres pasos (rol, luego columna y
+            // finalmente override). El estilo base heredado (fondo blanco, texto
+            // negro y fuente del grid) reproduce el pintado histórico cuando ningún
+            // nivel impone color o fuente.
+            e.CellStyle.BackColor = Color.White;
+            e.CellStyle.ForeColor = Color.Black;
+            if (e.CellStyle.Font is null) e.CellStyle.Font = dgvPresupuesto.Font;
 
-            // ── 2. Sobreponer formato de columna (solo para conceptos) ─────────
-            // Para agrupadores mantenemos su color de fondo, pero sí aplicamos
-            // fuente y alineación de la columna si está definida
-            var col = dgvPresupuesto.Columns[e.ColumnIndex];
-            if (col.Tag is ColumnaPersonalizada colDef)
-            {
-                // Alineación siempre se aplica
-                e.CellStyle.Alignment = FormatoHelper.ConvertirAlineacionDgv(colDef.Alineacion, colDef.AlineacionVertical);
-                e.CellStyle.WrapMode = colDef.WrapTexto ? DataGridViewTriState.True : DataGridViewTriState.False;
+            // Nivel INFERIOR (base): formato configurado de la COLUMNA.
+            var columnaOverlay = ObtenerOverlayColumnaPresupuesto(e.ColumnIndex, tipo);
 
-                // Para conceptos: aplicar color de fondo y fuente de la columna
-                if (tipo == "Concepto")
-                {
-                    // Color de fondo de la columna (si no es blanco puro, tiene precedencia)
-                    if (!string.IsNullOrEmpty(colDef.ColorFondo))
-                    {
-                        try { e.CellStyle.BackColor = ColorTranslator.FromHtml(colDef.ColorFondo); }
-                        catch { }
-                    }
+            // Nivel SUPERIOR: rol efectivo (default + override persistido del
+            // usuario) fusionado con el override puntual de celda, en UNA pasada.
+            var rolOverlay = EstilosFilaPredeterminados.CombinarPresupuesto(
+                ObtenerRolFilaFormato(tipo), ObtenerEstilosFilaUsuario());
+            var celdaOverlay = ObtenerOverlayFormatoCelda(dgvPresupuesto, e);
 
-                    // Color de fuente de la columna
-                    if (!string.IsNullOrEmpty(colDef.ColorFuente))
-                    {
-                        try { e.CellStyle.ForeColor = ColorTranslator.FromHtml(colDef.ColorFuente); }
-                        catch { }
-                    }
+            var overlay = ReportCellStyleResolver.Combinar(
+                columnaOverlay,
+                ReportCellStyleResolver.Combinar(rolOverlay, celdaOverlay));
 
-                    // Fuente de la columna
-                    try
-                    {
-                        string nombreFuente = !string.IsNullOrEmpty(colDef.NombreFuente)
-                            ? colDef.NombreFuente : dgvPresupuesto.Font.Name;
-                        float tamaño = colDef.TamanoFuente > 0 ? colDef.TamanoFuente : dgvPresupuesto.Font.Size;
-                        FontStyle fs = (colDef.Negrita ? FontStyle.Bold : FontStyle.Regular)
-                                     | (colDef.Cursiva ? FontStyle.Italic : FontStyle.Regular);
-                        e.CellStyle.Font = new Font(nombreFuente, tamaño, fs);
-                    }
-                    catch { }
-                }
-                else
-                {
-                    // Para agrupadores: mantener su fondo pero aplicar fuente de columna
-                    try
-                    {
-                        string nombreFuente = !string.IsNullOrEmpty(colDef.NombreFuente)
-                            ? colDef.NombreFuente : dgvPresupuesto.Font.Name;
-                        float tamaño = colDef.TamanoFuente > 0 ? colDef.TamanoFuente : dgvPresupuesto.Font.Size;
-                        // La negrita/cursiva proviene del ROL (default o config del
-                        // usuario) ya aplicado en el paso 1; la columna sólo ajusta
-                        // la fuente/tamaño y puede añadir cursiva.
-                        FontStyle fs = (e.CellStyle.Font?.Style ?? FontStyle.Regular)
-                                     | (colDef.Cursiva ? FontStyle.Italic : FontStyle.Regular);
-                        e.CellStyle.Font = new Font(nombreFuente, tamaño, fs);
-                    }
-                    catch { }
-                }
-            }
-
-            // ── 3. Override por celda (máxima precedencia) ────────────────────
-            // Si la celda tiene un override persistido/aplicado, GANA sobre el
-            // color hardcodeado del agrupador y sobre el formato de columna.
-            AplicarOverrideFormatoCelda(e);
+            AplicarOverlayACellStyle(e.CellStyle, overlay);
         }
 
         /// <summary>
-        /// Aplica, si existe, el override en memoria de la celda (fila × columna)
-        /// sobre el estilo del evento. Sólo consulta el diccionario en memoria: no
-        /// hace ninguna consulta a la base de datos por celda.
+        /// Nivel INFERIOR de la cascada: el formato configurado de la COLUMNA
+        /// (<see cref="ColumnaPersonalizada"/>), o <c>null</c> si la columna no es
+        /// personalizada. Para los CONCEPTOS aporta color, fuente y negrita/cursiva;
+        /// para los AGRUPADORES sólo fuente, tamaño, cursiva, alineación y ajuste, de
+        /// modo que el color y la negrita provengan del ROL (nivel superior). No
+        /// toca el formato numérico, que viaja en el <c>DefaultCellStyle</c> de la
+        /// columna.
         /// </summary>
-        private void AplicarOverrideFormatoCelda(DataGridViewCellFormattingEventArgs e)
+        private ReportStyleOverlay? ObtenerOverlayColumnaPresupuesto(int columnIndex, string tipo)
         {
-            if (_overlaysFormato.Count == 0) return;
-            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            if (columnIndex < 0 || columnIndex >= dgvPresupuesto.Columns.Count) return null;
+            if (dgvPresupuesto.Columns[columnIndex].Tag is not ColumnaPersonalizada colDef) return null;
 
-            var clave = ObtenerClaveFilaFormato(dgvPresupuesto, e.RowIndex);
-            var columna = ObtenerNombreColumnaFormato(dgvPresupuesto, e.ColumnIndex);
-            if (clave is null || columna is null) return;
+            var overlay = new ReportStyleOverlay(
+                AlineacionHorizontal: (ReportTextAlignment)colDef.Alineacion,
+                AlineacionVertical: (ReportVerticalAlignment)colDef.AlineacionVertical,
+                Wrap: colDef.WrapTexto,
+                Fuente: string.IsNullOrEmpty(colDef.NombreFuente) ? null : colDef.NombreFuente,
+                TamanoFuente: colDef.TamanoFuente > 0 ? colDef.TamanoFuente : (float?)null,
+                Cursiva: colDef.Cursiva);
+
+            if (tipo == "Concepto")
+            {
+                overlay = overlay with
+                {
+                    ColorFondo = string.IsNullOrEmpty(colDef.ColorFondo) ? null : colDef.ColorFondo,
+                    ColorFuente = string.IsNullOrEmpty(colDef.ColorFuente) ? null : colDef.ColorFuente,
+                    Negrita = colDef.Negrita,
+                };
+            }
+
+            return overlay;
+        }
+
+        /// <summary>
+        /// Devuelve, si existe, el override en memoria de la celda (fila × columna),
+        /// o <c>null</c>. Sólo consulta el diccionario en memoria: no hace ninguna
+        /// consulta a la base de datos por celda. Su fusión con los niveles
+        /// inferiores la resuelve <see cref="ReportCellStyleResolver"/>.
+        /// </summary>
+        private ReportStyleOverlay? ObtenerOverlayFormatoCelda(
+            DataGridView grid,
+            DataGridViewCellFormattingEventArgs e)
+        {
+            if (_overlaysFormato.Count == 0) return null;
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return null;
+
+            var clave = ObtenerClaveFilaFormato(grid, e.RowIndex);
+            var columna = ObtenerNombreColumnaFormato(grid, e.ColumnIndex);
+            if (clave is null || columna is null) return null;
 
             var direccion = new ReportCellAddress(FormatoVistaPresupuesto, clave, columna);
-            if (!_overlaysFormato.TryGetValue(direccion, out var overlay) || overlay is null) return;
-
-            AplicarOverlayACellStyle(e.CellStyle, overlay);
+            return _overlaysFormato.TryGetValue(direccion, out var overlay) ? overlay : null;
         }
 
         /// <summary>
