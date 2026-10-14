@@ -5,8 +5,10 @@ using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Reporting.Formatting;
 using SOPRO.WinForms.Forms;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Undo;
@@ -213,6 +215,96 @@ public class FormatoCeldasFinanciamientoTests
         ctx.ChangeTracker.Clear();
 
         Assert.AreEqual(0, ctx.FormatosCeldaReporte.Count(), "Un overlay vacío elimina la fila de formato.");
+    }
+
+    // ═══════════════════ H6b — selección POR CELDA (no por fila) ═══════════════════
+
+    [TestMethod]
+    public void ConfigurarSeleccionPorCelda_FijaCellSelect()
+    {
+        using var grid = CrearGrid();
+
+        FormFinanciamiento.ConfigurarSeleccionPorCelda(grid);
+
+        Assert.AreEqual(DataGridViewSelectionMode.CellSelect, grid.SelectionMode,
+            "El grid debe seleccionar POR CELDAS; con FullRowSelect el ribbon pintaba el override en TODA la fila.");
+        Assert.IsTrue(grid.MultiSelect, "Se conserva la selección de rango (Shift) / multi-rango (Ctrl).");
+    }
+
+    [TestMethod]
+    public void SeleccionarUnaCelda_GeneraUnaSolaDireccion()
+    {
+        using var grid = CrearGrid();
+        FormFinanciamiento.ConfigurarSeleccionPorCelda(grid);
+        var fila = AgregarFila(grid, 3);
+
+        grid.CurrentCell = grid.Rows[fila].Cells["colCD"];
+
+        var direcciones = FormFinanciamiento.ConstruirDireccionesSeleccionadas(
+            grid, grid.SelectedCells.Cast<DataGridViewCell>());
+
+        Assert.AreEqual(1, direcciones.Count,
+            "Seleccionar UNA celda debe producir UNA sola dirección (no toda la fila).");
+        Assert.AreEqual("PER:3", direcciones[0].ClaveFila);
+        Assert.AreEqual("colCD", direcciones[0].NombreColumna);
+    }
+
+    [TestMethod]
+    public void DosCeldasMismaFila_GeneranDireccionesIndependientesPorColumna()
+    {
+        using var grid = CrearGrid();
+        FormFinanciamiento.ConfigurarSeleccionPorCelda(grid);
+        var fila = AgregarFila(grid, 4);
+
+        grid.CurrentCell = grid.Rows[fila].Cells["colCD"];
+        grid.Rows[fila].Cells["colEgresos"].Selected = true;
+
+        var direcciones = FormFinanciamiento.ConstruirDireccionesSeleccionadas(
+            grid, grid.SelectedCells.Cast<DataGridViewCell>());
+
+        Assert.AreEqual(2, direcciones.Count);
+        Assert.IsTrue(direcciones.All(d => d.ClaveFila == "PER:4"),
+            "Mismo período: la identidad de cada celda difiere sólo por columna.");
+        CollectionAssert.AreEquivalent(
+            new[] { "colCD", "colEgresos" },
+            direcciones.Select(d => d.NombreColumna).ToArray());
+    }
+
+    [TestMethod]
+    public void OverlayDeUnaCelda_SoloAfectaAEsaCeldaEnElSnapshot()
+    {
+        using var ctx = CrearContexto();
+        var proyectoId = AgregarProyecto(ctx);
+        var service = new FormatoReporteService(ctx);
+        service.UpsertCelda(proyectoId, Tipo, Vista, "PER:3", "colCD",
+            new ReportStyleOverlay(ColorFondo: "#FF00AA"));
+
+        var baseSnapshot = new FinanciamientoReportSnapshotBuilder().Build(proyectoId, "Flujo de caja", columnas: null);
+        var snapshot = new ReportStyleSnapshotBuilder(service).Build(baseSnapshot);
+
+        var objetivo = ReportCellStyleResolver.Resolve(
+            snapshot, Vista, "PER:3", "colCD", RolFilaReporte.Concepto);
+        var otraColumna = ReportCellStyleResolver.Resolve(
+            snapshot, Vista, "PER:3", "colEgresos", RolFilaReporte.Concepto);
+
+        Assert.AreEqual("#FF00AA", objetivo.ColorFondo, "El override aplica a la celda destino.");
+        Assert.AreNotEqual("#FF00AA", otraColumna.ColorFondo,
+            "Las demás celdas de la MISMA fila NO se contaminan con el override.");
+    }
+
+    [TestMethod]
+    public void FilasSeleccionadas_DesdeCelda_DevuelveLaFilaDelPeriodo()
+    {
+        using var grid = CrearGrid();
+        FormFinanciamiento.ConfigurarSeleccionPorCelda(grid);
+        var fila = AgregarFila(grid, 7);
+
+        grid.Rows[fila].Cells["colCD"].Selected = true;
+
+        var filas = SeleccionGridHelper.FilasSeleccionadas(grid);
+
+        Assert.AreEqual(1, filas.Count);
+        Assert.AreEqual(fila, filas[0].Index);
     }
 
     // ═════════════════════════════════ Helpers ═════════════════════════════════

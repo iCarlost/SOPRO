@@ -25,8 +25,9 @@ namespace SOPRO.WinForms.Helpers
     ///   inmediato, con UNA sola consulta por (proyecto, tipo);</item>
     ///   <item>persiste por lote con <see cref="FormatoReporteService"/> y agrupa
     ///   todo el lote como UNA acción compuesta de undo;</item>
-    ///   <item>se conserva el <c>SelectionMode</c> del grid (FullRowSelect): una
-    ///   fila seleccionada produce una dirección por celda formateable.</item>
+    ///   <item>el grid usa <c>SelectionMode.CellSelect</c> (selección tipo Excel):
+    ///   cada celda seleccionada produce UNA dirección, de modo que el formato NO
+    ///   se derrama al resto de la fila.</item>
     /// </list>
     /// Es no-op cuando el catálogo es el maestro (sin proyecto): el ribbon
     /// mantiene el comportamiento por columna.

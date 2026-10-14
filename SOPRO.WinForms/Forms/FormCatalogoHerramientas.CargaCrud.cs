@@ -182,8 +182,9 @@ namespace SOPRO.WinForms.Forms
 
         private void dgvHerramientas_SelectionChanged(object sender, EventArgs e)
         {
-            _herramientaSeleccionada = dgvHerramientas.SelectedRows.Count > 0
-                ? dgvHerramientas.SelectedRows[0].DataBoundItem as Herramienta
+            var filas = SeleccionGridHelper.FilasSeleccionadas(dgvHerramientas);
+            _herramientaSeleccionada = filas.Count > 0
+                ? filas[0].DataBoundItem as Herramienta
                 : null;
             ActualizarEstadoBotones();
             EstadoConsolidacionCambiado?.Invoke(this, EventArgs.Empty);

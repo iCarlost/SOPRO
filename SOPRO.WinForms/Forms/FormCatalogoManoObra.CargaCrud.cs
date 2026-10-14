@@ -152,8 +152,9 @@ namespace SOPRO.WinForms.Forms
 
         private void dgvManoObra_SelectionChanged(object sender, EventArgs e)
         {
-            _manoDeObraSeleccionada = dgvManoObra.SelectedRows.Count > 0
-                ? dgvManoObra.SelectedRows[0].DataBoundItem as ManoDeObra
+            var filas = SeleccionGridHelper.FilasSeleccionadas(dgvManoObra);
+            _manoDeObraSeleccionada = filas.Count > 0
+                ? filas[0].DataBoundItem as ManoDeObra
                 : null;
             ActualizarEstadoBotones();
         }

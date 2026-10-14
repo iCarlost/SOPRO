@@ -22,8 +22,7 @@ namespace SOPRO.WinForms.Forms
 
         public IReadOnlyList<ConsolidacionInsumoItem> ObtenerSeleccionConsolidable()
         {
-            return dgvHerramientas.SelectedRows
-                .Cast<DataGridViewRow>()
+            return SeleccionGridHelper.FilasSeleccionadas(dgvHerramientas)
                 .Select(r => r.DataBoundItem as Herramienta)
                 .Where(x => x != null)
                 .GroupBy(x => x.Id)
@@ -48,8 +47,7 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            var seleccion = dgvHerramientas.SelectedRows
-                .Cast<DataGridViewRow>()
+            var seleccion = SeleccionGridHelper.FilasSeleccionadas(dgvHerramientas)
                 .Select(r => r.DataBoundItem as Herramienta)
                 .Where(x => x != null)
                 .GroupBy(x => x.Id)

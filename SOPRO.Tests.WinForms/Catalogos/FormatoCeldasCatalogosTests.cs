@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
@@ -291,6 +292,275 @@ public class FormatoCeldasCatalogosTests
         Assert.AreEqual(1, service.CargarCeldas(proyectoId, "Herramientas").Count);
         Assert.AreEqual("#000001",
             service.CargarCeldas(proyectoId, "Materiales")[new ReportCellAddress(Vista, "INS:1", "PrecioUnitario")].ColorFondo);
+    }
+
+    // ═══════════════════ H6a: formato por CELDA (no por fila) ═══════════════════
+
+    /// <summary>
+    /// H6a — los 4 grids de catálogo quedan en selección POR CELDA (tipo Excel) con
+    /// multi-selección, de modo que un clic sobre una celda NO selecciona toda la fila.
+    /// </summary>
+    [TestMethod]
+    public void GridsDeCatalogo_QuedanEnCellSelectConMultiSelect()
+    {
+        using var ctx = CrearContexto();
+
+        using (var form = new FormCatalogoMateriales(ctx))
+        {
+            Assert.AreEqual(DataGridViewSelectionMode.CellSelect, form.GridPrincipal.SelectionMode, "Materiales");
+            Assert.IsTrue(form.GridPrincipal.MultiSelect, "Materiales MultiSelect");
+        }
+
+        using (var form = new FormCatalogoManoObra(ctx))
+        {
+            Assert.AreEqual(DataGridViewSelectionMode.CellSelect, form.GridPrincipal.SelectionMode, "Mano de Obra");
+            Assert.IsTrue(form.GridPrincipal.MultiSelect, "Mano de Obra MultiSelect");
+        }
+
+        using (var form = new FormCatalogoHerramientas(ctx))
+        {
+            Assert.AreEqual(DataGridViewSelectionMode.CellSelect, form.GridPrincipal.SelectionMode, "Herramientas");
+            Assert.IsTrue(form.GridPrincipal.MultiSelect, "Herramientas MultiSelect");
+        }
+
+        using (var form = new FormCatalogoMaquinaria(ctx))
+        {
+            Assert.AreEqual(DataGridViewSelectionMode.CellSelect, form.GridPrincipal.SelectionMode, "Maquinaria");
+            Assert.IsTrue(form.GridPrincipal.MultiSelect, "Maquinaria MultiSelect");
+        }
+    }
+
+    [TestMethod]
+    public void Helper_ConfigurarSeleccionPorCelda_FijaCellSelectYMultiSelect()
+    {
+        using var grid = new DataGridView { AllowUserToAddRows = false };
+        grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+        grid.MultiSelect = false;
+
+        SeleccionGridHelper.ConfigurarSeleccionPorCelda(grid);
+
+        Assert.AreEqual(DataGridViewSelectionMode.CellSelect, grid.SelectionMode);
+        Assert.IsTrue(grid.MultiSelect);
+    }
+
+    /// <summary>
+    /// Dos celdas de la MISMA fila generan direcciones independientes por columna
+    /// (antes, con FullRowSelect, se generaba una dirección por cada columna de la
+    /// fila y el formato se derramaba a toda la fila).
+    /// </summary>
+    [TestMethod]
+    public void Materiales_DosCeldasDeLaMismaFila_DireccionesIndependientesPorColumna()
+    {
+        using var grid = CrearGrid(
+            new[]
+            {
+                Col("col_Clave", "Clave", new ColumnaMaterial { NombreInterno = "Clave" }),
+                Col("col_PrecioUnitario", "PrecioUnitario", new ColumnaMaterial { NombreInterno = "PrecioUnitario" }),
+            },
+            new[] { new MaterialListItem(7, "MAT-1", "Cemento", "kg", 12.5m, "", OrigenInsumo.Proyecto) });
+
+        var direcciones = FormCatalogoMateriales.ConstruirDireccionesSeleccionadas(
+            grid, new[] { grid.Rows[0].Cells["col_Clave"], grid.Rows[0].Cells["col_PrecioUnitario"] });
+
+        Assert.AreEqual(2, direcciones.Count);
+        CollectionAssert.AreEquivalent(
+            new[] { "Clave", "PrecioUnitario" },
+            direcciones.Select(d => d.NombreColumna).ToArray());
+        Assert.IsTrue(direcciones.All(d => d.ClaveFila == "INS:7"));
+    }
+
+    /// <summary>
+    /// <see cref="SeleccionGridHelper.FilasSeleccionadas"/> resuelve las filas
+    /// distintas desde <c>SelectedCells</c> (selección por celda) y las ordena por
+    /// índice; un clic por celda NO pobla <c>SelectedRows</c>.
+    /// </summary>
+    [TestMethod]
+    public void FilasSeleccionadas_ConCeldasEnDosFilas_DeduplicaYOrdena()
+    {
+        using var grid = CrearGrid(
+            new[] { Col("col_Clave", "Clave", new ColumnaMaterial { NombreInterno = "Clave" }) },
+            new[]
+            {
+                new MaterialListItem(1, "MAT-1", "A", "kg", 1m, "", OrigenInsumo.Proyecto),
+                new MaterialListItem(2, "MAT-2", "B", "kg", 2m, "", OrigenInsumo.Proyecto),
+                new MaterialListItem(3, "MAT-3", "C", "kg", 3m, "", OrigenInsumo.Proyecto),
+            });
+
+        grid.SelectionMode = DataGridViewSelectionMode.CellSelect;
+        grid.ClearSelection();
+        grid.Rows[2].Cells["col_Clave"].Selected = true;
+        grid.Rows[0].Cells["col_Clave"].Selected = true;
+
+        var filas = SeleccionGridHelper.FilasSeleccionadas(grid);
+
+        CollectionAssert.AreEqual(new[] { 0, 2 }, filas.Select(f => f.Index).ToArray());
+        Assert.AreEqual(0, grid.SelectedRows.Count, "La selección por celdas no puebla SelectedRows.");
+        Assert.AreEqual(2, grid.SelectedCells.Count);
+    }
+
+    /// <summary>
+    /// Deduplica celdas de la MISMA fila (varias columnas ⇒ una sola fila) y
+    /// conserva el orden ascendente con una segunda fila.
+    /// </summary>
+    [TestMethod]
+    public void FilasSeleccionadas_DeduplicaCeldasDeLaMismaFila()
+    {
+        using var grid = CrearGrid(
+            new[]
+            {
+                Col("col_Clave", "Clave", new ColumnaMaterial { NombreInterno = "Clave" }),
+                Col("col_PrecioUnitario", "PrecioUnitario", new ColumnaMaterial { NombreInterno = "PrecioUnitario" }),
+            },
+            new[]
+            {
+                new MaterialListItem(1, "MAT-1", "A", "kg", 1m, "", OrigenInsumo.Proyecto),
+                new MaterialListItem(2, "MAT-2", "B", "kg", 2m, "", OrigenInsumo.Proyecto),
+            });
+
+        grid.SelectionMode = DataGridViewSelectionMode.CellSelect;
+        grid.ClearSelection();
+        grid.Rows[1].Cells["col_Clave"].Selected = true;
+        grid.Rows[0].Cells["col_Clave"].Selected = true;
+        grid.Rows[0].Cells["col_PrecioUnitario"].Selected = true;
+
+        var filas = SeleccionGridHelper.FilasSeleccionadas(grid);
+
+        Assert.AreEqual(3, grid.SelectedCells.Count);
+        CollectionAssert.AreEqual(new[] { 0, 1 }, filas.Select(f => f.Index).ToArray(),
+            "Dos celdas de la fila 0 y una de la fila 1 ⇒ dos filas distintas ordenadas.");
+    }
+
+    /// <summary>
+    /// Cuando la selección puebla <c>SelectedRows</c> (fila completa: clic en
+    /// encabezado en CellSelect, o <c>FullRowSelect</c>), el helper devuelve esas
+    /// filas ordenadas.
+    /// </summary>
+    [TestMethod]
+    public void FilasSeleccionadas_ConSelectedRows_DevuelveEsasFilas()
+    {
+        using var grid = CrearGrid(
+            new[] { Col("col_Clave", "Clave", new ColumnaMaterial { NombreInterno = "Clave" }) },
+            new[]
+            {
+                new MaterialListItem(1, "MAT-1", "A", "kg", 1m, "", OrigenInsumo.Proyecto),
+                new MaterialListItem(2, "MAT-2", "B", "kg", 2m, "", OrigenInsumo.Proyecto),
+                new MaterialListItem(3, "MAT-3", "C", "kg", 3m, "", OrigenInsumo.Proyecto),
+            });
+
+        grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+        grid.ClearSelection();
+        grid.Rows[2].Selected = true;
+        grid.Rows[0].Selected = true;
+
+        var filas = SeleccionGridHelper.FilasSeleccionadas(grid);
+
+        Assert.AreEqual(2, grid.SelectedRows.Count);
+        CollectionAssert.AreEqual(new[] { 0, 2 }, filas.Select(f => f.Index).ToArray());
+    }
+
+    /// <summary>
+    /// Snapshot REAL: un overlay aplicado a UNA celda se pinta SÓLO en esa celda y
+    /// NO se derrama a otra columna de la misma fila (regresión H6a).
+    /// </summary>
+    [TestMethod]
+    public void OverlayDeUnaCelda_NoSeDerramaAOtrasColumnas()
+    {
+        using var ctx = CrearContexto();
+        var proyectoId = AgregarProyecto(ctx);
+
+        using var grid = CrearGrid(
+            new[]
+            {
+                Col("col_Clave", "Clave", new ColumnaMaterial { NombreInterno = "Clave" }),
+                Col("col_PrecioUnitario", "PrecioUnitario", new ColumnaMaterial { NombreInterno = "PrecioUnitario" }),
+            },
+            new[] { new MaterialListItem(7, "MAT-1", "Cemento", "kg", 12.5m, "", OrigenInsumo.Proyecto) });
+
+        grid.SelectionMode = DataGridViewSelectionMode.CellSelect;
+        grid.MultiSelect = true;
+
+        var formato = new CatalogoFormatoCeldas(grid, ctx, proyectoId, MaterialesTipo, Vista);
+        formato.Cargar();
+
+        grid.ClearSelection();
+        grid.Rows[0].Cells["col_PrecioUnitario"].Selected = true;
+        grid.CurrentCell = grid.Rows[0].Cells["col_PrecioUnitario"];
+
+        var direcciones = formato.ObtenerDireccionesSeleccionadas();
+        Assert.AreEqual(1, direcciones.Count, "Una celda seleccionada ⇒ una sola dirección.");
+        Assert.AreEqual("PrecioUnitario", direcciones[0].NombreColumna);
+
+        formato.AplicarOverlayCelda(direcciones[0], new ReportStyleOverlay(ColorFondo: "#112233", Negrita: true));
+
+        var estiloPrecio = new DataGridViewCellStyle();
+        formato.AplicarOverride(new DataGridViewCellFormattingEventArgs(
+            grid.Columns["col_PrecioUnitario"].Index, 0, value: null, desiredType: null, estiloPrecio));
+        Assert.AreEqual(Color.FromArgb(0x11, 0x22, 0x33), estiloPrecio.BackColor, "La celda formateada recibe el overlay.");
+        Assert.IsTrue(estiloPrecio.Font!.Bold);
+
+        var estiloClave = new DataGridViewCellStyle();
+        formato.AplicarOverride(new DataGridViewCellFormattingEventArgs(
+            grid.Columns["col_Clave"].Index, 0, value: null, desiredType: null, estiloClave));
+        Assert.AreNotEqual(Color.FromArgb(0x11, 0x22, 0x33), estiloClave.BackColor,
+            "El overlay de una celda NO se derrama a otra columna de la misma fila.");
+    }
+
+    /// <summary>
+    /// Las operaciones por FILA (consolidación) siguen resolviendo la selección a
+    /// través del helper: dos celdas en filas distintas habilitan la consolidación
+    /// aunque <c>SelectedRows</c> quede vacío bajo CellSelect.
+    /// </summary>
+    [TestMethod]
+    public void Materiales_ConsolidacionResuelveFilasDesdeSeleccionDeCeldas()
+    {
+        using var ctx = CrearContexto();
+        var proyectoId = AgregarProyecto(ctx);
+
+        using var form = new FormCatalogoMateriales(ctx, proyectoId);
+        var grid = form.GridPrincipal;
+        grid.BindingContext = new BindingContext();
+        grid.DataSource = new List<MaterialListItem>
+        {
+            new(1, "MAT-1", "Cemento", "kg", 10m, "", OrigenInsumo.Proyecto),
+            new(2, "MAT-2", "Arena", "m3", 20m, "", OrigenInsumo.Proyecto),
+        };
+
+        grid.ClearSelection();
+        grid.Rows[0].Cells[0].Selected = true;
+        grid.Rows[1].Cells[0].Selected = true;
+
+        Assert.AreEqual(0, grid.SelectedRows.Count, "CellSelect por celdas no puebla SelectedRows.");
+        Assert.IsTrue(form.ConsolidacionDisponible, "Dos filas distintas (por celdas) habilitan consolidación.");
+
+        var seleccion = form.ObtenerSeleccionConsolidable();
+
+        Assert.AreEqual(2, seleccion.Count);
+        CollectionAssert.AreEquivalent(new[] { 1, 2 }, seleccion.Select(s => s.Id).ToArray());
+    }
+
+    /// <summary>
+    /// Sin regresión: cuando la última interacción fue sobre el ENCABEZADO de una
+    /// columna, el catálogo no reporta selección de CELDAS (el ribbon mantiene el
+    /// destino Columna), aunque existan celdas seleccionadas en el grid.
+    /// </summary>
+    [TestMethod]
+    public void Catalogo_SeleccionPorEncabezado_NoReportaSeleccionDeCeldas()
+    {
+        using var ctx = CrearContexto();
+        var proyectoId = AgregarProyecto(ctx);
+
+        using var grid = CrearGrid(
+            new[] { Col("col_Clave", "Clave", new ColumnaMaterial { NombreInterno = "Clave" }) },
+            new[] { new MaterialListItem(7, "MAT-1", "A", "kg", 1m, "", OrigenInsumo.Proyecto) });
+
+        var formato = new CatalogoFormatoCeldas(grid, ctx, proyectoId, MaterialesTipo, Vista);
+        formato.Cargar();
+
+        grid.Rows[0].Cells["col_Clave"].Selected = true;
+        formato.SeleccionPorEncabezado = true;
+
+        Assert.IsFalse(formato.TieneSeleccionCeldas, "El encabezado ⇒ destino Columna, no celdas.");
+        Assert.AreEqual(0, formato.ObtenerDireccionesSeleccionadas().Count);
     }
 
     private const string MaterialesTipo = "Materiales";

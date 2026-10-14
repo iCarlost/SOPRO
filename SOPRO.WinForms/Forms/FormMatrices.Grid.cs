@@ -30,8 +30,7 @@ namespace SOPRO.WinForms.Forms
             dgvMatrices.AllowUserToAddRows = false;
             dgvMatrices.AllowUserToDeleteRows = false;
             dgvMatrices.ReadOnly = true;
-            dgvMatrices.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvMatrices.MultiSelect = true;
+            ConfigurarSeleccionPorCelda(dgvMatrices);
             dgvMatrices.BackgroundColor = Color.White;
             dgvMatrices.BorderStyle = BorderStyle.None;
             dgvMatrices.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
@@ -99,6 +98,19 @@ namespace SOPRO.WinForms.Forms
             _cargandoColumnas = false;
         }
 
+        /// <summary>
+        /// H6b: el formato por celda exige selección tipo Excel. El grid se diseñó
+        /// con <c>FullRowSelect</c>, donde un clic sobre UNA celda seleccionaba TODA
+        /// la fila y el ribbon aplicaba el override a todas sus columnas. Se fija
+        /// <see cref="DataGridViewSelectionMode.CellSelect"/> (+<c>MultiSelect</c>
+        /// para rango con Shift / multi-rango con Ctrl), igual que Explosión,
+        /// Indirectos, Presupuesto, Programa de Obra e Insumos. Las operaciones por
+        /// FILA siguen resolviéndose con <see cref="SeleccionGridHelper.FilasSeleccionadas"/>.
+        /// El encabezado sigue resolviéndose por COLUMNA.
+        /// </summary>
+        internal static void ConfigurarSeleccionPorCelda(DataGridView grid)
+            => SeleccionGridHelper.ConfigurarSeleccionPorCelda(grid);
+
         private void DgvMatrices_ColumnWidthChanged(object sender, DataGridViewColumnEventArgs e)
         {
             if (_cargandoColumnas || e?.Column == null) return;
@@ -162,8 +174,8 @@ namespace SOPRO.WinForms.Forms
         // ═══════════════════ Formato por celda (paso 5.2) ═══════════════════
         // Selección tipo Excel → direcciones ESTABLES (sin índices visuales) →
         // persistencia por lote con FormatoReporteService (TipoReporte = "APU") →
-        // undo/redo como UNA acción compuesta. Se conserva FullRowSelect/MultiSelect/
-        // ReadOnly: la selección de filas produce una dirección por celda formateable.
+        // undo/redo como UNA acción compuesta. Se usa CellSelect/MultiSelect/ReadOnly
+        // (H6b): con FullRowSelect la selección de una celda abarcaba toda la fila.
 
         /// <summary>
         /// Entidad de dominio de la fila (Tag explícito o el <c>Matriz</c> del

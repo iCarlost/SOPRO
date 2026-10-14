@@ -64,7 +64,11 @@ namespace SOPRO.WinForms.Forms
             if (e.Button != MouseButtons.Right || e.RowIndex < 0) return;
 
             var clickedRow = dgvMatrices.Rows[e.RowIndex];
-            if (!clickedRow.Selected)
+            // Con CellSelect (H6b) una fila está "seleccionada" cuando alguna de sus
+            // celdas lo está: se resuelve vía helper para no borrar una multiselección
+            // de celdas en varias filas al abrir el menú contextual.
+            var filasSeleccionadas = SeleccionGridHelper.FilasSeleccionadas(dgvMatrices);
+            if (filasSeleccionadas.All(r => r.Index != clickedRow.Index))
             {
                 dgvMatrices.ClearSelection();
                 clickedRow.Selected = true;
@@ -78,7 +82,7 @@ namespace SOPRO.WinForms.Forms
 
             _menuMatrices?.Dispose();
             _menuMatrices = new ContextMenuStrip();
-            int n = dgvMatrices.SelectedRows.Cast<DataGridViewRow>().Count(r => !r.IsNewRow);
+            int n = SeleccionGridHelper.FilasSeleccionadas(dgvMatrices).Count(r => !r.IsNewRow);
             var itemEditar = _menuMatrices.Items.Add("✏️  Editar");
             itemEditar.Enabled = n == 1 && _matrizSeleccionada != null;
             itemEditar.Click += (_, __) => btnEditar_Click(sender, EventArgs.Empty);

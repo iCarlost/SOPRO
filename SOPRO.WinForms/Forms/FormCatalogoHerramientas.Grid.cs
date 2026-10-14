@@ -27,7 +27,9 @@ namespace SOPRO.WinForms.Forms
             dgvHerramientas.AllowUserToAddRows = false;
             dgvHerramientas.AllowUserToDeleteRows = false;
             dgvHerramientas.ReadOnly = true;
-            dgvHerramientas.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            // Selección tipo Excel por CELDA: el formato de una celda NO se derrama a
+            // toda la fila. Las operaciones por fila usan SeleccionGridHelper.FilasSeleccionadas.
+            SeleccionGridHelper.ConfigurarSeleccionPorCelda(dgvHerramientas);
             Helpers.DgvCeldaHelper.Aplicar(dgvHerramientas, conMenuCopia: false);
             dgvHerramientas.CellMouseDown += DgvHerramientas_CellMouseDown;
             dgvHerramientas.MultiSelect = true;

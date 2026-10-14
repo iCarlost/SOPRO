@@ -43,7 +43,7 @@ namespace SOPRO.WinForms.Forms
         public ColumnaPersonalizada ColumnaSeleccionada => _columnaRibbon;
 
 
-        public bool ConsolidacionDisponible => _proyectoId.HasValue && dgvMaquinaria.SelectedRows.Count >= 2;
+        public bool ConsolidacionDisponible => _proyectoId.HasValue && SeleccionGridHelper.FilasSeleccionadas(dgvMaquinaria).Count >= 2;
         public string NombreTipoConsolidacion => "Maquinaria / Equipo";
 
 

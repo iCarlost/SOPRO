@@ -80,7 +80,8 @@ namespace SOPRO.WinForms.Forms
                 }
             };
 
-            int _nFilas = dgvHerramientas.SelectedRows.Count;
+            var _filasSeleccionadas = SeleccionGridHelper.FilasSeleccionadas(dgvHerramientas);
+            int _nFilas = _filasSeleccionadas.Count;
             string _labelFila = _nFilas > 1 ? $"📄  Copiar {_nFilas} filas" : "📄  Copiar fila";
             var itemCopiarFila = menu.Items.Add(_labelFila);
             itemCopiarFila.Click += (_, __) =>
@@ -89,7 +90,7 @@ namespace SOPRO.WinForms.Forms
                     .Where(i => dgvHerramientas.Columns[i].Visible)
                     .OrderBy(i => dgvHerramientas.Columns[i].DisplayIndex).ToList();
                 var sb = new System.Text.StringBuilder();
-                foreach (DataGridViewRow r in dgvHerramientas.SelectedRows.Cast<DataGridViewRow>().OrderBy(r => r.Index))
+                foreach (DataGridViewRow r in _filasSeleccionadas)
                     sb.AppendLine(string.Join("\t", cols.Select(i => r.Cells[i].FormattedValue?.ToString() ?? "")));
                 if (sb.Length > 0) Clipboard.SetText(sb.ToString().TrimEnd());
             };

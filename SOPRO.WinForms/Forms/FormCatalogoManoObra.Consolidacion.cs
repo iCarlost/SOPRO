@@ -21,13 +21,12 @@ namespace SOPRO.WinForms.Forms
     public partial class FormCatalogoManoObra
     {
 
-        public bool ConsolidacionDisponible => _proyectoId.HasValue && dgvManoObra.SelectedRows.Count >= 2;
+        public bool ConsolidacionDisponible => _proyectoId.HasValue && SeleccionGridHelper.FilasSeleccionadas(dgvManoObra).Count >= 2;
         public string NombreTipoConsolidacion => "Mano de Obra";
 
         public IReadOnlyList<ConsolidacionInsumoItem> ObtenerSeleccionConsolidable()
         {
-            return dgvManoObra.SelectedRows
-                .Cast<DataGridViewRow>()
+            return SeleccionGridHelper.FilasSeleccionadas(dgvManoObra)
                 .Select(r => r.DataBoundItem as ManoDeObra)
                 .Where(x => x != null)
                 .GroupBy(x => x.Id)
@@ -52,8 +51,7 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            var seleccion = dgvManoObra.SelectedRows
-                .Cast<DataGridViewRow>()
+            var seleccion = SeleccionGridHelper.FilasSeleccionadas(dgvManoObra)
                 .Select(r => r.DataBoundItem as ManoDeObra)
                 .Where(x => x != null)
                 .GroupBy(x => x.Id)

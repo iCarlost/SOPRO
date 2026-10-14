@@ -29,7 +29,9 @@ namespace SOPRO.WinForms.Forms
             dgvMaquinaria.AllowUserToAddRows = false;
             dgvMaquinaria.AllowUserToDeleteRows = false;
             dgvMaquinaria.ReadOnly = true;
-            dgvMaquinaria.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            // Selección tipo Excel por CELDA: el formato de una celda NO se derrama a
+            // toda la fila. Las operaciones por fila usan SeleccionGridHelper.FilasSeleccionadas.
+            SeleccionGridHelper.ConfigurarSeleccionPorCelda(dgvMaquinaria);
             Helpers.DgvCeldaHelper.Aplicar(dgvMaquinaria, conMenuCopia: false);
             dgvMaquinaria.CellFormatting += DgvMaquinaria_CellFormatting;
             dgvMaquinaria.KeyDown += DgvMaquinaria_KeyDown;
