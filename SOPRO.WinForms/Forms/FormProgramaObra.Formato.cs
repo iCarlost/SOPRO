@@ -477,6 +477,41 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
+        /// Restablece la apariencia configurada del Programa de Obra del proyecto
+        /// actual: elimina los overrides de celda y los estilos de fila persistidos
+        /// del par (ProyectoId, <see cref="FormatoTipoReporte"/>) —sólo de ESTE tipo
+        /// de reporte— e invalida las cachés en memoria, de modo que el repintado use
+        /// los defaults (conceptos con fondo blanco, agrupadores con su color por
+        /// defecto). Un fallo al limpiar la persistencia se registra para diagnóstico
+        /// y NO interrumpe el flujo de borrado del programa.
+        /// </summary>
+        internal void RestablecerFormatoProgramaObra()
+        {
+            try
+            {
+                FormatoService.EliminarCeldas(_proyecto.Id, FormatoTipoReporte);
+                FormatoService.EliminarEstilosFila(_proyecto.Id, FormatoTipoReporte);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"RestablecerFormatoProgramaObra: {ex.Message}");
+            }
+
+            InvalidarCachesFormatoProgramaObra();
+        }
+
+        /// <summary>
+        /// Descarta las cachés en memoria del formato de Programa de Obra; la próxima
+        /// consulta recarga desde la base (ya sin overrides tras el reset).
+        /// </summary>
+        private void InvalidarCachesFormatoProgramaObra()
+        {
+            _overlaysFormato = null;
+            _estilosFilaFormato = null;
+            _estilosFilaFormatoProyectoId = -1;
+        }
+
+        /// <summary>
         /// Construye el snapshot neutral del Programa de Obra poblado con los overrides
         /// de celda/rol persistidos. NO lee del <c>DataGridView</c>.
         /// </summary>

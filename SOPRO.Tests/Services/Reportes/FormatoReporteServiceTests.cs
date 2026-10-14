@@ -1,6 +1,7 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.Tests.TestInfrastructure;
@@ -316,6 +317,115 @@ public class FormatoReporteServiceTests
 
         ctx.ChangeTracker.Clear();
         Assert.AreEqual(0, ctx.ConfiguracionesEstiloFilaReporte.Count(f => f.ProyectoId == proyectoId));
+    }
+
+    // ─────────────────── Borrado masivo por (proyecto, tipo) ───────────────────
+
+    [TestMethod]
+    public void EliminarCeldas_SoloBorraElParPedidoYDevuelveElConteo()
+    {
+        using var ctx = TestDbFactory.CreateContext();
+        var proyectoA = AgregarProyecto(ctx, "A");
+        var proyectoB = AgregarProyecto(ctx, "B");
+        var service = new FormatoReporteService(ctx);
+
+        // Dos overrides del par pedido (A, Tipo).
+        service.UpsertCelda(proyectoA, Tipo, string.Empty, "C:1", "ImporteTotal",
+            new ReportStyleOverlay(ColorFondo: "#111111"));
+        service.UpsertCelda(proyectoA, Tipo, string.Empty, "C:2", "ImporteTotal",
+            new ReportStyleOverlay(ColorFondo: "#222222"));
+        // Otro tipo del MISMO proyecto y otro proyecto: no deben tocarse.
+        service.UpsertCelda(proyectoA, "APU", string.Empty, "C:1", "ImporteTotal",
+            new ReportStyleOverlay(ColorFondo: "#333333"));
+        service.UpsertCelda(proyectoB, Tipo, string.Empty, "C:1", "ImporteTotal",
+            new ReportStyleOverlay(ColorFondo: "#444444"));
+
+        var borrados = service.EliminarCeldas(proyectoA, Tipo);
+
+        Assert.AreEqual(2, borrados, "Debe devolver el conteo de filas eliminadas del par pedido.");
+
+        ctx.ChangeTracker.Clear();
+        Assert.AreEqual(0, service.CargarCeldas(proyectoA, Tipo).Count, "El (proyecto, tipo) borrado queda vacío.");
+        Assert.AreEqual(1, service.CargarCeldas(proyectoA, "APU").Count, "Otro tipo del mismo proyecto queda intacto.");
+        Assert.AreEqual(1, service.CargarCeldas(proyectoB, Tipo).Count, "Otro proyecto queda intacto.");
+        Assert.AreEqual(2, ctx.FormatosCeldaReporte.Count(), "Sólo se borraron las filas del par pedido.");
+    }
+
+    [TestMethod]
+    public void EliminarCeldas_SinFilas_DevuelveCero()
+    {
+        using var ctx = TestDbFactory.CreateContext();
+        var proyectoId = AgregarProyecto(ctx);
+        var service = new FormatoReporteService(ctx);
+
+        Assert.AreEqual(0, service.EliminarCeldas(proyectoId, Tipo));
+        Assert.AreEqual(0, ctx.FormatosCeldaReporte.Count());
+    }
+
+    [TestMethod]
+    public void EliminarEstilosFila_SoloBorraElParPedidoYDevuelveElConteo()
+    {
+        using var ctx = TestDbFactory.CreateContext();
+        var proyectoA = AgregarProyecto(ctx, "A");
+        var proyectoB = AgregarProyecto(ctx, "B");
+        var service = new FormatoReporteService(ctx);
+
+        service.UpsertEstiloFila(proyectoA, Tipo, RolFilaReporte.Total,
+            new ReportStyleOverlay(ColorFondo: "#111111"));
+        service.UpsertEstiloFila(proyectoA, Tipo, RolFilaReporte.Subtotal,
+            new ReportStyleOverlay(ColorFondo: "#222222"));
+        service.UpsertEstiloFila(proyectoA, "APU", RolFilaReporte.Total,
+            new ReportStyleOverlay(ColorFondo: "#333333"));
+        service.UpsertEstiloFila(proyectoB, Tipo, RolFilaReporte.Total,
+            new ReportStyleOverlay(ColorFondo: "#444444"));
+
+        var borrados = service.EliminarEstilosFila(proyectoA, Tipo);
+
+        Assert.AreEqual(2, borrados, "Debe devolver el conteo de estilos eliminados del par pedido.");
+
+        ctx.ChangeTracker.Clear();
+        Assert.AreEqual(0, service.CargarEstilosFila(proyectoA, Tipo).Count, "El (proyecto, tipo) borrado queda vacío.");
+        Assert.AreEqual(1, service.CargarEstilosFila(proyectoA, "APU").Count, "Otro tipo del mismo proyecto queda intacto.");
+        Assert.AreEqual(1, service.CargarEstilosFila(proyectoB, Tipo).Count, "Otro proyecto queda intacto.");
+        Assert.AreEqual(2, ctx.ConfiguracionesEstiloFilaReporte.Count(), "Sólo se borraron las filas del par pedido.");
+    }
+
+    [TestMethod]
+    public void EliminarCeldas_DejaElSnapshotSinOverrides_VuelveALosDefaults()
+    {
+        using var ctx = TestDbFactory.CreateContext();
+        var proyectoId = AgregarProyecto(ctx);
+        var service = new FormatoReporteService(ctx);
+
+        service.UpsertCelda(proyectoId, Tipo, string.Empty, ClaveFilaReporte.Concepto(1), "ImporteTotal",
+            new ReportStyleOverlay(ColorFondo: "#FF0000", Negrita: true));
+
+        var antes = new ReportStyleSnapshotBuilder(service).Build(SnapshotBase(proyectoId));
+        Assert.IsNotNull(antes.EstilosCelda, "Antes del borrado el override debe poblar el snapshot.");
+
+        service.EliminarCeldas(proyectoId, Tipo);
+        ctx.ChangeTracker.Clear();
+
+        var despues = new ReportStyleSnapshotBuilder(service).Build(SnapshotBase(proyectoId));
+        Assert.IsNull(despues.EstilosCelda,
+            "Tras borrar el formato, la resolución vuelve a los defaults (sin overrides persistidos).");
+    }
+
+    private static ReportColumnSnapshot SnapshotBase(int proyectoId) =>
+        new PresupuestoReportSnapshotBuilder().Build(proyectoId, "P", Array.Empty<ColumnaPersonalizada>())
+        with
+        {
+            TipoReporte = Tipo,
+        };
+
+    [TestMethod]
+    public void EliminarMasivo_ProyectoInvalido_Lanza()
+    {
+        using var ctx = TestDbFactory.CreateContext();
+        var service = new FormatoReporteService(ctx);
+
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => service.EliminarCeldas(0, Tipo));
+        Assert.ThrowsExactly<ArgumentException>(() => service.EliminarEstilosFila(1, string.Empty));
     }
 
     // ─────────────────── Validaciones de cabecera ───────────────────

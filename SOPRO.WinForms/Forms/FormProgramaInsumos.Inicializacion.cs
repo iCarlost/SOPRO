@@ -30,8 +30,8 @@ namespace SOPRO.WinForms.Forms
             var proyFresco = _context.Proyectos.Find(_proyecto.Id);
             if (proyFresco != null)
             {
-                _proyecto.DecimalesCantidad   = proyFresco.DecimalesCantidad;
-                _proyecto.DecimalesImporte    = proyFresco.DecimalesImporte;
+                _proyecto.DecimalesCantidad = proyFresco.DecimalesCantidad;
+                _proyecto.DecimalesImporte = proyFresco.DecimalesImporte;
                 _proyecto.DecimalesPorcentaje = proyFresco.DecimalesPorcentaje;
             }
             if (IsHandleCreated)
@@ -60,7 +60,12 @@ namespace SOPRO.WinForms.Forms
             dgvProgramaInsumos.AllowUserToDeleteRows = false;
             dgvProgramaInsumos.AllowUserToResizeRows = false;
             dgvProgramaInsumos.ReadOnly = true;
-            dgvProgramaInsumos.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            // H4: el formato por celda exige selección tipo Excel. Con FullRowSelect un
+            // clic sobre UNA celda seleccionaba TODA la fila y el ribbon aplicaba el
+            // override a todas sus columnas. CellSelect (+MultiSelect) hace que la
+            // dirección sea la de la celda realmente seleccionada (igual que Explosión,
+            // Indirectos, Presupuesto y Programa de Obra).
+            dgvProgramaInsumos.SelectionMode = DataGridViewSelectionMode.CellSelect;
             dgvProgramaInsumos.AllowUserToOrderColumns = false;
             dgvProgramaInsumos.ColumnHeadersHeight = 36;
             dgvProgramaInsumos.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;

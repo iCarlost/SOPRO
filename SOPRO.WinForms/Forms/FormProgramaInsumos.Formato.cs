@@ -60,13 +60,41 @@ namespace SOPRO.WinForms.Forms
             return base.ProcessCmdKey(ref msg, keyData);
         }
 
-        /// <summary>Conecta los eventos del grid con el formato por celda.</summary>
+        /// <summary>
+        /// Conecta los eventos del grid con el formato por celda.
+        /// </summary>
         private void InicializarFormatoProgramaInsumos()
         {
+            // H4: el formato por celda exige selección tipo Excel. El grid se diseñó
+            // con FullRowSelect, donde un clic sobre UNA celda seleccionaba TODA la
+            // fila: SelectedCells devolvía todas las columnas y el ribbon aplicaba el
+            // override a la fila completa. Se fija CellSelect (+MultiSelect para rango
+            // con Shift / multi-rango con Ctrl) igual que Explosión, Indirectos,
+            // Presupuesto y Programa de Obra, de modo que la dirección de celda sea la
+            // de la celda realmente seleccionada. El encabezado sigue resolviéndose por
+            // COLUMNA. Se configura también aquí (y no sólo en ConfigurarGrid) para que
+            // la corrección persista aunque el Designer se regenere.
+            ConfigurarSeleccionPorCelda(dgvProgramaInsumos);
+
             dgvProgramaInsumos.CellMouseDown += DgvInsumos_CellMouseDownFormato;
             dgvProgramaInsumos.ColumnHeaderMouseClick += DgvInsumos_ColumnHeaderMouseClickFormato;
             dgvProgramaInsumos.SelectionChanged += DgvInsumos_SelectionChangedFormato;
             dgvProgramaInsumos.CellFormatting += DgvInsumos_CellFormattingFormato;
+        }
+
+        /// <summary>
+        /// Fuerza en el grid la selección POR CELDAS (tipo Excel): fija
+        /// <see cref="DataGridViewSelectionMode.CellSelect"/> y habilita
+        /// multi-selección para que un rango (Shift) o varios rangos (Ctrl) se
+        /// reporten como celdas concretas. Es requisito del formato por celda: con
+        /// <c>FullRowSelect</c> el clic sobre una celda selecciona TODA la fila y el
+        /// ribbon aplicaría el override a todas sus columnas (hallazgo H4).
+        /// </summary>
+        internal static void ConfigurarSeleccionPorCelda(DataGridView grid)
+        {
+            if (grid is null) return;
+            grid.SelectionMode = DataGridViewSelectionMode.CellSelect;
+            grid.MultiSelect = true;
         }
 
         /// <summary>

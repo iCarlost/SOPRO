@@ -125,6 +125,28 @@ public sealed class FormatoReporteService
         return resultado;
     }
 
+    /// <summary>
+    /// Borrado MASIVO de los overrides de celda del (ProyectoId, TipoReporte)
+    /// pedido: se cargan las filas del par con UNA sola consulta, se eliminan en
+    /// bloque y se persisten con UN único <c>SaveChanges</c>. Devuelve el número de
+    /// overrides eliminados. NO toca otros proyectos ni otros tipos de reporte del
+    /// mismo proyecto.
+    /// </summary>
+    public int EliminarCeldas(int proyectoId, string tipoReporte)
+    {
+        ValidarCabecera(proyectoId, tipoReporte);
+
+        var filas = _context.FormatosCeldaReporte
+            .Where(f => f.ProyectoId == proyectoId && f.TipoReporte == tipoReporte)
+            .ToList();
+
+        if (filas.Count == 0) return 0;
+
+        _context.FormatosCeldaReporte.RemoveRange(filas);
+        _context.SaveChanges();
+        return filas.Count;
+    }
+
     // ═══════════════════ Estilos semánticos por rol de fila ═══════════════════
 
     /// <summary>
@@ -173,6 +195,27 @@ public sealed class FormatoReporteService
             resultado[fila.RolFila] = AOverlay(fila);
 
         return resultado;
+    }
+
+    /// <summary>
+    /// Borrado MASIVO de los estilos semánticos de fila del (ProyectoId,
+    /// TipoReporte) pedido, con el mismo patrón que <see cref="EliminarCeldas"/>
+    /// (una consulta + un <c>SaveChanges</c>). Devuelve el número de estilos
+    /// eliminados. NO toca otros proyectos ni otros tipos de reporte.
+    /// </summary>
+    public int EliminarEstilosFila(int proyectoId, string tipoReporte)
+    {
+        ValidarCabecera(proyectoId, tipoReporte);
+
+        var filas = _context.ConfiguracionesEstiloFilaReporte
+            .Where(f => f.ProyectoId == proyectoId && f.TipoReporte == tipoReporte)
+            .ToList();
+
+        if (filas.Count == 0) return 0;
+
+        _context.ConfiguracionesEstiloFilaReporte.RemoveRange(filas);
+        _context.SaveChanges();
+        return filas.Count;
     }
 
     // ═══════════════════════════ Lotes transaccionales ═══════════════════════════
