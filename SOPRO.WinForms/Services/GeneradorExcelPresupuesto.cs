@@ -344,7 +344,7 @@ namespace SOPRO.WinForms.Services
             return fila + 1;
         }
 
-        private static object ResolverValorConcepto(
+        internal static object ResolverValorConcepto(
             ConceptoPresupuesto concepto,
             string nombreInterno,
             int consecutivo,
@@ -609,29 +609,6 @@ namespace SOPRO.WinForms.Services
                     Nivel = agr.nivel
                 });
             }
-        }
-
-        private void AgregarRecursivo(List<ConceptoPresupuesto> nodos,
-                                       List<ConceptoPresupuesto> todos,
-                                       List<ConceptoPresupuesto> resultado)
-        {
-            foreach (var n in nodos)
-            {
-                resultado.Add(n);
-                var hijos = todos.Where(c => c.PadreId == n.Id).OrderBy(c => c.Orden).ToList();
-                if (hijos.Any())
-                    AgregarRecursivo(hijos, todos, resultado);
-            }
-        }
-
-        private bool EsDescendiente(int conceptoId, int agrupadorId,
-                                     List<ConceptoPresupuesto> todos)
-        {
-            var concepto = todos.FirstOrDefault(c => c.Id == conceptoId);
-            if (concepto == null) return false;
-            if (concepto.PadreId == agrupadorId) return true;
-            if (concepto.PadreId == null) return false;
-            return EsDescendiente(concepto.PadreId.Value, agrupadorId, todos);
         }
 
         private static XLAlignmentHorizontalValues ConvertirAlineacionXL(ReportTextAlignment alineacion) => alineacion switch

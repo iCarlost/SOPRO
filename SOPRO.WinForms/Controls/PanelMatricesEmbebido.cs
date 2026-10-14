@@ -1684,28 +1684,13 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
         }
 
         /// <summary>
-        /// Calcula el factor de indirectos (igual que en FormPresupuesto)
+        /// Factor de indirectos del proyecto. Delega en
+        /// <see cref="BudgetPricingService.CalculateFactor"/> (única fuente de verdad);
+        /// el panel ya NO mantiene una copia de la fórmula, que además comparaba el
+        /// modo de cálculo de forma sensible a mayúsculas (divergía del servicio).
         /// </summary>
-        private decimal CalcularFactorPU()
-        {
-            var proyecto = _context.Proyectos.Find(_proyectoId);
-            if (proyecto == null) return 1m;
-            
-            decimal pInd    = proyecto.PorcentajeIndirectosCentral + proyecto.PorcentajeIndirectosCampo;
-            decimal pFin    = proyecto.PorcentajeFinanciamiento;
-            decimal pUtil   = proyecto.PorcentajeUtilidad;
-            decimal pCargos = proyecto.PorcentajeCargosAdicionales;
-
-            if (proyecto.ModoCalculoPorcentajes == "SobreCD")
-                return 1m + (pInd + pFin + pUtil + pCargos) / 100m;
-
-            decimal f = 1m;
-            f *= (1m + pInd    / 100m);
-            f *= (1m + pFin    / 100m);
-            f *= (1m + pUtil   / 100m);
-            f *= (1m + pCargos / 100m);
-            return f;
-        }
+        internal static decimal CalcularFactorPU(Proyecto proyecto)
+            => BudgetPricingService.CalculateFactor(proyecto);
         
         /// <summary>
         /// Maneja el evento de cambio de configuración de decimales

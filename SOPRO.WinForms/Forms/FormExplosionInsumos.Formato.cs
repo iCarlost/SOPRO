@@ -300,6 +300,22 @@ namespace SOPRO.WinForms.Forms
                 FlushFormatoPendiente();
         }
 
+        // Ctrl+Z / Ctrl+Y deshacen/rehacen el último lote de formato de celdas de la
+        // explosión. Se replica el patrón de FormPresupuesto; el grid es de solo
+        // lectura, así que nunca queda en edición.
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == (Keys.Control | Keys.Z) && !dgvExplosion.IsCurrentCellInEditMode
+                && _undoManager.Undo())
+                return true;
+
+            if (keyData == (Keys.Control | Keys.Y) && !dgvExplosion.IsCurrentCellInEditMode
+                && _undoManager.Redo())
+                return true;
+
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
         private void FlushFormatoPendiente()
         {
             _flushFormatoProgramado = false;

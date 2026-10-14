@@ -79,7 +79,7 @@ namespace SOPRO.WinForms.Services
             // Título tabla
             Merge(ws, f, 1, f, totalCols, string.Empty,
                 EstiloEncabezadoFsr.ColorFondo!, "#FFFFFF", 11, bold: true, height: 22);
-            ReportTitleStyleHelper.ApplyToClosedXmlTitle(ws.Range(f, 1, f, totalCols), tituloCfg, "TABLA DE CALCULO DEL FACTOR DE SALARIO REAL", EstiloEncabezadoFsr.ColorFondo!);
+            ReportTitleStyleHelper.ApplyToClosedXmlTitle(ws.Range(f, 1, f, totalCols), tituloCfg, "TABLA DE CÁLCULO DEL FACTOR DE SALARIO REAL", EstiloEncabezadoFsr.ColorFondo!);
             f++;
 
             // Encabezado columnas (desde el snapshot neutral)
@@ -137,7 +137,7 @@ namespace SOPRO.WinForms.Services
 
             // ── CALCULO ───────────────────────────────────────────────────────
             f++;
-            SeccionFSR(ws, f++, "CALCULO");
+            SeccionFSR(ws, f++, "CÁLCULO");
 
             SubseccionFSR(ws, f++, "De datos básicos a utilizar");
             FilaFSR(ws, f++, "Salario Mínimo General (D.F.)", "", "", c.FSR_SAMI);

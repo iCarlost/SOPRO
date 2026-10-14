@@ -464,7 +464,7 @@ namespace SOPRO.WinForms.Services
             }
         }
 
-        private static object ResolverValorConceptoPdf(ConceptoPresupuesto concepto, string nombreInterno, int consecutivo,
+        internal static object ResolverValorConceptoPdf(ConceptoPresupuesto concepto, string nombreInterno, int consecutivo,
             decimal factorPU, BudgetGridRowDisplay rowDisplay, string indent)
         {
             bool esAgrupador = concepto.EsAgrupador;
@@ -476,7 +476,11 @@ namespace SOPRO.WinForms.Services
                 "Unidad" => esAgrupador ? string.Empty : (concepto.Unidad ?? string.Empty),
                 "Cantidad" => esAgrupador ? string.Empty : concepto.Cantidad,
                 "PrecioUnitario" => esAgrupador ? string.Empty : (concepto.PrecioUnitario > 0 ? concepto.PrecioUnitario : concepto.CostoDirectoUnitario * factorPU),
-                "ImporteTotal" or "Importe" => esAgrupador ? string.Empty : (concepto.ImporteTotal > 0 ? concepto.ImporteTotal : concepto.Cantidad * concepto.CostoDirectoUnitario * factorPU),
+                // Paridad EXACTA con Excel (GeneradorExcelPresupuesto.ResolverValorConcepto):
+                // el agrupador muestra su ImporteTotal cuando es > 0 y, si no, vacío.
+                "ImporteTotal" or "Importe" => esAgrupador
+                    ? (concepto.ImporteTotal > 0 ? (object)concepto.ImporteTotal : string.Empty)
+                    : (concepto.ImporteTotal > 0 ? (object)concepto.ImporteTotal : concepto.Cantidad * concepto.CostoDirectoUnitario * factorPU),
                 _ => ObtenerValorDesdeDisplay(rowDisplay, nombreInterno)
             };
         }

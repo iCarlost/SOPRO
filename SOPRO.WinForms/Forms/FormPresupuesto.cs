@@ -950,63 +950,6 @@ namespace SOPRO.WinForms.Forms
             formExplosion.ShowDialog(this);
         }
 
-        /// <summary>
-        /// Calcula el valor de una columna calculada basándose en su fórmula
-        /// </summary>
-        private object CalcularColumnaCalculada(ColumnaPersonalizada columna, int rowIndex)
-        {
-            if (string.IsNullOrWhiteSpace(columna.Formula)) return null;
-
-            try
-            {
-                string formula = columna.Formula;
-
-                // Reemplazar nombres de columnas por sus valores
-                var regex = new System.Text.RegularExpressions.Regex(@"\b[A-Za-z_][A-Za-z0-9_]*\b");
-                var matches = regex.Matches(formula);
-
-                foreach (System.Text.RegularExpressions.Match match in matches)
-                {
-                    string nombreColumna = match.Value;
-
-                    // Obtener valor de la columna referenciada
-                    var cell = ObtenerCeldaPorNombreInterno(rowIndex, nombreColumna);
-                    if (cell?.Value != null)
-                    {
-                        string valorStr = cell.Value.ToString()
-                            .Replace("$", "")
-                            .Replace(",", "")
-                            .Replace("%", "")
-                            .Trim();
-
-                        if (decimal.TryParse(valorStr, out decimal valor))
-                        {
-                            formula = formula.Replace(nombreColumna, valor.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                        }
-                    }
-                    else
-                    {
-                        formula = formula.Replace(nombreColumna, "0");
-                    }
-                }
-
-                // Evaluar expresión matemática
-                var dataTable = new System.Data.DataTable();
-                var resultado = dataTable.Compute(formula, "");
-
-                if (resultado != null && decimal.TryParse(resultado.ToString(), out decimal resultadoDecimal))
-                {
-                    return resultadoDecimal;
-                }
-
-                return null;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             // Guardar orden visual de columnas antes de cerrar

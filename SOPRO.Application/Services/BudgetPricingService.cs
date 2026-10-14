@@ -118,7 +118,14 @@ namespace SOPRO.Application.Services
                 return $"CERO {moneda} 00/100 {centavos}";
 
             long parteEntera = (long)Math.Floor(numero);
-            int parteDecimal = (int)Math.Round((numero - parteEntera) * 100);
+            int parteDecimal = (int)Math.Round((numero - parteEntera) * 100, MidpointRounding.AwayFromZero);
+            // El redondeo de centavos puede llegar a 100 (p. ej. 0.999 → 99.9 → 100);
+            // en ese caso se acarrea a la parte entera para no emitir "…100/100".
+            if (parteDecimal == 100)
+            {
+                parteEntera += 1;
+                parteDecimal = 0;
+            }
             string letras = ConvertirEnteroALetras(parteEntera);
             return $"{letras} {moneda} {parteDecimal:00}/100 {centavos}";
         }

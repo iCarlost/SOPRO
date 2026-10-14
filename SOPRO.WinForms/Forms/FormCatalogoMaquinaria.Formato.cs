@@ -151,6 +151,22 @@ namespace SOPRO.WinForms.Forms
             dgvMaquinaria.DataBindingComplete += (_, __) => _formatoCeldas.Cargar();
         }
 
+        // Ctrl+Z / Ctrl+Y deshacen/rehacen el último lote de formato de celdas.
+        // Se replica el patrón de FormPresupuesto; no se interceptan mientras el
+        // grid está en edición (para no robar los atajos de la celda).
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == (Keys.Control | Keys.Z) && !dgvMaquinaria.IsCurrentCellInEditMode
+                && _formatoCeldas is not null && _formatoCeldas.TryUndo())
+                return true;
+
+            if (keyData == (Keys.Control | Keys.Y) && !dgvMaquinaria.IsCurrentCellInEditMode
+                && _formatoCeldas is not null && _formatoCeldas.TryRedo())
+                return true;
+
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
         private void DgvMaquinaria_CellMouseDownFormato(object sender, DataGridViewCellMouseEventArgs e)
         {
             if (e.RowIndex >= 0) _formatoCeldas.SeleccionPorEncabezado = false;
