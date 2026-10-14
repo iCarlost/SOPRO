@@ -58,6 +58,9 @@ namespace SOPRO.WinForms.Forms
                     fila.InteresPeriodo.ToString("N4", CultureInfo.CurrentCulture));
 
                 var row = dgvFlujo.Rows[idx];
+                // Paso 6.4: la fila conserva la entidad del período para derivar su
+                // clave ESTABLE (PER:{NumeroPeriodo}) en el formato por celda.
+                row.Tag = fila;
                 if (fila.SaldoAcumulado < 0)
                     row.DefaultCellStyle.BackColor = Color.FromArgb(255, 235, 235);
                 else if (fila.SaldoAcumulado > 0)

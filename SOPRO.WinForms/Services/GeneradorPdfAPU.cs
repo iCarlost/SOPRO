@@ -38,6 +38,14 @@ namespace SOPRO.WinForms.Services
         /// <summary>Snapshot vigente de la corrida (aporta decimales y estilos).</summary>
         private ReportColumnSnapshot? _snapshot;
 
+        /// <summary>
+        /// Snapshot SIN overrides de celda/fila: línea base para aislar QUÉ propiedad
+        /// aportó realmente un override (delta contra la cascada de tabla/columna).
+        /// Con snapshots sin estilos el delta es siempre vacío: el render conserva
+        /// EXACTAMENTE el comportamiento legacy.
+        /// </summary>
+        private ReportColumnSnapshot? _snapshotBase;
+
         public GeneradorPdfAPU(ReporteService svc, SOPROContext ctx)
         {
             _svc = svc;
@@ -51,11 +59,31 @@ namespace SOPRO.WinForms.Services
             ReportColumnSnapshot snapshot,
             string rutaDestino)
         {
+            var doc = ConstruirDocumento(proyecto, conceptos, plantilla, snapshot);
+            var renderer = new PdfDocumentRenderer() { Document = doc };
+            renderer.RenderDocument();
+            renderer.PdfDocument.Save(rutaDestino);
+            return rutaDestino;
+        }
+
+        /// <summary>
+        /// Construye el documento MigraDoc del APU SIN serializarlo. Es el SEAM que
+        /// permite a las pruebas inspeccionar las propiedades de las celdas
+        /// (fuentes, colores, shading) antes de generar el PDF. Sólo lee el snapshot
+        /// neutral + el dominio; nunca el grid.
+        /// </summary>
+        public Document ConstruirDocumento(
+            Proyecto proyecto,
+            List<ConceptoPresupuesto> conceptos,
+            PlantillaReporte plantilla,
+            ReportColumnSnapshot snapshot)
+        {
             ArgumentNullException.ThrowIfNull(proyecto);
             ArgumentNullException.ThrowIfNull(conceptos);
             ArgumentNullException.ThrowIfNull(plantilla);
             ArgumentNullException.ThrowIfNull(snapshot);
             _snapshot = snapshot;
+            _snapshotBase = snapshot with { EstilosCelda = null, EstilosFila = null };
 
             var conceptosConAPU = conceptos.Where(c => !c.EsAgrupador && c.MatrizId.HasValue).ToList();
             if (!conceptosConAPU.Any())
@@ -106,10 +134,7 @@ namespace SOPRO.WinForms.Services
                 numero++;
             }
 
-            var renderer = new PdfDocumentRenderer() { Document = doc };
-            renderer.RenderDocument();
-            renderer.PdfDocument.Save(rutaDestino);
-            return rutaDestino;
+            return doc;
         }
 
         private static void DefinirEstilos(Document doc)
@@ -363,6 +388,10 @@ namespace SOPRO.WinForms.Services
 
                     string fondoFila = (idx % 2 == 0) ? grupo.Color : "#FFFFFF";
                     var row = tabla!.AddRow();
+                    // Clave ESTABLE del componente: la MISMA que persiste el grid
+                    // (COMP:{ComponenteMatriz.Id}); así el override de celda sobrevive
+                    // a reordenamientos.
+                    string claveFilaComponente = ApuReportSnapshotBuilder.ClaveFilaComponente(comp.Id);
                     for (int i = 0; i < nCols; i++)
                     {
                         var col = cols[i];
@@ -373,6 +402,9 @@ namespace SOPRO.WinForms.Services
                         p.Format.Alignment = ConvertirAlineacion(col.Alineacion);
                         p.Format.SpaceBefore = 0;
                         p.Format.SpaceAfter = 0;
+                        // Override de celda/rol (máxima precedencia), resuelto sobre el
+                        // snapshot neutral. Sin overrides el delta es vacío.
+                        AplicarOverlayPdf(cell, p, OverrideEfectivo(claveFilaComponente, col.Identificador, null));
                         AplicarBordeInferior(cell);
                     }
 
@@ -491,6 +523,11 @@ namespace SOPRO.WinForms.Services
             var pPrecioVal = precioU.Cells[idxImporte].AddParagraph(FormatearMoneda(precioUnitario, snapshot));
             AplicarFuenteContenido(pPrecioVal.Format.Font, boldOverride: true);
             pPrecioVal.Format.Alignment = MParagraphAlignment.Right;
+            // Override de la fila de cierre PU:{ConceptoPresupuesto.Id}.
+            AplicarOverlayPdf(precioU.Cells[idxImporte], pPrecioVal, OverrideEfectivo(
+                ApuReportSnapshotBuilder.ClaveFilaPrecioUnitario(concepto.Id),
+                ApuExportResolver.IdentificadorImporte,
+                ApuReportSnapshotBuilder.RolFilaPrecioUnitario));
             for (int i = 0; i < nCols; i++)
                 AplicarBordeInferior(precioU.Cells[i]);
         }
@@ -613,6 +650,11 @@ namespace SOPRO.WinForms.Services
             titulo.Cells[0].VerticalAlignment = VerticalAlignment.Center;
             titulo.Cells[0].Borders.Visible = false;
             titulo.Cells[0].Format.SpaceAfter = Unit.FromCentimeter(0.08);
+            // Override de la fila de CONCEPTO (C:{ConceptoPresupuesto.Id}).
+            AplicarOverlayPdf(titulo.Cells[0], pTitulo, OverrideEfectivo(
+                ApuReportSnapshotBuilder.ClaveFilaConcepto(concepto.Id),
+                ApuExportResolver.IdentificadorDescripcion,
+                ApuReportSnapshotBuilder.RolFilaConcepto));
 
             var info1 = tabla.AddRow();
             info1.HeadingFormat = true;
@@ -672,6 +714,75 @@ namespace SOPRO.WinForms.Services
             cell.Borders.Left.Visible = false;
             cell.Borders.Right.Visible = false;
             cell.Borders.Top.Visible = false;
+        }
+
+        /// <summary>
+        /// Aísla las propiedades que un override de celda o un estilo de rol
+        /// REALMENTE aportaron, comparando el estilo resuelto con el de la cascada
+        /// base (tabla + columna, sin celda/rol). Con el snapshot base sin estilos,
+        /// TODAS las propiedades quedan <c>null</c> (retrocompatibilidad exacta con
+        /// el render legacy).
+        /// </summary>
+        private ReportStyleOverlay OverrideEfectivo(string claveFila, string nombreColumna, string? rolFila)
+        {
+            var snapshot = _snapshot ?? throw new InvalidOperationException("El snapshot no está inicializado.");
+            var snapshotBase = _snapshotBase ?? snapshot;
+
+            var completo = ReportCellStyleResolver.Resolve(
+                snapshot, ApuReportSnapshotBuilder.ClaveVista, claveFila, nombreColumna, rolFila, false);
+            var baseStyle = ReportCellStyleResolver.Resolve(
+                snapshotBase, ApuReportSnapshotBuilder.ClaveVista, claveFila, nombreColumna, null, false);
+
+            return new ReportStyleOverlay(
+                Fuente: completo.Fuente != baseStyle.Fuente ? completo.Fuente : null,
+                TamanoFuente: completo.TamanoFuente != baseStyle.TamanoFuente ? completo.TamanoFuente : null,
+                Negrita: completo.Negrita != baseStyle.Negrita ? completo.Negrita : null,
+                Cursiva: completo.Cursiva != baseStyle.Cursiva ? completo.Cursiva : null,
+                ColorFuente: completo.ColorFuente != baseStyle.ColorFuente ? completo.ColorFuente : null,
+                ColorFondo: completo.ColorFondo != baseStyle.ColorFondo ? completo.ColorFondo : null,
+                AlineacionHorizontal: completo.AlineacionHorizontal != baseStyle.AlineacionHorizontal ? completo.AlineacionHorizontal : null,
+                AlineacionVertical: completo.AlineacionVertical != baseStyle.AlineacionVertical ? completo.AlineacionVertical : null,
+                Wrap: completo.Wrap != baseStyle.Wrap ? completo.Wrap : null,
+                FormatoNumerico: completo.FormatoNumerico != baseStyle.FormatoNumerico ? completo.FormatoNumerico : null);
+        }
+
+        /// <summary>
+        /// Aplica a la celda (y a su párrafo) SOLO las propiedades no nulas del
+        /// override: fuente, tamaño, negrita, cursiva, color de texto y de fondo. El
+        /// formato numérico se conserva por columna vía <c>ReportColumnGridFormat</c>
+        /// (autoridad de cantidades/importes).
+        /// </summary>
+        private static void AplicarOverlayPdf(Cell cell, Paragraph? parrafo, ReportStyleOverlay overrideEfectivo)
+        {
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.Fuente))
+            {
+                var nombre = PdfFontHelper.NormalizeFontName(overrideEfectivo.Fuente);
+                cell.Format.Font.Name = nombre;
+                if (parrafo is not null) parrafo.Format.Font.Name = nombre;
+            }
+            if (overrideEfectivo.TamanoFuente is float tamano && tamano > 0)
+            {
+                cell.Format.Font.Size = tamano;
+                if (parrafo is not null) parrafo.Format.Font.Size = tamano;
+            }
+            if (overrideEfectivo.Negrita is bool negrita)
+            {
+                cell.Format.Font.Bold = negrita;
+                if (parrafo is not null) parrafo.Format.Font.Bold = negrita;
+            }
+            if (overrideEfectivo.Cursiva is bool cursiva)
+            {
+                cell.Format.Font.Italic = cursiva;
+                if (parrafo is not null) parrafo.Format.Font.Italic = cursiva;
+            }
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFuente))
+            {
+                var color = ParseColorSafe(overrideEfectivo.ColorFuente, "#000000");
+                cell.Format.Font.Color = color;
+                if (parrafo is not null) parrafo.Format.Font.Color = color;
+            }
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFondo))
+                cell.Shading.Color = ParseColorSafe(overrideEfectivo.ColorFondo, "#FFFFFF");
         }
 
         private static MParagraphAlignment ConvertirAlineacion(ReportTextAlignment a) => a switch

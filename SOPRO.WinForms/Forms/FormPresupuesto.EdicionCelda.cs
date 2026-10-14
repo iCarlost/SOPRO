@@ -5,7 +5,10 @@ using SOPRO.Application.DTOs.Presupuesto;
 using SOPRO.Application.DTOs.Catalog;
 using SOPRO.Application.DTOs.Matrices;
 using SOPRO.Application.Models.ExternalProjects;
+using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Reporting;
+using SOPRO.Reporting.Columns;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Services;
@@ -506,6 +509,288 @@ namespace SOPRO.WinForms.Forms
                     dgvPresupuesto.Rows[e.RowIndex].Cells[e.ColumnIndex].Style.BackColor = Color.White;
                 }));
             }
+        }
+
+        // ═══════════════════ Formato de celdas (paso 4.1) ═══════════════════
+        // Mapeo selección → direcciones ESTABLES (sin índices visuales), carga
+        // única del diccionario en memoria, persistencia por lote con
+        // FormatoReporteService y undo/redo como UNA acción compuesta.
+
+        /// <summary>
+        /// Clave RESTABLE de la fila para el formato de celdas, o <c>null</c> si la
+        /// fila no tiene una entidad persistida (fila vacía / sin concepto). Los
+        /// conceptos usan <c>C:{Id}</c>; los agrupadores (Capítulo/Subcapítulo/Nivel)
+        /// usan <c>SUB:{Id}</c> (único por fila), de modo que editar la celda de un
+        /// agrupador NO afecta a los demás aunque compartan <c>Clave</c>.
+        /// </summary>
+        internal static string? ObtenerClaveFilaFormato(DataGridView grid, int rowIndex)
+        {
+            if (grid is null) return null;
+            if (rowIndex < 0 || rowIndex >= grid.Rows.Count) return null;
+            if (grid.Rows[rowIndex].Tag is not ConceptoPresupuesto concepto) return null;
+            if (concepto.Id <= 0) return null;
+
+            return concepto.EsAgrupador
+                ? ClaveFilaReporte.Agrupador(concepto.Id)
+                : ClaveFilaReporte.Concepto(concepto.Id);
+        }
+
+        /// <summary>
+        /// Nombre del control de la columna sintética de numeración ("#") del grid.
+        /// No es data-bound (no tiene <see cref="ColumnaPersonalizada"/>), pero SÍ es
+        /// formateable y exportable con la clave canónica <c>Numero</c>.
+        /// </summary>
+        internal const string ColNumeroNombre = "colNumero";
+
+        /// <summary>
+        /// Clave ESTABLE de una columna del grid para el formato por celda
+        /// (direcciones <see cref="ReportCellAddress"/>), o <c>null</c> si la columna
+        /// no es exportable/formateable.
+        ///
+        /// Las columnas personalizadas usan su <see cref="ColumnaPersonalizada.NombreInterno"/>.
+        /// La columna sintética de numeración "#" (<c>colNumero</c>) no es data-bound
+        /// pero SÍ es exportable: se le asigna la clave canónica
+        /// <see cref="ReportColumnDefaults.NumeroIdentificador"/> (<c>Numero</c>), la
+        /// MISMA que anteponen PDF/Excel, de modo que el formato aplicado en el grid
+        /// también aparece en los reportes.
+        /// </summary>
+        internal static string? ObtenerClaveColumnaFormato(DataGridViewColumn? columna)
+        {
+            if (columna is null) return null;
+
+            if (columna.Tag is ColumnaPersonalizada col && !string.IsNullOrWhiteSpace(col.NombreInterno))
+                return col.NombreInterno;
+
+            if (string.Equals(columna.Name, ColNumeroNombre, StringComparison.OrdinalIgnoreCase))
+                return ReportColumnDefaults.NumeroIdentificador;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Identificador ESTABLE de la columna, o <c>null</c> si la columna no es
+        /// exportable/formateable (p. ej. las columnas auxiliares sin
+        /// <c>ColumnaPersonalizada</c>: colId). La columna de numeración "#" SÍ lo es
+        /// (clave canónica <c>Numero</c>).
+        /// </summary>
+        internal static string? ObtenerNombreColumnaFormato(DataGridView grid, int columnIndex)
+        {
+            if (grid is null) return null;
+            if (columnIndex < 0 || columnIndex >= grid.Columns.Count) return null;
+
+            return ObtenerClaveColumnaFormato(grid.Columns[columnIndex]);
+        }
+
+        /// <summary>
+        /// <c>true</c> si alguna columna del grid tiene la clave estable
+        /// <paramref name="nombreColumna"/>. Es la lógica de <c>EsCeldaFormateable</c>
+        /// extraída como función pura (verificable sin UI) y reutilizada por el grid.
+        /// </summary>
+        internal static bool EsNombreColumnaFormateable(DataGridView grid, string? nombreColumna)
+        {
+            if (grid is null || string.IsNullOrWhiteSpace(nombreColumna)) return false;
+
+            foreach (DataGridViewColumn col in grid.Columns)
+            {
+                var clave = ObtenerClaveColumnaFormato(col);
+                if (clave is not null && string.Equals(clave, nombreColumna, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Convierte las celdas seleccionadas en direcciones estables, descartando
+        /// filas sin entidad y columnas no exportables. NO deduplica: el
+        /// coordinador (Ctrl / rangos discontinuos) es quien deduplica y filtra.
+        /// </summary>
+        internal static IReadOnlyList<ReportCellAddress> ConstruirDireccionesSeleccionadas(
+            DataGridView grid,
+            IEnumerable<DataGridViewCell> celdas)
+        {
+            var direcciones = new List<ReportCellAddress>();
+            if (grid is null || celdas is null) return direcciones;
+
+            foreach (var celda in celdas)
+            {
+                if (celda is null || celda.RowIndex < 0 || celda.ColumnIndex < 0) continue;
+
+                var clave = ObtenerClaveFilaFormato(grid, celda.RowIndex);
+                if (clave is null) continue;
+
+                var columna = ObtenerNombreColumnaFormato(grid, celda.ColumnIndex);
+                if (columna is null) continue;
+
+                direcciones.Add(new ReportCellAddress(FormatoVistaPresupuesto, clave, columna));
+            }
+
+            return direcciones;
+        }
+
+        /// <summary>
+        /// Construye el lote que <see cref="FormatoReporteService.AplicarCeldas"/>
+        /// persiste: con <paramref name="aplicarAntes"/> se toma el estado "antes"
+        /// (undo) y en otro caso el "después" (do/redo). Un overlay <c>null</c>
+        /// indica BORRAR el override de esa celda.
+        /// </summary>
+        internal static IReadOnlyList<CambioFormatoCelda> ConstruirLoteCambios(
+            IEnumerable<CambioFormatoSeleccion> cambios,
+            bool aplicarAntes)
+        {
+            var lote = new List<CambioFormatoCelda>();
+            if (cambios is null) return lote;
+
+            foreach (var cambio in cambios)
+            {
+                if (cambio is null || cambio.Direccion is null) continue;
+
+                var vista = string.IsNullOrEmpty(cambio.Direccion.ClaveVista)
+                    ? FormatoVistaPresupuesto
+                    : cambio.Direccion.ClaveVista;
+
+                lote.Add(new CambioFormatoCelda(
+                    vista,
+                    cambio.Direccion.ClaveFila,
+                    cambio.Direccion.NombreColumna,
+                    aplicarAntes ? cambio.Antes : cambio.Despues));
+            }
+
+            return lote;
+        }
+
+        /// <summary>
+        /// Carga (UNA sola consulta por proyecto/tipo) los overrides persistidos en
+        /// el diccionario en memoria que consume el pintado. Se llama al abrir el
+        /// form y en cada recarga del presupuesto; nunca por celda.
+        /// </summary>
+        private void CargarOverlaysFormato()
+        {
+            try
+            {
+                _overlaysFormato = new Dictionary<ReportCellAddress, ReportStyleOverlay>(
+                    _formatoReporteService.CargarCeldas(_proyecto.Id, FormatoTipoReporte));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"CargarOverlaysFormato: {ex.Message}");
+                _overlaysFormato = new Dictionary<ReportCellAddress, ReportStyleOverlay>();
+            }
+        }
+
+        /// <summary>
+        /// Agrupa y persiste el lote aplicado desde el ribbon como UNA acción
+        /// compuesta de undo. Los pares antes/después se capturaron en
+        /// <see cref="AplicarOverlayCelda"/>; el flush se difiere un ciclo de
+        /// mensajes para que TODAS las celdas de la selección formen un solo lote.
+        /// </summary>
+        private void ProgramarFlushFormato()
+        {
+            if (_flushFormatoProgramado) return;
+            _flushFormatoProgramado = true;
+
+            if (IsHandleCreated && !IsDisposed)
+                BeginInvoke(new Action(FlushFormatoPendiente));
+            else
+                FlushFormatoPendiente();
+        }
+
+        private void FlushFormatoPendiente()
+        {
+            _flushFormatoProgramado = false;
+            if (_pendientesFormato.Count == 0) return;
+
+            var cambios = ColapsarCambiosFormato(_pendientesFormato);
+            _pendientesFormato.Clear();
+
+            var cambiosUndo = cambios
+                .Select(c => new UndoChange(c.Antes, c.Despues))
+                .ToList();
+
+            var accion = new CompositeUndoableAction(
+                $"Formato de {cambios.Count} celda(s) en presupuesto",
+                cambiosUndo,
+                _ => AplicarCambiosFormato(cambios, aplicarAntes: true),
+                _ => AplicarCambiosFormato(cambios, aplicarAntes: false));
+
+            try
+            {
+                // Execute aplica el "después" (persiste + repinta) y sólo si tiene
+                // éxito apila la acción; ante un fallo no queda nada a medias.
+                _undoManager.Execute(accion);
+            }
+            catch (Exception ex)
+            {
+                RevertirCambiosFormato(cambios);
+                MessageBox.Show(
+                    $"No se pudo guardar el formato de las celdas:\n{ex.Message}",
+                    "Formato",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// Colapsa los cambios pendientes a UNA entrada por dirección: el primer
+        /// "antes" observado y el último "después".
+        /// </summary>
+        private static List<CambioFormatoSeleccion> ColapsarCambiosFormato(
+            IEnumerable<CambioFormatoSeleccion> pendientes)
+        {
+            var orden = new List<ReportCellAddress>();
+            var antes = new Dictionary<ReportCellAddress, ReportStyleOverlay?>();
+            var despues = new Dictionary<ReportCellAddress, ReportStyleOverlay>();
+
+            foreach (var cambio in pendientes)
+            {
+                if (cambio is null || cambio.Direccion is null) continue;
+
+                if (!antes.ContainsKey(cambio.Direccion))
+                {
+                    orden.Add(cambio.Direccion);
+                    antes[cambio.Direccion] = cambio.Antes;
+                }
+                despues[cambio.Direccion] = cambio.Despues;
+            }
+
+            var resultado = new List<CambioFormatoSeleccion>(orden.Count);
+            foreach (var direccion in orden)
+                resultado.Add(new CambioFormatoSeleccion(direccion, antes[direccion], despues[direccion]));
+
+            return resultado;
+        }
+
+        /// <summary>
+        /// Persiste el lote (estado "antes" o "después") y actualiza el diccionario
+        /// en memoria + el pintado. Usado tanto por el "do" como por undo/redo.
+        /// </summary>
+        private void AplicarCambiosFormato(IReadOnlyList<CambioFormatoSeleccion> cambios, bool aplicarAntes)
+        {
+            _formatoReporteService.AplicarCeldas(
+                _proyecto.Id,
+                FormatoTipoReporte,
+                ConstruirLoteCambios(cambios, aplicarAntes));
+
+            foreach (var cambio in cambios)
+                EstablecerOverlayEnMemoria(cambio.Direccion, aplicarAntes ? cambio.Antes : cambio.Despues);
+
+            dgvPresupuesto.Invalidate();
+        }
+
+        private void RevertirCambiosFormato(IReadOnlyList<CambioFormatoSeleccion> cambios)
+        {
+            foreach (var cambio in cambios)
+                EstablecerOverlayEnMemoria(cambio.Direccion, cambio.Antes);
+
+            dgvPresupuesto.Invalidate();
+        }
+
+        private void EstablecerOverlayEnMemoria(ReportCellAddress direccion, ReportStyleOverlay? overlay)
+        {
+            if (overlay is null)
+                _overlaysFormato.Remove(direccion);
+            else
+                _overlaysFormato[direccion] = overlay;
         }
     }
 }

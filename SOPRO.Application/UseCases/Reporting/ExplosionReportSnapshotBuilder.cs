@@ -1,4 +1,6 @@
+using SOPRO.Application.Models.Explosion;
 using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Core.Entities;
 
 namespace SOPRO.Application.UseCases.Reporting;
@@ -61,4 +63,76 @@ public sealed class ExplosionReportSnapshotBuilder
             DecimalesPorcentaje = decimalesPorcentaje
         };
     }
+
+    /// <summary>
+    /// Clave de vista canónica del reporte de Explosión. Es la vista por defecto
+    /// (<c>""</c>), la MISMA que persiste el grid en <c>FormatoCeldaReporte.ClaveVista</c>
+    /// (ver <c>FormExplosionInsumos.FormatoVistaExplosion</c>), de modo que el
+    /// resolver de estilos coincide por igualdad exacta (o por comodín) en PDF/Excel.
+    /// </summary>
+    public const string ClaveVista = "";
+
+    /// <summary>Clave sintética estable de la fila de TOTAL GENERAL del reporte.</summary>
+    public const string ClaveFilaTotalGeneral = "TOTALGENERAL";
+
+    /// <summary>
+    /// Rol funcional de fila (<see cref="RolFilaReporte"/>) correspondiente al tipo
+    /// de renglón del grid (<see cref="ExplosionRowKind"/>). Es el punto único de
+    /// paridad grid↔PDF↔Excel para los estilos por rol.
+    /// </summary>
+    public static string? RolFila(ExplosionRowKind kind) => kind switch
+    {
+        ExplosionRowKind.Encabezado => RolFilaReporte.Encabezado,
+        ExplosionRowKind.Total => RolFilaReporte.Total,
+        ExplosionRowKind.TotalGeneral => RolFilaReporte.TotalGeneral,
+        ExplosionRowKind.Referencia => RolFilaReporte.Referencia,
+        ExplosionRowKind.Detalle => RolFilaReporte.Concepto,
+        _ => null,
+    };
+
+    /// <summary>
+    /// Clave de fila ESTABLE de la BANDA de sección (p. ej. "MATERIALES"):
+    /// <c>SEC:{seccion}</c>. Deriva de la sección (no del índice visual), de modo
+    /// que sobrevive a filtros y reordenamientos. Es EXACTAMENTE la que persiste el
+    /// grid en <c>FormatoCeldaReporte.ClaveFila</c>.
+    /// </summary>
+    public static string ClaveFilaSeccion(string? seccion) => "SEC:" + NormalizarClave(seccion);
+
+    /// <summary>
+    /// Clave de fila ESTABLE de un INSUMO (detalle): <c>D:{seccion}:{clave}</c>. La
+    /// sección evita colisiones entre insumos homónimos de familias distintas
+    /// (material vs. herramienta). Coincide con la que persiste el grid.
+    /// </summary>
+    public static string ClaveFilaDetalle(string? seccion, string? clave)
+        => "D:" + NormalizarClave(seccion) + ":" + (clave ?? string.Empty);
+
+    /// <summary>
+    /// Clave de fila ESTABLE del TOTAL de una sección: <c>T:{seccion}</c>.
+    /// </summary>
+    public static string ClaveFilaTotalSeccion(string? seccion) => "T:" + NormalizarClave(seccion);
+
+    /// <summary>
+    /// Clave de fila ESTABLE de una fila de REFERENCIA del grid, indexada por su
+    /// orden de aparición (0 = Costo Directo del Presupuesto, 1 = Diferencia por
+    /// redondeo).
+    /// </summary>
+    public static string ClaveFilaReferencia(int indice) => "REF:" + indice;
+
+    /// <summary>
+    /// Devuelve una copia del snapshot con <see cref="ReportColumnSnapshot.EstilosCelda"/>
+    /// y <see cref="ReportColumnSnapshot.EstilosFila"/> poblados desde la
+    /// configuración persistida del (proyecto, tipo) —overrides de celda y estilos
+    /// de rol del usuario—. Si no hay overrides, ambas colecciones quedan
+    /// <c>null</c> (retrocompatibilidad total). Mismo mecanismo que Presupuesto
+    /// (4.2) e Indirectos (5.1), aplicado a Explosión.
+    /// </summary>
+    public static ReportColumnSnapshot ConEstilos(ReportColumnSnapshot snapshot, FormatoReporteService formatos)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(formatos);
+        return new ReportStyleSnapshotBuilder(formatos).Build(snapshot);
+    }
+
+    private static string NormalizarClave(string? seccion)
+        => (seccion ?? string.Empty).Trim().ToUpperInvariant();
 }

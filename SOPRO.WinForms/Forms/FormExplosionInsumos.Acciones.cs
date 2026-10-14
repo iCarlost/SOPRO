@@ -31,25 +31,25 @@ namespace SOPRO.WinForms.Forms
                     return;
                 }
 
-                var svc      = new Services.ReporteService(_context);
+                var svc = new Services.ReporteService(_context);
                 var plantilla = svc.ObtenerPlantillaSoloLectura(_proyectoId);
                 // Snapshot neutral compartido con PDF: misma lista/orden/ancho/
                 // formato/estilo. Las columnas se leen sin persistir; si no hay, el
                 // resolver usa sus defaults EN MEMORIA (sin SaveChanges).
-                var columnas  = _context.ColumnasExplosion
+                var columnas = _context.ColumnasExplosion
                     .Where(c => c.ProyectoId == _proyectoId)
                     .OrderBy(c => c.Orden)
                     .ToList();
-                var snapshot  = ExplosionExportResolver.BuildSnapshot(
-                    _proyectoId, lblTitulo.Text, columnas,
-                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+                // Snapshot neutral poblado con los overrides de celda/rol persistidos
+                // (paso 6.1): misma fuente que PDF.
+                var snapshot = ConstruirSnapshotExplosion(columnas);
                 string filtro = cmbFiltro.SelectedItem?.ToString() ?? "Todos";
 
                 using var dlg = new SaveFileDialog
                 {
-                    Title      = "Guardar reporte Explosión de Insumos",
-                    Filter     = "Excel (*.xlsx)|*.xlsx",
-                    FileName   = $"ExplosionInsumos_{_proyecto.Nombre}_{DateTime.Now:yyyyMMdd}.xlsx",
+                    Title = "Guardar reporte Explosión de Insumos",
+                    Filter = "Excel (*.xlsx)|*.xlsx",
+                    FileName = $"ExplosionInsumos_{_proyecto.Nombre}_{DateTime.Now:yyyyMMdd}.xlsx",
                     DefaultExt = "xlsx"
                 };
                 if (dlg.ShowDialog() != DialogResult.OK) return;
@@ -74,7 +74,7 @@ namespace SOPRO.WinForms.Forms
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-        
+
         private void btnCerrar_Click(object sender, EventArgs e)
         {
             this.Close();

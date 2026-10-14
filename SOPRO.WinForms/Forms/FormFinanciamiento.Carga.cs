@@ -59,6 +59,7 @@ namespace SOPRO.WinForms.Forms
                         .Any(f => f.ConfiguracionFinanciamientoId == _config.Id))
                     CargarTablaFlujo();
                 AplicarLayoutColumnas();
+                CargarOverlaysFormato();
             }
             catch (Exception ex)
             {

@@ -1,0 +1,61 @@
+{
+  "Schema": "sopro.presupuesto.estilos-fila.defaults.1",
+  "Roles": [
+    {
+      "Rol": "Capitulo",
+      "ColorFondo": "#800080",
+      "ColorFuente": "#FFFFFF",
+      "Negrita": true,
+      "Cursiva": null
+    },
+    {
+      "Rol": "Subcapitulo",
+      "ColorFondo": "#ADD8E6",
+      "ColorFuente": "#000000",
+      "Negrita": true,
+      "Cursiva": null
+    },
+    {
+      "Rol": "Nivel1",
+      "ColorFondo": "#D3D3D3",
+      "ColorFuente": "#000000",
+      "Negrita": true,
+      "Cursiva": null
+    },
+    {
+      "Rol": "Nivel2",
+      "ColorFondo": "#D3D3D3",
+      "ColorFuente": "#000000",
+      "Negrita": true,
+      "Cursiva": null
+    },
+    {
+      "Rol": "Nivel3",
+      "ColorFondo": "#D3D3D3",
+      "ColorFuente": "#000000",
+      "Negrita": true,
+      "Cursiva": null
+    },
+    {
+      "Rol": "Subtotal",
+      "ColorFondo": "#E3F2FD",
+      "ColorFuente": "#000000",
+      "Negrita": true,
+      "Cursiva": null
+    },
+    {
+      "Rol": "Total",
+      "ColorFondo": "#BBDEFB",
+      "ColorFuente": "#000000",
+      "Negrita": true,
+      "Cursiva": null
+    },
+    {
+      "Rol": "Concepto",
+      "ColorFondo": null,
+      "ColorFuente": null,
+      "Negrita": null,
+      "Cursiva": null
+    }
+  ]
+}

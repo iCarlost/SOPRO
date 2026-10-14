@@ -178,8 +178,9 @@ namespace SOPRO.WinForms.Forms
 
         private void dgvMaquinaria_SelectionChanged(object sender, EventArgs e)
         {
-            _maquinariaSeleccionada = dgvMaquinaria.SelectedRows.Count > 0
-                ? dgvMaquinaria.SelectedRows[0].DataBoundItem as Maquinaria
+            var filas = SeleccionGridHelper.FilasSeleccionadas(dgvMaquinaria);
+            _maquinariaSeleccionada = filas.Count > 0
+                ? filas[0].DataBoundItem as Maquinaria
                 : null;
             ActualizarEstadoBotones();
         }

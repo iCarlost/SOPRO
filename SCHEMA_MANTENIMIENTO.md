@@ -31,7 +31,7 @@ Si tocas (1) y (2) sin tocar (3), los DBs viejos fallarán al abrirse con errore
 
 3. **Incrementar** `VersionActual`:
    ```csharp
-   public const string VersionActual = "2026.04.3";  // de .2 a .3
+   public const string VersionActual = "2026.04.4";  // de .3 a .4
    ```
 
 4. **Regla para columnas string NOT NULL nuevas**: si agregas una columna `string`
@@ -61,6 +61,7 @@ EnsureCurrentSchema(context)
 │   ├── M011_SanitizarNullsLegacy    ← NULLs en columnas string NOT NULL
 │   ├── M012_DisenadorEncabezadoPdf  ← PlantillasReporteElementos
 │   ├── M013_TablasIndirectosVistas  ← Grupos/Conceptos/ConfiguracionesIndirectos, VistasPresupuesto
+│   ├── M014_TablasFormatoReporte    ← FormatosCeldaReporte, ConfiguracionesEstiloFilaReporte
 │   └── RegistrarVersion             ← sella __MigracionesCustom con versión
 │
 └── RepararActividadesProgramadas(conn, context)
@@ -74,9 +75,49 @@ EnsureCurrentSchema(context)
 
 ```csharp
 string? version = SchemaManager.GetVersionRegistrada(context);
-// "2026.04.1" si ya pasó por SchemaManager
+// "2026.04.4" si ya pasó por SchemaManager
 // null si es un DB muy viejo (antes del SchemaManager)
 ```
+
+---
+
+## M014 — Tablas de formato de reporte (esquema `2026.04.4`)
+
+La migración `M014_TablasFormatoReporte` crea, dentro de la transacción principal
+(idempotente, `CREATE TABLE IF NOT EXISTS` + índices `CREATE UNIQUE INDEX IF NOT
+EXISTS`), las dos tablas de la feature de formato de celdas/estilos de reporte:
+
+| Tabla | Propósito | Índice único |
+|-------|-----------|--------------|
+| `FormatosCeldaReporte` | Override de estilo de UNA celda, por dirección estable (vista + fila + columna) | `IX_FormatosCeldaReporte_ProyectoId_TipoReporte_ClaveVista_ClaveFila_NombreColumna` |
+| `ConfiguracionesEstiloFilaReporte` | Estilo semántico de fila por ROL (`RolFila`) | `IX_ConfiguracionesEstiloFilaReporte_ProyectoId_TipoReporte_RolFila` |
+
+Detalles:
+
+- Ambas tienen `FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE
+  CASCADE`: borrar el proyecto elimina sus formatos (mismo patrón que
+  M003/M004/M005/M010/M013).
+- Las propiedades de estilo (`Fuente`, `TamanoFuente`, `Negrita`, `Cursiva`,
+  `ColorFuente`, `ColorFondo`, `AlineacionHorizontal`, `AlineacionVertical`,
+  `Wrap`, `FormatoNumerico`) son **NULLables**: `NULL` = heredar el estilo del
+  nivel inferior de la cascada, no "sin estilo".
+- `ClaveVista TEXT NOT NULL DEFAULT ''`: `''` = vista por defecto. SQLite permite
+  duplicados cuando una columna de un índice único es NULL; por eso `''` (y no
+  NULL) es la clave canónica y evita ese agujero del índice único. En el resolver
+  de estilos, una clave de vista vacía actúa como comodín.
+- `TipoReporte` guarda el identificador estable del reporte ("Presupuesto",
+  "APU", "Indirectos", "Explosion", "ProgramaObra", "ProgramaInsumos",
+  "Financiamiento", "Materiales", "ManoDeObra", "Herramientas", "Maquinaria",
+  "Utilidad", "FactorSalarioReal", "TabuladorFsr").
+- Entidades espejadas en `SOPRO.Core/Entities/FormatoCeldaReporte.cs` y
+  `SOPRO.Core/Entities/ConfiguracionEstiloFilaReporte.cs`; acceso centralizado
+  via `SOPRO.Application/Services/Reporting/FormatoReporteService.cs` (upsert
+  parcial; una fila sin ninguna propiedad de estilo se elimina en lugar de
+  persistirse vacía).
+- Con esta migración `VersionActual` pasó de `2026.04.3` a `2026.04.4`.
+
+Uso del formato y precedencia de estilos: ver
+[docs/formato-celdas-reportes.md](docs/formato-celdas-reportes.md).
 
 ---
 

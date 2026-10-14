@@ -18,13 +18,13 @@ namespace SOPRO.Data.Context
         public DbSet<ManoDeObra> ManoDeObra { get; set; }
         public DbSet<Maquinaria> Maquinaria { get; set; }
         public DbSet<Herramienta> Herramientas { get; set; }
-        
+
         // ═══════════════════════════════════════════════════════════
         // ANÁLISIS
         // ═══════════════════════════════════════════════════════════
         public DbSet<Matriz> Matrices { get; set; }
         public DbSet<ComponenteMatriz> ComponentesMatriz { get; set; }
-        
+
         // ═══════════════════════════════════════════════════════════
         // PRESUPUESTO
         // ═══════════════════════════════════════════════════════════
@@ -40,11 +40,11 @@ namespace SOPRO.Data.Context
         public DbSet<DistribucionPeriodo> DistribucionesPeriodo { get; set; }
         public DbSet<CalendarioLaboral> CalendariosLaborales { get; set; }
         public DbSet<ExcepcionCalendario> ExcepcionesCalendario { get; set; }
-        
+
         // Configuración de columnas de módulos de programación
         public DbSet<ColumnaProgramaObra> ColumnasProgramaObra { get; set; }
         public DbSet<ColumnaProgramaInsumos> ColumnasProgramaInsumos { get; set; }
-        
+
         // ═══════════════════════════════════════════════════════════
         // PARÁMETROS Y CONFIGURACIÓN
         // ═══════════════════════════════════════════════════════════
@@ -63,7 +63,7 @@ namespace SOPRO.Data.Context
         public DbSet<ConfiguracionIndirectos> ConfiguracionesIndirectos { get; set; }
         public DbSet<ConfiguracionFinanciamiento> ConfiguracionesFinanciamiento { get; set; }
         public DbSet<FilaFlujoCajaFinanciamiento> FilasFlujoCajaFinanciamiento { get; set; }
-        
+
         // ═══════════════════════════════════════════════════════════
         // REPORTES
         // ═══════════════════════════════════════════════════════════
@@ -71,11 +71,16 @@ namespace SOPRO.Data.Context
         public DbSet<PlantillaReporteElemento> PlantillasReporteElementos { get; set; }
         public DbSet<ConfigColumnaReporte> ConfigColumnasReporte { get; set; }
         public DbSet<ConfiguracionTituloReporte> ConfiguracionesTituloReporte { get; set; }
-        
+
+        // Persistencia relacional dispersa de estilos: overrides por celda y
+        // estilos semánticos por rol de fila (reemplazan colores hardcodeados).
+        public DbSet<FormatoCeldaReporte> FormatosCeldaReporte { get; set; }
+        public DbSet<ConfiguracionEstiloFilaReporte> ConfiguracionesEstiloFilaReporte { get; set; }
+
         // Ruta del archivo de base de datos
         private readonly string _dbPath;
         public string DatabasePath => _dbPath;
-        
+
         /// <summary>
         /// Constructor por defecto (para catálogo maestro)
         /// </summary>
@@ -87,7 +92,7 @@ namespace SOPRO.Data.Context
                 "CatalogoMaestro.db"
             );
         }
-        
+
         /// <summary>
         /// Constructor con ruta específica (para proyectos)
         /// </summary>
@@ -95,7 +100,7 @@ namespace SOPRO.Data.Context
         {
             _dbPath = dbPath;
         }
-        
+
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             if (!optionsBuilder.IsConfigured)
@@ -103,11 +108,11 @@ namespace SOPRO.Data.Context
                 optionsBuilder.UseSqlite($"Data Source={_dbPath}");
             }
         }
-        
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
-            
+
             // ═══════════════════════════════════════════════════════════
             // CONFIGURACIÓN DE PROYECTO
             // ═══════════════════════════════════════════════════════════
@@ -123,7 +128,7 @@ namespace SOPRO.Data.Context
                 entity.Property(e => e.PorcentajeIVA).HasPrecision(18, 4);
                 entity.Property(e => e.FactorSalarioReal).HasPrecision(18, 6);
             });
-            
+
             // ═══════════════════════════════════════════════════════════
             // CONFIGURACIÓN DE MATERIALES
             // ═══════════════════════════════════════════════════════════
@@ -134,15 +139,15 @@ namespace SOPRO.Data.Context
                 entity.Property(e => e.Descripcion).IsRequired().HasMaxLength(500);
                 entity.Property(e => e.Unidad).IsRequired().HasMaxLength(20);
                 entity.Property(e => e.PrecioUnitario).HasPrecision(18, 4);
-                
+
                 entity.HasOne(e => e.Proyecto)
                     .WithMany(p => p.Materiales)
                     .HasForeignKey(e => e.ProyectoId)
                     .OnDelete(DeleteBehavior.Cascade);
-                
+
                 entity.HasIndex(e => new { e.ProyectoId, e.Clave }).IsUnique();
             });
-            
+
             // ═══════════════════════════════════════════════════════════
             // CONFIGURACIÓN DE MANO DE OBRA
             // ═══════════════════════════════════════════════════════════
@@ -155,15 +160,15 @@ namespace SOPRO.Data.Context
                 entity.Property(e => e.SalarioBase).HasPrecision(18, 4);
                 entity.Property(e => e.FactorSalarioReal).HasPrecision(18, 6);
                 entity.Property(e => e.SalarioReal).HasPrecision(18, 4);
-                
+
                 entity.HasOne(e => e.Proyecto)
                     .WithMany(p => p.ManoDeObra)
                     .HasForeignKey(e => e.ProyectoId)
                     .OnDelete(DeleteBehavior.Cascade);
-                
+
                 entity.HasIndex(e => new { e.ProyectoId, e.Clave }).IsUnique();
             });
-            
+
             // ═══════════════════════════════════════════════════════════
             // CONFIGURACIÓN DE MAQUINARIA
             // ═══════════════════════════════════════════════════════════
@@ -172,7 +177,7 @@ namespace SOPRO.Data.Context
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Clave).IsRequired().HasMaxLength(50);
                 entity.Property(e => e.Descripcion).IsRequired().HasMaxLength(500);
-                
+
                 // Campos con precisión decimal
                 entity.Property(e => e.PotenciaNominal).HasPrecision(18, 2);
                 entity.Property(e => e.ValorAdquisicion).HasPrecision(18, 2);
@@ -194,15 +199,15 @@ namespace SOPRO.Data.Context
                 entity.Property(e => e.FactorSalarioReal).HasPrecision(18, 6);
                 entity.Property(e => e.HorasEfectivasTurno).HasPrecision(18, 2);
                 entity.Property(e => e.CostoHorario).HasPrecision(18, 4);
-                
+
                 entity.HasOne(e => e.Proyecto)
                     .WithMany(p => p.Maquinaria)
                     .HasForeignKey(e => e.ProyectoId)
                     .OnDelete(DeleteBehavior.Cascade);
-                
+
                 entity.HasIndex(e => new { e.ProyectoId, e.Clave }).IsUnique();
             });
-            
+
             // ═══════════════════════════════════════════════════════════
             // CONFIGURACIÓN DE MATRICES (APU / BÁSICOS)
             // ═══════════════════════════════════════════════════════════
@@ -213,15 +218,15 @@ namespace SOPRO.Data.Context
                 entity.Property(e => e.Descripcion).IsRequired().HasMaxLength(2000);
                 entity.Property(e => e.Unidad).IsRequired().HasMaxLength(20);
                 entity.Property(e => e.CostoDirecto).HasPrecision(18, 4);
-                
+
                 entity.HasOne(e => e.Proyecto)
                     .WithMany()
                     .HasForeignKey(e => e.ProyectoId)
                     .OnDelete(DeleteBehavior.Cascade);
-                
+
                 entity.HasIndex(e => new { e.ProyectoId, e.Clave }).IsUnique();
             });
-            
+
             // ═══════════════════════════════════════════════════════════
             // CONFIGURACIÓN DE COMPONENTES DE MATRIZ
             // ═══════════════════════════════════════════════════════════
@@ -231,33 +236,33 @@ namespace SOPRO.Data.Context
                 entity.Property(e => e.Cantidad).HasPrecision(18, 6);
                 entity.Property(e => e.Rendimiento).HasPrecision(18, 5);
                 entity.Property(e => e.Importe).HasPrecision(18, 4);
-                
+
                 entity.HasOne(e => e.Matriz)
                     .WithMany(m => m.Componentes)
                     .HasForeignKey(e => e.MatrizId)
                     .OnDelete(DeleteBehavior.Cascade);
-                
+
                 entity.HasOne(e => e.Material)
                     .WithMany()
                     .HasForeignKey(e => e.MaterialId)
                     .OnDelete(DeleteBehavior.Restrict);
-                
+
                 entity.HasOne(e => e.ManoDeObra)
                     .WithMany()
                     .HasForeignKey(e => e.ManoDeObraId)
                     .OnDelete(DeleteBehavior.Restrict);
-                
+
                 entity.HasOne(e => e.Maquinaria)
                     .WithMany()
                     .HasForeignKey(e => e.MaquinariaId)
                     .OnDelete(DeleteBehavior.Restrict);
-                
+
                 entity.HasOne(e => e.Auxiliar)
                     .WithMany()
                     .HasForeignKey(e => e.AuxiliarId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
-            
+
             // ═══════════════════════════════════════════════════════════
             // CONFIGURACIÓN DE CONCEPTOS DE PRESUPUESTO (CON JERARQUÍA)
             // ═══════════════════════════════════════════════════════════
@@ -267,7 +272,7 @@ namespace SOPRO.Data.Context
                 entity.Property(e => e.Clave).HasMaxLength(50);
                 entity.Property(e => e.Descripcion).IsRequired().HasMaxLength(2000);
                 entity.Property(e => e.Unidad).HasMaxLength(20); // No es Required, puede ser null en agrupadores
-                
+
                 entity.Property(e => e.Cantidad).HasPrecision(18, 6);
                 entity.Property(e => e.CostoDirectoUnitario).HasPrecision(18, 4);
                 entity.Property(e => e.CostoDirectoTotal).HasPrecision(18, 4);
@@ -277,28 +282,28 @@ namespace SOPRO.Data.Context
                 entity.Property(e => e.CargosAdicionales).HasPrecision(18, 4);
                 entity.Property(e => e.PrecioUnitario).HasPrecision(18, 4);
                 entity.Property(e => e.ImporteTotal).HasPrecision(18, 4);
-                
+
                 // Relación con Proyecto
                 entity.HasOne(e => e.Proyecto)
                     .WithMany(p => p.Conceptos)
                     .HasForeignKey(e => e.ProyectoId)
                     .OnDelete(DeleteBehavior.Cascade);
-                
+
                 // Relación jerárquica (padre-hijos)
                 entity.HasOne(e => e.Padre)
                     .WithMany(p => p.Hijos)
                     .HasForeignKey(e => e.PadreId)
                     .OnDelete(DeleteBehavior.Restrict);
-                
+
                 // Relación con Matriz (APU)
                 entity.HasOne(e => e.Matriz)
                     .WithMany()
                     .HasForeignKey(e => e.MatrizId)
                     .OnDelete(DeleteBehavior.Restrict);
-                
+
                 entity.HasIndex(e => new { e.ProyectoId, e.Orden });
             });
-            
+
             // ═══════════════════════════════════════════════════════════
             // CONFIGURACIÓN DE PROGRAMACIÓN DE OBRA
             // ═══════════════════════════════════════════════════════════
@@ -480,10 +485,10 @@ namespace SOPRO.Data.Context
                     .WithMany()
                     .HasForeignKey(e => e.ProyectoId)
                     .OnDelete(DeleteBehavior.Cascade);
-                
+
                 entity.HasIndex(e => new { e.ProyectoId, e.NombreInterno }).IsUnique();
             });
-            
+
             // ═══════════════════════════════════════════════════════════
             // CONFIGURACIÓN DE VISTAS DE PRESUPUESTO
             // ═══════════════════════════════════════════════════════════
@@ -597,13 +602,13 @@ namespace SOPRO.Data.Context
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Nombre).IsRequired().HasMaxLength(100);
-                
+
                 entity.HasOne(e => e.Proyecto)
                     .WithMany()
                     .HasForeignKey(e => e.ProyectoId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
-            
+
             // ═══════════════════════════════════════════════════════════
             // CONFIGURACIÓN DE INDIRECTOS
             // ═══════════════════════════════════════════════════════════
@@ -611,29 +616,29 @@ namespace SOPRO.Data.Context
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Nombre).IsRequired().HasMaxLength(200);
-                
+
                 entity.HasOne(e => e.Proyecto)
                     .WithMany()
                     .HasForeignKey(e => e.ProyectoId)
                     .OnDelete(DeleteBehavior.Cascade);
-                
+
                 entity.HasIndex(e => new { e.ProyectoId, e.Orden });
             });
-            
+
             modelBuilder.Entity<ConceptoIndirecto>(entity =>
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Concepto).IsRequired().HasMaxLength(200);
                 entity.Property(e => e.ImporteMensual).HasPrecision(18, 2);
-                
+
                 entity.HasOne(e => e.GrupoIndirecto)
                     .WithMany(g => g.Conceptos)
                     .HasForeignKey(e => e.GrupoIndirectoId)
                     .OnDelete(DeleteBehavior.Cascade);
-                
+
                 entity.HasIndex(e => new { e.GrupoIndirectoId, e.Orden });
             });
-            
+
             modelBuilder.Entity<ConfiguracionFinanciamiento>(entity =>
             {
                 entity.HasKey(e => e.Id);
@@ -675,13 +680,13 @@ namespace SOPRO.Data.Context
                 entity.Property(e => e.TotalCampo).HasPrecision(18, 2);
                 entity.Property(e => e.PorcentajeOficinaCentral).HasPrecision(18, 4);
                 entity.Property(e => e.PorcentajeCampo).HasPrecision(18, 4);
-                
+
                 entity.HasOne(e => e.Proyecto)
                     .WithMany()
                     .HasForeignKey(e => e.ProyectoId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
-            
+
             // ═══════════════════════════════════════════════════════════
             // CONFIGURACIÓN DE REPORTES
             // ═══════════════════════════════════════════════════════════
@@ -713,7 +718,7 @@ namespace SOPRO.Data.Context
                 entity.Property(e => e.ImagenRutaOrigen).IsRequired(false);
                 entity.Property(e => e.ImagenMimeType).IsRequired(false);
             });
-            
+
             modelBuilder.Entity<ConfigColumnaReporte>(entity =>
             {
                 entity.HasKey(e => e.Id);
@@ -739,6 +744,51 @@ namespace SOPRO.Data.Context
                     .HasForeignKey(e => e.ProyectoId)
                     .OnDelete(DeleteBehavior.Cascade);
                 entity.HasIndex(e => new { e.ProyectoId, e.Modulo }).IsUnique();
+            });
+
+            modelBuilder.Entity<FormatoCeldaReporte>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.TipoReporte).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.ClaveVista).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.ClaveFila).IsRequired().HasMaxLength(200);
+                entity.Property(e => e.NombreColumna).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Fuente).HasMaxLength(100);
+                entity.Property(e => e.ColorFuente).HasMaxLength(20);
+                entity.Property(e => e.ColorFondo).HasMaxLength(20);
+                entity.Property(e => e.AlineacionHorizontal).HasMaxLength(30);
+                entity.Property(e => e.AlineacionVertical).HasMaxLength(30);
+                entity.Property(e => e.FormatoNumerico).HasMaxLength(50);
+                entity.HasOne(e => e.Proyecto)
+                    .WithMany()
+                    .HasForeignKey(e => e.ProyectoId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasIndex(e => new
+                {
+                    e.ProyectoId,
+                    e.TipoReporte,
+                    e.ClaveVista,
+                    e.ClaveFila,
+                    e.NombreColumna
+                }).IsUnique();
+            });
+
+            modelBuilder.Entity<ConfiguracionEstiloFilaReporte>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.TipoReporte).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.RolFila).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Fuente).HasMaxLength(100);
+                entity.Property(e => e.ColorFuente).HasMaxLength(20);
+                entity.Property(e => e.ColorFondo).HasMaxLength(20);
+                entity.Property(e => e.AlineacionHorizontal).HasMaxLength(30);
+                entity.Property(e => e.AlineacionVertical).HasMaxLength(30);
+                entity.Property(e => e.FormatoNumerico).HasMaxLength(50);
+                entity.HasOne(e => e.Proyecto)
+                    .WithMany()
+                    .HasForeignKey(e => e.ProyectoId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasIndex(e => new { e.ProyectoId, e.TipoReporte, e.RolFila }).IsUnique();
             });
         }
     }

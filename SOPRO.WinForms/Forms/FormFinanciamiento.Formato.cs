@@ -108,8 +108,7 @@ namespace SOPRO.WinForms.Forms
             dgvFlujo.AllowUserToDeleteRows = false;
             dgvFlujo.AllowUserToResizeRows = false;
             dgvFlujo.ReadOnly = true;
-            dgvFlujo.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgvFlujo.MultiSelect = true;
+            ConfigurarSeleccionPorCelda(dgvFlujo);
             dgvFlujo.AllowUserToOrderColumns = false;
             dgvFlujo.ColumnHeadersHeight = 40;
             dgvFlujo.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
@@ -127,10 +126,31 @@ namespace SOPRO.WinForms.Forms
             dgvFlujo.ScrollBars = ScrollBars.Both;
             DgvCeldaHelper.Aplicar(dgvFlujo);
             dgvFlujo.ColumnWidthChanged += dgvFlujo_ColumnWidthChanged;
-            dgvFlujo.ColumnHeaderMouseClick += (s, e) => NotificarColumnaSeleccionada(e.ColumnIndex);
+            dgvFlujo.ColumnHeaderMouseClick += (s, e) =>
+            {
+                _seleccionPorEncabezado = true;
+                NotificarColumnaSeleccionada(e.ColumnIndex);
+            };
+            // Paso 6.4: distinguir interacción de cuerpo (destino CELDAS) de
+            // encabezado (destino COLUMNA) y pintar los overrides de celda.
+            dgvFlujo.CellMouseDown += DgvFlujo_CellMouseDownFormato;
+            dgvFlujo.SelectionChanged += DgvFlujo_SelectionChangedFormato;
+            dgvFlujo.CellFormatting += DgvFlujo_CellFormattingFormato;
 
             foreach (DataGridViewColumn col in dgvFlujo.Columns)
                 col.SortMode = DataGridViewColumnSortMode.NotSortable;
         }
+
+        /// <summary>
+        /// H6b: el formato por celda exige selección tipo Excel. El grid se diseñó
+        /// con <c>FullRowSelect</c>, donde un clic sobre UNA celda seleccionaba TODA
+        /// la fila y el ribbon aplicaba el override a todas sus columnas. Se fija
+        /// <see cref="DataGridViewSelectionMode.CellSelect"/> (+<c>MultiSelect</c>
+        /// para rango con Shift / multi-rango con Ctrl), igual que Explosión,
+        /// Indirectos, Presupuesto, Programa de Obra e Insumos. El encabezado sigue
+        /// resolviéndose por COLUMNA.
+        /// </summary>
+        internal static void ConfigurarSeleccionPorCelda(DataGridView grid)
+            => SeleccionGridHelper.ConfigurarSeleccionPorCelda(grid);
     }
 }

@@ -6,7 +6,9 @@ using SOPRO.Application.DTOs.Presupuesto;
 using SOPRO.Application.DTOs.Catalog;
 using SOPRO.Application.DTOs.Matrices;
 using SOPRO.Application.Models.ExternalProjects;
+using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Services;
@@ -20,7 +22,7 @@ using System.Windows.Forms;
 
 namespace SOPRO.WinForms.Forms
 {
-    public partial class FormPresupuesto : Form, IGridFormato, IRecalculable, IBusquedaGrid
+    public partial class FormPresupuesto : Form, IGridFormato, IRecalculable, IBusquedaGrid, IGridSeleccionFormato
     {
         private readonly SOPROContext _context;
         private Proyecto _proyecto;
@@ -60,6 +62,23 @@ namespace SOPRO.WinForms.Forms
         private string _undoBudgetColumnName = string.Empty;
         private string _undoBudgetOldValue = string.Empty;
         private ToolStripButton? _btnReajustarCosto;
+
+        // ── Formato de celdas por selección (paso 4.1) ────────────────────────
+        /// <summary>Tipo de reporte estable de este módulo para la persistencia de formato.</summary>
+        internal const string FormatoTipoReporte = "Presupuesto";
+
+        /// <summary>
+        /// Vista por defecto del presupuesto. Se usa "" (comodín de vista) para que
+        /// el override guardado desde el grid también resuelva en cualquier vista
+        /// del reporte (ReportCellStyleResolver trata "" como comodín).
+        /// </summary>
+        internal const string FormatoVistaPresupuesto = "";
+
+        private readonly FormatoReporteService _formatoReporteService;
+        private Dictionary<ReportCellAddress, ReportStyleOverlay> _overlaysFormato = new();
+        private readonly List<CambioFormatoSeleccion> _pendientesFormato = new();
+        private bool _flushFormatoProgramado;
+        private bool _seleccionPorEncabezado;
 
 
         private sealed class MatrixPreviewInfo
@@ -286,10 +305,101 @@ namespace SOPRO.WinForms.Forms
             ColumnaSeleccionadaCambiada?.Invoke(this, EventArgs.Empty);
         }
 
+        // ═══════════════════ IGridSeleccionFormato (paso 4.1) ═══════════════════
+        // El grid reporta su selección tipo Excel (una celda, rango con Shift,
+        // multi-rango con Ctrl) como direcciones ESTABLES y pinta el override de
+        // inmediato. La persistencia y el undo compuesto se disparan al aplicar el
+        // ribbon vía AplicarOverlayCelda (ver FormPresupuesto.EdicionCelda.cs).
+
+        public bool TieneSeleccionCeldas
+        {
+            get
+            {
+                if (_cargando || _seleccionPorEncabezado) return false;
+                foreach (DataGridViewCell celda in dgvPresupuesto.SelectedCells)
+                {
+                    if (celda.RowIndex >= 0) return true;
+                }
+                return false;
+            }
+        }
+
+        public IReadOnlyList<ReportCellAddress> ObtenerDireccionesSeleccionadas()
+        {
+            if (_seleccionPorEncabezado) return Array.Empty<ReportCellAddress>();
+            return ConstruirDireccionesSeleccionadas(
+                dgvPresupuesto,
+                dgvPresupuesto.SelectedCells.Cast<DataGridViewCell>());
+        }
+
+        public bool EsCeldaFormateable(ReportCellAddress direccion)
+        {
+            if (direccion is null) return false;
+            if (string.IsNullOrWhiteSpace(direccion.ClaveFila)) return false;
+            if (string.IsNullOrWhiteSpace(direccion.NombreColumna)) return false;
+
+            // Acepta columnas personalizadas Y la columna de numeración "#" (clave
+            // canónica "Numero"); ver ObtenerClaveColumnaFormato.
+            return EsNombreColumnaFormateable(dgvPresupuesto, direccion.NombreColumna);
+        }
+
+        public ReportStyleOverlay? ObtenerOverlayActual(ReportCellAddress direccion)
+        {
+            if (direccion is null) return null;
+            return _overlaysFormato.TryGetValue(direccion, out var overlay) ? overlay : null;
+        }
+
+        /// <summary>
+        /// Estilo EFECTIVO (override de celda &gt; rol de fila &gt; columna) de la
+        /// celda, resuelto con la MISMA precedencia que el pintado del grid. Lo
+        /// consume el ribbon para REFLEJAR el formato de la celda seleccionada
+        /// (comportamiento tipo Excel, P2).
+        /// </summary>
+        public ReportStyleOverlay? ObtenerEstiloEfectivo(ReportCellAddress direccion)
+            => ResolverEstiloEfectivoPresupuesto(
+                dgvPresupuesto,
+                _overlaysFormato,
+                ObtenerEstilosFilaUsuario(),
+                direccion);
+
+        public void AplicarOverlayCelda(ReportCellAddress direccion, ReportStyleOverlay overlay)
+        {
+            if (direccion is null || overlay is null) return;
+
+            var antes = _overlaysFormato.TryGetValue(direccion, out var previo) ? previo : null;
+            _overlaysFormato[direccion] = overlay;
+            _pendientesFormato.Add(new CambioFormatoSeleccion(direccion, antes, overlay));
+
+            dgvPresupuesto.Invalidate();
+            ProgramarFlushFormato();
+        }
+
+        private void DgvPresupuesto_CellMouseDownFormato(object? sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.RowIndex >= 0)
+                _seleccionPorEncabezado = false;
+            else if (e.ColumnIndex >= 0)
+                _seleccionPorEncabezado = true;
+        }
+
+        private void DgvPresupuesto_SelectionChangedFormato(object? sender, EventArgs e)
+        {
+            if (_cargando || _seleccionPorEncabezado) return;
+            if (dgvPresupuesto.CurrentCell is null) return;
+
+            // Al interactuar con el cuerpo del grid, el destino deja de ser la
+            // columna y pasa a ser la selección de celdas: se limpia el encabezado
+            // activo y se refresca el estado contextual del ribbon.
+            if (_columnaRibbon is null) return;
+            _columnaRibbon = null;
+            ColumnaSeleccionadaCambiada?.Invoke(this, EventArgs.Empty);
+        }
+
 
         public FormPresupuesto(SOPROContext context, Proyecto proyecto)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
+            _formatoReporteService = new FormatoReporteService(_context);
             var workspaceService = new ProjectWorkspaceService();
             _projectIndexService = new ProjectIndexService(workspaceService);
             _projectUsageService = new ProjectUsageService(workspaceService);
@@ -324,8 +434,11 @@ namespace SOPRO.WinForms.Forms
             // Aplicar estilo consistente al grid
             dgvPresupuesto.AplicarEstiloSOPRO();
 
-            // Selección de FILA completa con color suave + borde azul en celda activa + Ctrl+C por celda
-            dgvPresupuesto.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            // Selección tipo Excel por CELDAS (rango con Shift, multi-rango con Ctrl)
+            // + color suave + borde azul en celda activa + Ctrl+C por celda.
+            // Las operaciones de FILA (copiar/eliminar/drag) siguen disponibles vía
+            // encabezado de fila / menú contextual / Ctrl+Supr.
+            dgvPresupuesto.SelectionMode = DataGridViewSelectionMode.CellSelect;
             Helpers.DgvCeldaHelper.Aplicar(dgvPresupuesto);
 
             // Agregar columna ID oculta
@@ -752,7 +865,17 @@ namespace SOPRO.WinForms.Forms
             dgvPresupuesto.CellEndEdit += DgvPresupuesto_CellEndEdit;
             dgvPresupuesto.EditingControlShowing += DgvPresupuesto_EditingControlShowing;
             dgvPresupuesto.ColumnWidthChanged += DgvPresupuesto_ColumnWidthChanged;
-            dgvPresupuesto.ColumnHeaderMouseClick += (s, e) => NotificarColumnaSeleccionada(e.ColumnIndex);
+            dgvPresupuesto.ColumnHeaderMouseClick += (s, e) =>
+            {
+                _seleccionPorEncabezado = true;
+                NotificarColumnaSeleccionada(e.ColumnIndex);
+            };
+
+            // Distinguir interacción de cuerpo (=> destino CELDAS) de interacción con
+            // encabezado de columna (=> destino COLUMNA). CellMouseDown se dispara
+            // ANTES de que cambie la selección, por eso es el punto correcto.
+            dgvPresupuesto.CellMouseDown += DgvPresupuesto_CellMouseDownFormato;
+            dgvPresupuesto.SelectionChanged += DgvPresupuesto_SelectionChangedFormato;
 
             dgvPresupuesto.DataError += DgvPresupuesto_DataError;
 
@@ -962,8 +1085,8 @@ namespace SOPRO.WinForms.Forms
             var proyFresco = _context.Proyectos.Find(_proyecto.Id);
             if (proyFresco != null)
             {
-                _proyecto.DecimalesCantidad  = proyFresco.DecimalesCantidad;
-                _proyecto.DecimalesImporte   = proyFresco.DecimalesImporte;
+                _proyecto.DecimalesCantidad = proyFresco.DecimalesCantidad;
+                _proyecto.DecimalesImporte = proyFresco.DecimalesImporte;
                 _proyecto.DecimalesPorcentaje = proyFresco.DecimalesPorcentaje;
                 FormatoHelper.EstablecerProyecto(_proyecto);
             }

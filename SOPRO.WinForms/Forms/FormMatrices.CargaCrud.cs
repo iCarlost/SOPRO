@@ -80,7 +80,7 @@ namespace SOPRO.WinForms.Forms
 
         private async Task EliminarMatricesSeleccionadasAsync()
         {
-            var seleccionadas = dgvMatrices.SelectedRows.Cast<DataGridViewRow>()
+            var seleccionadas = SeleccionGridHelper.FilasSeleccionadas(dgvMatrices)
                 .Where(r => !r.IsNewRow)
                 .Select(r => (r.DataBoundItem as MatrixGridRowDisplay)?.Source)
                 .Where(x => x != null)

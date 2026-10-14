@@ -53,7 +53,7 @@ namespace SOPRO.WinForms.Forms
 
                 Cursor = Cursors.WaitCursor;
                 var builder = new ProgramaInsumosReportSnapshotBuilder();
-                var snapshot = builder.Build(_proyecto, tituloReporte, _actual, MapearVistaReporte(VistaActual()));
+                var snapshot = ConstruirSnapshotProgramaInsumos(tituloReporte);
                 var datos = builder.ConstruirDatos(_actual, ganttModel);
                 var generador = new Services.GeneradorPdfProgramaInsumos(svc);
                 var ruta = generador.Generar(

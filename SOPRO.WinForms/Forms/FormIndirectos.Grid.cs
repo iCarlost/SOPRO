@@ -22,9 +22,17 @@ namespace SOPRO.WinForms.Forms
         {
             ConfigurarGrid(dgvOficinaCentral);
             ConfigurarGrid(dgvCampo);
-            // Ribbon: click en encabezado dispara notificación
-            dgvOficinaCentral.ColumnHeaderMouseClick += (s, e) => NotificarColumnaSeleccionada(e.ColumnIndex);
-            dgvCampo.ColumnHeaderMouseClick += (s, e) => NotificarColumnaSeleccionada(e.ColumnIndex);
+            // Ribbon: click en encabezado dispara notificación y cambia el destino a COLUMNA
+            dgvOficinaCentral.ColumnHeaderMouseClick += (s, e) =>
+            {
+                _seleccionPorEncabezado = true;
+                NotificarColumnaSeleccionada(e.ColumnIndex);
+            };
+            dgvCampo.ColumnHeaderMouseClick += (s, e) =>
+            {
+                _seleccionPorEncabezado = true;
+                NotificarColumnaSeleccionada(e.ColumnIndex);
+            };
             dgvOficinaCentral.CellBeginEdit += Dgv_CellBeginEdit;
             dgvCampo.CellBeginEdit += Dgv_CellBeginEdit;
             txtVolumenAnual.Enter += ConfigTextBox_Enter;
@@ -40,6 +48,18 @@ namespace SOPRO.WinForms.Forms
             dgv.AutoGenerateColumns = false;
             dgv.AllowUserToAddRows = false;
             dgv.RowHeadersVisible = false;
+
+            // Selección tipo Excel por CELDAS (rango con Shift, multi-rango con Ctrl)
+            // + color suave + borde azul en celda activa. Las operaciones de fila
+            // siguen disponibles vía menú contextual / botones.
+            dgv.SelectionMode = DataGridViewSelectionMode.CellSelect;
+            Helpers.DgvCeldaHelper.Aplicar(dgv, conMenuCopia: false, SoproTheme.Colors.SelBg,
+                Color.FromArgb(0, 120, 215), mostrarRowHeaders: false);
+
+            // Distinguir interacción de cuerpo (=> destino CELDAS) de encabezado
+            // (=> destino COLUMNA). CellMouseDown se dispara ANTES del cambio de selección.
+            dgv.CellMouseDown += DgvIndirectos_CellMouseDownFormato;
+            dgv.SelectionChanged += DgvIndirectos_SelectionChangedFormato;
 
             // Columna Grupo (solo lectura, en negrita)
             dgv.Columns.Add(new DataGridViewTextBoxColumn

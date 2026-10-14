@@ -36,14 +36,14 @@ namespace SOPRO.WinForms.Forms
         {
             if (_columnaExpRibbon == null) return;
 
-            _columnaExpRibbon.NombreFuente      = fmt.NombreFuente;
-            _columnaExpRibbon.TamanoFuente      = fmt.TamanoFuente;
-            _columnaExpRibbon.Negrita           = fmt.Negrita;
-            _columnaExpRibbon.Cursiva           = fmt.Cursiva;
-            _columnaExpRibbon.Alineacion        = fmt.Alineacion;
-            _columnaExpRibbon.ColorFondo        = fmt.ColorFondo;
-            _columnaExpRibbon.ColorFuente       = fmt.ColorFuente;
-            _columnaExpRibbon.WrapTexto         = fmt.WrapTexto;
+            _columnaExpRibbon.NombreFuente = fmt.NombreFuente;
+            _columnaExpRibbon.TamanoFuente = fmt.TamanoFuente;
+            _columnaExpRibbon.Negrita = fmt.Negrita;
+            _columnaExpRibbon.Cursiva = fmt.Cursiva;
+            _columnaExpRibbon.Alineacion = fmt.Alineacion;
+            _columnaExpRibbon.ColorFondo = fmt.ColorFondo;
+            _columnaExpRibbon.ColorFuente = fmt.ColorFuente;
+            _columnaExpRibbon.WrapTexto = fmt.WrapTexto;
             _columnaExpRibbon.AlineacionVertical = fmt.AlineacionVertical;
             _columnaExpRibbon.FechaModificacion = DateTime.Now;
             _context.SaveChanges();
@@ -64,12 +64,12 @@ namespace SOPRO.WinForms.Forms
             foreach (DataGridViewColumn col in dgvExplosion.Columns)
             {
                 if (col.Tag is not SOPRO.Core.Entities.ColumnaExplosion colExp) continue;
-                colExp.NombreFuente      = fmt.NombreFuente;
-                colExp.TamanoFuente      = fmt.TamanoFuente;
-                colExp.Negrita           = fmt.Negrita;
-                colExp.Cursiva           = fmt.Cursiva;
-                colExp.Alineacion        = fmt.Alineacion;
-                colExp.ColorFuente       = fmt.ColorFuente;
+                colExp.NombreFuente = fmt.NombreFuente;
+                colExp.TamanoFuente = fmt.TamanoFuente;
+                colExp.Negrita = fmt.Negrita;
+                colExp.Cursiva = fmt.Cursiva;
+                colExp.Alineacion = fmt.Alineacion;
+                colExp.ColorFuente = fmt.ColorFuente;
                 colExp.FechaModificacion = DateTime.Now;
                 AplicarEstiloDesdeColExp((DataGridViewTextBoxColumn)col, colExp);
             }
@@ -80,7 +80,7 @@ namespace SOPRO.WinForms.Forms
         public void NotificarColumnaSeleccionada(int colIndex)
         {
             _columnaExpRibbon = null;
-            _columnaRibbon    = null;
+            _columnaRibbon = null;
             if (colIndex >= 0 && colIndex < dgvExplosion.Columns.Count)
             {
                 var col = dgvExplosion.Columns[colIndex];
@@ -90,15 +90,15 @@ namespace SOPRO.WinForms.Forms
                     // DTO para el ribbon (solo campos de formato)
                     _columnaRibbon = new ColumnaPersonalizada
                     {
-                        Nombre       = ce.Nombre,
+                        Nombre = ce.Nombre,
                         NombreFuente = ce.NombreFuente,
                         TamanoFuente = ce.TamanoFuente,
-                        Negrita      = ce.Negrita,
-                        Cursiva      = ce.Cursiva,
-                        Alineacion   = ce.Alineacion,
-                        ColorFondo   = ce.ColorFondo,
-                        ColorFuente  = ce.ColorFuente,
-                        WrapTexto    = ce.WrapTexto,
+                        Negrita = ce.Negrita,
+                        Cursiva = ce.Cursiva,
+                        Alineacion = ce.Alineacion,
+                        ColorFondo = ce.ColorFondo,
+                        ColorFuente = ce.ColorFuente,
+                        WrapTexto = ce.WrapTexto,
                         AlineacionVertical = ce.AlineacionVertical,
                     };
                 }
@@ -106,12 +106,12 @@ namespace SOPRO.WinForms.Forms
             ColumnaSeleccionadaCambiada?.Invoke(this, EventArgs.Empty);
         }
 
-                public FormExplosionInsumos(SOPROContext context, int proyectoId)
+        public FormExplosionInsumos(SOPROContext context, int proyectoId)
         {
             _context = context;
             _proyectoId = proyectoId;
             InitializeComponent();
-            
+
             // Cargar proyecto
             _proyecto = _context.Proyectos.Find(_proyectoId);
             new EditableReportTitleHelper(_context, panelTop, lblTitulo, () => _proyectoId, ReportTitleModuleKeys.ExplosionInsumos).Attach();
@@ -120,11 +120,15 @@ namespace SOPRO.WinForms.Forms
                 this.Text = $"Explosión de Insumos - {_proyecto.Nombre}";
                 FormatoHelper.EstablecerProyecto(_proyecto);
             }
-            
+
             // Suscribirse a cambios de configuración
             FormatoHelper.ConfiguracionCambiada += OnConfiguracionCambiada;
-            // Ribbon: detectar click en encabezado de columna
-            dgvExplosion.ColumnHeaderMouseClick += (s, e) => NotificarColumnaSeleccionada(e.ColumnIndex);
+            // Ribbon: detectar click en encabezado de columna (destino = COLUMNA)
+            dgvExplosion.ColumnHeaderMouseClick += (s, e) =>
+            {
+                _seleccionPorEncabezado = true;
+                NotificarColumnaSeleccionada(e.ColumnIndex);
+            };
             dgvExplosion.ColumnWidthChanged += DgvExplosion_ColumnWidthChanged;
 
             ControlRenderHelper.HabilitarDobleBuffer(this);

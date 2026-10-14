@@ -79,8 +79,9 @@ namespace SOPRO.WinForms.Forms
 
         private List<Matriz> ObtenerMatricesSeleccionadas()
         {
-            return dgvMatrices.SelectedRows
-                .Cast<DataGridViewRow>()
+            // Con CellSelect (H6b) la selección de celdas no puebla SelectedRows:
+            // el helper combina SelectedRows + SelectedCells y deduplica/ordena.
+            return SeleccionGridHelper.FilasSeleccionadas(dgvMatrices)
                 .Where(r => !r.IsNewRow)
                 .Select(r => (r.DataBoundItem as MatrixGridRowDisplay)?.Source)
                 .Where(x => x != null)

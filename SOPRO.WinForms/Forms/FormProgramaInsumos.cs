@@ -17,7 +17,7 @@ using System.Windows.Forms;
 
 namespace SOPRO.WinForms.Forms
 {
-    public partial class FormProgramaInsumos : Form, IGridFormato, IRecalculable, IBusquedaGrid
+    public partial class FormProgramaInsumos : Form, IGridFormato, IRecalculable, IBusquedaGrid, IGridSeleccionFormato
     {
         private readonly SOPROContext _context;
         private readonly Proyecto _proyecto;
@@ -55,6 +55,7 @@ namespace SOPRO.WinForms.Forms
             InitializeComponent();
             ConfigurarFormulario();
             ConfigurarGrid();
+            InicializarFormatoProgramaInsumos();
             ConfigurarGantt();
 
             FormDatosProyecto.DecimalesActualizados += OnDecimalesActualizados;

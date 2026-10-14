@@ -14,7 +14,7 @@ using SOPRO.WinForms.Services;
 
 namespace SOPRO.WinForms.Forms
 {
-    public partial class FormExplosionInsumos : Form, IGridFormato, IBusquedaGrid, IRecalculable
+    public partial class FormExplosionInsumos : Form, IGridFormato, IBusquedaGrid, IRecalculable, IGridSeleccionFormato
     {
         private readonly SOPROContext _context;
         private readonly int _proyectoId;
@@ -32,12 +32,12 @@ namespace SOPRO.WinForms.Forms
         public System.Windows.Forms.DataGridView GridPrincipal => dgvExplosion;
         public System.Windows.Forms.DataGridView GridBusqueda => dgvExplosion;
 
-        
-        
 
 
 
-        
+
+
+
 
 
 

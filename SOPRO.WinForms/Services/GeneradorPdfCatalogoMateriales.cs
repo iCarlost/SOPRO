@@ -10,6 +10,8 @@ using MigraDoc.Rendering;
 using SOPRO.Core.Entities;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Reporting;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Application.UseCases.Materials;
 using SOPRO.Reporting.Formatting;
 using SOPRO.Reporting.Layout;
@@ -40,6 +42,39 @@ namespace SOPRO.WinForms.Services
             if (plantilla == null) throw new ArgumentNullException(nameof(plantilla));
             if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
 
+            if (string.IsNullOrWhiteSpace(rutaDestino))
+            {
+                var carpeta = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SOPRO", "Reportes");
+                Directory.CreateDirectory(carpeta);
+                rutaDestino = Path.Combine(carpeta, $"CatalogoMateriales_{SanitizarNombre(proyecto.Nombre)}_{DateTime.Now:yyyyMMdd_HHmm}.pdf");
+            }
+
+            var doc = ConstruirDocumento(proyecto, materiales, plantilla, snapshot, tituloCfg);
+
+            var renderer = new PdfDocumentRenderer() { Document = doc };
+            renderer.RenderDocument();
+            renderer.PdfDocument.Save(rutaDestino);
+            return rutaDestino;
+        }
+
+        /// <summary>
+        /// Construye el documento MigraDoc del catálogo SIN serializarlo. Es el SEAM
+        /// que permite a las pruebas inspeccionar las propiedades de las celdas
+        /// (fuentes, colores, shading) antes de generar el PDF. Sólo lee el snapshot
+        /// neutral + el dominio; nunca el grid.
+        /// </summary>
+        public Document ConstruirDocumento(
+            Proyecto proyecto,
+            IReadOnlyList<MaterialListItem> materiales,
+            PlantillaReporte plantilla,
+            ReportColumnSnapshot snapshot,
+            ConfiguracionTituloReporte? tituloCfg = null)
+        {
+            if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
+            if (materiales == null) throw new ArgumentNullException(nameof(materiales));
+            if (plantilla == null) throw new ArgumentNullException(nameof(plantilla));
+            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
+
             var estiloTabla = snapshot.EstiloTabla;
             var cols = snapshot.Columnas.Where(c => c.Visible).OrderBy(c => c.Orden).ToList();
             if (!cols.Any())
@@ -48,13 +83,6 @@ namespace SOPRO.WinForms.Services
                     .Where(c => c.Visible)
                     .OrderBy(c => c.Orden)
                     .ToList();
-            }
-
-            if (string.IsNullOrWhiteSpace(rutaDestino))
-            {
-                var carpeta = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SOPRO", "Reportes");
-                Directory.CreateDirectory(carpeta);
-                rutaDestino = Path.Combine(carpeta, $"CatalogoMateriales_{SanitizarNombre(proyecto.Nombre)}_{DateTime.Now:yyyyMMdd_HHmm}.pdf");
             }
 
             var doc = new Document();
@@ -81,12 +109,10 @@ namespace SOPRO.WinForms.Services
 
             ConstruirHeader(section, proyecto, plantilla, headerHeightCm);
             ConstruirFooter(section, proyecto, plantilla, footerHeightCm);
-            ConstruirCuerpo(section, proyecto, materiales, cols, estiloTabla, snapshot, tituloCfg);
+            ConstruirCuerpo(section, proyecto, materiales, cols, estiloTabla, snapshot,
+                ReportCellOverlayResolver.SinEstilos(snapshot), tituloCfg);
 
-            var renderer = new PdfDocumentRenderer() { Document = doc };
-            renderer.RenderDocument();
-            renderer.PdfDocument.Save(rutaDestino);
-            return rutaDestino;
+            return doc;
         }
 
         private static void DefinirEstilos(Document doc)
@@ -265,6 +291,7 @@ namespace SOPRO.WinForms.Services
             IReadOnlyList<ReportColumnDefinition> cols,
             ReportTableStyle estiloTabla,
             ReportColumnSnapshot snapshot,
+            ReportColumnSnapshot snapshotBase,
             ConfiguracionTituloReporte? tituloCfg)
         {
             var pTitle = section.AddParagraph("CATÁLOGO DE MATERIALES", "CatalogoMaterialesTitle");
@@ -314,6 +341,7 @@ namespace SOPRO.WinForms.Services
                 row.Shading.Color = ParseColor(estiloTabla.FilaAlterna.ColorFondoAlterno
                     ?? estiloTabla.EstiloContenido.ColorFondo ?? "#FFFFFF");
 
+                var claveFila = ClaveFilaReporte.Insumo(m.Id);
                 for (int i = 0; i < cols.Count; i++)
                 {
                     var c = cols[i];
@@ -327,6 +355,11 @@ namespace SOPRO.WinForms.Services
                     p.Format.SpaceBefore = 0;
                     PdfFontHelper.ApplyFont(p.Format.Font, cont.Fuente, cont.Tamano <= 0 ? 9 : cont.Tamano, cont.Negrita, cont.Cursiva);
                     p.Format.Font.Color = ParseColor(cont.ColorFuente);
+
+                    // Override de celda (máxima precedencia) sobre el estilo de columna.
+                    AplicarOverlayPdf(p, cell, ReportCellOverlayResolver.OverrideEfectivo(
+                        snapshot, snapshotBase, MaterialesReportSnapshotBuilder.ClaveVista,
+                        claveFila, c.Identificador));
                 }
 
                 alt = !alt;
@@ -430,6 +463,32 @@ namespace SOPRO.WinForms.Services
             {
                 return MColors.Black;
             }
+        }
+
+        /// <summary>
+        /// Aplica al párrafo/celda SOLO las propiedades no nulas del override
+        /// (fuente, tamaño, negrita, cursiva, color de texto/fondo y alineación).
+        /// Un override numérico (<c>FormatoNumerico</c>) se IGNORA: el formato
+        /// numérico se conserva por columna vía <see cref="ReportColumnGridFormat"/>.
+        /// </summary>
+        private static void AplicarOverlayPdf(Paragraph p, Cell cell, ReportStyleOverlay overrideEfectivo)
+        {
+            if (overrideEfectivo is null) return;
+
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.Fuente))
+                p.Format.Font.Name = PdfFontHelper.NormalizeFontName(overrideEfectivo.Fuente);
+            if (overrideEfectivo.TamanoFuente is float tamano && tamano > 0)
+                p.Format.Font.Size = tamano;
+            if (overrideEfectivo.Negrita is bool negrita)
+                p.Format.Font.Bold = negrita;
+            if (overrideEfectivo.Cursiva is bool cursiva)
+                p.Format.Font.Italic = cursiva;
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFuente))
+                p.Format.Font.Color = ParseColor(overrideEfectivo.ColorFuente);
+            if (!string.IsNullOrWhiteSpace(overrideEfectivo.ColorFondo))
+                cell.Shading.Color = ParseColor(overrideEfectivo.ColorFondo);
+            if (overrideEfectivo.AlineacionHorizontal is ReportTextAlignment alineacion)
+                p.Format.Alignment = ConvertirAlineacion(alineacion);
         }
     }
 }

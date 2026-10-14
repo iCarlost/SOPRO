@@ -62,7 +62,7 @@ namespace SOPRO.WinForms.Forms
 
                 Cursor = Cursors.WaitCursor;
                 var builder = new ProgramaObraReportSnapshotBuilder();
-                var snapshot = builder.Build(_proyecto, tituloReporte, _columnasConfig);
+                var snapshot = ConstruirSnapshotProgramaObra(tituloReporte);
                 ProgramaReportData datos = builder.ConstruirDatos(_actividades, ganttModel);
                 var generador = new Services.GeneradorExcelProgramaObra(svc);
                 var ruta = generador.Generar(
@@ -120,7 +120,7 @@ namespace SOPRO.WinForms.Forms
 
                 Cursor = Cursors.WaitCursor;
                 var builder = new ProgramaObraReportSnapshotBuilder();
-                var snapshot = builder.Build(_proyecto, tituloReporte, _columnasConfig);
+                var snapshot = ConstruirSnapshotProgramaObra(tituloReporte);
                 ProgramaReportData datos = builder.ConstruirDatos(_actividades, _ganttControl.RenderModel);
                 var generador = new Services.GeneradorPdfProgramaObra(svc);
                 var ruta = generador.Generar(
@@ -226,6 +226,15 @@ namespace SOPRO.WinForms.Forms
                 UseWaitCursor = true;
                 var result = _syncService.DeleteProgram(_context, _proyecto.Id);
                 lblEstado.Text = result.Message;
+
+                // "Borrar programa" = reset total de la apariencia configurada del
+                // Programa de Obra: al eliminarlo se descartan sus overrides de
+                // celda y estilos de fila persistidos (sólo de este tipo de reporte)
+                // para que al reconstruirlo las filas nazcan con los defaults.
+                // Sólo si el borrado del programa tuvo éxito.
+                if (result.Success)
+                    RestablecerFormatoProgramaObra();
+
                 CargarPrograma();
             }
             catch (Exception ex)

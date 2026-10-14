@@ -88,9 +88,7 @@ namespace SOPRO.WinForms.Forms
 
                 // Snapshot neutral compartido: misma lista/orden/ancho/formato/estilo
                 // que el exportador Excel (no se leen columnas ni estilos del grid).
-                var snapshot = HerramientasCatalogExportResolver.BuildSnapshot(
-                    _proyectoId ?? 0, lblTitulo.Text, _columnasConfig,
-                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+                var snapshot = ConstruirSnapshotHerramientas(_columnasConfig);
                 var tituloCfg = _proyectoId.HasValue
                     ? new ConfiguracionTituloReporteService(_context).ObtenerSoloLectura(_proyectoId.Value, ReportTitleModuleKeys.CatalogoHerramientas, lblTitulo.Text)
                     : null;

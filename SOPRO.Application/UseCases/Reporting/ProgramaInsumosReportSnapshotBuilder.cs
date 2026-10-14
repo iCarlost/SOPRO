@@ -6,6 +6,7 @@ using SOPRO.Application.DTOs.Programacion;
 using SOPRO.Application.DTOs.Programacion.Insumos;
 using SOPRO.Application.Models.Reporting.Programa;
 using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Core.Entities;
 
 namespace SOPRO.Application.UseCases.Reporting;
@@ -54,6 +55,12 @@ public sealed class ProgramaInsumosReportSnapshotBuilder
 {
     /// <summary>Tipo de reporte que produce este builder.</summary>
     public const string TipoReporte = "ProgramaInsumos";
+
+    /// <summary>
+    /// Clave de vista canónica del Programa de Insumos (vista por defecto, <c>""</c>),
+    /// la MISMA que persiste el grid en <c>FormatoCeldaReporte.ClaveVista</c>.
+    /// </summary>
+    public const string ClaveVista = "";
 
     // Identificadores canónicos de las columnas estáticas del Programa de Insumos.
     public const string ColClave = "colClave";
@@ -270,6 +277,30 @@ public sealed class ProgramaInsumosReportSnapshotBuilder
             Filas = ConstruirFilas(programa, gantt),
             Periodos = ConstruirPeriodos(gantt)
         };
+
+    // ═══════════════ Claves estables de fila y roles (paridad grid↔reporte) ═══════════════
+
+    /// <summary>Clave de fila estable de un insumo: <c>INS:{InsumoId}</c>.</summary>
+    public static string ClaveFila(int insumoId) => ClaveFilaReporte.Insumo(insumoId);
+
+    /// <summary>
+    /// Rol funcional de fila del Programa de Insumos. Las filas de insumo son
+    /// <c>Concepto</c> y los agrupadores del Gantt, si los hubiera, <c>Resumen</c>.
+    /// </summary>
+    public static string RolFila(bool esResumen)
+        => esResumen ? RolFilaReporte.Resumen : RolFilaReporte.Concepto;
+
+    /// <summary>
+    /// Copia del snapshot con <see cref="ReportColumnSnapshot.EstilosCelda"/> y
+    /// <see cref="ReportColumnSnapshot.EstilosFila"/> poblados desde la configuración
+    /// persistida del (proyecto, tipo). Si no hay overrides quedan <c>null</c>.
+    /// </summary>
+    public static ReportColumnSnapshot ConEstilos(ReportColumnSnapshot snapshot, FormatoReporteService formatos)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(formatos);
+        return new ReportStyleSnapshotBuilder(formatos).Build(snapshot);
+    }
 
     private static void AgregarSeries(
         Dictionary<string, decimal> destino,

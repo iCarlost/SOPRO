@@ -212,7 +212,7 @@ namespace SOPRO.WinForms.Forms
             // pasa lista vacía y el builder aplica sus defaults en memoria.
             var overlays = ObtenerConfiguracionColumnasSoloLectura("Presupuesto");
 
-            return new Application.UseCases.Reporting.PresupuestoReportSnapshotBuilder()
+            var snapshot = new Application.UseCases.Reporting.PresupuestoReportSnapshotBuilder()
                 .Build(
                     _proyecto.Id,
                     lblTitulo.Text,
@@ -221,6 +221,12 @@ namespace SOPRO.WinForms.Forms
                     _proyecto.DecimalesCantidad,
                     _proyecto.DecimalesImporte,
                     _proyecto.DecimalesPorcentaje);
+
+            // Estilos por celda/fila persistidos del proyecto/tipo: viajan por el
+            // snapshot NEUTRO hasta PDF/Excel. Si no hay overrides, EstilosCelda y
+            // EstilosFila quedan null (retrocompatibilidad total).
+            return new Application.UseCases.Reporting.ReportStyleSnapshotBuilder(
+                new Application.Services.Reporting.FormatoReporteService(_context)).Build(snapshot);
         }
 
         /// <summary>
@@ -243,7 +249,8 @@ namespace SOPRO.WinForms.Forms
         /// modificar la configuración persistida.
         /// </summary>
         private Application.Models.Reporting.ReportColumns.ReportColumnSnapshot ConstruirSnapshotApu()
-            => new Application.UseCases.Reporting.ApuReportSnapshotBuilder()
+        {
+            var snapshot = new Application.UseCases.Reporting.ApuReportSnapshotBuilder()
                 .Build(
                     _proyecto.Id,
                     _proyecto.Nombre,
@@ -251,6 +258,15 @@ namespace SOPRO.WinForms.Forms
                     _proyecto.DecimalesCantidad,
                     _proyecto.DecimalesImporte,
                     _proyecto.DecimalesPorcentaje);
+
+            // Estilos por celda/fila persistidos del (proyecto, "APU"): viajan por el
+            // snapshot NEUTRO hasta PDF/Excel. Si no hay overrides, EstilosCelda y
+            // EstilosFila quedan null (retrocompatibilidad total). Las claves son las
+            // MISMAS del grid de matrices (C:{id} conceptos, COMP:{id} componentes,
+            // PU:{id} precio unitario). El APU NO contamina Presupuesto (tipo distinto).
+            return new Application.UseCases.Reporting.ReportStyleSnapshotBuilder(
+                new Application.Services.Reporting.FormatoReporteService(_context)).Build(snapshot);
+        }
 
         public void GenerarExcelAPU()
         {

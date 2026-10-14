@@ -1,4 +1,5 @@
 using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Core.Entities;
 
 namespace SOPRO.Application.UseCases.Reporting;
@@ -28,6 +29,14 @@ public sealed class ApuReportSnapshotBuilder
 {
     /// <summary>Tipo de reporte que produce este builder.</summary>
     public const string TipoReporte = "APU";
+
+    /// <summary>
+    /// Clave de vista canónica del reporte de APU. Es la vista por defecto
+    /// (<c>""</c>), la MISMA que persiste el grid de matrices en
+    /// <c>FormatoCeldaReporte.ClaveVista</c>, de modo que el resolver de estilos
+    /// coincide por igualdad exacta (o por comodín) en PDF/Excel.
+    /// </summary>
+    public const string ClaveVista = "";
 
     /// <summary>
     /// Overlay neutral de encabezado: fija el estilo de encabezado de todas las
@@ -115,6 +124,41 @@ public sealed class ApuReportSnapshotBuilder
         => ColumnasPredeterminadas
             .Select(c => ReportColumnDefinitionMapper.MapearPresupuesto(c, OverlayEncabezadoNeutral))
             .ToList();
+
+    // ═══════════════ Claves estables de fila y roles (paridad grid↔reporte) ═══════════════
+
+    /// <summary>
+    /// Clave de fila ESTABLE del ENCABEZADO del concepto del APU:
+    /// <c>C:{ConceptoPresupuesto.Id}</c>. Es la misma clave que persiste el grid de
+    /// matrices para una fila de concepto, de modo que los overrides de celda
+    /// sobreviven a reordenamientos y paginación.
+    /// </summary>
+    public static string ClaveFilaConcepto(int conceptoPresupuestoId)
+        => ClaveFilaReporte.Concepto(conceptoPresupuestoId);
+
+    /// <summary>
+    /// Clave de fila ESTABLE de un COMPONENTE del APU:
+    /// <c>COMP:{ComponenteMatriz.Id}</c>. Coincide con la que persiste el grid
+    /// para una fila de insumo de matriz.
+    /// </summary>
+    public static string ClaveFilaComponente(int componenteMatrizId)
+        => ClaveFilaReporte.Componente(componenteMatrizId);
+
+    /// <summary>
+    /// Clave de fila ESTABLE de la fila sintética de PRECIO UNITARIO integrado del
+    /// APU: <c>PU:{ConceptoPresupuesto.Id}</c>.
+    /// </summary>
+    public static string ClaveFilaPrecioUnitario(int conceptoPresupuestoId)
+        => ClaveFilaReporte.PrecioUnitario(conceptoPresupuestoId);
+
+    /// <summary>Rol funcional de la fila de encabezado del concepto.</summary>
+    public static string RolFilaConcepto => RolFilaReporte.Concepto;
+
+    /// <summary>Rol funcional de la fila de cierre (precio unitario integrado).</summary>
+    public static string RolFilaPrecioUnitario => RolFilaReporte.Total;
+
+    /// <summary>Rol funcional de las filas de subtotal por sección de insumos.</summary>
+    public static string RolFilaSubtotal => RolFilaReporte.Subtotal;
 
     /// <summary>
     /// Sólo el relleno de grid es interno en el APU; <c>Tipo</c> es una columna

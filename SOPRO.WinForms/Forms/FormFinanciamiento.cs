@@ -22,7 +22,7 @@ namespace SOPRO.WinForms.Forms
     /// El botón Transferir lo copia a Proyecto.PorcentajeFinanciamiento
     /// para que el módulo de Porcentajes lo recoja.
     /// </summary>
-    public partial class FormFinanciamiento : Form, IGridFormato, IRecalculable, IBusquedaGrid
+    public partial class FormFinanciamiento : Form, IGridFormato, IRecalculable, IBusquedaGrid, IGridSeleccionFormato
     {
         private readonly SOPROContext _context;
         private readonly Proyecto _proyecto;

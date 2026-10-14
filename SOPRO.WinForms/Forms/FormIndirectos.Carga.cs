@@ -94,6 +94,9 @@ namespace SOPRO.WinForms.Forms
 
             LlenarGrid(dgvOficinaCentral, gruposOC, showDuracion: false);
             LlenarGrid(dgvCampo, gruposCampo, showDuracion: false);
+
+            // Overrides de formato por celda persistidos (UNA consulta por proyecto/tipo).
+            CargarOverlaysFormato();
         }
 
         private void LlenarGrid(DataGridView dgv, System.Collections.Generic.List<GrupoIndirecto> grupos, bool showDuracion)
@@ -110,8 +113,10 @@ namespace SOPRO.WinForms.Forms
                 dgv.Rows[rowGrupo].Cells["colImporteTotal"].Value = grupo.Total;
                 dgv.Rows[rowGrupo].Cells["colId"].Value = grupo.Id;
                 dgv.Rows[rowGrupo].Cells["colTipo"].Value = "GRUPO";
-                dgv.Rows[rowGrupo].DefaultCellStyle.Font = new Font(dgv.Font, FontStyle.Bold);
-                dgv.Rows[rowGrupo].DefaultCellStyle.BackColor = Color.FromArgb(230, 230, 230);
+                // El fondo gris + negrita de la fila de grupo lo aporta el DEFAULT del
+                // rol (EstilosFilaPredeterminados.Indirectos: #E6E6E6 + negrita) vía
+                // Dgv_CellFormatting, compartido por grid/PDF/Excel. Ya no hay color
+                // hardcodeado aquí (ver paso 5.1).
                 dgv.Rows[rowGrupo].ReadOnly = true;
 
                 // Filas de conceptos

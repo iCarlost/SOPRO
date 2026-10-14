@@ -7,6 +7,7 @@ using MigraDoc.Rendering;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Reporting.Formatting;
@@ -221,16 +222,16 @@ namespace SOPRO.WinForms.Services
 
         private void ConstruirCuerpo(Section section, Proyecto proyecto, BudgetPercentagePreviewResult preview, UtilidadCalculationResult resultado, ReportColumnSnapshot snapshot, ColumnaPersonalizada? estiloBase, ConfiguracionTituloReporte? tituloCfg)
         {
-            decimal costoDirecto   = BudgetPricingService.RoundImporte(proyecto, preview.CostoDirecto);
+            decimal costoDirecto = BudgetPricingService.RoundImporte(proyecto, preview.CostoDirecto);
             decimal costoIndirecto = BudgetPricingService.RoundImporte(proyecto, preview.Subtotal1 - preview.CostoDirecto);
             decimal financiamiento = BudgetPricingService.RoundImporte(proyecto, preview.MontoFinanciamiento);
-            decimal subtotal       = BudgetPricingService.RoundImporte(proyecto, resultado.BaseUtilidad);
+            decimal subtotal = BudgetPricingService.RoundImporte(proyecto, resultado.BaseUtilidad);
 
             // Columnas y borde de tabla del MISMO snapshot neutral que la ruta Excel.
-            var colBase         = ResolverColumna(snapshot, UtilidadReportColumns.Base);
-            var colPorcentaje   = ResolverColumna(snapshot, UtilidadReportColumns.Porcentaje);
+            var colBase = ResolverColumna(snapshot, UtilidadReportColumns.Base);
+            var colPorcentaje = ResolverColumna(snapshot, UtilidadReportColumns.Porcentaje);
             var colImporteFinal = ResolverColumna(snapshot, UtilidadReportColumns.ImporteFinal);
-            var bordes          = snapshot.EstiloTabla.Bordes;
+            var bordes = snapshot.EstiloTabla.Bordes;
 
             var titulo = section.AddTable();
             titulo.Borders.Visible = false;
@@ -270,7 +271,9 @@ namespace SOPRO.WinForms.Services
             AgregarFilaMonedaPdf(t, "COSTO DIRECTO", costoDirecto, colBase, snapshot, bordes, false, null, null, estiloBase);
             AgregarFilaMonedaPdf(t, "COSTO INDIRECTO", costoIndirecto, colBase, snapshot, bordes, false, null, null, estiloBase);
             AgregarFilaMonedaPdf(t, "FINANCIAMIENTO", financiamiento, colBase, snapshot, bordes, false, null, null, estiloBase);
-            AgregarFilaMonedaPdf(t, "SUBTOTAL", subtotal, colBase, snapshot, bordes, true, "#FFF2CC", "#C00000", estiloBase);
+            AgregarFilaMonedaPdf(t, "SUBTOTAL", subtotal, colBase, snapshot, bordes, true,
+                EstilosFilaPredeterminados.Utilidad(RolFilaReporte.Subtotal).ColorFondo,
+                EstilosFilaPredeterminados.Utilidad(RolFilaReporte.Subtotal).ColorFuente, estiloBase);
 
             t.AddRow().Height = Unit.FromCentimeter(0.18);
 
@@ -289,7 +292,8 @@ namespace SOPRO.WinForms.Services
             t.AddRow().Height = Unit.FromCentimeter(0.18);
             AgregarFilaMonedaPdf(t, "IMPORTE ISR", resultado.ImporteIsr, colImporteFinal, snapshot, bordes, false, "#F2F2F2", null, estiloBase);
             AgregarFilaMonedaPdf(t, "IMPORTE PTU", resultado.ImportePtu, colImporteFinal, snapshot, bordes, false, "#F2F2F2", null, estiloBase);
-            AgregarFilaMonedaPdf(t, "UTILIDAD NETA ESTIMADA", resultado.UtilidadNetaEstimada, colImporteFinal, snapshot, bordes, true, "#DDEBF7", null, estiloBase);
+            AgregarFilaMonedaPdf(t, "UTILIDAD NETA ESTIMADA", resultado.UtilidadNetaEstimada, colImporteFinal, snapshot, bordes, true,
+                EstilosFilaPredeterminados.Utilidad(RolFilaReporte.Resumen).ColorFondo, null, estiloBase);
         }
 
         /// <summary>

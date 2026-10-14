@@ -617,7 +617,7 @@ namespace SOPRO.WinForms.Forms
             dgvFlujo.Name = "dgvFlujo";
             dgvFlujo.ReadOnly = true;
             dgvFlujo.RowHeadersVisible = false;
-            dgvFlujo.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dgvFlujo.SelectionMode = DataGridViewSelectionMode.CellSelect;
             dgvFlujo.Size = new Size(900, 500);
             dgvFlujo.TabIndex = 3;
             // 

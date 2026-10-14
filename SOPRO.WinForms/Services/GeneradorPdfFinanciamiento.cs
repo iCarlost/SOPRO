@@ -9,6 +9,7 @@ using MigraDoc.Rendering;
 using SOPRO.Application.Models.Reporting.Financiamiento;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Reporting.Formatting;
 using DrawingColor = System.Drawing.Color;
@@ -364,7 +365,8 @@ namespace SOPRO.WinForms.Services
             result.Cells[etiquetas.Count].AddParagraph("RESULTADO").Format.Font.Bold = true;
             result.Cells[etiquetas.Count + 1].AddParagraph(
                 (modelo.PorcentajeCalculado / 100m).ToString("0.00000%", CultureInfo.CurrentCulture)).Format.Alignment = MParagraphAlignment.Right;
-            result.Cells[etiquetas.Count + 1].Shading.Color = ParseColor("#FFF2CC");
+            result.Cells[etiquetas.Count + 1].Shading.Color = ParseColor(
+                EstilosFilaPredeterminados.Financiamiento(RolFilaReporte.TotalGeneral).ColorFondo ?? "#FFF2CC");
             result.Cells[etiquetas.Count + 1].Format.Font.Bold = true;
             AplicarBordeSuperior(result.Cells[0], "#B7B7B7", 0.02);
             AplicarBordeSuperior(result.Cells[etiquetas.Count], "#B7B7B7", 0.02);
@@ -373,13 +375,19 @@ namespace SOPRO.WinForms.Services
 
         private void AgregarFilaSeccion(Table table, string titulo)
         {
+            // El color de la fila de SECCIÓN proviene de los defaults por rol del
+            // reporte (misma fuente que Excel): no se hardcodea aquí.
+            var estilo = EstilosFilaPredeterminados.Financiamiento(RolFilaReporte.Seccion);
             var row = table.AddRow();
             row.HeightRule = RowHeightRule.AtLeast;
             row.Height = Unit.FromCentimeter(0.54);
-            row.Shading.Color = ParseColor("#D9E2F3");
+            row.Shading.Color = ParseColor(estilo.ColorFondo ?? "#D9E2F3");
             row.Cells[0].MergeRight = table.Columns.Count - 1;
             var p = row.Cells[0].AddParagraph(titulo);
             p.Style = "FinSection";
+            p.Format.Font.Bold = estilo.Negrita ?? true;
+            if (!string.IsNullOrWhiteSpace(estilo.ColorFuente))
+                p.Format.Font.Color = ParseColor(estilo.ColorFuente);
             p.Format.Alignment = MParagraphAlignment.Left;
         }
 
@@ -447,9 +455,10 @@ namespace SOPRO.WinForms.Services
 
         private void AplicarHeaderCell(Cell cell)
         {
-            cell.Shading.Color = ParseColor("#4A4A6A");
-            cell.Format.Font.Color = ParseColor("#FFFFFF");
-            cell.Format.Font.Bold = true;
+            var estilo = EstilosFilaPredeterminados.Financiamiento(RolFilaReporte.Encabezado);
+            cell.Shading.Color = ParseColor(estilo.ColorFondo ?? "#4A4A6A");
+            cell.Format.Font.Color = ParseColor(estilo.ColorFuente ?? "#FFFFFF");
+            cell.Format.Font.Bold = estilo.Negrita ?? true;
             cell.Format.Alignment = MParagraphAlignment.Center;
             cell.VerticalAlignment = VerticalAlignment.Center;
             cell.Borders.Visible = false;

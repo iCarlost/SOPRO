@@ -12,7 +12,7 @@ using SOPRO.WinForms.Undo;
 
 namespace SOPRO.WinForms.Forms
 {
-    public partial class FormIndirectos : Form, IGridFormato, IRecalculable, IBusquedaGrid
+    public partial class FormIndirectos : Form, IGridFormato, IRecalculable, IBusquedaGrid, IGridSeleccionFormato
     {
         private readonly SOPROContext _context;
         private readonly Proyecto _proyecto;

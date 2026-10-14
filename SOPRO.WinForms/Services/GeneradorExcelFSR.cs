@@ -9,6 +9,7 @@ using System.Text.Json;
 using SOPRO.Application.Models.Reporting.Fsr;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Reporting.Formatting;
 using SOPRO.Reporting.Layout;
@@ -29,12 +30,14 @@ namespace SOPRO.WinForms.Services
     /// </summary>
     public static class GeneradorExcelFSR
     {
-        private const string ColorEncabezado  = "#33334C";
-        private const string ColorSeccion     = "#4A4A6A";
-        private const string ColorSubtotal    = "#E8EAF6";
-        private const string ColorTotal       = "#1A237E";
-        private const string ColorFilaAlterna = "#F5F5F5";
-        private const string ColorTituloTabla = "#C5CAE9";
+        // Los colores de secciones/subtotales/totales del FSR NO viven aquí: se
+        // leen de la tabla neutral de defaults por rol
+        // (EstilosFilaPredeterminados.Fsr), única fuente de verdad compartida por
+        // PDF y Excel. Así se retiran las constantes locales y ambos medios convergen.
+        private static readonly ReportStyleOverlay EstiloEncabezadoFsr = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Encabezado);
+        private static readonly ReportStyleOverlay EstiloSeccionFsr = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Seccion);
+        private static readonly ReportStyleOverlay EstiloTotalFsr = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Total);
+        private static readonly ReportStyleOverlay EstiloReferenciaFsr = EstilosFilaPredeterminados.Fsr(RolFilaReporte.Referencia);
 
         // ─────────────────────────────────────────────────────────────────────
         // Tabla de cálculo del FSR (parámetros + fórmulas)
@@ -75,8 +78,8 @@ namespace SOPRO.WinForms.Services
 
             // Título tabla
             Merge(ws, f, 1, f, totalCols, string.Empty,
-                ColorEncabezado, "#FFFFFF", 11, bold: true, height: 22);
-            ReportTitleStyleHelper.ApplyToClosedXmlTitle(ws.Range(f, 1, f, totalCols), tituloCfg, "TABLA DE CALCULO DEL FACTOR DE SALARIO REAL", ColorEncabezado);
+                EstiloEncabezadoFsr.ColorFondo!, "#FFFFFF", 11, bold: true, height: 22);
+            ReportTitleStyleHelper.ApplyToClosedXmlTitle(ws.Range(f, 1, f, totalCols), tituloCfg, "TABLA DE CALCULO DEL FACTOR DE SALARIO REAL", EstiloEncabezadoFsr.ColorFondo!);
             f++;
 
             // Encabezado columnas (desde el snapshot neutral)
@@ -91,7 +94,7 @@ namespace SOPRO.WinForms.Services
                     hc.Style.Font.FontName = enc.Fuente;
                 if (enc.Tamano > 0)
                     hc.Style.Font.FontSize = enc.Tamano;
-                hc.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(enc.ColorFondo ?? ColorSeccion);
+                hc.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(enc.ColorFondo ?? EstiloSeccionFsr.ColorFondo);
                 hc.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(enc.ColorFuente, "#FFFFFF");
                 hc.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                 hc.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
@@ -111,26 +114,26 @@ namespace SOPRO.WinForms.Services
             SeccionFSR(ws, f++, "DATOS BASICOS");
 
             SubseccionFSR(ws, f++, "Para el cálculo de días pagados");
-            FilaFSR(ws, f++, "Días Calendario (DC)",          "", "días", Get("DiasCalendario", 365));
-            FilaFSR(ws, f++, "Días Aguinaldo",                "", "días", Get("DiasAguinaldo", 15));
+            FilaFSR(ws, f++, "Días Calendario (DC)", "", "días", Get("DiasCalendario", 365));
+            FilaFSR(ws, f++, "Días Aguinaldo", "", "días", Get("DiasAguinaldo", 15));
             FilaFSR(ws, f++, "Días de vacaciones para calcular prima vacacional", "", "días", Get("DiasVacaciones", 12));
-            FilaFSR(ws, f++, "Prima vacacional",              "", "%",    Get("PrimaVacacional", 25));
-            FilaFSR(ws, f++, "Otros días",                    "", "días", Get("OtrosDiasPagados", 0));
+            FilaFSR(ws, f++, "Prima vacacional", "", "%", Get("PrimaVacacional", 25));
+            FilaFSR(ws, f++, "Otros días", "", "días", Get("OtrosDiasPagados", 0));
             FilaFSR(ws, f++, "Días de Descanso (Ley Federal del Trabajo)", "", "días", Get("DiasDescanso", 52));
             FilaFSR(ws, f++, "Festivos oficiales (Ley Federal del Trabajo)", "", "días", Get("DiasFestivos", 7));
             FilaFSR(ws, f++, "Días no laborables según contrato colectivo", "", "días", Get("DiasContrato", 0));
-            FilaFSR(ws, f++, "Días Sindicato",                "", "días", Get("DiasSindicato", 0));
-            FilaFSR(ws, f++, "Enfermedad no profesional",     "", "días", Get("DiasEnfermedad", 0));
+            FilaFSR(ws, f++, "Días Sindicato", "", "días", Get("DiasSindicato", 0));
+            FilaFSR(ws, f++, "Enfermedad no profesional", "", "días", Get("DiasEnfermedad", 0));
             FilaFSR(ws, f++, "Condiciones Climat. (Lluvias y otros) Contr. Colec", "", "días", Get("DiasClima", 0));
             FilaFSR(ws, f++, "Otros Días no trabajados por costumbre", "", "días", Get("OtrosDiasNL", 0));
 
             SubseccionFSR(ws, f++, "Para el calculo de cuotas del IMSS");
-            FilaFSR(ws, f++, "Guarderías",         "", "%", Get("PctGuarderias", 1));
-            FilaFSR(ws, f++, "Retiro",             "", "%", Get("PctRetiro", 2));
+            FilaFSR(ws, f++, "Guarderías", "", "%", Get("PctGuarderias", 1));
+            FilaFSR(ws, f++, "Retiro", "", "%", Get("PctRetiro", 2));
             FilaFSR(ws, f++, "Riesgos de trabajo", "", "%", Get("PctRiesgos", 4.58875m));
             FilaFSR(ws, f++, "Impuesto INFONAVIT", "", "%", Get("PctINFONAVIT", 5));
-            FilaFSR(ws, f++, "Impuesto Nómina",    "", "%", Get("PctNomina", 2.4m));
-            FilaFSR(ws, f++, "Otros impuestos",    "", "%", Get("OtrosImpuestos", 0));
+            FilaFSR(ws, f++, "Impuesto Nómina", "", "%", Get("PctNomina", 2.4m));
+            FilaFSR(ws, f++, "Otros impuestos", "", "%", Get("OtrosImpuestos", 0));
 
             // ── CALCULO ───────────────────────────────────────────────────────
             f++;
@@ -141,11 +144,11 @@ namespace SOPRO.WinForms.Services
             FilaFSR(ws, f++, "Salario Nominal por jornada (SND)", "", "", c.FSR_SACAL);
 
             SubseccionFSR(ws, f++, "De días realmente pagados y SBC");
-            FilaFSR(ws, f++, "Vacaciones",    "", "días", c.FSR_DVAC);
+            FilaFSR(ws, f++, "Vacaciones", "", "días", c.FSR_DVAC);
             FilaFSR(ws, f++, "Prima vacacional", "", "días", c.FSR_DPPVA);
-            FilaFSR(ws, f++, "Prima Dominical",  "", "días", c.FSR_DPPDO);
+            FilaFSR(ws, f++, "Prima Dominical", "", "días", c.FSR_DPPDO);
             FilaFSR(ws, f++, "Días equivalentes por horas extras al año", "", "días", c.FSR_DPHEX);
-            FilaFSR(ws, f++, "SUMA de días pagados",    "", "días", c.FSR_DPA);
+            FilaFSR(ws, f++, "SUMA de días pagados", "", "días", c.FSR_DPA);
             FilaFSR(ws, f++, "SUMA de días no laborados", "", "días", c.FSR_DNLA);
             FilaFSROperacion(ws, f++, "Días realmente laborados  (TL = DC - DNLA)",
                 $"{c.FSR_DPCAL:N6}días-{c.FSR_DNLA:N6}días", "días", c.FSR_DLA);
@@ -169,14 +172,14 @@ namespace SOPRO.WinForms.Services
                 $"3.15+IIF({c.FSR_SACAL:N6}>1.000000,0,1.125)", "%", c.FSR_IMCE_p);
             FilaFSR(ws, f++, "Límite de prest. Inv., vida, cesantía y vejez", "", "", c.AS_lim);
             FilaFSR(ws, f++, "Enfermedad y maternidad. Cuota fija especie", "", "", c.AC);
-            FilaFSR(ws, f++, "Enferm.-matern. Exc. a 3 S.M.D.F. especie",    "", "", c.AD);
+            FilaFSR(ws, f++, "Enferm.-matern. Exc. a 3 S.M.D.F. especie", "", "", c.AD);
 
             // Página 2 — continuación
             FilaFSR(ws, f++, "Enfermedad y maternidad. Prestaciones en dinero", "", "", c.AE);
             FilaFSR(ws, f++, "Enfermedad y maternidad gastos médicos pensionados", "", "", c.AF);
-            FilaFSR(ws, f++, "Invalidez y vida",  "", "", c.AG);
-            FilaFSR(ws, f++, "Guarderías",         "", "", c.AH);
-            FilaFSR(ws, f++, "Retiro",              "", "", c.AI);
+            FilaFSR(ws, f++, "Invalidez y vida", "", "", c.AG);
+            FilaFSR(ws, f++, "Guarderías", "", "", c.AH);
+            FilaFSR(ws, f++, "Retiro", "", "", c.AI);
             FilaFSR(ws, f++, "Cesantía en edad avanzada y vejez", "", "", c.AJ);
             FilaFSR(ws, f++, "Riesgos de trabajo", "", "", c.AK);
             FilaFSR(ws, f++, "Cuota patronal del IMSS", "", "", c.AL);
@@ -185,9 +188,9 @@ namespace SOPRO.WinForms.Services
 
             SubseccionFSR(ws, f++, "De INFONAVIT y otras cuotas");
             FilaFSRSinVal(ws, f++, "Limite de Aportaciones INFONAVIT", "", "", $"{c.AZ:N0}");
-            FilaFSR(ws, f++, "INFONAVIT",              "", "", c.AM);
-            FilaFSR(ws, f++, "Impuesto sobre Nómina",  "", "", c.AN);
-            FilaFSR(ws, f++, "Otros impuestos",         "", "", c.AO);
+            FilaFSR(ws, f++, "INFONAVIT", "", "", c.AM);
+            FilaFSR(ws, f++, "Impuesto sobre Nómina", "", "", c.AN);
+            FilaFSR(ws, f++, "Otros impuestos", "", "", c.AO);
             FilaFSR(ws, f++, "Obligaciones patronales (IOP)", "", "", c.AP);
             FilaFSROperacion(ws, f++, "Obligaciones patronales entre SN",
                 $"{c.AP:N6}/{c.FSR_SACAL:N6}", "", c.AQ);
@@ -203,7 +206,7 @@ namespace SOPRO.WinForms.Services
             rFinal.Value = "FACTOR DE SALARIO REAL";
             rFinal.Style.Font.Bold = true;
             rFinal.Style.Font.FontSize = 12;
-            rFinal.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorTotal);
+            rFinal.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(EstiloTotalFsr.ColorFondo);
             rFinal.Style.Font.FontColor = XLColor.White;
             rFinal.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             rFinal.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
@@ -212,7 +215,7 @@ namespace SOPRO.WinForms.Services
             vFinal.Style.NumberFormat.Format = formatoValor;
             vFinal.Style.Font.Bold = true;
             vFinal.Style.Font.FontSize = 12;
-            vFinal.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorTotal);
+            vFinal.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(EstiloTotalFsr.ColorFondo);
             vFinal.Style.Font.FontColor = XLColor.White;
             vFinal.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             vFinal.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
@@ -268,7 +271,7 @@ namespace SOPRO.WinForms.Services
 
             // Título
             Merge(ws, f, 1, f, totalCols, "TABLA DE CÁLCULO DEL FACTOR DE SALARIO REAL",
-                ColorEncabezado, "#FFFFFF", 11, bold: true, height: 22);
+                EstiloEncabezadoFsr.ColorFondo!, "#FFFFFF", 11, bold: true, height: 22);
             f++;
 
             // Encabezados desde el snapshot neutral
@@ -283,7 +286,7 @@ namespace SOPRO.WinForms.Services
                     hc.Style.Font.FontName = enc.Fuente;
                 if (enc.Tamano > 0)
                     hc.Style.Font.FontSize = enc.Tamano;
-                hc.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(enc.ColorFondo ?? ColorSeccion);
+                hc.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(enc.ColorFondo ?? EstiloSeccionFsr.ColorFondo);
                 hc.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(enc.ColorFuente, "#FFFFFF");
                 hc.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                 hc.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
@@ -298,10 +301,12 @@ namespace SOPRO.WinForms.Services
 
             // Datos — FSR individual por insumo; valores crudos formateados por el contrato
             var filas = CalcularFilasAE2C(proyecto, manoDeObras);
+            // El bandeado proviene del estilo de tabla NEUTRAL del snapshot (no de una constante local).
+            string fondoAlterno = snapshot.EstiloTabla.FilaAlterna.ColorFondoAlterno ?? "#FFFFFF";
             bool alt = false;
             foreach (var r in filas)
             {
-                string fondo = alt ? ColorFilaAlterna : "#FFFFFF";
+                string fondo = alt ? fondoAlterno : "#FFFFFF";
                 alt = !alt;
 
                 for (int i = 0; i < totalCols; i++)
@@ -414,46 +419,46 @@ namespace SOPRO.WinForms.Services
 
             return new FSRCalc
             {
-                FSR_SAMI  = b.MinimumSalaryUnit,
+                FSR_SAMI = b.MinimumSalaryUnit,
                 FSR_SACAL = b.AdjustedNominalSalaryInMinimumSalaryUnits,
                 FSR_DPCAL = b.CalendarDays,
-                FSR_DVAC  = b.VacationDays,
+                FSR_DVAC = b.VacationDays,
                 FSR_DPPVA = b.VacationPremiumDays,
                 FSR_DPPDO = b.SundayPremiumEquivalentDays,
                 FSR_DPHEX = b.OvertimeEquivalentDays,
-                FSR_DPA   = b.PaidDays,
-                FSR_DNLA  = b.NonWorkingDays,
-                FSR_DLA   = b.WorkedDays,
-                FSR_FSI   = b.PaidToWorkedDaysFactor,
-                FSR_FSBC  = b.ContributionBaseFactor,
-                FSR_SABC  = b.ContributionBaseSalaryInMinimumSalaryUnits,
-                AA        = b.FixedFeePercentage,
-                AB        = b.ExcessPercentage,
-                AU        = b.ThreeMinimumSalaryExcess,
-                AS_lim    = b.LifeAndRetirementCap,
-                AZ        = b.InfonavitSalaryLimit,
-                FSR_IMPE_p  = b.CashBenefitsPercentage,
-                FSR_IMGM_p  = b.PensionerMedicalExpensesPercentage,
+                FSR_DPA = b.PaidDays,
+                FSR_DNLA = b.NonWorkingDays,
+                FSR_DLA = b.WorkedDays,
+                FSR_FSI = b.PaidToWorkedDaysFactor,
+                FSR_FSBC = b.ContributionBaseFactor,
+                FSR_SABC = b.ContributionBaseSalaryInMinimumSalaryUnits,
+                AA = b.FixedFeePercentage,
+                AB = b.ExcessPercentage,
+                AU = b.ThreeMinimumSalaryExcess,
+                AS_lim = b.LifeAndRetirementCap,
+                AZ = b.InfonavitSalaryLimit,
+                FSR_IMPE_p = b.CashBenefitsPercentage,
+                FSR_IMGM_p = b.PensionerMedicalExpensesPercentage,
                 FSR_IMINV_p = b.DisabilityAndLifePercentage,
-                FSR_IMCE_p  = b.SeveranceAndOldAgePercentage,
-                AC        = b.FixedFee,
-                AD        = b.ThreeMinimumSalaryExcessContribution,
-                AE        = b.CashBenefitsContribution,
-                AF        = b.PensionerMedicalExpensesContribution,
-                AG        = b.DisabilityAndLifeContribution,
-                AH        = b.DaycareContribution,
-                AI        = b.RetirementContribution,
-                AJ        = b.SeveranceAndOldAgeContribution,
-                AK        = b.OccupationalRiskContribution,
-                AL        = b.EmployerImssTotal,
+                FSR_IMCE_p = b.SeveranceAndOldAgePercentage,
+                AC = b.FixedFee,
+                AD = b.ThreeMinimumSalaryExcessContribution,
+                AE = b.CashBenefitsContribution,
+                AF = b.PensionerMedicalExpensesContribution,
+                AG = b.DisabilityAndLifeContribution,
+                AH = b.DaycareContribution,
+                AI = b.RetirementContribution,
+                AJ = b.SeveranceAndOldAgeContribution,
+                AK = b.OccupationalRiskContribution,
+                AL = b.EmployerImssTotal,
                 FSR_IMIMS = b.EmployerImssFactor,
-                AM        = b.InfonavitContribution,
-                AN        = b.PayrollTax,
-                AO        = b.OtherTaxes,
-                AP        = b.EmployerObligations,
-                AQ        = b.EmployerObligationsFactor,
-                BH        = b.EmployerObligationsWeightedByPaidToWorkedDays,
-                FSR_FSR   = b.Factor
+                AM = b.InfonavitContribution,
+                AN = b.PayrollTax,
+                AO = b.OtherTaxes,
+                AP = b.EmployerObligations,
+                AQ = b.EmployerObligationsFactor,
+                BH = b.EmployerObligationsWeightedByPaidToWorkedDays,
+                FSR_FSR = b.Factor
             };
         }
 
@@ -495,10 +500,10 @@ namespace SOPRO.WinForms.Services
             var rng = ws.Range(f, 1, f, 4);
             rng.Merge();
             rng.Value = titulo;
-            rng.Style.Font.Bold = true;
+            rng.Style.Font.Bold = EstiloSeccionFsr.Negrita ?? true;
             rng.Style.Font.FontSize = 10;
-            rng.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorSeccion);
-            rng.Style.Font.FontColor = XLColor.White;
+            rng.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(EstiloSeccionFsr.ColorFondo);
+            rng.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(EstiloSeccionFsr.ColorFuente);
             rng.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
             rng.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             ws.Row(f).Height = 16;
@@ -509,10 +514,10 @@ namespace SOPRO.WinForms.Services
             var rng = ws.Range(f, 1, f, 4);
             rng.Merge();
             rng.Value = titulo;
-            rng.Style.Font.Bold = true;
+            rng.Style.Font.Bold = EstiloReferenciaFsr.Negrita ?? true;
             rng.Style.Font.FontSize = 9;
-            rng.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(ColorTituloTabla);
-            rng.Style.Font.FontColor = XLColor.FromHtml("#1A237E");
+            rng.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(EstiloReferenciaFsr.ColorFondo);
+            rng.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(EstiloReferenciaFsr.ColorFuente);
             rng.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
             rng.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             ws.Row(f).Height = 15;

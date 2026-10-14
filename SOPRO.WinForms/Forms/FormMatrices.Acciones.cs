@@ -125,8 +125,11 @@ namespace SOPRO.WinForms.Forms
 
         private void dgvMatrices_SelectionChanged(object sender, EventArgs e)
         {
-            _matrizSeleccionada = dgvMatrices.SelectedRows.Count > 0
-                ? (dgvMatrices.SelectedRows[0].DataBoundItem as MatrixGridRowDisplay)?.Source
+            // Con CellSelect (H6b) un clic sobre una celda NO puebla SelectedRows:
+            // se resuelven las filas tocadas combinando SelectedRows + SelectedCells.
+            var filas = SeleccionGridHelper.FilasSeleccionadas(dgvMatrices);
+            _matrizSeleccionada = filas.Count > 0
+                ? (filas[0].DataBoundItem as MatrixGridRowDisplay)?.Source
                 : null;
             ActualizarEstadoBotones();
         }

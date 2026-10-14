@@ -11,6 +11,9 @@ using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
 using SOPRO.Application.Services;
+using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services.Reporting;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
@@ -94,6 +97,81 @@ namespace SOPRO.WinForms.Forms
                 }
             }
             ColumnaSeleccionadaCambiada?.Invoke(this, EventArgs.Empty);
+        }
+
+        // ═══════════════════ Formato de celdas (paso 6.3) ═══════════════════
+        // Selección tipo Excel → direcciones ESTABLES (INS:{Id} + identificador de
+        // columna) → persistencia por lote y undo compuesto. El formato por COLUMNA
+        // existente (ColumnaManoObra) sigue intacto y la celda lo sobreescribe.
+
+        /// <summary>Tipo de reporte estable de este catálogo para la persistencia de formato.</summary>
+        internal const string FormatoTipoReporte = ManoObraReportSnapshotBuilder.TipoReporte;
+
+        /// <summary>Vista por defecto (comodín) del catálogo.</summary>
+        internal const string FormatoVista = ManoObraReportSnapshotBuilder.ClaveVista;
+
+        private CatalogoFormatoCeldas _formatoCeldas;
+
+        private void ConfigurarFormatoCeldas()
+        {
+            _formatoCeldas = new CatalogoFormatoCeldas(dgvManoObra, _context, _proyectoId, FormatoTipoReporte, FormatoVista);
+            dgvManoObra.CellFormatting += DgvManoObra_CellFormattingFormato;
+            dgvManoObra.CellMouseDown += DgvManoObra_CellMouseDownFormato;
+            dgvManoObra.DataBindingComplete += (_, __) => _formatoCeldas.Cargar();
+        }
+
+        private void DgvManoObra_CellMouseDownFormato(object sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.RowIndex >= 0) _formatoCeldas.SeleccionPorEncabezado = false;
+        }
+
+        private void DgvManoObra_CellFormattingFormato(object sender, DataGridViewCellFormattingEventArgs e)
+            => _formatoCeldas.AplicarOverride(e);
+
+        // ── IGridSeleccionFormato ─────────────────────────────────────────────
+
+        public bool TieneSeleccionCeldas => _formatoCeldas?.TieneSeleccionCeldas ?? false;
+
+        public IReadOnlyList<ReportCellAddress> ObtenerDireccionesSeleccionadas()
+            => _formatoCeldas?.ObtenerDireccionesSeleccionadas() ?? Array.Empty<ReportCellAddress>();
+
+        public bool EsCeldaFormateable(ReportCellAddress direccion)
+            => _formatoCeldas?.EsCeldaFormateable(direccion) ?? false;
+
+        public ReportStyleOverlay? ObtenerOverlayActual(ReportCellAddress direccion)
+            => _formatoCeldas?.ObtenerOverlayActual(direccion);
+
+        public void AplicarOverlayCelda(ReportCellAddress direccion, ReportStyleOverlay overlay)
+            => _formatoCeldas?.AplicarOverlayCelda(direccion, overlay);
+
+        // ── Funciones puras (verificables sin UI) ─────────────────────────────
+
+        internal static string? ObtenerClaveFilaFormato(DataGridView grid, int rowIndex)
+            => CatalogoFormatoCeldas.ClaveFila(grid, rowIndex);
+
+        internal static string? ObtenerNombreColumnaFormato(DataGridView grid, int columnIndex)
+            => grid is not null && columnIndex >= 0 && columnIndex < grid.Columns.Count
+                ? CatalogoFormatoCeldas.NombreColumna(grid.Columns[columnIndex])
+                : null;
+
+        internal static IReadOnlyList<ReportCellAddress> ConstruirDireccionesSeleccionadas(
+            DataGridView grid, IEnumerable<DataGridViewCell> celdas)
+            => CatalogoFormatoCeldas.ConstruirDirecciones(grid, celdas, FormatoVista);
+
+        internal static IReadOnlyList<CambioFormatoCelda> ConstruirLoteCambios(
+            IEnumerable<CambioFormatoSeleccion> cambios, bool aplicarAntes)
+            => CatalogoFormatoCeldas.ConstruirLote(cambios, aplicarAntes, FormatoVista);
+
+        /// <summary>
+        /// Construye el snapshot neutral del catálogo poblado con los overrides de
+        /// celda/rol persistidos. Es la única fuente que consumen PDF y Excel.
+        /// </summary>
+        private ReportColumnSnapshot ConstruirSnapshotManoObra(IEnumerable<ColumnaManoObra> columnas)
+        {
+            var snapshot = ManoObraCatalogExportResolver.BuildSnapshot(
+                _proyectoId ?? 0, lblTitulo.Text, columnas,
+                FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+            return ManoObraReportSnapshotBuilder.ConEstilos(snapshot, new FormatoReporteService(_context));
         }
     }
 }

@@ -32,7 +32,9 @@ namespace SOPRO.WinForms.Forms
             dgvMateriales.AllowUserToAddRows = false;
             dgvMateriales.AllowUserToDeleteRows = false;
             dgvMateriales.ReadOnly = true;
-            dgvMateriales.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            // Selección tipo Excel por CELDA: el formato de una celda NO se derrama a
+            // toda la fila. Las operaciones por fila usan SeleccionGridHelper.FilasSeleccionadas.
+            SeleccionGridHelper.ConfigurarSeleccionPorCelda(dgvMateriales);
             Helpers.DgvCeldaHelper.Aplicar(dgvMateriales, conMenuCopia: false);
             dgvMateriales.CellFormatting += DgvMateriales_CellFormatting;
             dgvMateriales.KeyDown += DgvMateriales_KeyDown;

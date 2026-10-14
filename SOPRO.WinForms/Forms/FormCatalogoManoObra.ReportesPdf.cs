@@ -86,9 +86,7 @@ namespace SOPRO.WinForms.Forms
 
                 // Snapshot neutral compartido con Excel: misma lista/orden/ancho/
                 // formato/estilo. Los defaults se construyen en memoria (sin persistir).
-                var snapshot = ManoObraCatalogExportResolver.BuildSnapshot(
-                    _proyectoId ?? 0, lblTitulo.Text, _columnasConfig,
-                    FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+                var snapshot = ConstruirSnapshotManoObra(_columnasConfig);
                 ruta = gen.GenerarCatalogo(proyecto, lista, plantilla, snapshot, dlgPdf.FileName, tituloCfg);
             }
 

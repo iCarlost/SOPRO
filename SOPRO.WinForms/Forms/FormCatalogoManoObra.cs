@@ -15,7 +15,7 @@ using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
 {
-    public partial class FormCatalogoManoObra : Form, IGridFormato, IBusquedaGrid, IRecalculable, IConsolidacionInsumos
+    public partial class FormCatalogoManoObra : Form, IGridFormato, IBusquedaGrid, IRecalculable, IConsolidacionInsumos, IGridSeleccionFormato
     {
         public static event EventHandler InsumosModificados;
 
@@ -64,9 +64,14 @@ namespace SOPRO.WinForms.Forms
                 _columnasConfig = ColumnasManoObraHelper.ObtenerColumnas(_context, _proyectoId.Value);
 
             ConfigurarGrid();
+            ConfigurarFormatoCeldas();
             this.Load += (s, e) => CargarManoDeObra();
 
-            dgvManoObra.ColumnHeaderMouseClick += (s, e) => NotificarColumnaSeleccionada(e.ColumnIndex);
+            dgvManoObra.ColumnHeaderMouseClick += (s, e) =>
+            {
+                _formatoCeldas.SeleccionPorEncabezado = true;
+                NotificarColumnaSeleccionada(e.ColumnIndex);
+            };
             dgvManoObra.ColumnWidthChanged += DgvManoObra_ColumnWidthChanged;
         }
 

@@ -2,6 +2,8 @@ using ClosedXML.Excel;
 using SOPRO.Application.DTOs.Programacion;
 using SOPRO.Application.Models.Reporting.Programa;
 using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services.Reporting;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Reporting.Formatting;
 using SOPRO.Reporting.Layout;
@@ -59,7 +61,48 @@ namespace SOPRO.WinForms.Services
                 rutaDestino = Path.Combine(carpeta, $"{prefijoArchivo}_{SanitizarNombre(proyecto.Nombre)}_{DateTime.Now:yyyyMMdd_HHmm}.xlsx");
             }
 
-            using var wb = new XLWorkbook();
+            using var wb = ConstruirLibro(
+                proyecto, plantilla, snapshot, columnas, filas, ganttModel,
+                ganttVisualSettings, footerMode, timelineCellWidth, tituloReporte, tituloCfg, periodos);
+            wb.SaveAs(rutaDestino);
+            return rutaDestino;
+        }
+
+        /// <summary>
+        /// Construye el libro Excel del programa SIN guardarlo. Es el SEAM que permite
+        /// a las pruebas inspeccionar las propiedades de las celdas (fuente, color,
+        /// relleno, alineación) antes de generar el archivo. Sólo lee el snapshot
+        /// neutral + el modelo neutral; nunca el grid.
+        /// </summary>
+        protected XLWorkbook ConstruirLibro(
+            Proyecto proyecto,
+            PlantillaReporte plantilla,
+            ReportColumnSnapshot snapshot,
+            List<ProgramaExcelColumnExport> columnas,
+            List<ProgramaExcelRowExport> filas,
+            GanttRenderModel ganttModel,
+            GanttVisualSettings ganttVisualSettings,
+            GanttFooterDisplayMode footerMode,
+            int timelineCellWidth,
+            string tituloReporte,
+            ConfiguracionTituloReporte? tituloCfg = null,
+            IReadOnlyList<ProgramaPeriodColumn>? periodos = null)
+        {
+            ArgumentNullException.ThrowIfNull(snapshot);
+            ArgumentNullException.ThrowIfNull(proyecto);
+            ArgumentNullException.ThrowIfNull(plantilla);
+            ArgumentNullException.ThrowIfNull(ganttModel);
+            ArgumentNullException.ThrowIfNull(ganttVisualSettings);
+
+            // Defaults NEUTRALES por rol de fila (única fuente de verdad, compartida
+            // con grid/PDF) combinados con la config persistida del usuario. El
+            // override de celda del snapshot sigue teniendo la máxima precedencia.
+            snapshot = snapshot with
+            {
+                EstilosFila = EstilosFilaPredeterminados.CombinarProgramas(snapshot.EstilosFila)
+            };
+
+            var wb = new XLWorkbook();
             var ws = wb.Worksheets.Add("Programa");
 
             var periodosExport = periodos ?? ProgramaPeriodColumn.FromEscala(ganttModel.Escala);
@@ -112,6 +155,13 @@ namespace SOPRO.WinForms.Services
                     var texto = EsColumnaImporte(col) && filaExport.EsResumen ? string.Empty : filaExport.GetTexto(col.Name);
                     cell.Value = texto;
                     AplicarEstiloContenido(cell, col);
+                    // Override de celda/rol resuelto por el contrato neutral (paso 6.2).
+                    AplicarEstiloCeldaPrograma(
+                        cell,
+                        snapshot,
+                        ClaveFilaPrograma(filaExport, snapshot.TipoReporte),
+                        filaExport.EsResumen ? RolFilaReporte.Resumen : RolFilaReporte.Concepto,
+                        col.Name);
                 }
 
                 EscribirContenidoTimeline(ws, excelRow, timelineColStart, ganttModel, filaExport, ganttModel.ViewMode);
@@ -197,8 +247,62 @@ namespace SOPRO.WinForms.Services
             ws.PageSetup.Margins.Top = 0.55;
             ws.PageSetup.Margins.Bottom = 0.55;
 
-            wb.SaveAs(rutaDestino);
-            return rutaDestino;
+            return wb;
+        }
+
+        /// <summary>
+        /// Clave de fila ESTABLE del programa según su tipo: Programa de Obra usa
+        /// <c>ACT:{Id}</c>/<c>RES:{ConceptoPresupuestoId}</c> (fallback
+        /// <c>RES:{Clave}</c>); Programa de Insumos usa <c>INS:{InsumoId}</c>. Delega
+        /// en la MISMA fábrica que el grid y el snapshot para garantizar paridad.
+        /// </summary>
+        private static string ClaveFilaPrograma(ProgramaExcelRowExport fila, string tipoReporte)
+        {
+            if (string.Equals(tipoReporte, "ProgramaInsumos", StringComparison.OrdinalIgnoreCase))
+                return ClaveFilaReporte.Insumo(fila.ItemId ?? 0);
+
+            return ProgramaObraReportSnapshotBuilder.ClaveFila(
+                fila.EsResumen, fila.ConceptoPresupuestoId ?? 0, fila.ItemId ?? 0, fila.GetTexto("colClave"));
+        }
+
+        /// <summary>
+        /// Resuelve el estilo efectivo de la celda (default de rol + override de rol del
+        /// usuario + override de celda) con la cascada neutral y lo vuelca sobre la celda
+        /// de Excel. Sólo pisa las propiedades no nulas.
+        /// </summary>
+        internal static void AplicarEstiloCeldaPrograma(
+            IXLCell cell,
+            ReportColumnSnapshot snapshot,
+            string claveFila,
+            string rolFila,
+            string nombreColumna)
+        {
+            var overlay = ReportCellStyleResolver.Resolve(snapshot, "", claveFila, nombreColumna, rolFila, false);
+            AplicarOverlayExcel(cell, overlay);
+        }
+
+        /// <summary>
+        /// Vuelca sobre la celda de Excel SÓLO las propiedades no nulas del overlay
+        /// neutral. El formato numérico se conserva por columna (no se toca aquí).
+        /// </summary>
+        internal static void AplicarOverlayExcel(IXLCell cell, ReportStyleOverlay overlay)
+        {
+            if (cell is null || overlay is null) return;
+
+            if (!string.IsNullOrWhiteSpace(overlay.Fuente))
+                cell.Style.Font.FontName = overlay.Fuente!;
+            if (overlay.TamanoFuente is float tamano && tamano > 0)
+                cell.Style.Font.FontSize = tamano;
+            if (overlay.Negrita is bool negrita)
+                cell.Style.Font.Bold = negrita;
+            if (overlay.Cursiva is bool cursiva)
+                cell.Style.Font.Italic = cursiva;
+            if (!string.IsNullOrWhiteSpace(overlay.ColorFuente))
+                cell.Style.Font.FontColor = ExcelColorHelper.SafeFromHtml(overlay.ColorFuente, "#000000");
+            if (!string.IsNullOrWhiteSpace(overlay.ColorFondo))
+                cell.Style.Fill.BackgroundColor = ExcelColorHelper.SafeFromHtml(overlay.ColorFondo, "#FFFFFF");
+            if (overlay.AlineacionHorizontal is ReportTextAlignment alineacion)
+                cell.Style.Alignment.Horizontal = ConvertAlignment(alineacion);
         }
 
         /// <summary>
@@ -270,6 +374,7 @@ namespace SOPRO.WinForms.Services
                 resultado.Add(new ProgramaExcelRowExport
                 {
                     ItemId = fila.ItemId,
+                    ConceptoPresupuestoId = fila.ConceptoPresupuestoId,
                     Valores = valores,
                     RawValores = rawValores,
                     Inicio = fila.Inicio,
@@ -607,6 +712,7 @@ namespace SOPRO.WinForms.Services
         protected sealed class ProgramaExcelRowExport
         {
             public int? ItemId { get; set; }
+            public int? ConceptoPresupuestoId { get; set; }
             public Dictionary<string, string> Valores { get; set; } = new(StringComparer.OrdinalIgnoreCase);
             public Dictionary<string, object?> RawValores { get; set; } = new(StringComparer.OrdinalIgnoreCase);
             public DateTime? Inicio { get; set; }

@@ -40,11 +40,14 @@ namespace SOPRO.WinForms.Forms
                     return;
                 }
 
-                _ultMateriales   = ConvertirDatos(data.Materiales);
-                _ultManoObra     = ConvertirDatos(data.ManoObra);
-                _ultMaquinaria   = ConvertirDatos(data.Maquinaria);
+                _ultMateriales = ConvertirDatos(data.Materiales);
+                _ultManoObra = ConvertirDatos(data.ManoObra);
+                _ultMaquinaria = ConvertirDatos(data.Maquinaria);
                 _ultHerramientas = ConvertirDatos(data.Herramientas);
                 _ultCostoDirectoTotal = data.CostoDirectoTotal;
+
+                // Overrides de formato por celda persistidos (UNA consulta por proyecto/tipo).
+                CargarOverlaysFormato();
 
                 RenderRows(data.Rows);
 
@@ -85,7 +88,7 @@ namespace SOPRO.WinForms.Forms
         {
             if (rows == null || rows.Count == 0) return;
 
-            var gridRows = _gridRenderService.BuildRows(dgvExplosion, rows);
+            var gridRows = _gridRenderService.BuildRows(dgvExplosion, rows, ObtenerEstilosFilaUsuario());
             if (gridRows.Length > 0)
                 dgvExplosion.Rows.AddRange(gridRows);
         }

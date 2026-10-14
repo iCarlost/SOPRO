@@ -12,6 +12,9 @@ using System.Linq;
 using System.Windows.Forms;
 using ClosedXML.Excel;
 using SOPRO.Application.Services;
+using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services.Reporting;
+using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
@@ -116,10 +119,90 @@ namespace SOPRO.WinForms.Forms
                 _columnasConfig = ColumnasMaquinariaHelper.ObtenerColumnas(_context, _proyectoId.Value);
 
             ConfigurarGrid();
+            ConfigurarFormatoCeldas();
             this.Load += (s, e) => CargarMaquinaria();
 
-            dgvMaquinaria.ColumnHeaderMouseClick += (s, e) => NotificarColumnaSeleccionada(e.ColumnIndex);
+            dgvMaquinaria.ColumnHeaderMouseClick += (s, e) =>
+            {
+                _formatoCeldas.SeleccionPorEncabezado = true;
+                NotificarColumnaSeleccionada(e.ColumnIndex);
+            };
             dgvMaquinaria.ColumnWidthChanged += DgvMaquinaria_ColumnWidthChanged;
+        }
+
+        // ═══════════════════ Formato de celdas (paso 6.3) ═══════════════════
+        // Selección tipo Excel → direcciones ESTABLES (INS:{Id} + identificador de
+        // columna) → persistencia por lote y undo compuesto. El formato por COLUMNA
+        // existente (ColumnaMaquinaria) sigue intacto y la celda lo sobreescribe.
+
+        /// <summary>Tipo de reporte estable de este catálogo para la persistencia de formato.</summary>
+        internal const string FormatoTipoReporte = CostoHorarioReportSnapshotBuilder.TipoReporte;
+
+        /// <summary>Vista por defecto (comodín) del catálogo.</summary>
+        internal const string FormatoVista = CostoHorarioReportSnapshotBuilder.ClaveVista;
+
+        private CatalogoFormatoCeldas _formatoCeldas;
+
+        private void ConfigurarFormatoCeldas()
+        {
+            _formatoCeldas = new CatalogoFormatoCeldas(dgvMaquinaria, _context, _proyectoId, FormatoTipoReporte, FormatoVista);
+            dgvMaquinaria.CellFormatting += DgvMaquinaria_CellFormattingFormato;
+            dgvMaquinaria.CellMouseDown += DgvMaquinaria_CellMouseDownFormato;
+            dgvMaquinaria.DataBindingComplete += (_, __) => _formatoCeldas.Cargar();
+        }
+
+        private void DgvMaquinaria_CellMouseDownFormato(object sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.RowIndex >= 0) _formatoCeldas.SeleccionPorEncabezado = false;
+        }
+
+        private void DgvMaquinaria_CellFormattingFormato(object sender, DataGridViewCellFormattingEventArgs e)
+            => _formatoCeldas.AplicarOverride(e);
+
+        // ── IGridSeleccionFormato ─────────────────────────────────────────────
+
+        public bool TieneSeleccionCeldas => _formatoCeldas?.TieneSeleccionCeldas ?? false;
+
+        public IReadOnlyList<ReportCellAddress> ObtenerDireccionesSeleccionadas()
+            => _formatoCeldas?.ObtenerDireccionesSeleccionadas() ?? Array.Empty<ReportCellAddress>();
+
+        public bool EsCeldaFormateable(ReportCellAddress direccion)
+            => _formatoCeldas?.EsCeldaFormateable(direccion) ?? false;
+
+        public ReportStyleOverlay? ObtenerOverlayActual(ReportCellAddress direccion)
+            => _formatoCeldas?.ObtenerOverlayActual(direccion);
+
+        public void AplicarOverlayCelda(ReportCellAddress direccion, ReportStyleOverlay overlay)
+            => _formatoCeldas?.AplicarOverlayCelda(direccion, overlay);
+
+        // ── Funciones puras (verificables sin UI) ─────────────────────────────
+
+        internal static string? ObtenerClaveFilaFormato(DataGridView grid, int rowIndex)
+            => CatalogoFormatoCeldas.ClaveFila(grid, rowIndex);
+
+        internal static string? ObtenerNombreColumnaFormato(DataGridView grid, int columnIndex)
+            => grid is not null && columnIndex >= 0 && columnIndex < grid.Columns.Count
+                ? CatalogoFormatoCeldas.NombreColumna(grid.Columns[columnIndex])
+                : null;
+
+        internal static IReadOnlyList<ReportCellAddress> ConstruirDireccionesSeleccionadas(
+            DataGridView grid, IEnumerable<DataGridViewCell> celdas)
+            => CatalogoFormatoCeldas.ConstruirDirecciones(grid, celdas, FormatoVista);
+
+        internal static IReadOnlyList<CambioFormatoCelda> ConstruirLoteCambios(
+            IEnumerable<CambioFormatoSeleccion> cambios, bool aplicarAntes)
+            => CatalogoFormatoCeldas.ConstruirLote(cambios, aplicarAntes, FormatoVista);
+
+        /// <summary>
+        /// Construye el snapshot neutral del catálogo poblado con los overrides de
+        /// celda/rol persistidos. Es la única fuente que consumen PDF y Excel.
+        /// </summary>
+        private ReportColumnSnapshot ConstruirSnapshotMaquinaria(IEnumerable<ColumnaMaquinaria> columnas)
+        {
+            var snapshot = new CostoHorarioReportSnapshotBuilder().Build(
+                _proyectoId ?? 0, lblTitulo.Text, columnas,
+                FormatoHelper.DecimalesCantidad, FormatoHelper.DecimalesImporte, FormatoHelper.DecimalesPorcentaje);
+            return CostoHorarioReportSnapshotBuilder.ConEstilos(snapshot, new FormatoReporteService(_context));
         }
     }
 }

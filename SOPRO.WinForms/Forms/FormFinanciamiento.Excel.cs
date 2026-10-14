@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.Models.Reporting.Financiamiento;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.Reporting.Formatting;
@@ -122,7 +123,8 @@ namespace SOPRO.WinForms.Forms
             ws.Cell(fila, numCols).Value = modelo.PorcentajeCalculado / 100m;
             ws.Cell(fila, numCols).Style.NumberFormat.Format = "0.00000%";
             ws.Cell(fila, numCols).Style.Font.Bold = true;
-            ws.Cell(fila, numCols).Style.Fill.BackgroundColor = XLColor.FromHtml("#FFF2CC");
+            ws.Cell(fila, numCols).Style.Fill.BackgroundColor =
+                ExcelColorHelper.SafeFromHtml(EstilosFilaPredeterminados.Financiamiento(RolFilaReporte.TotalGeneral).ColorFondo ?? "#FFF2CC");
             fila++;
 
             ws.Range(datosInicio, 1, fila - 1, numCols).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
@@ -181,12 +183,16 @@ namespace SOPRO.WinForms.Forms
 
         private void AplicarFilaEncabezado(IXLWorksheet ws, int fila, int numCols, ReportColumnSnapshot snapshot)
         {
+            var estiloEnc = EstilosFilaPredeterminados.Financiamiento(RolFilaReporte.Encabezado);
+            var fondoEnc = ExcelColorHelper.SafeFromHtml(estiloEnc.ColorFondo ?? "#4A4A6A");
+            var textoEnc = ExcelColorHelper.SafeFromHtml(estiloEnc.ColorFuente, "#FFFFFF");
+
             for (int col = 1; col <= numCols; col++)
             {
                 var cell = ws.Cell(fila, col);
-                cell.Style.Font.Bold = true;
-                cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#4A4A6A");
-                cell.Style.Font.FontColor = XLColor.White;
+                cell.Style.Font.Bold = estiloEnc.Negrita ?? true;
+                cell.Style.Fill.BackgroundColor = fondoEnc;
+                cell.Style.Font.FontColor = textoEnc;
                 cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                 cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
                 cell.Style.Alignment.WrapText = true;
@@ -201,11 +207,16 @@ namespace SOPRO.WinForms.Forms
 
         private void EscribirFilaSeccion(IXLWorksheet ws, int fila, int numCols, string titulo)
         {
+            // El color de la fila de SECCIÓN proviene de los defaults por rol del
+            // reporte (misma fuente que el PDF): no se hardcodea aquí.
+            var estilo = EstilosFilaPredeterminados.Financiamiento(RolFilaReporte.Seccion);
             var rng = ws.Range(fila, 1, fila, numCols);
             rng.Merge();
             rng.Value = titulo;
-            rng.Style.Font.Bold = true;
-            rng.Style.Fill.BackgroundColor = XLColor.FromHtml("#D9E2F3");
+            rng.Style.Font.Bold = estilo.Negrita ?? true;
+            rng.Style.Fill.BackgroundColor = XLColor.FromHtml(estilo.ColorFondo ?? "#D9E2F3");
+            if (!string.IsNullOrWhiteSpace(estilo.ColorFuente))
+                rng.Style.Font.FontColor = XLColor.FromHtml(estilo.ColorFuente);
             rng.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
         }
 

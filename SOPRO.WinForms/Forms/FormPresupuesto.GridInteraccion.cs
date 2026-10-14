@@ -137,10 +137,21 @@ namespace SOPRO.WinForms.Forms
             if (e.Button != MouseButtons.Right || e.RowIndex < 0) return;
 
             var clickedRow = dgvPresupuesto.Rows[e.RowIndex];
-            if (!clickedRow.Selected)
+
+            // Con CellSelect (formato por celda) un clic sobre una celda NO puebla
+            // SelectedRows y clickedRow.Selected es falso aunque existan celdas
+            // seleccionadas: el criterio se resuelve con DgvCeldaHelper para no
+            // borrar una multiselección al abrir el menú contextual.
+            if (!DgvCeldaHelper.ClicDentroDeSeleccion(dgvPresupuesto, e.RowIndex))
             {
                 dgvPresupuesto.ClearSelection();
-                clickedRow.Selected = true;
+                // Bajo CellSelect `clickedRow.Selected = true` es un no-op; hay que
+                // seleccionar la celda clicada (o la fila completa si se pulsó el
+                // encabezado) para que la copia del menú tenga contenido.
+                if (e.ColumnIndex >= 0)
+                    clickedRow.Cells[e.ColumnIndex].Selected = true;
+                else
+                    DgvCeldaHelper.SeleccionarFilaCompleta(dgvPresupuesto, e.RowIndex);
             }
 
             if (e.ColumnIndex >= 0)
@@ -149,31 +160,28 @@ namespace SOPRO.WinForms.Forms
             _menuPresupuesto?.Dispose();
             _menuPresupuesto = new ContextMenuStrip();
 
-            var itemCopiarCelda = _menuPresupuesto.Items.Add("📋  Copiar celda");
-            itemCopiarCelda.Click += (_, __) =>
+            // H8: copia tipo Excel (bloque exacto de celdas o fila[s] completa[s] por
+            // encabezado). La lógica se centraliza en DgvCeldaHelper.
+            string etiquetaCopiar = DgvCeldaHelper.EtiquetaCopiar(dgvPresupuesto);
+            if (etiquetaCopiar != "Copiar celda")
             {
-                var cell = dgvPresupuesto.CurrentCell;
-                if (cell != null)
+                var itemCopiarCelda = _menuPresupuesto.Items.Add("📋  Copiar celda");
+                itemCopiarCelda.Click += (_, __) =>
                 {
-                    string txt = cell.FormattedValue?.ToString() ?? "";
-                    if (txt.Length > 0) Clipboard.SetText(txt);
-                }
-            };
+                    var cell = dgvPresupuesto.CurrentCell;
+                    if (cell != null)
+                    {
+                        string txt = cell.FormattedValue?.ToString() ?? "";
+                        if (txt.Length > 0) Clipboard.SetText(txt);
+                    }
+                };
+            }
 
-            int n = dgvPresupuesto.SelectedRows.Cast<DataGridViewRow>().Count(r => !r.IsNewRow);
-            string labelCopiarFila = n > 1 ? $"📄  Copiar {n} filas" : "📄  Copiar fila";
-            var itemCopiarFila = _menuPresupuesto.Items.Add(labelCopiarFila);
-            itemCopiarFila.Click += (_, __) =>
-            {
-                var cols = Enumerable.Range(0, dgvPresupuesto.ColumnCount)
-                    .Where(i => dgvPresupuesto.Columns[i].Visible)
-                    .OrderBy(i => dgvPresupuesto.Columns[i].DisplayIndex)
-                    .ToList();
-                var sb = new System.Text.StringBuilder();
-                foreach (DataGridViewRow r in dgvPresupuesto.SelectedRows.Cast<DataGridViewRow>().OrderBy(r => r.Index))
-                    sb.AppendLine(string.Join("	", cols.Select(i => r.Cells[i].FormattedValue?.ToString() ?? "")));
-                if (sb.Length > 0) Clipboard.SetText(sb.ToString().TrimEnd());
-            };
+            var itemCopiar = _menuPresupuesto.Items.Add($"📄  {etiquetaCopiar}");
+            itemCopiar.Click += (_, __) => DgvCeldaHelper.CopiarSeleccionAlPortapapeles(dgvPresupuesto);
+
+            // El borrado SÍ trabaja por filas (correcto para eliminar): usa FilasSeleccionadas.
+            int n = SeleccionGridHelper.FilasSeleccionadas(dgvPresupuesto).Count(r => !r.IsNewRow);
 
             _menuPresupuesto.Items.Add(new ToolStripSeparator());
 
@@ -228,10 +236,13 @@ namespace SOPRO.WinForms.Forms
 
         private bool TryDeleteMultipleSelectedConceptRows()
         {
-            if (dgvPresupuesto.SelectedRows.Count <= 1)
+            // Con CellSelect (formato por celda) SelectedRows queda vacío aunque
+            // haya celdas seleccionadas: las filas tocadas se resuelven vía helper.
+            var filasSeleccionadas = SeleccionGridHelper.FilasSeleccionadas(dgvPresupuesto);
+            if (filasSeleccionadas.Count <= 1)
                 return false;
 
-            var selectedIndexes = dgvPresupuesto.SelectedRows.Cast<DataGridViewRow>()
+            var selectedIndexes = filasSeleccionadas
                 .Where(r => !r.IsNewRow)
                 .Select(r => r.Index)
                 .Distinct()

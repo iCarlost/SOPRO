@@ -14,7 +14,7 @@ using SOPRO.Application.Services;
 
 namespace SOPRO.WinForms.Forms
 {
-    public partial class FormCatalogoHerramientas : Form, IGridFormato, IBusquedaGrid, IRecalculable, IConsolidacionInsumos
+    public partial class FormCatalogoHerramientas : Form, IGridFormato, IBusquedaGrid, IRecalculable, IConsolidacionInsumos, IGridSeleccionFormato
     {
         public static event EventHandler InsumosModificados;
 
@@ -39,7 +39,7 @@ namespace SOPRO.WinForms.Forms
         public ColumnaPersonalizada ColumnaSeleccionada => _columnaRibbon;
 
 
-        public bool ConsolidacionDisponible => _proyectoId.HasValue && dgvHerramientas.SelectedRows.Count >= 2;
+        public bool ConsolidacionDisponible => _proyectoId.HasValue && SeleccionGridHelper.FilasSeleccionadas(dgvHerramientas).Count >= 2;
         public string NombreTipoConsolidacion => "Herramientas";
 
 

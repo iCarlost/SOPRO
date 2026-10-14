@@ -5,9 +5,11 @@ using System.Windows.Forms;
 using Microsoft.EntityFrameworkCore;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Reporting.Formatting;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using SOPRO.Application.Services;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.WinForms.Undo;
 
 namespace SOPRO.WinForms.Forms
@@ -129,14 +131,22 @@ namespace SOPRO.WinForms.Forms
         {
             var dgv = sender as DataGridView;
             if (dgv == null || e.RowIndex < 0) return;
+            if (e.CellStyle is null) return;
 
             var tipo = dgv.Rows[e.RowIndex].Cells["colTipo"].Value?.ToString();
 
-            if (tipo == "GRUPO")
-            {
-                e.CellStyle.Font = new Font(dgv.Font, FontStyle.Bold);
-                e.CellStyle.BackColor = Color.FromArgb(230, 230, 230);
-            }
+            // Precedencia ÚNICA (override de celda > estilo de rol: default neutro
+            // Grupo #E6E6E6 + negrita, combinado con el override persistido del
+            // usuario) resuelta por el resolver neutral compartido; la UI no
+            // recompone la cascada en dos pasos.
+            if (e.CellStyle.Font is null) e.CellStyle.Font = dgv.Font;
+
+            var rolOverlay = EstilosFilaPredeterminados.CombinarIndirectos(
+                ObtenerRolFilaFormato(tipo), ObtenerEstilosFilaUsuario());
+            var celdaOverlay = ObtenerOverlayFormatoCeldaIndirectos(dgv, e);
+
+            var overlay = ReportCellStyleResolver.Combinar(rolOverlay, celdaOverlay);
+            FormPresupuesto.AplicarOverlayACellStyle(e.CellStyle, overlay);
         }
 
         private void Dgv_CellEndEdit(object sender, DataGridViewCellEventArgs e)

@@ -9,6 +9,7 @@ using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.UI.Controls;
+using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
 
 namespace SOPRO.WinForms.Forms
@@ -18,29 +19,105 @@ namespace SOPRO.WinForms.Forms
     /// </summary>
     public partial class FormProyecto
     {
+        /// <summary>
+        /// Decide el DESTINO del formato del ribbon: selección de celdas
+        /// (si el grid activo implementa <see cref="IGridSeleccionFormato"/>) o
+        /// columna (comportamiento previo intacto).
+        /// </summary>
+        private readonly FormatoSeleccionCoordinator _formatoSeleccionCoordinator = new FormatoSeleccionCoordinator();
 
-        private void AplicarRibbon()
+        /// <summary>
+        /// Propiedad del ribbon que el usuario acaba de modificar. Permite aplicar a
+        /// la selección de CELDAS SOLO esa propiedad (delta parcial) y preservar el
+        /// resto del formato ya aplicado a cada celda.
+        /// </summary>
+        internal enum PropiedadFormatoRibbon
         {
-            if (_cargandoRibbon || _formActivo?.ColumnaSeleccionada == null) return;
+            Fuente,
+            TamanoFuente,
+            Negrita,
+            Cursiva,
+            ColorFuente,
+            ColorFondo,
+            AlineacionHorizontal,
+            AlineacionVertical,
+        }
+
+        /// <summary>
+        /// Aplica al destino actual la PROPIEDAD del ribbon que cambió. Para la
+        /// selección de CELDAS envía SÓLO esa propiedad (delta parcial) y el
+        /// coordinador la FUSIONA sobre el overlay previo de cada celda: cada celda
+        /// conserva exactamente lo que se le aplicó y una edición (p. ej. la
+        /// alineación) NO arrastra ni pisa el estado de otra celda (p. ej. su fondo).
+        /// Para la COLUMNA se conserva el comportamiento histórico (formato completo).
+        /// </summary>
+        private void AplicarRibbonPropiedad(PropiedadFormatoRibbon propiedad)
+        {
+            if (_cargandoRibbon) return;
+
+            _formatoSeleccionCoordinator.EstablecerGrid(_formActivo);
+
+            // Destino CELDAS: grid que implementa IGridSeleccionFormato con celdas
+            // seleccionadas → delta por celda (pintado inmediato) y pares
+            // antes/después listos para el undo/persistencia (Fase 4.1).
+            if (_formatoSeleccionCoordinator.PuedeAplicarASeleccion)
+            {
+                _formatoSeleccionCoordinator.AplicarASeleccion(
+                    RestringirAPropiedad(FormatoSeleccionCoordinator.ConstruirOverlay(BuildFmt()), propiedad));
+                return;
+            }
+
+            // Destino COLUMNA: comportamiento existente (encabezado seleccionado).
+            if (_formActivo?.ColumnaSeleccionada == null) return;
             _formActivo.AplicarFormato(BuildFmt());
             AplicarAlineacionVerticalSeleccionActual();
+        }
+
+        /// <summary>
+        /// Devuelve un overlay con SOLO la propiedad indicada del formato completo del
+        /// ribbon (el resto queda <c>null</c> = heredar / sin cambios). Así una edición
+        /// de una sola propiedad (p. ej. alineación) NO viaja con los valores
+        /// retenidos de otra (p. ej. el color de fondo elegido antes), que es lo que
+        /// provocaba la "fuga" de formato entre celdas.
+        /// </summary>
+        internal static ReportStyleOverlay RestringirAPropiedad(
+            ReportStyleOverlay completo,
+            PropiedadFormatoRibbon propiedad)
+        {
+            ArgumentNullException.ThrowIfNull(completo);
+
+            return propiedad switch
+            {
+                PropiedadFormatoRibbon.Fuente => new ReportStyleOverlay(Fuente: completo.Fuente),
+                PropiedadFormatoRibbon.TamanoFuente => new ReportStyleOverlay(TamanoFuente: completo.TamanoFuente),
+                PropiedadFormatoRibbon.Negrita => new ReportStyleOverlay(Negrita: completo.Negrita),
+                PropiedadFormatoRibbon.Cursiva => new ReportStyleOverlay(Cursiva: completo.Cursiva),
+                PropiedadFormatoRibbon.ColorFuente => new ReportStyleOverlay(ColorFuente: completo.ColorFuente),
+                PropiedadFormatoRibbon.ColorFondo => new ReportStyleOverlay(ColorFondo: completo.ColorFondo),
+                PropiedadFormatoRibbon.AlineacionHorizontal => new ReportStyleOverlay(AlineacionHorizontal: completo.AlineacionHorizontal),
+                PropiedadFormatoRibbon.AlineacionVertical => new ReportStyleOverlay(AlineacionVertical: completo.AlineacionVertical),
+                _ => completo,
+            };
         }
 
         private ColumnaPersonalizada BuildFmt() => new ColumnaPersonalizada
         {
             NombreFuente = cboFuente.SelectedItem?.ToString() ?? "Segoe UI",
             TamanoFuente = (int)nudTamano.Value,
-            Negrita      = EstaBotonActivo(btnNegrita),
-            Cursiva      = EstaBotonActivo(btnCursiva),
-            Alineacion   = ObtenerAlin(),
-            ColorFondo   = HexColor(_colorMuestraFondoRibbon),
-            ColorFuente  = HexColor(_colorMuestraTextoRibbon),
-            WrapTexto    = EstaBotonActivo(btnWrapRibbon),
+            Negrita = EstaBotonActivo(btnNegrita),
+            Cursiva = EstaBotonActivo(btnCursiva),
+            Alineacion = ObtenerAlin(),
+            ColorFondo = HexColor(_colorMuestraFondoRibbon),
+            ColorFuente = HexColor(_colorMuestraTextoRibbon),
+            WrapTexto = EstaBotonActivo(btnWrapRibbon),
             AlineacionVertical = EstaBotonActivo(btnAlinAba) ? 2 : EstaBotonActivo(btnAlinJus) ? 0 : 1,
         };
 
         // Eventos de controles del ribbon
-        private void Ribbon_Changed(object sender, EventArgs e) => AplicarRibbon();
+        private void Ribbon_Changed(object sender, EventArgs e)
+            => AplicarRibbonPropiedad(ReferenceEquals(sender, nudTamano)
+                ? PropiedadFormatoRibbon.TamanoFuente
+                : PropiedadFormatoRibbon.Fuente);
 
         private void Ribbon_ToggleEstilo(object sender, EventArgs e)
         {
@@ -48,19 +125,35 @@ namespace SOPRO.WinForms.Forms
             var btn = (Button)sender;
             var nuevoEstado = !EstaBotonActivo(btn);
             AplicarTemaBotonRibbon(btn, nuevoEstado);
-            AplicarRibbon();
+            AplicarRibbonPropiedad(ReferenceEquals(btn, btnCursiva)
+                ? PropiedadFormatoRibbon.Cursiva
+                : PropiedadFormatoRibbon.Negrita);
         }
 
         private void SetAlineacion(AlineacionColumna alin)
         {
             if (_cargandoRibbon) return;
             ActualizarBotonesAlin(alin);
-            AplicarRibbon();
+            AplicarRibbonPropiedad(PropiedadFormatoRibbon.AlineacionHorizontal);
         }
 
         private void SetAlineacionVertical(DataGridViewContentAlignment alineacionBase)
         {
             if (_cargandoRibbon || _formActivo?.GridPrincipal == null) return;
+
+            _formatoSeleccionCoordinator.EstablecerGrid(_formActivo);
+
+            // Destino CELDAS: aplicar la alineación vertical a la selección
+            // (pintado inmediato) sin tocar el encabezado/columna.
+            if (_formatoSeleccionCoordinator.PuedeAplicarASeleccion)
+            {
+                ActualizarBotonesAlinVertical(alineacionBase);
+                _formatoSeleccionCoordinator.AplicarASeleccion(
+                    RestringirAPropiedad(
+                        FormatoSeleccionCoordinator.ConstruirOverlay(BuildFmt()),
+                        PropiedadFormatoRibbon.AlineacionVertical));
+                return;
+            }
 
             var grid = _formActivo.GridPrincipal;
             var col = ObtenerColumnaSeleccionadaGrid();
@@ -121,7 +214,7 @@ namespace SOPRO.WinForms.Forms
             if (dlg.ShowDialog() != DialogResult.OK) return;
             _colorMuestraFondoRibbon = dlg.Color;
             AplicarTemaBotonColor(btnColorFondo, _colorMuestraFondoRibbon, "■");
-            AplicarRibbon();
+            AplicarRibbonPropiedad(PropiedadFormatoRibbon.ColorFondo);
         }
 
         private void BtnColorTexto_Click(object sender, EventArgs e)
@@ -130,7 +223,7 @@ namespace SOPRO.WinForms.Forms
             if (dlg.ShowDialog() != DialogResult.OK) return;
             _colorMuestraTextoRibbon = dlg.Color;
             AplicarTemaBotonColor(btnColorTexto, _colorMuestraTextoRibbon, "A");
-            AplicarRibbon();
+            AplicarRibbonPropiedad(PropiedadFormatoRibbon.ColorFuente);
         }
 
         private void btnAplicarATodas_Click(object sender, EventArgs e)

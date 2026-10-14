@@ -246,8 +246,9 @@ namespace SOPRO.WinForms.Forms
 
         private void dgvMateriales_SelectionChanged(object sender, EventArgs e)
         {
-            _materialSeleccionado = dgvMateriales.SelectedRows.Count > 0
-                ? dgvMateriales.SelectedRows[0].DataBoundItem as MaterialListItem
+            var filas = SeleccionGridHelper.FilasSeleccionadas(dgvMateriales);
+            _materialSeleccionado = filas.Count > 0
+                ? filas[0].DataBoundItem as MaterialListItem
                 : null;
             ActualizarEstadoBotones();
         }

@@ -403,7 +403,7 @@ namespace SOPRO.WinForms.Forms
             dgvActividades.Location = new Point(0, 0);
             dgvActividades.Name = "dgvActividades";
             dgvActividades.RowHeadersVisible = false;
-            dgvActividades.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dgvActividades.SelectionMode = DataGridViewSelectionMode.CellSelect;
             dgvActividades.Size = new Size(885, 357);
             dgvActividades.TabIndex = 0;
             dgvActividades.CellEndEdit += dgvActividades_CellEndEdit;

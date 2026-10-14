@@ -1,4 +1,5 @@
 using SOPRO.Application.Models.Reporting.ReportColumns;
+using SOPRO.Application.Services.Reporting;
 using SOPRO.Core.Entities;
 
 namespace SOPRO.Application.UseCases.Reporting;
@@ -23,6 +24,14 @@ public sealed class IndirectosReportSnapshotBuilder
 {
     /// <summary>Tipo de reporte que produce este builder.</summary>
     public const string TipoReporte = "Indirectos";
+
+    /// <summary>
+    /// Clave de vista canónica del reporte de Indirectos. Es la vista por defecto
+    /// (<c>""</c>), la MISMA que persiste el grid en
+    /// <c>FormatoCeldaReporte.ClaveVista</c> (ver <c>FormIndirectos.FormatoVistaIndirectos</c>),
+    /// de modo que el resolver de estilos coincide por igualdad exacta en PDF/Excel.
+    /// </summary>
+    public const string ClaveVista = "";
 
     /// <summary>
     /// Columnas por defecto cuando el proyecto aún no tiene configuración
@@ -78,6 +87,56 @@ public sealed class IndirectosReportSnapshotBuilder
             DecimalesImporte = decimalesImporte,
             DecimalesPorcentaje = decimalesPorcentaje
         };
+    }
+
+    /// <summary>
+    /// Clave de fila ESTABLE de un grupo de indirectos, derivada del dominio (nunca
+    /// del índice visual del grid): <c>G:{GrupoIndirecto.Id}</c>. Es EXACTAMENTE la
+    /// clave que persiste el grid en <c>FormatoCeldaReporte.ClaveFila</c> (ver
+    /// <c>FormIndirectos.ObtenerClaveFilaFormato</c>), de modo que los overrides de
+    /// celda sobreviven a reordenamientos y filtros.
+    /// </summary>
+    public static string ClaveFila(GrupoIndirecto grupo)
+    {
+        ArgumentNullException.ThrowIfNull(grupo);
+        return ClaveFilaReporte.GrupoIndirecto(grupo.Id);
+    }
+
+    /// <summary>
+    /// Clave de fila ESTABLE de un concepto de indirectos: <c>IC:{ConceptoIndirecto.Id}</c>.
+    /// Coincide con la que persiste el grid.
+    /// </summary>
+    public static string ClaveFila(ConceptoIndirecto concepto)
+    {
+        ArgumentNullException.ThrowIfNull(concepto);
+        return ClaveFilaReporte.ConceptoIndirecto(concepto.Id);
+    }
+
+    /// <summary>
+    /// Rol funcional de fila (<see cref="RolFilaReporte"/>) correspondiente al tipo
+    /// de renglón del grid (<c>GRUPO</c>/<c>CONCEPTO</c>). Es el punto único de
+    /// paridad grid↔PDF↔Excel para las filas editables.
+    /// </summary>
+    public static string? RolFila(string? tipoFila) => tipoFila?.Trim().ToUpperInvariant() switch
+    {
+        "GRUPO" => RolFilaReporte.Grupo,
+        "CONCEPTO" => RolFilaReporte.Concepto,
+        _ => null,
+    };
+
+    /// <summary>
+    /// Devuelve una copia del snapshot con <see cref="ReportColumnSnapshot.EstilosCelda"/>
+    /// y <see cref="ReportColumnSnapshot.EstilosFila"/> poblados desde la
+    /// configuración persistida del (proyecto, tipo) —overrides de celda y estilos
+    /// de rol del usuario—. Si no hay overrides, ambas colecciones quedan
+    /// <c>null</c> (retrocompatibilidad total). Es el mecanismo de 4.2 aplicado a
+    /// Indirectos.
+    /// </summary>
+    public static ReportColumnSnapshot ConEstilos(ReportColumnSnapshot snapshot, FormatoReporteService formatos)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(formatos);
+        return new ReportStyleSnapshotBuilder(formatos).Build(snapshot);
     }
 
     /// <summary>
