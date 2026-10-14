@@ -30,14 +30,14 @@ namespace SOPRO.Application.Services
             if (refreshed == null) return proyecto;
 
             proyecto.PorcentajeIndirectosCentral = refreshed.PorcentajeIndirectosCentral;
-            proyecto.PorcentajeIndirectosCampo   = refreshed.PorcentajeIndirectosCampo;
-            proyecto.PorcentajeFinanciamiento    = refreshed.PorcentajeFinanciamiento;
-            proyecto.PorcentajeUtilidad          = refreshed.PorcentajeUtilidad;
+            proyecto.PorcentajeIndirectosCampo = refreshed.PorcentajeIndirectosCampo;
+            proyecto.PorcentajeFinanciamiento = refreshed.PorcentajeFinanciamiento;
+            proyecto.PorcentajeUtilidad = refreshed.PorcentajeUtilidad;
             proyecto.PorcentajeCargosAdicionales = refreshed.PorcentajeCargosAdicionales;
-            proyecto.ModoCalculoPorcentajes      = refreshed.ModoCalculoPorcentajes;
-            proyecto.DecimalesCantidad           = refreshed.DecimalesCantidad;
-            proyecto.DecimalesImporte            = refreshed.DecimalesImporte;
-            proyecto.DecimalesPorcentaje         = refreshed.DecimalesPorcentaje;
+            proyecto.ModoCalculoPorcentajes = refreshed.ModoCalculoPorcentajes;
+            proyecto.DecimalesCantidad = refreshed.DecimalesCantidad;
+            proyecto.DecimalesImporte = refreshed.DecimalesImporte;
+            proyecto.DecimalesPorcentaje = refreshed.DecimalesPorcentaje;
             return proyecto;
         }
 
@@ -52,18 +52,18 @@ namespace SOPRO.Application.Services
         {
             if (input == null) throw new ArgumentNullException(nameof(input));
 
-            decimal pInd   = input.IndirectosCentral + input.IndirectosCampo;
-            decimal pFin   = input.Financiamiento;
-            decimal pUtil  = input.Utilidad;
+            decimal pInd = input.IndirectosCentral + input.IndirectosCampo;
+            decimal pFin = input.Financiamiento;
+            decimal pUtil = input.Utilidad;
             decimal pCargos = input.CargosAdicionales;
 
             if (string.Equals(input.ModoCalculoPorcentajes, "SobreCD", StringComparison.OrdinalIgnoreCase))
                 return 1m + (pInd + pFin + pUtil + pCargos) / 100m;
 
             decimal f = 1m;
-            f *= (1m + pInd    / 100m);
-            f *= (1m + pFin    / 100m);
-            f *= (1m + pUtil   / 100m);
+            f *= (1m + pInd / 100m);
+            f *= (1m + pFin / 100m);
+            f *= (1m + pUtil / 100m);
             f *= (1m + pCargos / 100m);
             return f;
         }
@@ -74,7 +74,7 @@ namespace SOPRO.Application.Services
         public static decimal CalculateUnitPrice(Proyecto proyecto, decimal costoDirecto)
         {
             var engine = CalculationEngineFactory.FromProyecto(proyecto);
-            var pct    = BudgetPercentageInput.FromProyecto(proyecto);
+            var pct = BudgetPercentageInput.FromProyecto(proyecto);
             return engine.CalculateUnitPrice(costoDirecto, pct.ToPricePercentage()).UnitPrice;
         }
 
@@ -117,9 +117,9 @@ namespace SOPRO.Application.Services
             if (numero == 0)
                 return $"CERO {moneda} 00/100 {centavos}";
 
-            long parteEntera  = (long)Math.Floor(numero);
-            int  parteDecimal = (int)Math.Round((numero - parteEntera) * 100);
-            string letras     = ConvertirEnteroALetras(parteEntera);
+            long parteEntera = (long)Math.Floor(numero);
+            int parteDecimal = (int)Math.Round((numero - parteEntera) * 100);
+            string letras = ConvertirEnteroALetras(parteEntera);
             return $"{letras} {moneda} {parteDecimal:00}/100 {centavos}";
         }
 
@@ -134,11 +134,11 @@ namespace SOPRO.Application.Services
 
             return new BudgetHeaderInfo
             {
-                ProyectoNombre       = proyecto.Nombre ?? string.Empty,
-                UbicacionTexto       = $"📍 {proyecto.Ubicacion}",
+                ProyectoNombre = proyecto.Nombre ?? string.Empty,
+                UbicacionTexto = $"📍 {proyecto.Ubicacion}",
                 FactorPrecioUnitario = factor,
                 TienePorcentajesActivos = hayPorc,
-                PorcentajesTexto     = hayPorc
+                PorcentajesTexto = hayPorc
                     ? $"📊  Ind.OC {proyecto.PorcentajeIndirectosCentral:N2}%  Campo {proyecto.PorcentajeIndirectosCampo:N2}%  Fin {proyecto.PorcentajeFinanciamiento:N2}%  Util {proyecto.PorcentajeUtilidad:N2}%  → Factor {factor:N6}×"
                     : "⚠️  Sin porcentajes configurados  (usa Porcentajes o Módulo Indirectos)"
             };
@@ -147,45 +147,69 @@ namespace SOPRO.Application.Services
         private static string ConvertirEnteroALetras(long numero)
         {
             if (numero == 0) return "CERO";
-            if (numero < 0)  return "MENOS " + ConvertirEnteroALetras(Math.Abs(numero));
+            if (numero < 0) return "MENOS " + ConvertirEnteroALetras(Math.Abs(numero));
             if (numero <= 15)
                 return numero switch
                 {
-                    1  => "UNO",   2  => "DOS",    3  => "TRES",    4  => "CUATRO",  5  => "CINCO",
-                    6  => "SEIS",  7  => "SIETE",  8  => "OCHO",    9  => "NUEVE",   10 => "DIEZ",
-                    11 => "ONCE",  12 => "DOCE",   13 => "TRECE",   14 => "CATORCE", 15 => "QUINCE",
+                    1 => "UNO",
+                    2 => "DOS",
+                    3 => "TRES",
+                    4 => "CUATRO",
+                    5 => "CINCO",
+                    6 => "SEIS",
+                    7 => "SIETE",
+                    8 => "OCHO",
+                    9 => "NUEVE",
+                    10 => "DIEZ",
+                    11 => "ONCE",
+                    12 => "DOCE",
+                    13 => "TRECE",
+                    14 => "CATORCE",
+                    15 => "QUINCE",
                     _ => string.Empty
                 };
-            if (numero < 20)  return "DIECI"  + ConvertirEnteroALetras(numero - 10).ToLower();
+            if (numero < 20) return "DIECI" + ConvertirEnteroALetras(numero - 10);
             if (numero == 20) return "VEINTE";
-            if (numero < 30)  return "VEINTI"  + ConvertirEnteroALetras(numero - 20).ToLower();
+            if (numero < 30) return "VEINTI" + ConvertirEnteroALetras(numero - 20);
             if (numero < 100)
             {
-                long decenas  = numero / 10;
+                long decenas = numero / 10;
                 long unidades = numero % 10;
                 string textoDecenas = decenas switch
                 {
-                    3 => "TREINTA", 4 => "CUARENTA", 5 => "CINCUENTA", 6 => "SESENTA",
-                    7 => "SETENTA", 8 => "OCHENTA",  9 => "NOVENTA",   _ => string.Empty
+                    3 => "TREINTA",
+                    4 => "CUARENTA",
+                    5 => "CINCUENTA",
+                    6 => "SESENTA",
+                    7 => "SETENTA",
+                    8 => "OCHENTA",
+                    9 => "NOVENTA",
+                    _ => string.Empty
                 };
                 return unidades == 0 ? textoDecenas : textoDecenas + " Y " + ConvertirEnteroALetras(unidades);
             }
             if (numero == 100) return "CIEN";
-            if (numero < 200)  return "CIENTO " + ConvertirEnteroALetras(numero - 100);
+            if (numero < 200) return "CIENTO " + ConvertirEnteroALetras(numero - 100);
             if (numero < 1000)
             {
                 long centenas = numero / 100;
-                long resto    = numero % 100;
+                long resto = numero % 100;
                 string textoCentenas = centenas switch
                 {
-                    2 => "DOSCIENTOS",    3 => "TRESCIENTOS",   4 => "CUATROCIENTOS",
-                    5 => "QUINIENTOS",    6 => "SEISCIENTOS",   7 => "SETECIENTOS",
-                    8 => "OCHOCIENTOS",   9 => "NOVECIENTOS",   _ => string.Empty
+                    2 => "DOSCIENTOS",
+                    3 => "TRESCIENTOS",
+                    4 => "CUATROCIENTOS",
+                    5 => "QUINIENTOS",
+                    6 => "SEISCIENTOS",
+                    7 => "SETECIENTOS",
+                    8 => "OCHOCIENTOS",
+                    9 => "NOVECIENTOS",
+                    _ => string.Empty
                 };
                 return resto == 0 ? textoCentenas : textoCentenas + " " + ConvertirEnteroALetras(resto);
             }
             if (numero == 1000) return "MIL";
-            if (numero < 2000)  return "MIL " + ConvertirEnteroALetras(numero - 1000);
+            if (numero < 2000) return "MIL " + ConvertirEnteroALetras(numero - 1000);
             if (numero < 1_000_000)
             {
                 long miles = numero / 1000;
@@ -194,11 +218,11 @@ namespace SOPRO.Application.Services
                 return resto == 0 ? textoMiles : textoMiles + " " + ConvertirEnteroALetras(resto);
             }
             if (numero == 1_000_000) return "UN MILLON";
-            if (numero < 2_000_000)  return "UN MILLON " + ConvertirEnteroALetras(numero - 1_000_000);
+            if (numero < 2_000_000) return "UN MILLON " + ConvertirEnteroALetras(numero - 1_000_000);
             if (numero < 1_000_000_000_000)
             {
                 long millones = numero / 1_000_000;
-                long resto    = numero % 1_000_000;
+                long resto = numero % 1_000_000;
                 string textoMillones = ConvertirEnteroALetras(millones) + " MILLONES";
                 return resto == 0 ? textoMillones : textoMillones + " " + ConvertirEnteroALetras(resto);
             }
