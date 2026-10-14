@@ -9,12 +9,21 @@ namespace SOPRO.WinForms.Helpers
 {
     /// <summary>
     /// Aplica a cualquier DataGridView:
-    ///   • Color suave de selección de fila.
+    ///   • Color suave de selección.
     ///   • Borde azul en la celda activa.
-    ///   • Ctrl+C inteligente:
-    ///       - 1 fila seleccionada normalmente  → copia solo la celda activa.
-    ///       - Múltiples filas (Shift/Ctrl+clic) → copia todas las filas completas (TSV).
-    ///       - Clic en RowHeader                → copia esa fila completa (TSV).
+    ///   • Selección + Ctrl+C con semántica de Excel (H8):
+    ///       - Si hay CELDAS seleccionadas (una o varias, incluso en filas
+    ///         distintas) se copia EXACTAMENTE ese bloque de celdas como TSV.
+    ///       - Si se seleccionó(n) FILA(S) COMPLETA(S) por el ENCABEZADO de fila
+    ///         se copian esas filas completas (todas las columnas visibles).
+    ///
+    /// IMPORTANTE: bajo <see cref="DataGridViewSelectionMode.CellSelect"/> (formato
+    /// por celda) WinForms NO selecciona la fila al pulsar el encabezado
+    /// (<c>OnRowHeaderMouseDown</c> hace <c>break</c> para CellSelect) y deja
+    /// <see cref="DataGridView.SelectedRows"/> siempre vacío. Por eso este helper
+    /// selecciona la fila explícitamente al clicar el encabezado y detecta las
+    /// filas completas por sus celdas.
+    ///
     /// Uso: DgvCeldaHelper.Aplicar(miDgv);
     /// </summary>
     public static class DgvCeldaHelper
@@ -91,8 +100,16 @@ namespace SOPRO.WinForms.Helpers
             if (estado.Inicializado) return;
             estado.Inicializado = true;
 
-            // Detectar clic en RowHeader
-            dgv.RowHeaderMouseClick += (s, e) => estado.ClicoEnRowHeader = true;
+            // Clic en el encabezado de fila: marcar el flag y, bajo CellSelect
+            // (donde WinForms NO selecciona la fila), seleccionar todas sus celdas
+            // para habilitar la copia de fila completa (H8).
+            dgv.RowHeaderMouseClick += (s, e) =>
+            {
+                estado.ClicoEnRowHeader = true;
+                if (dgv.SelectionMode == DataGridViewSelectionMode.CellSelect)
+                    ManejarClicEnEncabezadoFila(dgv, e.RowIndex);
+            };
+
             // Cualquier clic en celda normal borra el flag
             dgv.CellMouseDown += (s, e) => { if (e.ColumnIndex >= 0) estado.ClicoEnRowHeader = false; };
 
@@ -114,7 +131,7 @@ namespace SOPRO.WinForms.Helpers
                 dgv.CellMouseDown += (s, e) =>
                 {
                     if (e.Button != MouseButtons.Right || e.RowIndex < 0 || e.ColumnIndex < 0) return;
-                    MostrarMenuCopia((DataGridView)s, estado);
+                    MostrarMenuCopia((DataGridView)s);
                 };
             }
 
@@ -184,7 +201,7 @@ namespace SOPRO.WinForms.Helpers
             if (!e.Control || e.KeyCode != Keys.C) return;
 
             var dgv = (DataGridView)sender;
-            if (dgv.CurrentCell == null) return;
+            if (dgv.CurrentCell == null && dgv.SelectedCells.Count == 0) return;
 
             // En modo edición, el TextBox editor se encarga de la copia.
             if (dgv.IsCurrentCellInEditMode)
@@ -194,72 +211,217 @@ namespace SOPRO.WinForms.Helpers
                 return;
             }
 
-            _estados.TryGetValue(dgv, out var estado);
-            bool rowHeaderActivo = estado?.ClicoEnRowHeader == true;
-
-            // Bajo CellSelect (formato por celda) `SelectedRows` queda VACÍO aunque el
-            // usuario haya seleccionado celdas en varios renglones; el helper combina
-            // SelectedRows + filas de SelectedCells (dedup, ordenadas).
-            var filas = SeleccionGridHelper.FilasSeleccionadas(dgv);
-
-            if (DebeCopiarFilas(filas.Count, rowHeaderActivo))
-            {
-                // Múltiples filas o clic en RowHeader → copiar filas completas como TSV
-                CopiarFilas(dgv, filas);
-            }
-            else
-            {
-                // Fila única → copiar solo la celda activa
-                string texto = dgv.CurrentCell.FormattedValue?.ToString() ?? string.Empty;
-                if (texto.Length > 0)
-                    Clipboard.SetText(texto);
-            }
+            // Semántica Excel (H8): bloque exacto de celdas o fila(s) completa(s).
+            CopiarSeleccionAlPortapapeles(dgv);
 
             e.Handled = true;
             e.SuppressKeyPress = true;
         }
 
-        private static void MostrarMenuCopia(DataGridView dgv, RowHeaderState estado)
+        private static void MostrarMenuCopia(DataGridView dgv)
         {
-            if (dgv.CurrentCell == null) return;
+            if (dgv.CurrentCell == null && dgv.SelectedCells.Count == 0) return;
 
-            // Igual que Ctrl+C: resolver filas por celdas + filas (CellSelect deja
-            // `SelectedRows` vacío). El conteo alimenta el label y la copia.
-            var filas = SeleccionGridHelper.FilasSeleccionadas(dgv);
-            string labelFilas = EtiquetaCopiarFilas(filas.Count);
+            string etiqueta = EtiquetaCopiar(dgv);
 
             var menu = new ContextMenuStrip();
 
-            // Copiar celda
-            var itemCelda = menu.Items.Add("📋  Copiar celda\tCtrl+C");
-            itemCelda.Click += (_, __) =>
+            // "Copiar celda" (celda activa) como ítem separado, salvo que la copia de
+            // la selección ya consista exactamente en la celda activa.
+            if (etiqueta != "Copiar celda" && dgv.CurrentCell != null)
             {
-                string texto = dgv.CurrentCell.FormattedValue?.ToString() ?? string.Empty;
-                if (texto.Length > 0) Clipboard.SetText(texto);
-            };
+                var itemCelda = menu.Items.Add("📋  Copiar celda\tCtrl+C");
+                itemCelda.Click += (_, __) =>
+                {
+                    string texto = dgv.CurrentCell.FormattedValue?.ToString() ?? string.Empty;
+                    if (texto.Length > 0) Clipboard.SetText(texto);
+                };
+            }
 
-            // Copiar fila(s)
-            var itemFila = menu.Items.Add($"📄  {labelFilas}");
-            itemFila.Click += (_, __) => CopiarFilas(dgv, filas);
+            var itemSeleccion = menu.Items.Add($"📄  {etiqueta}");
+            itemSeleccion.Click += (_, __) => CopiarSeleccionAlPortapapeles(dgv);
 
             menu.Show(dgv, dgv.PointToClient(Cursor.Position));
         }
 
-        /// <summary>
-        /// Criterio de copia de <see cref="Dgv_KeyDown"/>: copiar FILAS completas
-        /// (TSV) cuando hay más de una fila seleccionada (por celdas o filas) o
-        /// cuando la última interacción fue un clic en el RowHeader; en otro caso se
-        /// copia sólo la celda activa.
-        /// </summary>
-        internal static bool DebeCopiarFilas(int filasSeleccionadas, bool clicEnRowHeader)
-            => filasSeleccionadas > 1 || clicEnRowHeader;
+        // ═══════════════════════ API reutilizable de copiado (H8) ═══════════════════════
 
         /// <summary>
-        /// Etiqueta del ítem de menú "Copiar fila(s)" según el número de filas
-        /// resueltas para la selección actual.
+        /// Filas seleccionadas COMO FILA COMPLETA (encabezado de fila o selección de
+        /// banda), excluyendo la fila nueva y ordenadas por índice.
+        ///
+        /// Combina <see cref="DataGridView.SelectedRows"/> con las filas que tienen
+        /// TODAS sus celdas VISIBLES seleccionadas. Bajo <c>CellSelect</c> el grid
+        /// deja <c>SelectedRows</c> siempre vacío, por lo que la fila completa se
+        /// detecta por sus celdas (el encabezado las selecciona todas): así el
+        /// encabezado habilita la copia de fila completa, sin que una mera selección
+        /// de celdas sueltas se expanda a fila.
         /// </summary>
-        internal static string EtiquetaCopiarFilas(int filasSeleccionadas)
-            => filasSeleccionadas > 1 ? $"Copiar {filasSeleccionadas} filas" : "Copiar fila";
+        public static IReadOnlyList<DataGridViewRow> FilasCompletasSeleccionadas(DataGridView grid)
+        {
+            if (grid is null) return Array.Empty<DataGridViewRow>();
+
+            var indices = new HashSet<int>();
+
+            foreach (DataGridViewRow fila in grid.SelectedRows)
+            {
+                if (fila is null || fila.IsNewRow || fila.Index < 0) continue;
+                indices.Add(fila.Index);
+            }
+
+            var visibles = Enumerable.Range(0, grid.ColumnCount)
+                .Where(i => grid.Columns[i].Visible)
+                .ToList();
+
+            if (visibles.Count > 0)
+            {
+                var filasConCeldas = new HashSet<int>();
+                foreach (DataGridViewCell celda in grid.SelectedCells)
+                {
+                    if (celda is null || celda.RowIndex < 0) continue;
+                    filasConCeldas.Add(celda.RowIndex);
+                }
+
+                foreach (var rowIndex in filasConCeldas)
+                {
+                    if (rowIndex < 0 || rowIndex >= grid.Rows.Count) continue;
+                    var fila = grid.Rows[rowIndex];
+                    if (fila.IsNewRow) continue;
+                    if (visibles.All(c => fila.Cells[c].Selected))
+                        indices.Add(rowIndex);
+                }
+            }
+
+            return indices.OrderBy(i => i).Select(i => grid.Rows[i]).ToList();
+        }
+
+        /// <summary>
+        /// Construye el TSV EXACTO del bloque de <see cref="DataGridView.SelectedCells"/>:
+        /// agrupa por fila (ascendente) y, dentro de cada fila, ordena por
+        /// <see cref="DataGridViewColumn.DisplayIndex"/>; celdas separadas por TAB y
+        /// filas por <c>\n</c>. Ignora las celdas sin fila/columna (índice &lt; 0).
+        /// </summary>
+        public static string ConstruirTsvDeCeldasSeleccionadas(DataGridView grid)
+        {
+            if (grid is null) return string.Empty;
+
+            var celdas = new List<DataGridViewCell>();
+            foreach (DataGridViewCell celda in grid.SelectedCells)
+            {
+                if (celda is null || celda.RowIndex < 0 || celda.ColumnIndex < 0) continue;
+                celdas.Add(celda);
+            }
+
+            if (celdas.Count == 0) return string.Empty;
+
+            var sb = new StringBuilder();
+            bool primeraFila = true;
+            foreach (var grupo in celdas.GroupBy(c => c.RowIndex).OrderBy(g => g.Key))
+            {
+                if (!primeraFila) sb.Append('\n');
+                primeraFila = false;
+
+                var valores = grupo
+                    .OrderBy(c => grid.Columns[c.ColumnIndex].DisplayIndex)
+                    .Select(c => c.FormattedValue?.ToString() ?? string.Empty);
+                sb.Append(string.Join("\t", valores));
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Construye el TSV de FILAS COMPLETAS: una línea por fila con todas las
+        /// columnas VISIBLES ordenadas por <see cref="DataGridViewColumn.DisplayIndex"/>.
+        /// Excluye la fila nueva. Función pura y testeable sin UI.
+        /// </summary>
+        public static string ConstruirTsvDeFilas(DataGridView grid, IEnumerable<DataGridViewRow> filas)
+        {
+            if (grid is null || filas is null) return string.Empty;
+
+            var lista = filas
+                .Where(f => f is not null && !f.IsNewRow && f.Index >= 0)
+                .OrderBy(f => f.Index)
+                .ToList();
+            if (lista.Count == 0) return string.Empty;
+
+            var cols = Enumerable.Range(0, grid.ColumnCount)
+                .Where(i => grid.Columns[i].Visible)
+                .OrderBy(i => grid.Columns[i].DisplayIndex)
+                .ToList();
+
+            var sb = new StringBuilder();
+            foreach (var fila in lista)
+                sb.AppendLine(string.Join("\t", cols.Select(i => fila.Cells[i].FormattedValue?.ToString() ?? string.Empty)));
+
+            return sb.ToString().TrimEnd();
+        }
+
+        /// <summary>
+        /// Copia al portapapeles siguiendo la semántica de Excel (H8): si hay fila(s)
+        /// completa(s) seleccionada(s) → copia esas filas completas; en caso contrario
+        /// → copia el bloque exacto de celdas seleccionadas.
+        /// </summary>
+        public static void CopiarSeleccionAlPortapapeles(DataGridView grid)
+        {
+            if (grid is null) return;
+
+            var filas = FilasCompletasSeleccionadas(grid);
+
+            // Un clic en el encabezado que (por timing) aún no haya seleccionado la
+            // fila: usar la fila de la celda actual como fila completa.
+            bool clicEnEncabezado = _estados.TryGetValue(grid, out var estado) && estado.ClicoEnRowHeader;
+            if (filas.Count == 0 && clicEnEncabezado
+                && grid.CurrentCell != null && grid.CurrentCell.RowIndex >= 0
+                && grid.CurrentCell.RowIndex < grid.Rows.Count)
+            {
+                var filaActual = grid.Rows[grid.CurrentCell.RowIndex];
+                if (!filaActual.IsNewRow)
+                    filas = new[] { filaActual };
+            }
+
+            string texto = filas.Count > 0
+                ? ConstruirTsvDeFilas(grid, filas)
+                : ConstruirTsvDeCeldasSeleccionadas(grid);
+
+            if (texto.Length > 0)
+                Clipboard.SetText(texto);
+        }
+
+        /// <summary>
+        /// Etiqueta del ítem de copia según la selección actual:
+        /// "Copiar fila" / "Copiar N filas" para fila(s) completa(s) y
+        /// "Copiar celda" / "Copiar celdas" para selección por celdas.
+        /// </summary>
+        public static string EtiquetaCopiar(DataGridView grid)
+        {
+            if (grid is null) return "Copiar celdas";
+
+            int nFilas = FilasCompletasSeleccionadas(grid).Count;
+            if (nFilas == 1) return "Copiar fila";
+            if (nFilas > 1) return $"Copiar {nFilas} filas";
+
+            int nCeldas = 0;
+            foreach (DataGridViewCell celda in grid.SelectedCells)
+            {
+                if (celda is null || celda.RowIndex < 0) continue;
+                nCeldas++;
+            }
+
+            return nCeldas > 1 ? "Copiar celdas" : "Copiar celda";
+        }
+
+        /// <summary>
+        /// Selecciona (o deselecciona) TODAS las celdas de una fila. Necesario porque
+        /// bajo <see cref="DataGridViewSelectionMode.CellSelect"/> asignar
+        /// <see cref="DataGridViewRow.Selected"/> no tiene efecto.
+        /// </summary>
+        public static void SeleccionarFilaCompleta(DataGridView grid, int rowIndex, bool seleccionar = true)
+        {
+            if (grid is null || rowIndex < 0 || rowIndex >= grid.Rows.Count) return;
+            foreach (DataGridViewCell celda in grid.Rows[rowIndex].Cells)
+                celda.Selected = seleccionar;
+        }
 
         /// <summary>
         /// Indica si <paramref name="rowIndex"/> ya forma parte de la selección
@@ -273,20 +435,45 @@ namespace SOPRO.WinForms.Helpers
             return SeleccionGridHelper.FilasSeleccionadas(grid).Any(r => r.Index == rowIndex);
         }
 
-        private static void CopiarFilas(DataGridView dgv, IEnumerable<DataGridViewRow> filas)
+        // ═══════════════════════ Helpers internos de encabezado de fila ═══════════════════════
+
+        /// <summary>
+        /// Gestiona el clic en el encabezado de fila bajo CellSelect: selecciona la
+        /// fila completa (todas sus celdas), respetando Ctrl (alternar) y Shift
+        /// (rango desde la celda activa). Sin modificadores reemplaza la selección.
+        /// </summary>
+        private static void ManejarClicEnEncabezadoFila(DataGridView dgv, int rowIndex)
         {
-            var colIndices = Enumerable.Range(0, dgv.ColumnCount)
-                .Where(i => dgv.Columns[i].Visible)
-                .OrderBy(i => dgv.Columns[i].DisplayIndex)
-                .ToList();
+            if (rowIndex < 0 || rowIndex >= dgv.Rows.Count) return;
 
-            var sb = new StringBuilder();
-            foreach (var row in filas)
-                sb.AppendLine(string.Join("\t",
-                    colIndices.Select(i => row.Cells[i].FormattedValue?.ToString() ?? "")));
+            var mods = Control.ModifierKeys;
+            if ((mods & Keys.Control) == Keys.Control)
+            {
+                bool yaSeleccionada = FilaCompletaSeleccionada(dgv.Rows[rowIndex]);
+                SeleccionarFilaCompleta(dgv, rowIndex, !yaSeleccionada);
+            }
+            else if ((mods & Keys.Shift) == Keys.Shift
+                     && dgv.CurrentCell != null && dgv.CurrentCell.RowIndex >= 0)
+            {
+                int desde = Math.Min(dgv.CurrentCell.RowIndex, rowIndex);
+                int hasta = Math.Max(dgv.CurrentCell.RowIndex, rowIndex);
+                dgv.ClearSelection();
+                for (int i = Math.Max(0, desde); i <= Math.Min(hasta, dgv.Rows.Count - 1); i++)
+                    SeleccionarFilaCompleta(dgv, i, true);
+            }
+            else
+            {
+                dgv.ClearSelection();
+                SeleccionarFilaCompleta(dgv, rowIndex, true);
+            }
+        }
 
-            if (sb.Length > 0)
-                Clipboard.SetText(sb.ToString().TrimEnd());
+        private static bool FilaCompletaSeleccionada(DataGridViewRow fila)
+        {
+            if (fila.Cells.Count == 0) return false;
+            foreach (DataGridViewCell celda in fila.Cells)
+                if (!celda.Selected) return false;
+            return true;
         }
     }
 }

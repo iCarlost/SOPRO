@@ -6,16 +6,12 @@ using SOPRO.WinForms.Helpers;
 namespace SOPRO.Tests.WinForms.Catalogos;
 
 /// <summary>
-/// H7a — el copiado/selección de los grids de catálogo NO debe romperse al pasar a
-/// <see cref="DataGridViewSelectionMode.CellSelect"/> (formato por celda).
-///
-/// Bajo CellSelect, <c>SelectedRows</c> queda vacío aunque haya celdas seleccionadas
-/// en varios renglones. Por eso:
-///   • Ctrl+C resuelve las filas con <see cref="SeleccionGridHelper.FilasSeleccionadas"/>
-///     (celdas + filas) y sólo copia la CELDA activa cuando hay una sola fila.
-///   • El clic derecho DENTRO de una selección múltiple no debe limpiarla.
-/// Se prueban los criterios puros extraídos en <see cref="DgvCeldaHelper"/> y el
-/// helper <see cref="SeleccionGridHelper.FilasSeleccionadas"/>, sin depender de UI.
+/// H8 — el menú contextual de copia de los catálogos debe seguir la semántica de
+/// Excel: bloque exacto de celdas vs fila(s) completa(s) por encabezado. Bajo
+/// <see cref="DataGridViewSelectionMode.CellSelect"/> <c>SelectedRows</c> queda
+/// vacío, por lo que la fila completa se detecta por sus celdas (el encabezado las
+/// selecciona todas vía <see cref="DgvCeldaHelper.SeleccionarFilaCompleta"/>).
+/// Se prueban las funciones puras y el criterio del clic derecho, sin UI real.
 /// </summary>
 [TestClass]
 public class CopiadoSeleccionCatalogoTests
@@ -32,106 +28,92 @@ public class CopiadoSeleccionCatalogoTests
         return grid;
     }
 
-    // ═════════════════════════ Ctrl+C: celda vs filas ═════════════════════════
+    // ═════════════════════════ Copia: celdas vs fila completa ═════════════════════════
 
     /// <summary>
-    /// Una sola celda (una sola fila) ⇒ Ctrl+C copia la CELDA activa, no las filas.
-    /// Regresión: bajo CellSelect antes se copiaba siempre una celda; aquí se valida
-    /// que una única fila mantiene esa semántica.
+    /// Celdas en dos filas distintas ⇒ bloque de celdas (2 líneas de 1 valor); NO se
+    /// expande a filas completas. Regresión del bug reportado.
     /// </summary>
     [TestMethod]
-    public void CtrlC_UnaCelda_CopiaSoloLaCelda()
+    public void CeldasEnDosFilas_CopianElBloqueDeCeldas_NoFilasCompletas()
     {
-        using var grid = CrearGrid(filas: 3);
-        grid.ClearSelection();
-        grid.Rows[1].Cells[0].Selected = true;
-
-        var filas = SeleccionGridHelper.FilasSeleccionadas(grid);
-
-        Assert.AreEqual(0, grid.SelectedRows.Count, "CellSelect por celdas no puebla SelectedRows.");
-        Assert.AreEqual(1, filas.Count);
-        Assert.IsFalse(DgvCeldaHelper.DebeCopiarFilas(filas.Count, clicEnRowHeader: false),
-            "Una sola fila ⇒ Ctrl+C copia la CELDA activa.");
-    }
-
-    /// <summary>
-    /// Celdas en dos filas distintas ⇒ Ctrl+C copia las FILAS completas como TSV
-    /// (una línea por fila, todas las columnas). El helper ignora que
-    /// <c>SelectedRows</c> esté vacío al resolver las filas desde <c>SelectedCells</c>.
-    /// </summary>
-    [TestMethod]
-    public void CtrlC_CeldasEnDosFilas_CopiaFilasCompletas()
-    {
-        using var grid = CrearGrid(filas: 3);
+        using var grid = CrearGrid(filas: 3, columnas: 3);
         grid.Rows[0].Cells[0].Value = "A";
-        grid.Rows[0].Cells[1].Value = "D";
-        grid.Rows[0].Cells[2].Value = "G";
         grid.Rows[2].Cells[0].Value = "C";
-        grid.Rows[2].Cells[1].Value = "F";
-        grid.Rows[2].Cells[2].Value = "I";
 
         grid.ClearSelection();
         grid.Rows[0].Cells[0].Selected = true;
-        grid.Rows[2].Cells[1].Selected = true;
+        grid.Rows[2].Cells[0].Selected = true;
 
-        var filas = SeleccionGridHelper.FilasSeleccionadas(grid);
-
-        Assert.AreEqual(0, grid.SelectedRows.Count, "CellSelect por celdas no puebla SelectedRows.");
-        Assert.AreEqual(2, filas.Count);
-        CollectionAssert.AreEqual(new[] { 0, 2 }, filas.Select(f => f.Index).ToArray());
-        Assert.IsTrue(DgvCeldaHelper.DebeCopiarFilas(filas.Count, clicEnRowHeader: false),
-            "Dos filas distintas ⇒ Ctrl+C copia las FILAS completas.");
-
-        // Semántica TSV: una línea por fila con TODAS las columnas (filas completas).
-        var tsv = string.Join("\n", filas.Select(r => string.Join("\t",
-            Enumerable.Range(0, grid.ColumnCount).Select(i => r.Cells[i].Value?.ToString() ?? ""))));
-
-        Assert.AreEqual("A\tD\tG\nC\tF\tI", tsv, "TSV con las filas completas seleccionadas.");
+        Assert.AreEqual(0, DgvCeldaHelper.FilasCompletasSeleccionadas(grid).Count);
+        Assert.AreEqual("A\nC", DgvCeldaHelper.ConstruirTsvDeCeldasSeleccionadas(grid));
+        Assert.AreEqual("Copiar celdas", DgvCeldaHelper.EtiquetaCopiar(grid));
     }
 
     /// <summary>
-    /// Un clic en el RowHeader fuerza la copia de la fila completa aunque no haya
-    /// más de una fila seleccionada (semántica previa conservada).
+    /// Una fila completa (todas sus columnas seleccionadas, como al clicar el
+    /// encabezado) ⇒ se copia la fila COMPLETA con todas las columnas.
     /// </summary>
     [TestMethod]
-    public void CtrlC_ClicEnRowHeader_CopiaFilaCompleta()
+    public void FilaCompletaPorEncabezado_CopiaLaFilaCompleta()
     {
-        Assert.IsTrue(DgvCeldaHelper.DebeCopiarFilas(filasSeleccionadas: 1, clicEnRowHeader: true),
-            "Clic en RowHeader ⇒ copia la fila completa.");
-        Assert.IsTrue(DgvCeldaHelper.DebeCopiarFilas(filasSeleccionadas: 0, clicEnRowHeader: true));
-        Assert.IsFalse(DgvCeldaHelper.DebeCopiarFilas(filasSeleccionadas: 1, clicEnRowHeader: false));
+        using var grid = CrearGrid(filas: 2, columnas: 3);
+        grid.Rows[0].Cells[0].Value = "A";
+        grid.Rows[0].Cells[1].Value = "D";
+        grid.Rows[0].Cells[2].Value = "G";
+
+        grid.ClearSelection();
+        DgvCeldaHelper.SeleccionarFilaCompleta(grid, 0);
+
+        var filas = DgvCeldaHelper.FilasCompletasSeleccionadas(grid);
+        Assert.AreEqual(1, filas.Count);
+        Assert.AreEqual(0, filas[0].Index);
+        Assert.AreEqual("A\tD\tG", DgvCeldaHelper.ConstruirTsvDeFilas(grid, filas));
+        Assert.AreEqual("Copiar fila", DgvCeldaHelper.EtiquetaCopiar(grid));
     }
 
-    /// <summary>El label del menú contextual refleja si se copian filas o una sola.</summary>
+    /// <summary>Varias filas completas ⇒ "Copiar N filas".</summary>
     [TestMethod]
-    public void EtiquetaCopiarFilas_ReflejaElNumeroDeFilas()
+    public void VariasFilasCompletas_EtiquetaCopiarNFilas()
     {
-        Assert.AreEqual("Copiar fila", DgvCeldaHelper.EtiquetaCopiarFilas(0));
-        Assert.AreEqual("Copiar fila", DgvCeldaHelper.EtiquetaCopiarFilas(1));
-        Assert.AreEqual("Copiar 3 filas", DgvCeldaHelper.EtiquetaCopiarFilas(3));
+        using var grid = CrearGrid(filas: 3, columnas: 2);
+        grid.ClearSelection();
+        DgvCeldaHelper.SeleccionarFilaCompleta(grid, 0);
+        DgvCeldaHelper.SeleccionarFilaCompleta(grid, 1);
+
+        Assert.AreEqual(2, DgvCeldaHelper.FilasCompletasSeleccionadas(grid).Count);
+        Assert.AreEqual("Copiar 2 filas", DgvCeldaHelper.EtiquetaCopiar(grid));
+    }
+
+    /// <summary>Una sola celda ⇒ "Copiar celda".</summary>
+    [TestMethod]
+    public void UnaCelda_EtiquetaCopiarCelda()
+    {
+        using var grid = CrearGrid(filas: 2, columnas: 3);
+        grid.ClearSelection();
+        grid.Rows[1].Cells[1].Selected = true;
+
+        Assert.AreEqual("Copiar celda", DgvCeldaHelper.EtiquetaCopiar(grid));
     }
 
     // ═════════════════ Clic derecho dentro/fuera de la selección ═════════════════
 
     /// <summary>
-    /// El clic derecho DENTRO de la selección no debe limpiarla; FUERA sí limpia y
-    /// reselecciona la fila clickeada (comportamiento previo). Bajo CellSelect,
-    /// `clickedRow.Selected` es falso aunque la fila tenga celdas seleccionadas, por
-    /// lo que el catálogo debe decidir con <see cref="SeleccionGridHelper.FilasSeleccionadas"/>.
+    /// El clic derecho DENTRO de la selección no debe limpiarla; FUERA sí limpia. Bajo
+    /// CellSelect, `clickedRow.Selected` es falso aunque la fila tenga celdas
+    /// seleccionadas, por lo que el catálogo decide con
+    /// <see cref="DgvCeldaHelper.ClicDentroDeSeleccion"/>.
     /// </summary>
     [TestMethod]
     public void ClicDerechoDentroDeLaSeleccion_NoLimpiaLaSeleccion()
     {
-        using var grid = CrearGrid(filas: 3);
+        using var grid = CrearGrid(filas: 3, columnas: 3);
         grid.ClearSelection();
         grid.Rows[0].Cells[0].Selected = true;
         grid.Rows[2].Cells[1].Selected = true;
 
-        // Fila 2 YA pertenece a la selección → clic DENTRO: no limpiar.
         Assert.IsTrue(DgvCeldaHelper.ClicDentroDeSeleccion(grid, 2),
             "El clic cayó DENTRO de la selección ⇒ no debe ejecutarse ClearSelection.");
-
-        // Fila 1 NO pertenece a la selección → clic FUERA: limpiar y reseleccionar.
         Assert.IsFalse(DgvCeldaHelper.ClicDentroDeSeleccion(grid, 1),
             "El clic cayó FUERA de la selección ⇒ se limpia y se selecciona la fila clickeada.");
     }
@@ -140,7 +122,7 @@ public class CopiadoSeleccionCatalogoTests
     [TestMethod]
     public void ClicDentroDeSeleccion_SinSeleccion_DevuelveFalse()
     {
-        using var grid = CrearGrid(filas: 2);
+        using var grid = CrearGrid(filas: 2, columnas: 3);
         grid.ClearSelection();
 
         Assert.IsFalse(DgvCeldaHelper.ClicDentroDeSeleccion(grid, 0));

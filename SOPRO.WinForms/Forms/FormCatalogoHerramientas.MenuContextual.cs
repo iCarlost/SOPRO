@@ -31,7 +31,13 @@ namespace SOPRO.WinForms.Forms
             if (!DgvCeldaHelper.ClicDentroDeSeleccion(dgvHerramientas, e.RowIndex))
             {
                 dgvHerramientas.ClearSelection();
-                clickedRow.Selected = true;
+                // Bajo CellSelect `clickedRow.Selected = true` es un no-op; hay que
+                // seleccionar la celda clicada (o la fila completa si se pulsó el
+                // encabezado) para que la copia del menú tenga contenido.
+                if (e.ColumnIndex >= 0)
+                    clickedRow.Cells[e.ColumnIndex].Selected = true;
+                else
+                    DgvCeldaHelper.SeleccionarFilaCompleta(dgvHerramientas, e.RowIndex);
             }
 
             if (e.ColumnIndex >= 0)
@@ -72,31 +78,25 @@ namespace SOPRO.WinForms.Forms
             menu.Items.Add(itemDonde);
             menu.Items.Add(new ToolStripSeparator());
 
-            var itemCopiarCelda = menu.Items.Add("📋  Copiar celda");
-            itemCopiarCelda.Click += (_, __) =>
+            // H8: copia tipo Excel (bloque exacto de celdas o fila[s] completa[s] por
+            // encabezado). La etiqueta refleja la selección actual.
+            string etiquetaCopiar = DgvCeldaHelper.EtiquetaCopiar(dgvHerramientas);
+            if (etiquetaCopiar != "Copiar celda")
             {
-                var cell = dgvHerramientas.CurrentCell;
-                if (cell != null)
+                var itemCopiarCelda = menu.Items.Add("📋  Copiar celda");
+                itemCopiarCelda.Click += (_, __) =>
                 {
-                    string txt = cell.FormattedValue?.ToString() ?? "";
-                    if (txt.Length > 0) Clipboard.SetText(txt);
-                }
-            };
+                    var cell = dgvHerramientas.CurrentCell;
+                    if (cell != null)
+                    {
+                        string txt = cell.FormattedValue?.ToString() ?? "";
+                        if (txt.Length > 0) Clipboard.SetText(txt);
+                    }
+                };
+            }
 
-            var _filasSeleccionadas = SeleccionGridHelper.FilasSeleccionadas(dgvHerramientas);
-            int _nFilas = _filasSeleccionadas.Count;
-            string _labelFila = _nFilas > 1 ? $"📄  Copiar {_nFilas} filas" : "📄  Copiar fila";
-            var itemCopiarFila = menu.Items.Add(_labelFila);
-            itemCopiarFila.Click += (_, __) =>
-            {
-                var cols = Enumerable.Range(0, dgvHerramientas.ColumnCount)
-                    .Where(i => dgvHerramientas.Columns[i].Visible)
-                    .OrderBy(i => dgvHerramientas.Columns[i].DisplayIndex).ToList();
-                var sb = new System.Text.StringBuilder();
-                foreach (DataGridViewRow r in _filasSeleccionadas)
-                    sb.AppendLine(string.Join("\t", cols.Select(i => r.Cells[i].FormattedValue?.ToString() ?? "")));
-                if (sb.Length > 0) Clipboard.SetText(sb.ToString().TrimEnd());
-            };
+            var itemCopiar = menu.Items.Add($"📄  {etiquetaCopiar}");
+            itemCopiar.Click += (_, __) => DgvCeldaHelper.CopiarSeleccionAlPortapapeles(dgvHerramientas);
 
             menu.Show(dgvHerramientas, dgvHerramientas.PointToClient(Cursor.Position));
         }

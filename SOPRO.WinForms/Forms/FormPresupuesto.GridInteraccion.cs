@@ -145,7 +145,13 @@ namespace SOPRO.WinForms.Forms
             if (!DgvCeldaHelper.ClicDentroDeSeleccion(dgvPresupuesto, e.RowIndex))
             {
                 dgvPresupuesto.ClearSelection();
-                clickedRow.Selected = true;
+                // Bajo CellSelect `clickedRow.Selected = true` es un no-op; hay que
+                // seleccionar la celda clicada (o la fila completa si se pulsó el
+                // encabezado) para que la copia del menú tenga contenido.
+                if (e.ColumnIndex >= 0)
+                    clickedRow.Cells[e.ColumnIndex].Selected = true;
+                else
+                    DgvCeldaHelper.SeleccionarFilaCompleta(dgvPresupuesto, e.RowIndex);
             }
 
             if (e.ColumnIndex >= 0)
@@ -154,53 +160,34 @@ namespace SOPRO.WinForms.Forms
             _menuPresupuesto?.Dispose();
             _menuPresupuesto = new ContextMenuStrip();
 
-            var itemCopiarCelda = _menuPresupuesto.Items.Add("📋  Copiar celda");
-            itemCopiarCelda.Click += (_, __) =>
+            // H8: copia tipo Excel (bloque exacto de celdas o fila[s] completa[s] por
+            // encabezado). La lógica se centraliza en DgvCeldaHelper.
+            string etiquetaCopiar = DgvCeldaHelper.EtiquetaCopiar(dgvPresupuesto);
+            if (etiquetaCopiar != "Copiar celda")
             {
-                var cell = dgvPresupuesto.CurrentCell;
-                if (cell != null)
+                var itemCopiarCelda = _menuPresupuesto.Items.Add("📋  Copiar celda");
+                itemCopiarCelda.Click += (_, __) =>
                 {
-                    string txt = cell.FormattedValue?.ToString() ?? "";
-                    if (txt.Length > 0) Clipboard.SetText(txt);
-                }
-            };
+                    var cell = dgvPresupuesto.CurrentCell;
+                    if (cell != null)
+                    {
+                        string txt = cell.FormattedValue?.ToString() ?? "";
+                        if (txt.Length > 0) Clipboard.SetText(txt);
+                    }
+                };
+            }
 
-            var filasSeleccionadas = SeleccionGridHelper.FilasSeleccionadas(dgvPresupuesto);
-            int n = filasSeleccionadas.Count(r => !r.IsNewRow);
-            string labelCopiarFila = n > 1 ? $"📄  Copiar {n} filas" : "📄  Copiar fila";
-            var itemCopiarFila = _menuPresupuesto.Items.Add(labelCopiarFila);
-            itemCopiarFila.Click += (_, __) =>
-            {
-                string tsv = ConstruirTsvDeFilas(dgvPresupuesto, SeleccionGridHelper.FilasSeleccionadas(dgvPresupuesto));
-                if (tsv.Length > 0) Clipboard.SetText(tsv);
-            };
+            var itemCopiar = _menuPresupuesto.Items.Add($"📄  {etiquetaCopiar}");
+            itemCopiar.Click += (_, __) => DgvCeldaHelper.CopiarSeleccionAlPortapapeles(dgvPresupuesto);
+
+            // El borrado SÍ trabaja por filas (correcto para eliminar): usa FilasSeleccionadas.
+            int n = SeleccionGridHelper.FilasSeleccionadas(dgvPresupuesto).Count(r => !r.IsNewRow);
 
             _menuPresupuesto.Items.Add(new ToolStripSeparator());
 
             var itemEliminar = _menuPresupuesto.Items.Add(n > 1 ? $"🗑️  Eliminar {n} filas" : "🗑️  Eliminar");
             itemEliminar.Click += (_, __) => DeleteCurrentSelectionFromBudget();
             _menuPresupuesto.Show(Cursor.Position);
-        }
-
-        /// <summary>
-        /// Construye el texto TSV (tab-separated) de las filas indicadas usando las
-        /// columnas VISIBLES ordenadas por <see cref="DataGridViewColumn.DisplayIndex"/>,
-        /// tal y como se copia al portapapeles. Función pura y testeable sin UI.
-        /// </summary>
-        internal static string ConstruirTsvDeFilas(DataGridView grid, IReadOnlyList<DataGridViewRow> filas)
-        {
-            if (grid is null || filas is null || filas.Count == 0) return string.Empty;
-
-            var cols = Enumerable.Range(0, grid.ColumnCount)
-                .Where(i => grid.Columns[i].Visible)
-                .OrderBy(i => grid.Columns[i].DisplayIndex)
-                .ToList();
-
-            var sb = new System.Text.StringBuilder();
-            foreach (var r in filas.OrderBy(r => r.Index))
-                sb.AppendLine(string.Join("\t", cols.Select(i => r.Cells[i].FormattedValue?.ToString() ?? "")));
-
-            return sb.ToString().TrimEnd();
         }
 
         private void DeleteCurrentSelectionFromBudget()
