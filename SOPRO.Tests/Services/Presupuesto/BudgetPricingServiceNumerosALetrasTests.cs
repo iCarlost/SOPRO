@@ -50,4 +50,26 @@ public class BudgetPricingServiceNumerosALetrasTests
                 Assert.IsFalse(char.IsLower(c), $"n={n} → '{letras}' contiene minúscula '{c}'");
         }
     }
+
+    [TestMethod]
+    public void ConvertirALetras_SegmentoLetras_SinMinusculas_RangoAmplio()
+    {
+        // Rango secuencial amplio (incluye límites de centenas/miles) + muestra aleatoria.
+        var numeros = new List<int>();
+        for (int n = 0; n <= 2000; n++)
+            numeros.Add(n);
+
+        var rnd = new Random(20261014);
+        for (int i = 0; i < 500; i++)
+            numeros.Add(rnd.Next(0, 10_000_000));
+
+        foreach (int n in numeros)
+        {
+            string texto = BudgetPricingService.ConvertirALetras(n);
+            string letras = texto[..texto.IndexOf(" PESOS")];
+
+            foreach (char c in letras)
+                Assert.IsFalse(char.IsLower(c), $"n={n} → '{letras}' contiene minúscula '{c}'");
+        }
+    }
 }
