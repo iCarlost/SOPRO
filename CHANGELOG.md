@@ -25,6 +25,23 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 - LICENSE actualizado con copyright CEPM.
 - THIRD-PARTY-NOTICES.md actualizado con alcance de la licencia.
 
+## [1.9.1] - 2026-10-14
+
+### Corregido
+- Conversión de números a letras siempre en mayúsculas (VEINTINUEVE, DIECISEIS).
+- Redondeo de centavos con acarreo correcto en la conversión a letras.
+- Paridad PDF↔Excel del Importe de filas agrupadoras.
+- Ortografía "CÁLCULO" en el Excel FSR.
+- Undo/redo del formato por celdas en catálogos y Explosión.
+- Factor P.U. del panel de matrices delega en el servicio canónico.
+
+### Cambiado
+- Conversor número-a-letra unificado en `BudgetPricingService` (fuente única).
+- Excepciones antes silenciosas ahora registran diagnóstico.
+
+### Eliminado
+- Código muerto: `NumeroALetrasHelper`, conversores duplicados de `BudgetLoadService`, `CargoAdicional.CalcularMonto`, `FormPresupuesto.CalcularColumnaCalculada`, `GeneradorExcelPresupuesto.AgregarRecursivo`/`EsDescendiente`.
+
 ## [1.8.0] - 2026
 
 ### Añadido
