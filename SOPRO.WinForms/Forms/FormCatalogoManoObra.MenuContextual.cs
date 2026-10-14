@@ -26,7 +26,10 @@ namespace SOPRO.WinForms.Forms
             if (e.Button != MouseButtons.Right || e.RowIndex < 0) return;
 
             var clickedRow = dgvManoObra.Rows[e.RowIndex];
-            if (!clickedRow.Selected)
+            // Bajo CellSelect `clickedRow.Selected` es FALSO aunque haya celdas de esa
+            // fila seleccionadas; con el helper detectamos si el clic cayó DENTRO de
+            // la selección para no destruirla (regresión H7a).
+            if (!DgvCeldaHelper.ClicDentroDeSeleccion(dgvManoObra, e.RowIndex))
             {
                 dgvManoObra.ClearSelection();
                 clickedRow.Selected = true;

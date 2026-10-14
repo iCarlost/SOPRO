@@ -20,7 +20,7 @@ namespace SOPRO.WinForms.Helpers
     public static class DgvCeldaHelper
     {
         private static readonly Color ColorSeleccionFila = SoproTheme.Colors.SelBg;
-        private static readonly Color ColorBordeCelda    = Color.FromArgb(0, 120, 215);
+        private static readonly Color ColorBordeCelda = Color.FromArgb(0, 120, 215);
 
         // Rastrear si el último clic fue en un RowHeader (por instancia de DGV)
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<DataGridView, RowHeaderState>
@@ -82,8 +82,8 @@ namespace SOPRO.WinForms.Helpers
             {
                 // Habilitar RowHeaders (ancho compacto, estilo limpio)
                 dgv.RowHeadersVisible = true;
-                dgv.RowHeadersWidth   = 20;
-                dgv.RowHeadersDefaultCellStyle.BackColor          = Color.FromArgb(245, 245, 248);
+                dgv.RowHeadersWidth = 20;
+                dgv.RowHeadersDefaultCellStyle.BackColor = Color.FromArgb(245, 245, 248);
                 dgv.RowHeadersDefaultCellStyle.SelectionBackColor = Color.FromArgb(180, 210, 245);
                 dgv.RowHeadersDefaultCellStyle.SelectionForeColor = Color.Black;
             }
@@ -164,15 +164,15 @@ namespace SOPRO.WinForms.Helpers
             e.Paint(e.CellBounds, DataGridViewPaintParts.All);
 
             if (dgv.CurrentCell != null &&
-                e.RowIndex    == dgv.CurrentCell.RowIndex &&
+                e.RowIndex == dgv.CurrentCell.RowIndex &&
                 e.ColumnIndex == dgv.CurrentCell.ColumnIndex)
             {
                 var borderColor = _estados.TryGetValue(dgv, out var estado) ? estado.ColorBorde : ColorBordeCelda;
                 using var pen = new Pen(borderColor, 2);
                 e.Graphics.DrawRectangle(pen,
                     e.CellBounds.Left + 1,
-                    e.CellBounds.Top  + 1,
-                    e.CellBounds.Width  - 3,
+                    e.CellBounds.Top + 1,
+                    e.CellBounds.Width - 3,
                     e.CellBounds.Height - 3);
             }
 
@@ -197,10 +197,15 @@ namespace SOPRO.WinForms.Helpers
             _estados.TryGetValue(dgv, out var estado);
             bool rowHeaderActivo = estado?.ClicoEnRowHeader == true;
 
-            if (dgv.SelectedRows.Count > 1 || rowHeaderActivo)
+            // Bajo CellSelect (formato por celda) `SelectedRows` queda VACÍO aunque el
+            // usuario haya seleccionado celdas en varios renglones; el helper combina
+            // SelectedRows + filas de SelectedCells (dedup, ordenadas).
+            var filas = SeleccionGridHelper.FilasSeleccionadas(dgv);
+
+            if (DebeCopiarFilas(filas.Count, rowHeaderActivo))
             {
                 // Múltiples filas o clic en RowHeader → copiar filas completas como TSV
-                CopiarFilas(dgv, dgv.SelectedRows.Cast<DataGridViewRow>().OrderBy(r => r.Index));
+                CopiarFilas(dgv, filas);
             }
             else
             {
@@ -210,7 +215,7 @@ namespace SOPRO.WinForms.Helpers
                     Clipboard.SetText(texto);
             }
 
-            e.Handled          = true;
+            e.Handled = true;
             e.SuppressKeyPress = true;
         }
 
@@ -218,8 +223,10 @@ namespace SOPRO.WinForms.Helpers
         {
             if (dgv.CurrentCell == null) return;
 
-            bool multiFilas = dgv.SelectedRows.Count > 1;
-            string labelFilas = multiFilas ? $"Copiar {dgv.SelectedRows.Count} filas" : "Copiar fila";
+            // Igual que Ctrl+C: resolver filas por celdas + filas (CellSelect deja
+            // `SelectedRows` vacío). El conteo alimenta el label y la copia.
+            var filas = SeleccionGridHelper.FilasSeleccionadas(dgv);
+            string labelFilas = EtiquetaCopiarFilas(filas.Count);
 
             var menu = new ContextMenuStrip();
 
@@ -233,10 +240,37 @@ namespace SOPRO.WinForms.Helpers
 
             // Copiar fila(s)
             var itemFila = menu.Items.Add($"📄  {labelFilas}");
-            itemFila.Click += (_, __) =>
-                CopiarFilas(dgv, dgv.SelectedRows.Cast<DataGridViewRow>().OrderBy(r => r.Index));
+            itemFila.Click += (_, __) => CopiarFilas(dgv, filas);
 
             menu.Show(dgv, dgv.PointToClient(Cursor.Position));
+        }
+
+        /// <summary>
+        /// Criterio de copia de <see cref="Dgv_KeyDown"/>: copiar FILAS completas
+        /// (TSV) cuando hay más de una fila seleccionada (por celdas o filas) o
+        /// cuando la última interacción fue un clic en el RowHeader; en otro caso se
+        /// copia sólo la celda activa.
+        /// </summary>
+        internal static bool DebeCopiarFilas(int filasSeleccionadas, bool clicEnRowHeader)
+            => filasSeleccionadas > 1 || clicEnRowHeader;
+
+        /// <summary>
+        /// Etiqueta del ítem de menú "Copiar fila(s)" según el número de filas
+        /// resueltas para la selección actual.
+        /// </summary>
+        internal static string EtiquetaCopiarFilas(int filasSeleccionadas)
+            => filasSeleccionadas > 1 ? $"Copiar {filasSeleccionadas} filas" : "Copiar fila";
+
+        /// <summary>
+        /// Indica si <paramref name="rowIndex"/> ya forma parte de la selección
+        /// actual del grid (filas completas o celdas). Los catálogos lo usan para no
+        /// destruir una selección múltiple cuando se abre el menú contextual con clic
+        /// derecho sobre una fila ya seleccionada.
+        /// </summary>
+        internal static bool ClicDentroDeSeleccion(DataGridView grid, int rowIndex)
+        {
+            if (grid is null || rowIndex < 0) return false;
+            return SeleccionGridHelper.FilasSeleccionadas(grid).Any(r => r.Index == rowIndex);
         }
 
         private static void CopiarFilas(DataGridView dgv, IEnumerable<DataGridViewRow> filas)
