@@ -563,5 +563,46 @@ public class FormatoCeldasCatalogosTests
         Assert.AreEqual(0, formato.ObtenerDireccionesSeleccionadas().Count);
     }
 
+    /// <summary>
+    /// Ctrl+Z / Ctrl+Y en los catálogos: el manager del formato de celdas deshace y
+    /// rehace el último lote como UNA sola acción. Se ejercita por la API pública
+    /// <see cref="CatalogoFormatoCeldas.TryUndo"/>/<see cref="CatalogoFormatoCeldas.TryRedo"/>
+    /// que consumen los 4 forms de catálogo (persistencia real en BD).
+    /// </summary>
+    [TestMethod]
+    public void UndoRedo_LoteDeFormatoDeCatalogo_DeshaceYRehace()
+    {
+        using var ctx = CrearContexto();
+        var proyectoId = AgregarProyecto(ctx);
+
+        using var grid = CrearGrid(
+            new[] { Col("col_PrecioUnitario", "PrecioUnitario", new ColumnaMaterial { NombreInterno = "PrecioUnitario" }) },
+            new[] { new MaterialListItem(7, "MAT-1", "Cemento", "kg", 12.5m, "", OrigenInsumo.Proyecto) });
+
+        var formato = new CatalogoFormatoCeldas(grid, ctx, proyectoId, MaterialesTipo, Vista);
+        formato.Cargar();
+
+        formato.AplicarOverlayCelda(
+            new ReportCellAddress(Vista, ClaveFilaReporte.Insumo(7), "PrecioUnitario"),
+            new ReportStyleOverlay(ColorFondo: "#112233"));
+
+        ctx.ChangeTracker.Clear();
+        Assert.AreEqual(1, ctx.FormatosCeldaReporte.Count(f => f.ProyectoId == proyectoId),
+            "El lote se persiste al aplicar el formato.");
+        Assert.IsTrue(formato.CanUndo, "El manager expone la acción apilada para Ctrl+Z.");
+        Assert.IsFalse(formato.CanRedo);
+
+        Assert.IsTrue(formato.TryUndo(), "TryUndo deshace el lote.");
+        ctx.ChangeTracker.Clear();
+        Assert.AreEqual(0, ctx.FormatosCeldaReporte.Count(f => f.ProyectoId == proyectoId),
+            "Undo revierte el lote completo.");
+        Assert.IsTrue(formato.CanRedo, "Tras el undo queda disponible el redo.");
+
+        Assert.IsTrue(formato.TryRedo(), "TryRedo rehace el lote.");
+        ctx.ChangeTracker.Clear();
+        Assert.AreEqual(1, ctx.FormatosCeldaReporte.Count(f => f.ProyectoId == proyectoId),
+            "Redo reaplica el lote completo.");
+    }
+
     private const string MaterialesTipo = "Materiales";
 }

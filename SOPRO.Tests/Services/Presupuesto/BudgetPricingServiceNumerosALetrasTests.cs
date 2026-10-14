@@ -72,4 +72,17 @@ public class BudgetPricingServiceNumerosALetrasTests
                 Assert.IsFalse(char.IsLower(c), $"n={n} → '{letras}' contiene minúscula '{c}'");
         }
     }
+
+    [TestMethod]
+    public void ConvertirALetras_CentavosQueRedondeanACien_SeAcarrean()
+    {
+        // 0.999 → 99.9 centavos → redondeo AwayFromZero = 100 → se acarrea a 1.00.
+        Assert.AreEqual("UNO PESOS 00/100 M.N.", BudgetPricingService.ConvertirALetras(0.999m));
+        // 0.995 → 99.5 centavos → AwayFromZero = 100 → acarreo (nunca "…100/100").
+        Assert.AreEqual("UNO PESOS 00/100 M.N.", BudgetPricingService.ConvertirALetras(0.995m));
+        // 1.005 → 0.5 centavos → AwayFromZero = 1 centavo (sin acarreo).
+        Assert.AreEqual("UNO PESOS 01/100 M.N.", BudgetPricingService.ConvertirALetras(1.005m));
+        // Regresión: los montos enteros siguen saliendo sin centavos.
+        Assert.AreEqual("VEINTINUEVE PESOS 00/100 M.N.", BudgetPricingService.ConvertirALetras(29m));
+    }
 }

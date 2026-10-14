@@ -272,8 +272,12 @@ namespace SOPRO.Application.Services
                 await context.SaveChangesAsync();
                 return affectedMatrixIds.Count;
             }
-            catch
+            catch (Exception ex)
             {
+                // Se conserva el valor de retorno para no romper a los llamadores,
+                // pero se deja rastro diagnóstico del fallo (antes se tragaba en silencio).
+                System.Diagnostics.Debug.WriteLine(
+                    $"MatrixApplicationService.RecalcularMatricesAfectadas: {ex}");
                 return 0;
             }
         }

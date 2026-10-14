@@ -47,50 +47,6 @@ namespace SOPRO.Core.Entities
             TipoCargo = TipoCargo.Porcentaje;
             BaseCalculo = BaseCalculoCargo.CostoDirectoMasIndirectos;
         }
-        
-        /// <summary>
-        /// Calcula el monto del cargo basándose en la base de cálculo
-        /// </summary>
-        public decimal CalcularMonto(
-            decimal costoDirecto,
-            decimal indirectos,
-            decimal financiamiento,
-            decimal subtotalAntesUtilidad,
-            decimal totalContrato)
-        {
-            if (!Activo)
-                return 0;
-            
-            decimal baseCalculo = 0;
-            
-            switch (BaseCalculo)
-            {
-                case BaseCalculoCargo.CostoDirecto:
-                    baseCalculo = costoDirecto;
-                    break;
-                    
-                case BaseCalculoCargo.CostoDirectoMasIndirectos:
-                    baseCalculo = costoDirecto + indirectos;
-                    break;
-                    
-                case BaseCalculoCargo.CostoDirectoMasIndirectosMasFinanciamiento:
-                    baseCalculo = costoDirecto + indirectos + financiamiento;
-                    break;
-                    
-                case BaseCalculoCargo.SubtotalAntesUtilidad:
-                    baseCalculo = subtotalAntesUtilidad;
-                    break;
-                    
-                case BaseCalculoCargo.TotalContrato:
-                    baseCalculo = totalContrato;
-                    break;
-            }
-            
-            if (TipoCargo == TipoCargo.Porcentaje)
-                return baseCalculo * (Valor / 100m);
-            else
-                return Valor; // Monto fijo
-        }
     }
     
     /// <summary>

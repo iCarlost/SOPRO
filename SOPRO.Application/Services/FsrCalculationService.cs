@@ -25,8 +25,12 @@ namespace SOPRO.Application.Services
                 var result = RealSalaryFactorCalculator.Calculate(input);
                 return result.Factor;
             }
-            catch
+            catch (Exception ex)
             {
+                // Se conserva el valor de retorno (null) para no romper a los
+                // llamadores, pero se deja rastro diagnóstico del fallo.
+                System.Diagnostics.Debug.WriteLine(
+                    $"FsrCalculationService.Calcular: {ex}");
                 return null;
             }
         }

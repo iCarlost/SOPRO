@@ -66,6 +66,20 @@ namespace SOPRO.WinForms.Helpers
         /// </summary>
         public bool SeleccionPorEncabezado { get; set; }
 
+        // ── Undo/Redo del formato por celdas (Ctrl+Z / Ctrl+Y) ─────────────────
+
+        /// <summary>¿Hay alguna acción de formato por celda apilada para deshacer?</summary>
+        public bool CanUndo => _undoManager.CanUndo;
+
+        /// <summary>¿Hay alguna acción de formato por celda apilada para rehacer?</summary>
+        public bool CanRedo => _undoManager.CanRedo;
+
+        /// <summary>Deshace la última acción de formato por celdas. <c>false</c> si no hay nada.</summary>
+        public bool TryUndo() => _undoManager.Undo();
+
+        /// <summary>Rehace la última acción de formato por celdas. <c>false</c> si no hay nada.</summary>
+        public bool TryRedo() => _undoManager.Redo();
+
         // ── Delegación de IGridSeleccionFormato ────────────────────────────────
 
         public bool TieneSeleccionCeldas
