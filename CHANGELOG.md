@@ -6,7 +6,10 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 
 ## [No publicado]
 
+## [1.10.0] - 2026-10-21
+
 ### Agregado
+- Botón «Apoyar» en el selector de proyectos que abre la página Ko-fi del proyecto en el navegador.
 - Formato de celdas estilo Excel en todos los reportes: desde el ribbon se puede formatear una columna completa (clic en el encabezado) o una seleccion de celdas (rango contiguo con Shift, celdas o rangos discontinuos con Ctrl), con indicador de destino ("selección de N celda(s)"), aviso de estado mixto y deshacer/rehacer (Ctrl+Z / Ctrl+Y) donde un rango aplicado es UNA sola accion. Disponible en Presupuesto, Indirectos, APU/Matrices, Explosion de Insumos, Programas de Obra/Insumos, Financiamiento y los catalogos de Materiales, Mano de Obra, Herramientas y Maquinaria.
 - Formato por celda y por rol de fila persistido en el proyecto, con precedencia override de celda > estilo de rol > estilo de columna > fila alterna > estilo de tabla, aplicado de forma identica en pantalla, PDF y Excel via snapshot neutral de reporte (los generadores no leen el grid).
 - Migracion M014 (esquema `2026.04.4`): tablas `FormatosCeldaReporte` (override por celda) y `ConfiguracionesEstiloFilaReporte` (estilo por rol), con indices unicos, `ClaveVista` "" como vista por defecto y borrado en cascada con el proyecto.

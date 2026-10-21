@@ -5,6 +5,7 @@ namespace SOPRO.WinForms.Forms
     partial class FormPrincipal
     {
         private System.ComponentModel.IContainer components = null;
+        private System.Windows.Forms.ToolTip toolTipPrincipal;
 
         protected override void Dispose(bool disposing)
         {
@@ -19,11 +20,14 @@ namespace SOPRO.WinForms.Forms
 
         private void InitializeComponent()
         {
+            components = new System.ComponentModel.Container();
             DataGridViewCellStyle dataGridViewCellStyle1 = new DataGridViewCellStyle();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(FormPrincipal));
+            toolTipPrincipal = new ToolTip(components);
             panelTop = new Panel();
             btnAbrirProyecto = new SoproButton();
             btnNuevoProyecto = new SoproButton();
+            btnApoyarKoFi = new SoproButton();
             lblSubtitle = new Label();
             lblTitle = new Label();
             panelCenter = new Panel();
@@ -41,6 +45,7 @@ namespace SOPRO.WinForms.Forms
             // panelTop
             // 
             panelTop.Controls.Add(btnAbrirProyecto);
+            panelTop.Controls.Add(btnApoyarKoFi);
             panelTop.Controls.Add(btnNuevoProyecto);
             panelTop.Controls.Add(lblSubtitle);
             panelTop.Controls.Add(lblTitle);
@@ -59,7 +64,7 @@ namespace SOPRO.WinForms.Forms
             btnAbrirProyecto.Location = new Point(688, 27);
             btnAbrirProyecto.Name = "btnAbrirProyecto";
             btnAbrirProyecto.Size = new Size(160, 34);
-            btnAbrirProyecto.TabIndex = 3;
+            btnAbrirProyecto.TabIndex = 4;
             btnAbrirProyecto.Text = "Abrir Proyecto";
             btnAbrirProyecto.UseVisualStyleBackColor = false;
             btnAbrirProyecto.Click += BtnAbrirProyecto_Click;
@@ -73,11 +78,28 @@ namespace SOPRO.WinForms.Forms
             btnNuevoProyecto.Location = new Point(520, 27);
             btnNuevoProyecto.Name = "btnNuevoProyecto";
             btnNuevoProyecto.Size = new Size(160, 34);
-            btnNuevoProyecto.TabIndex = 2;
+            btnNuevoProyecto.TabIndex = 3;
             btnNuevoProyecto.Text = "Nuevo Proyecto";
             btnNuevoProyecto.UseVisualStyleBackColor = false;
             btnNuevoProyecto.Click += BtnNuevoProyecto_Click;
             // 
+            // btnApoyarKoFi
+            //
+            btnApoyarKoFi.AccessibleDescription = "Abre la página de donación en Ko-fi en el navegador predeterminado";
+            btnApoyarKoFi.AccessibleName = "Apoyar en Ko-fi";
+            btnApoyarKoFi.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnApoyarKoFi.Cursor = Cursors.Hand;
+            btnApoyarKoFi.FlatStyle = FlatStyle.Flat;
+            btnApoyarKoFi.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+            btnApoyarKoFi.Location = new Point(384, 27);
+            btnApoyarKoFi.Name = "btnApoyarKoFi";
+            btnApoyarKoFi.Size = new Size(128, 34);
+            btnApoyarKoFi.TabIndex = 2;
+            btnApoyarKoFi.Text = "Apoyar";
+            btnApoyarKoFi.UseVisualStyleBackColor = false;
+            btnApoyarKoFi.Click += BtnApoyarKoFi_Click;
+            toolTipPrincipal.SetToolTip(btnApoyarKoFi, "Apoyar en Ko-fi (se abre en el navegador)");
+            //
             // lblSubtitle
             // 
             lblSubtitle.AutoSize = true;
@@ -193,6 +215,7 @@ namespace SOPRO.WinForms.Forms
         internal System.Windows.Forms.Label lblSubtitle;
         internal SoproButton btnNuevoProyecto;
         internal SoproButton btnAbrirProyecto;
+        internal SoproButton btnApoyarKoFi;
         internal System.Windows.Forms.Panel panelCenter;
         internal System.Windows.Forms.GroupBox grpRecientes;
         internal System.Windows.Forms.DataGridView dgvRecientes;

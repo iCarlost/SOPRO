@@ -126,6 +126,7 @@ namespace SOPRO.WinForms.Helpers
             var lblSubtitle = form.lblSubtitle;
             var btnNuevo = form.btnNuevoProyecto;
             var btnAbrir = form.btnAbrirProyecto;
+            var btnApoyar = form.btnApoyarKoFi;
 
             EnableDoubleBuffering(panelTop);
             // Tema "B - Limpio neutro": header solido del mismo tono que el
@@ -161,29 +162,100 @@ namespace SOPRO.WinForms.Helpers
 
             ConfigureHeaderButton(btnNuevo, "Nuevo Proyecto", SoproIconType.Mas, primary: true);
             ConfigureHeaderButton(btnAbrir, "Abrir Proyecto", SoproIconType.Carpeta, primary: false);
+            ConfigureHeaderButton(btnApoyar, "Apoyar", null, primary: false);
+
+            bool layoutInProgress = false;
 
             void LayoutButtons()
             {
                 if (panelTop.IsDisposed) return;
+                if (btnNuevo == null || btnAbrir == null || btnApoyar == null) return;
+                if (layoutInProgress) return;
 
-                const int gap = 8;
-                const int rightPadding = 24;
-                int height = Math.Max(btnNuevo.Height, btnAbrir.Height);
-                int y = Math.Max(0, (panelTop.ClientSize.Height - height) / 2);
-                int abrirX = panelTop.ClientSize.Width - rightPadding - btnAbrir.Width;
-                int nuevoX = abrirX - gap - btnNuevo.Width;
+                layoutInProgress = true;
+                try
+                {
+                    const int gap = 8;
+                    const int rightPadding = 24;
+                    const int safeMargin = 20;
+                    const int rowGap = 6;
 
-                btnAbrir.Location = new Point(abrirX, y);
-                btnNuevo.Location = new Point(nuevoX, y);
+                    int rowHeight = Math.Max(btnNuevo.Height, Math.Max(btnAbrir.Height, btnApoyar.Height));
+
+                    // Orden visual preferido (izquierda -> derecha): Apoyar -> Nuevo -> Abrir.
+                    int abrirX = panelTop.ClientSize.Width - rightPadding - btnAbrir.Width;
+                    int nuevoX = abrirX - gap - btnNuevo.Width;
+                    int apoyarX = nuevoX - gap - btnApoyar.Width;
+
+                    int textRightEdge = Math.Max(lblTitle.Right, lblSubtitle.Right) + safeMargin;
+
+                    bool singleRowFits = apoyarX >= textRightEdge;
+                    bool primaryRowFits = nuevoX >= textRightEdge;
+
+                    int desiredHeight;
+                    int yTop;
+                    int yBottom;
+
+                    if (singleRowFits)
+                    {
+                        desiredHeight = SoproUiMetrics.HeaderHeight;
+                        yTop = Math.Max(0, (desiredHeight - rowHeight) / 2);
+                        yBottom = yTop;
+                    }
+                    else
+                    {
+                        // Fallback: header crece hacia abajo. Dos filas si caben Nuevo/Abrir;
+                        // tres filas verticales alineadas a la derecha si el ancho es muy estrecho.
+                        int rows = primaryRowFits ? 2 : 3;
+                        int totalContentHeight = rows * rowHeight + (rows - 1) * rowGap;
+                        int topMargin = Math.Max(0, (SoproUiMetrics.HeaderHeight - rowHeight) / 2);
+                        desiredHeight = totalContentHeight + 2 * topMargin;
+                        yTop = topMargin;
+                        yBottom = yTop + (rows - 1) * (rowHeight + rowGap);
+                    }
+
+                    if (panelTop.Height != desiredHeight)
+                        panelTop.Height = desiredHeight;
+
+                    if (singleRowFits)
+                    {
+                        btnApoyar.Location = new Point(apoyarX, yTop);
+                        btnNuevo.Location = new Point(nuevoX, yTop);
+                        btnAbrir.Location = new Point(abrirX, yTop);
+                    }
+                    else if (primaryRowFits)
+                    {
+                        // Nuevo/Abrir arriba; Apoyar debajo de Abrir.
+                        btnNuevo.Location = new Point(nuevoX, yTop);
+                        btnAbrir.Location = new Point(abrirX, yTop);
+                        btnApoyar.Location = new Point(abrirX, yBottom);
+                    }
+                    else
+                    {
+                        // Fallback extremo: columna vertical Apoyar -> Nuevo -> Abrir,
+                        // alineados a la derecha para no solapar el título/subtítulo.
+                        int yRow2 = yTop + rowHeight + rowGap;
+                        btnApoyar.Location = new Point(panelTop.ClientSize.Width - rightPadding - btnApoyar.Width, yTop);
+                        btnNuevo.Location = new Point(panelTop.ClientSize.Width - rightPadding - btnNuevo.Width, yRow2);
+                        btnAbrir.Location = new Point(abrirX, yBottom);
+                    }
+                }
+                finally
+                {
+                    layoutInProgress = false;
+                }
             }
 
             panelTop.SizeChanged += (_, __) => LayoutButtons();
             btnNuevo.SizeChanged += (_, __) => LayoutButtons();
             btnAbrir.SizeChanged += (_, __) => LayoutButtons();
+            btnApoyar.SizeChanged += (_, __) => LayoutButtons();
+            lblTitle.SizeChanged += (_, __) => LayoutButtons();
+            lblSubtitle.SizeChanged += (_, __) => LayoutButtons();
             LayoutButtons();
         }
 
-        private static void ConfigureHeaderButton(SoproButton button, string text, SoproIconType icon, bool primary)
+        private static void ConfigureHeaderButton(SoproButton button, string text, SoproIconType? icon, bool primary)
         {
             button.Text = text;
             button.AutoSize = false;

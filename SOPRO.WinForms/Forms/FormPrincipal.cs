@@ -341,6 +341,28 @@ namespace SOPRO.WinForms.Forms
                 MessageBoxIcon.Information);
         }
 
+        private void BtnApoyarKoFi_Click(object sender, EventArgs e)
+        {
+            const string url = "https://ko-fi.com/icarlost";
+
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = url,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"No se pudo abrir la página de apoyo:\n{ex.Message}",
+                    "Error al abrir enlace",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        }
+
         private FormProyecto AbrirProyecto(Proyecto proyecto)
         {
             this.Hide();

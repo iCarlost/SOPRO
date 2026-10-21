@@ -182,3 +182,11 @@ Valores congelados principales:
 - Componentes de matriz: 11
 - Periodos del programa: 12
 - Distribuciones del programa: 55
+
+### Alcance histórico del fixture
+
+Este proyecto conserva importes **legacy**, no un estado recalculado íntegramente con los precios actuales. En el catálogo de matrices y sus exportaciones, los renglones se calculan con la cantidad y el costo unitario actuales, mientras que la fila «Suma» muestra el `CostoDirecto` almacenado. Por eso M-1 muestra 168,523.88 frente a 168,523.86 al sumar renglones visibles; M-4, 317.31 frente a 317.29; y M-6, 44.38 frente a 44.41. El detalle de cada matriz recalcula y puede mostrar el segundo valor.
+
+Los conceptos y totales del presupuesto también conservan sus valores históricos. Estas diferencias caracterizan el fixture, **no** una regla deseada para proyectos nuevos ni una autorización para sustituir importes almacenados por sumas del reporte. No modificar el `.db` ni actualizar sus snapshots/goldens solo para eliminar la diferencia: una eventual normalización del escenario exige revisar en conjunto matrices, conceptos y derivados económicos.
+
+La paginación del PDF puede dejar «Suma» de M-6 sola en la segunda página; es una cuestión de presentación separada de los importes. Los fallos de hash PDF observados en un equipo local tampoco prueban que estas discrepancias sean nuevas: el fixture y sus valores ya están congelados en los snapshots.

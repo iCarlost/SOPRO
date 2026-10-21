@@ -27,7 +27,7 @@ dotnet test SOPRO.Tests/SOPRO.Tests.csproj -c Release --filter "FullyQualifiedNa
 - Proyecto = archivo SQLite `.soproproj` (alias `.db`/`.sopro` legacy se abren sin renombrar); catálogos maestros siguen en `.db`.
 
 ## Versión, instalador y release (manual, sin CI de release)
-- Versión del producto (hoy `1.9.1`) duplicada a mano en 2 lugares que deben ir sincronizados: `SOPRO.WinForms/SOPRO.WinForms.csproj` (`Version`/`AssemblyVersion`/`FileVersion`) e `installer/SOPRO-InnoSetup.iss` (`#define MyAppVersion`). `build-release.ps1` solo valida la `FileVersion` del ejecutable publicado (`SOPRO.WinForms.exe`), NO el `.iss`; por eso `csproj` e `.iss` deben sincronizarse a mano.
+- Versión del producto (hoy `1.10.0`) duplicada a mano en 2 lugares que deben ir sincronizados: `SOPRO.WinForms/SOPRO.WinForms.csproj` (`Version`/`AssemblyVersion`/`FileVersion`) e `installer/SOPRO-InnoSetup.iss` (`#define MyAppVersion`). `build-release.ps1` solo valida la `FileVersion` del ejecutable publicado (`SOPRO.WinForms.exe`), NO el `.iss`; por eso `csproj` e `.iss` deben sincronizarse a mano.
 - Semántica (CONTRIBUTING): funcional=minor, corrección=patch, estructural=major.
 - Release: `.\build-release.ps1 -Version X.Y.Z` (dotnet publish self-contained single-file win-x64 + ISCC; requiere Inno Setup 6 en rutas estándar Program Files / `%LOCALAPPDATA%`). Produce `installer/SOPRO-Setup-X.Y.Z.exe` (gitignored). Publicar A MANO en el repo **separado** `iCarlost/SOPRO-Releases`: tag `vX.Y.Z` + el exe como asset — el auto-updater (`SOPRO.WinForms/Services/GitHubUpdateService.cs`) lee `releases/latest` de ese repo. Sin firma de código. Instalador per-user (`PrivilegesRequired=lowest`), registra asociación `.soproproj` en HKCU.
 
