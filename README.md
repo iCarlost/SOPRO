@@ -91,7 +91,7 @@ Guia completa (precedencia de estilos, claves estables y migracion): [docs/forma
 ## Versionado
 
 ```
-v1.8.0
+v1.10.0
 ```
 
 - Cambios funcionales: minor
