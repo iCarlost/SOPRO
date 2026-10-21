@@ -1,3 +1,4 @@
+using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.UI.Controls;
 
 namespace SOPRO.WinForms.Forms
@@ -97,6 +98,13 @@ namespace SOPRO.WinForms.Forms
             btnApoyarKoFi.TabIndex = 2;
             btnApoyarKoFi.Text = "Apoyar";
             btnApoyarKoFi.UseVisualStyleBackColor = false;
+            btnApoyarKoFi.SoproIcon = SoproIconType.Corazon;
+            btnApoyarKoFi.SoproIconSize = 16;
+            btnApoyarKoFi.SoproIconTextSpacing = 10;
+            btnApoyarKoFi.SoproContentPadding = new Padding(15, 0, 15, 0);
+            btnApoyarKoFi.SoproFixedHeight = 34;
+            btnApoyarKoFi.SoproMinimumAutoWidth = 128;
+            btnApoyarKoFi.SoproAutoSizeToContent = true;
             btnApoyarKoFi.Click += BtnApoyarKoFi_Click;
             toolTipPrincipal.SetToolTip(btnApoyarKoFi, "Apoyar en Ko-fi (se abre en el navegador)");
             //

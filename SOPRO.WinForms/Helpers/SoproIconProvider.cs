@@ -87,6 +87,9 @@ namespace SOPRO.WinForms.Helpers
                 case SoproIconType.Papelera:
                     DrawPapelera(g, color, size);
                     break;
+                case SoproIconType.Corazon:
+                    DrawCorazon(g, color, size);
+                    break;
             }
 
             return bmp;
@@ -577,6 +580,30 @@ namespace SOPRO.WinForms.Helpers
             g.SmoothingMode = previousSmoothing;
             g.InterpolationMode = previousInterpolation;
             g.PixelOffsetMode = previousPixelOffset;
+        }
+
+        private static void DrawCorazon(Graphics g, Color color, int size)
+        {
+            using var brush = new SolidBrush(color);
+            using var path = new GraphicsPath();
+
+            float centerX = size * 0.5f;
+            float topY = size * 0.26f;
+            float lobeY = size * 0.30f;
+            float bottomY = size * 0.78f;
+            float lobeX = size * 0.22f;
+            float controlTopY = size * 0.10f;
+            float controlSideY = size * 0.56f;
+            float controlBottomY = size * 0.70f;
+
+            path.StartFigure();
+            path.AddBezier(centerX, topY, centerX, controlTopY, lobeX, controlTopY, lobeX, lobeY);
+            path.AddBezier(lobeX, lobeY, lobeX, controlSideY, centerX - size * 0.05f, controlBottomY, centerX, bottomY);
+            path.AddBezier(centerX, bottomY, centerX + size * 0.05f, controlBottomY, size - lobeX, controlSideY, size - lobeX, lobeY);
+            path.AddBezier(size - lobeX, lobeY, size - lobeX, controlTopY, centerX, controlTopY, centerX, topY);
+            path.CloseFigure();
+
+            g.FillPath(brush, path);
         }
 
         private enum VerticalPlacement

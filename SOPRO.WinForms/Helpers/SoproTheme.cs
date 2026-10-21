@@ -162,7 +162,7 @@ namespace SOPRO.WinForms.Helpers
 
             ConfigureHeaderButton(btnNuevo, "Nuevo Proyecto", SoproIconType.Mas, primary: true);
             ConfigureHeaderButton(btnAbrir, "Abrir Proyecto", SoproIconType.Carpeta, primary: false);
-            ConfigureHeaderButton(btnApoyar, "Apoyar", null, primary: false);
+            ConfigureHeaderButton(btnApoyar, "Apoyar", SoproIconType.Corazon, primary: false);
 
             bool layoutInProgress = false;
 

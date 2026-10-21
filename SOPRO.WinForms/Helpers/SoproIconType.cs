@@ -21,6 +21,7 @@ namespace SOPRO.WinForms.Helpers
         Consolidar,
         Mas,
         Carpeta,
-        Papelera
+        Papelera,
+        Corazon
     }
 }
