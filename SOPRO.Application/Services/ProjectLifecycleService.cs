@@ -29,6 +29,16 @@ namespace SOPRO.Application.Services
             var workspaceLock = WorkspaceLock.Acquire(dbPath);
             try
             {
+                // El nombre se sanea para construir la ruta: dos nombres distintos
+                // pueden apuntar al mismo archivo (p. ej. "Obra/Norte" y "Obra_Norte").
+                // Nunca se reutiliza un proyecto existente para "crear" otro.
+                if (File.Exists(dbPath))
+                {
+                    throw new InvalidOperationException(
+                        "Ya existe un archivo de proyecto con el nombre indicado. "
+                        + "Elige otro nombre o usa Abrir proyecto para abrir el proyecto existente.");
+                }
+
                 var context = _dbContextFactory.Create(dbPath);
                 context.Database.EnsureCreated();
 
