@@ -6,6 +6,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
+using SOPRO.Data.Context;
 using SOPRO.Data.Factories;
 using SOPRO.Tests.TestInfrastructure;
 
@@ -141,6 +142,74 @@ public sealed class ProjectWorkspaceServiceTests
             primera.Select(p => p.FilePath).ToList(),
             segunda.Select(p => p.FilePath).ToList(),
             "el orden debe ser estable entre llamadas");
+    }
+
+    [TestMethod]
+    public void CreateProject_ConNombreYaExistente_TrasCerrarSesion_FallaSinAlterarElArchivo()
+    {
+        var workspace = CrearWorkspace();
+        var lifecycle = new ProjectLifecycleService(workspace, new ProjectDbContextFactory());
+
+        using (var sesion = lifecycle.CreateProject(CrearProyecto("Obra repetida")))
+        {
+            Assert.IsTrue(File.Exists(sesion.DatabasePath));
+        }
+
+        var dbPath = workspace.BuildProjectDatabasePath("Obra repetida");
+        SqliteConnection.ClearAllPools();
+        var contenidoOriginal = File.ReadAllBytes(dbPath);
+
+        var excepcion = Assert.ThrowsExactly<InvalidOperationException>(
+            () => lifecycle.CreateProject(CrearProyecto("Obra repetida")));
+
+        StringAssert.Contains(excepcion.Message, "Abrir proyecto");
+        SqliteConnection.ClearAllPools();
+        CollectionAssert.AreEqual(contenidoOriginal, File.ReadAllBytes(dbPath), "el archivo original no debe cambiar");
+        Assert.IsFalse(File.Exists(dbPath + ".lock"), "el candado debe liberarse tras el error");
+
+        using (var contexto = new SOPROContext(dbPath))
+        {
+            Assert.AreEqual(1, contexto.Proyectos.Count(), "no debe añadirse una segunda fila al proyecto existente");
+        }
+
+        using var reabierto = lifecycle.OpenProject(dbPath);
+        Assert.AreEqual("Obra repetida", reabierto.Project.Nombre);
+    }
+
+    [TestMethod]
+    public void CreateProject_ConNombreQueColisionaTrasSaneamiento_FallaYConservaElOriginal()
+    {
+        var workspace = CrearWorkspace();
+        var lifecycle = new ProjectLifecycleService(workspace, new ProjectDbContextFactory());
+
+        // '/' es carácter inválido tanto en Windows como en Unix: ambos nombres
+        // se sanean al mismo archivo "Obra_Norte.soproproj".
+        var rutaSaneada = workspace.BuildProjectDatabasePath("Obra/Norte");
+        Assert.AreEqual(rutaSaneada, workspace.BuildProjectDatabasePath("Obra_Norte"));
+
+        using (var sesion = lifecycle.CreateProject(CrearProyecto("Obra/Norte")))
+        {
+            Assert.IsTrue(File.Exists(sesion.DatabasePath));
+        }
+
+        SqliteConnection.ClearAllPools();
+        var contenidoOriginal = File.ReadAllBytes(rutaSaneada);
+
+        var excepcion = Assert.ThrowsExactly<InvalidOperationException>(
+            () => lifecycle.CreateProject(CrearProyecto("Obra_Norte")));
+
+        StringAssert.Contains(excepcion.Message, "Elige otro nombre");
+        SqliteConnection.ClearAllPools();
+        CollectionAssert.AreEqual(contenidoOriginal, File.ReadAllBytes(rutaSaneada), "el archivo original no debe cambiar");
+        Assert.IsFalse(File.Exists(rutaSaneada + ".lock"), "el candado debe liberarse tras el error");
+
+        using (var contexto = new SOPROContext(rutaSaneada))
+        {
+            Assert.AreEqual(1, contexto.Proyectos.Count(), "no debe añadirse una segunda fila al proyecto existente");
+        }
+
+        using var reabierto = lifecycle.OpenProject(rutaSaneada);
+        Assert.AreEqual("Obra/Norte", reabierto.Project.Nombre);
     }
 
     private static Proyecto CrearProyecto(string nombre) => new()
