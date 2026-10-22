@@ -172,14 +172,16 @@ namespace SOPRO.Application.Services
             }
 
             // Paridad con RefrescarPreciosDesdeDB → RecalcularTodosLosTotales:
-            // los agrupadores padre se recalculan bottom-up a partir de los
-            // totales de sus hijos directos (RecalculoGlobalService.RecalcularAgrupadores).
-            ActualizarAgrupadores(ctx, proyectos.Values.ToList());
+            // los agrupadores padre se recalculan bottom-up con la política única
+            // de ActualizarAgrupadores (misma que usa RecalculoGlobalService).
+            _ = ActualizarAgrupadores(ctx, proyectos.Values.ToList());
         }
 
         /// <summary>
         /// Recalcula los totales de los conceptos agrupadores de cada proyecto
-        /// afectado. Paridad exacta con la UI (FormPresupuesto → RecalcularTodosLosTotales
+        /// afectado y devuelve cuántos agrupadores actualizó. Política ÚNICA
+        /// compartida con RecalculoGlobalService (Fase 4). Paridad exacta con la
+        /// UI (FormPresupuesto → RecalcularTodosLosTotales
         /// → BudgetHierarchyService.CalculateAggregatorTotal → GridTotales):
         ///
         ///   1) La jerarquía se infiere por Orden/Nivel (la persistencia legacy
@@ -194,8 +196,10 @@ namespace SOPRO.Application.Services
         ///   3) Un agrupador sin hojas queda en cero. Redondeo con el motor del
         ///      proyecto.
         /// </summary>
-        private static void ActualizarAgrupadores(SOPROContext ctx, List<Proyecto> proyectos)
+        internal static int ActualizarAgrupadores(SOPROContext ctx, List<Proyecto> proyectos)
         {
+            int actualizados = 0;
+
             foreach (var proyecto in proyectos)
             {
                 var todos = ctx.ConceptosPresupuesto
@@ -230,8 +234,11 @@ namespace SOPRO.Application.Services
                     agrupador.CostoDirectoTotal = total;
                     agrupador.ImporteTotal       = total;
                     agrupador.FechaModificacion  = DateTime.Now;
+                    actualizados++;
                 }
             }
+
+            return actualizados;
         }
 
         /// <summary>

@@ -28,7 +28,7 @@ namespace SOPRO.Application.Services
     ///   1. Componentes de Matrices  → importes individuales por componente
     ///   2. Matrices                 → CostoDirecto = suma de componentes
     ///   3. Conceptos hoja           → CostoDirectoUnitario / PrecioUnitario / Importes
-    ///   4. Agrupadores              → CostoDirectoTotal = suma hijos (bottom-up)
+    ///   4. Agrupadores              → Importe/CostoDirectoTotal = suma hojas del bloque
     ///   5. Distribuciones           → importes por periodo con Ajuste de Residuo
     ///
     /// NOTAS DE ARQUITECTURA:
@@ -72,8 +72,10 @@ namespace SOPRO.Application.Services
             resultado.ConceptosActualizados = RecalcularConceptosHoja(ctx, proyecto, engine, pct);
             ctx.SaveChanges();
 
-            // Fase 4: Agrupadores bottom-up
-            resultado.AgrupadoresTotalesRecalculados = RecalcularAgrupadores(ctx, proyectoId, engine);
+            // Fase 4: Agrupadores con la política única (jerarquía por Orden/Nivel,
+            // total = suma del Importe de las hojas del bloque).
+            resultado.AgrupadoresTotalesRecalculados =
+                PricePropagationService.ActualizarAgrupadores(ctx, new List<Proyecto> { proyecto });
             ctx.SaveChanges();
 
             // Fase 5: Distribuciones del programa de obra
@@ -182,41 +184,6 @@ namespace SOPRO.Application.Services
             }
 
             return conceptos.Count;
-        }
-
-        // ════════════════════════════════════════════════════════════════════════
-        // FASE 4: AGRUPADORES (bottom-up)
-        // ════════════════════════════════════════════════════════════════════════
-
-        private static int RecalcularAgrupadores(SOPROContext ctx, int proyectoId, SoproCalculationEngine engine)
-        {
-            // Cargar toda la jerarquía del presupuesto
-            var todos = ctx.ConceptosPresupuesto
-                .Where(c => c.ProyectoId == proyectoId)
-                .OrderByDescending(c => c.Nivel) // De más profundo a más superficial
-                .ToList();
-
-            var porId = todos.ToDictionary(c => c.Id);
-
-            int actualizados = 0;
-            var agrupadores  = todos.Where(c => c.EsAgrupador).ToList();
-
-            // Procesar por nivel descendente (hijos antes que padres)
-            foreach (var agrupador in agrupadores)
-            {
-                // Sumar los CostoDirectoTotal de los hijos directos
-                var hijos = todos.Where(c => c.PadreId == agrupador.Id).ToList();
-
-                decimal totalCD     = engine.SumAmounts(hijos.Select(h => h.CostoDirectoTotal));
-                decimal totalImporte = engine.SumAmounts(hijos.Select(h => h.ImporteTotal));
-
-                agrupador.CostoDirectoTotal = totalCD;
-                agrupador.ImporteTotal       = totalImporte;
-                agrupador.FechaModificacion  = DateTime.Now;
-                actualizados++;
-            }
-
-            return actualizados;
         }
 
         // ════════════════════════════════════════════════════════════════════════

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SOPRO.Application.Services;
+using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.Tests.TestInfrastructure;
 
@@ -158,6 +159,77 @@ public class PersistenciaRecalculoYPropagacionTests
             DeleteQuietly(dbPath);
         }
     }
+
+    [TestMethod]
+    public void RecalculoGlobal_RecalculaAgrupadoresPorOrdenYNivel_AlReabrirLaBaseDatos()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+
+                // Utilidad 10 %: Importe de la hoja (1,100) ≠ Costo Directo (1,000).
+                scenario.Proyecto.PorcentajeUtilidad = 10m;
+                scenario.Concepto.Nivel = 1; // Nivel legacy de una hoja: semánticamente 5.
+                scenario.Concepto.Orden = 3;
+                context.SaveChanges();
+
+                context.ConceptosPresupuesto.AddRange(
+                    CrearAgrupador(scenario.Proyecto.Id, "CAP-01", "Capítulo", nivel: 0, orden: 1),
+                    CrearAgrupador(scenario.Proyecto.Id, "SUB-01", "Subcapítulo", nivel: 1, orden: 2),
+                    CrearAgrupador(scenario.Proyecto.Id, "CAP-VACIO", "Capítulo vacío", nivel: 1, orden: 4));
+                context.SaveChanges();
+
+                proyectoId = scenario.Proyecto.Id;
+
+                var resultado = new RecalculoGlobalService().Ejecutar(context, proyectoId);
+                Assert.AreEqual(3, resultado.AgrupadoresTotalesRecalculados);
+            }
+
+            using (var context = new SOPROContext(dbPath))
+            {
+                var conceptos = context.ConceptosPresupuesto
+                    .AsNoTracking()
+                    .Where(c => c.ProyectoId == proyectoId)
+                    .ToDictionary(c => c.Clave);
+
+                Assert.AreEqual(1000.00m, conceptos["C-001"].CostoDirectoTotal, "C.D.T. de la hoja persistido.");
+                Assert.AreEqual(1100.00m, conceptos["C-001"].ImporteTotal, "Importe de la hoja persistido.");
+
+                Assert.AreEqual(1100.00m, conceptos["CAP-01"].CostoDirectoTotal, "El capítulo suma el Importe de la hoja.");
+                Assert.AreEqual(1100.00m, conceptos["CAP-01"].ImporteTotal, "Ambos totales del capítulo coinciden.");
+                Assert.AreEqual(1100.00m, conceptos["SUB-01"].CostoDirectoTotal, "El subcapítulo suma el Importe de la hoja.");
+                Assert.AreEqual(1100.00m, conceptos["SUB-01"].ImporteTotal, "Ambos totales del subcapítulo coinciden.");
+                Assert.AreEqual(0m, conceptos["CAP-VACIO"].CostoDirectoTotal, "Un agrupador sin hojas queda en cero.");
+                Assert.AreEqual(0m, conceptos["CAP-VACIO"].ImporteTotal, "Un agrupador sin hojas queda en cero.");
+            }
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    private static ConceptoPresupuesto CrearAgrupador(int proyectoId, string clave, string descripcion, int nivel, int orden)
+        => new()
+        {
+            ProyectoId = proyectoId,
+            Clave = clave,
+            Descripcion = descripcion,
+            Unidad = string.Empty,
+            Cantidad = 0m,
+            Nivel = nivel,
+            Orden = orden,
+            EsAgrupador = true,
+            CostoDirectoTotal = 999999m,
+            ImporteTotal = 999999m,
+            ColumnasPersonalizadasJSON = string.Empty,
+            Notas = string.Empty
+        };
 
     private static void DeleteQuietly(string dbPath)
     {
