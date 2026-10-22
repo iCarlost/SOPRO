@@ -433,6 +433,65 @@ public class RecalculoGlobalServiceTests
         Assert.AreEqual(180.00m, basicoAnidado.CostoDirecto, "El básico anidado consume el básico ya recalculado (3 × 60).");
     }
 
+    [TestMethod]
+    public void Ejecutar_ConJerarquiaPorOrdenYNivel_RecalculaAgrupadoresConElImporteDeLasHojas()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+
+        // Utilidad 10 %: el Importe de la hoja (1,100) difiere de su Costo Directo (1,000),
+        // de modo que sumar CostoDirectoTotal en lugar de ImporteTotal es detectable.
+        scenario.Proyecto.PorcentajeUtilidad = 10m;
+        context.SaveChanges();
+
+        // La hoja conserva Nivel 1 (legacy) aunque semánticamente es un concepto de
+        // nivel 5: no debe cortar el bloque del subcapítulo de nivel 1.
+        scenario.Concepto.Nivel = 1;
+        scenario.Concepto.Orden = 3;
+
+        var capitulo = CrearAgrupador(scenario.Proyecto.Id, "CAP-01", "Capítulo", nivel: 0, orden: 1);
+        var subcapitulo = CrearAgrupador(scenario.Proyecto.Id, "SUB-01", "Subcapítulo", nivel: 1, orden: 2);
+        var vacio = CrearAgrupador(scenario.Proyecto.Id, "CAP-VACIO", "Capítulo vacío", nivel: 1, orden: 4);
+        context.ConceptosPresupuesto.AddRange(capitulo, subcapitulo, vacio);
+        context.SaveChanges();
+
+        var resultado = new RecalculoGlobalService().Ejecutar(context, scenario.Proyecto.Id);
+
+        // Fase 3: cascada real sobre la hoja (CD 100 → P.U. 110 × 10 = 1,100).
+        Assert.AreEqual(100.00m, scenario.Concepto.CostoDirectoUnitario);
+        Assert.AreEqual(1000.00m, scenario.Concepto.CostoDirectoTotal);
+        Assert.AreEqual(110.00m, scenario.Concepto.PrecioUnitario);
+        Assert.AreEqual(1100.00m, scenario.Concepto.ImporteTotal);
+        Assert.AreNotEqual(scenario.Concepto.CostoDirectoTotal, scenario.Concepto.ImporteTotal,
+            "El escenario debe distinguir Costo Directo de Importe para detectar la política equivocada.");
+
+        // Fase 4: el total del agrupador es el Importe de las hojas de su bloque.
+        Assert.AreEqual(3, resultado.AgrupadoresTotalesRecalculados);
+        Assert.AreEqual(1100.00m, capitulo.CostoDirectoTotal);
+        Assert.AreEqual(1100.00m, capitulo.ImporteTotal);
+        Assert.AreEqual(1100.00m, subcapitulo.CostoDirectoTotal);
+        Assert.AreEqual(1100.00m, subcapitulo.ImporteTotal);
+        Assert.AreEqual(0m, vacio.CostoDirectoTotal, "Un agrupador sin hojas queda en cero.");
+        Assert.AreEqual(0m, vacio.ImporteTotal, "Un agrupador sin hojas queda en cero.");
+    }
+
+    private static ConceptoPresupuesto CrearAgrupador(int proyectoId, string clave, string descripcion, int nivel, int orden)
+        => new()
+        {
+            ProyectoId = proyectoId,
+            Clave = clave,
+            Descripcion = descripcion,
+            Unidad = string.Empty,
+            Cantidad = 0m,
+            Nivel = nivel,
+            Orden = orden,
+            EsAgrupador = true,
+            CostoDirectoTotal = 999999m,
+            ImporteTotal = 999999m,
+            ColumnasPersonalizadasJSON = string.Empty,
+            Notas = string.Empty
+        };
+
     private static void AddThreePeriodProgram(SOPROContext context, SoproCalculationScenario scenario)
     {
         var programa = new ProgramaObra
