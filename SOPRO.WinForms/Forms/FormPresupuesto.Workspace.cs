@@ -415,73 +415,122 @@ namespace SOPRO.WinForms.Forms
             ImportarFilasPresupuestoDesdeExcel(frm.FilasImportadas);
         }
 
+        /// <summary>
+        /// Clasificación de la última importación ejecutada como comando, o <c>null</c>
+        /// si no llegó a enviarse (lote vacío o trabajo pendiente en el contexto
+        /// compartido). Observabilidad interna para las pruebas del ensamblado; no es
+        /// API pública ni se muestra en la UI.
+        /// </summary>
+        internal BudgetOperationStatus? UltimoEstadoImportacion { get; private set; }
+
         private void ImportarFilasPresupuestoDesdeExcel(List<BudgetExcelImportRowDto> filas)
         {
             try
             {
-                if (filas == null || filas.Count == 0)
-                    return;
-
-                int ordenBase = _context.ConceptosPresupuesto
-                    .Where(c => c.ProyectoId == _proyecto.Id)
-                    .Select(c => (int?)c.Orden)
-                    .Max() ?? -1;
-
-                var nuevosConceptos = new List<ConceptoPresupuesto>();
-                int offset = 1;
-                bool yaSeAsignoCapituloInferido = false;
-                foreach (var fila in filas)
-                {
-                    string tipo = ResolverTipoImportado(fila, ref yaSeAsignoCapituloInferido);
-                    if (string.Equals(tipo, "No importar", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    bool esAgrupador = !string.Equals(tipo, "Concepto", StringComparison.OrdinalIgnoreCase);
-
-                    var concepto = new ConceptoPresupuesto
-                    {
-                        ProyectoId = _proyecto.Id,
-                        Clave = fila.Clave?.Trim() ?? string.Empty,
-                        Descripcion = fila.Descripcion?.Trim() ?? string.Empty,
-                        Unidad = esAgrupador ? string.Empty : (fila.Unidad?.Trim() ?? string.Empty),
-                        Cantidad = esAgrupador ? 0m : (fila.Cantidad ?? 0m),
-                        EsAgrupador = esAgrupador,
-                        Nivel = BudgetPersistenceService.ResolveLevelFromType(tipo),
-                        Orden = ordenBase + offset++,
-                        MatrizId = null,
-                        CostoDirectoUnitario = 0m,
-                        CostoDirectoTotal = 0m,
-                        Indirectos = 0m,
-                        Financiamiento = 0m,
-                        Utilidad = 0m,
-                        CargosAdicionales = 0m,
-                        PrecioUnitario = 0m,
-                        ImporteTotal = 0m,
-                        ColumnasPersonalizadasJSON = string.Empty,
-                        Notas = string.Empty,
-                        FechaCreacion = DateTime.Now,
-                        FechaModificacion = DateTime.Now
-                    };
-
-                    nuevosConceptos.Add(concepto);
-                }
-
-                if (nuevosConceptos.Count == 0)
+                var resultado = EjecutarImportacionPresupuesto(filas);
+                if (resultado is null)
                 {
                     MessageBox.Show("No se generaron conceptos válidos para importar.", "Importar presupuesto", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
 
-                _context.ConceptosPresupuesto.AddRange(nuevosConceptos);
-                _context.SaveChanges();
+                if (!resultado.IsCommitted || resultado.Confirmed is null)
+                {
+                    MessageBox.Show(
+                        resultado.Message ?? "No se pudo importar el presupuesto; no se guardó ningún renglón.",
+                        "Importar presupuesto",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
 
-                RecargarPresupuestoPreservandoEstado();
-                MessageBox.Show($"Se importaron {nuevosConceptos.Count} renglones desde Excel\n\nNo se importaron P.U. ni Importe.", "Importar presupuesto", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(
+                    $"Se importaron {resultado.Confirmed.Rows.Count} renglones desde Excel\n\nNo se importaron P.U. ni Importe.",
+                    "Importar presupuesto",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Error al importar el presupuesto desde Excel:\n{ex.Message}", "Importar presupuesto", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        /// <summary>
+        /// Construye el comando inmutable con las filas YA normalizadas por la vista
+        /// (clasificación de agrupadores incluida), lo ejecuta sobre un contexto nuevo
+        /// y solo recarga el grid si la operación se confirmó. No escribe nada en el
+        /// contexto compartido ni ejecuta el guardado heredado.
+        /// </summary>
+        internal BudgetImportResult? EjecutarImportacionPresupuesto(IReadOnlyList<BudgetExcelImportRowDto>? filas)
+        {
+            UltimoEstadoImportacion = null;
+
+            if (filas == null || filas.Count == 0)
+                return null;
+
+            var renglones = ConstruirRenglonesImportacion(filas);
+            if (renglones.Count == 0)
+                return null;
+
+            // Conservador: si el contexto compartido arrastra trabajo pendiente de otras
+            // rutas, no se envía el comando ni se guarda nada aquí.
+            _context.ChangeTracker.DetectChanges();
+            if (_context.ChangeTracker.HasChanges())
+                throw new InvalidOperationException(
+                    "Hay cambios pendientes en el presupuesto; guarde o descarte antes de importar.");
+
+            var command = new BudgetImportCommand(
+                _proyecto.Id,
+                BudgetProjectCalculationBase.FromProyecto(_proyecto),
+                renglones);
+
+            var resultado = BudgetPersistenceService.ExecuteImportCommand(
+                _factory,
+                _context.DatabasePath,
+                command);
+
+            UltimoEstadoImportacion = resultado.Status;
+
+            if (!resultado.IsCommitted || resultado.Confirmed is null)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Importación no confirmada ({resultado.Status}): {resultado.Diagnostic}");
+                return resultado;
+            }
+
+            // La vista se actualiza SOLO después del commit. La recarga usa la ruta de
+            // carga que ya no persiste totales de agrupadores.
+            RecargarPresupuestoPreservandoEstado();
+            return resultado;
+        }
+
+        private List<BudgetImportRow> ConstruirRenglonesImportacion(IReadOnlyList<BudgetExcelImportRowDto> filas)
+        {
+            var renglones = new List<BudgetImportRow>(filas.Count);
+            bool yaSeAsignoCapituloInferido = false;
+
+            foreach (var fila in filas)
+            {
+                if (fila is null)
+                    continue;
+
+                string tipo = ResolverTipoImportado(fila, ref yaSeAsignoCapituloInferido);
+                if (string.Equals(tipo, "No importar", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                bool esAgrupador = !string.Equals(tipo, "Concepto", StringComparison.OrdinalIgnoreCase);
+
+                renglones.Add(new BudgetImportRow(
+                    fila.SourceRowNumber > 0 ? fila.SourceRowNumber : null,
+                    fila.Clave,
+                    fila.Descripcion,
+                    esAgrupador ? string.Empty : fila.Unidad,
+                    esAgrupador ? 0m : (fila.Cantidad ?? 0m),
+                    tipo));
+            }
+
+            return renglones;
         }
 
         private string ResolverTipoImportado(BudgetExcelImportRowDto fila, ref bool yaSeAsignoCapituloInferido)
@@ -661,7 +710,7 @@ namespace SOPRO.WinForms.Forms
                     claveNueva,
                     conceptoActual,
                     matrizId,
-                    draft);
+                    draft) == MatrixAssignmentDispatch.Sent;
             }
 
             // Rutas aún NO migradas (alta de fila, copia desde otra fila, etc.):
@@ -701,32 +750,39 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         internal BudgetOperationStatus? UltimoEstadoAsignacionMatriz { get; private set; }
 
+        private enum MatrixAssignmentDispatch
+        {
+            NotSentPendingChanges,
+            Sent
+        }
+
         /// <summary>
         /// Asigna una matriz a un concepto YA persistido con la ruta de comando: no
         /// muta el Tag compartido antes de conocer el resultado y no ejecuta el
         /// guardado heredado para este evento. Si falla o entra en conflicto, la clave
         /// editada permanece visible como borrador.
         /// <para>
-        /// Límite conocido de esta migración parcial: el pegado sigue invocando
-        /// <c>GuardarCambios</c> al cerrar su operación; si una asignación falla dentro
-        /// del pegado, ese flush heredado todavía podría reescribir el borrador. No se
-        /// declara integridad de esa ruta hasta migrar el pegado como una sola operación.
+        /// La ruta heredada sigue vigente para las operaciones aún no migradas; el
+        /// pegado ya NO la invoca (viaja como un único comando atómico).
         /// </para>
         /// </summary>
-        private bool TryApplyMatrixAssignmentWithCommand(
+        private MatrixAssignmentDispatch TryApplyMatrixAssignmentWithCommand(
             int rowIndex,
             string claveNueva,
             ConceptoPresupuesto conceptoActual,
             int matrizId,
-            BudgetConceptAssignmentDraft draft)
+            BudgetConceptAssignmentDraft draft,
+            string? descriptionOverride = null,
+            string? unitOverride = null)
         {
             UltimoEstadoAsignacionMatriz = null;
 
             // Conservador: si el contexto compartido arrastra trabajo pendiente de
-            // otras rutas, no se envía el comando ni se guarda nada aquí.
+            // otras rutas, no se envía el comando ni se guarda nada aquí. El llamador
+            // debe conservar el borrador y NO caer a la ruta heredada de guardado.
             _context.ChangeTracker.DetectChanges();
             if (_context.ChangeTracker.HasChanges())
-                return false;
+                return MatrixAssignmentDispatch.NotSentPendingChanges;
 
             BudgetMatrixAssignmentResult resultado;
             try
@@ -741,14 +797,14 @@ namespace SOPRO.WinForms.Forms
                         BudgetConceptAssignmentBase.FromConcepto(conceptoActual),
                         matrizId,
                         claveNueva,
-                        descriptionOverride: null,
-                        unitOverride: null,
+                        descriptionOverride,
+                        unitOverride,
                         draft.Cantidad));
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Asignación de matriz: {ex.Message}");
-                return true;
+                return MatrixAssignmentDispatch.Sent;
             }
 
             UltimoEstadoAsignacionMatriz = resultado.Status;
@@ -760,11 +816,11 @@ namespace SOPRO.WinForms.Forms
                 // heredado para este evento.
                 System.Diagnostics.Debug.WriteLine(
                     $"Asignación de matriz no confirmada ({resultado.Status}): {resultado.Diagnostic}");
-                return true;
+                return MatrixAssignmentDispatch.Sent;
             }
 
             AplicarAsignacionMatrizConfirmada(rowIndex, conceptoActual, resultado.Confirmed);
-            return true;
+            return MatrixAssignmentDispatch.Sent;
         }
 
         /// <summary>

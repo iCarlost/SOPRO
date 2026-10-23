@@ -23,7 +23,7 @@ namespace SOPRO.Tests.WinForms.Presupuesto;
 /// form se liberan al descartarlo (sin depender de <c>Close</c>) y que el
 /// proyecto global de <see cref="FormatoHelper"/> se restaura exactamente.
 /// </summary>
-[TestClass]
+[STATestClass]
 [DoNotParallelize] // El constructor fija estado estático (FormatoHelper); evita interacciones.
 public class FormPresupuestoWorkspaceIsolationTests
 {

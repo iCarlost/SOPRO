@@ -21,6 +21,20 @@ namespace SOPRO.Application.Services
             if (string.IsNullOrWhiteSpace(cantidadTexto) || !decimal.TryParse(cantidadTexto, out decimal cantidad))
                 return new BudgetQuantityChangeResult();
 
+            return HandleQuantityCellChange(proyecto, concepto, cantidad);
+        }
+
+        /// <summary>
+        /// Variante con la cantidad ya convertida: la usan los comandos que no pueden
+        /// depender de la cultura del llamador. La aritmética es la MISMA que la ruta
+        /// de pantalla (única fuente) y también normaliza la cantidad visible.
+        /// </summary>
+        public static BudgetQuantityChangeResult HandleQuantityCellChange(Proyecto proyecto, ConceptoPresupuesto? concepto, decimal cantidad)
+        {
+            if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
+            if (concepto == null || !concepto.MatrizId.HasValue)
+                return new BudgetQuantityChangeResult();
+
             var engine = CalculationEngineFactory.FromProyecto(proyecto);
             // Normalizar la cantidad inmediatamente a la precisión visible del proyecto
             // para evitar fugas de precisión: lo que el usuario ve = lo que se calcula

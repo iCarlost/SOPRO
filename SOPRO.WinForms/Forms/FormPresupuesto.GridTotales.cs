@@ -536,7 +536,7 @@ namespace SOPRO.WinForms.Forms
             return BudgetHierarchyService.FindParentIndex(BuildHierarchyRowsSnapshot(), fila);
         }
 
-        private void RecalcularTodosLosTotales()
+        private void RecalcularTodosLosTotales(bool sincronizarEntidades = true)
         {
             var snapshot = BuildHierarchyRowsSnapshot();
             var totals = BudgetHierarchyService.CalculateAggregatorTotals(snapshot);
@@ -549,7 +549,13 @@ namespace SOPRO.WinForms.Forms
                     importeCell.Value = pair.Value.ToStringImporte();
                 }
 
-                // CRÍTICO: sincronizar la entidad en memoria para que auto-guardado persista el total
+                // En una EDICIÓN, sincronizar la entidad en memoria es lo que permite al
+                // auto-guardado heredado persistir el total. En una RECARGA solo se
+                // muestra el total calculado: tocar la entidad tracked la dejaría
+                // Modified sin escritura y contaminaría el contexto compartido.
+                if (!sincronizarEntidades)
+                    continue;
+
                 var concepto = dgvPresupuesto.Rows[pair.Key].Tag as ConceptoPresupuesto;
                 if (concepto != null)
                 {

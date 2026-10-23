@@ -17,10 +17,9 @@ namespace SOPRO.WinForms.Forms
     /// reescriba.
     /// <para>
     /// Límite conocido de esta migración parcial: si el comando falla o entra en
-    /// conflicto, este evento no ejecuta <see cref="GuardarCambios"/>, pero otras
-    /// operaciones todavía pueden invocar la ruta heredada (p. ej. el pegado) y
-    /// reescribir el borrador desde el grid. No se declara integridad completa de
-    /// esas rutas hasta migrarlas.
+    /// conflicto, este evento no ejecuta <see cref="GuardarCambios"/>. El pegado ya
+    /// viaja como un único comando atómico; otras rutas heredadas pueden seguir
+    /// usando el autoguardado.
     /// </para>
     /// </summary>
     public partial class FormPresupuesto

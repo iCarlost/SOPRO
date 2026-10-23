@@ -180,7 +180,10 @@ namespace SOPRO.Application.Services
             concept.PrecioUnitario       = draft.PrecioUnitario;
             concept.ImporteTotal         = draft.ImporteTotal;
             concept.MatrizId             = draft.MatrizId;
-            concept.Matriz               = draft.Matriz;
+            // Solo se fija la navegación cuando el borrador trae la instancia: asignar
+            // null después del FK podría hacer que EF sincronice el FK a null.
+            if (draft.Matriz != null)
+                concept.Matriz = draft.Matriz;
             concept.FechaModificacion    = DateTime.Now;
         }
 
@@ -188,7 +191,12 @@ namespace SOPRO.Application.Services
         // MÉTODOS BUILD PRIVADOS
         // ════════════════════════════════════════════════════════════════════════
 
-        private static BudgetConceptAssignmentDraft BuildDraftFromConcept(
+        /// <summary>
+        /// Constructor puro del borrador de copia desde otro concepto del mismo
+        /// presupuesto. Lo comparte la resolución de pantalla y el comando atómico de
+        /// pegado, de modo que la aritmética siga siendo única.
+        /// </summary>
+        internal static BudgetConceptAssignmentDraft BuildDraftFromConcept(
             Proyecto proyecto, string key, ConceptoPresupuesto sourceConcept)
         {
             var engine         = CalculationEngineFactory.FromProyecto(proyecto);

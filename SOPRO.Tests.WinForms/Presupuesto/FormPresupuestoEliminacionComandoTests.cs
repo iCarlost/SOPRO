@@ -24,7 +24,7 @@ namespace SOPRO.Tests.WinForms.Presupuesto;
 /// </list>
 /// Sólo se usan rutas temporales: nunca datos del usuario.
 /// </summary>
-[TestClass]
+[STATestClass]
 [DoNotParallelize] // El constructor fija el proyecto global de FormatoHelper.
 public class FormPresupuestoEliminacionComandoTests
 {

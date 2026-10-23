@@ -24,7 +24,7 @@ namespace SOPRO.Tests.WinForms.Presupuesto;
 /// </list>
 /// Sólo se usan rutas temporales: nunca datos del usuario.
 /// </summary>
-[TestClass]
+[STATestClass]
 [DoNotParallelize] // El constructor fija el proyecto global de FormatoHelper.
 public class FormPresupuestoAsignacionMatrizComandoTests
 {
@@ -200,6 +200,341 @@ public class FormPresupuestoAsignacionMatrizComandoTests
         }
     }
 
+    [TestMethod]
+    public void AsignacionMatrizSeleccionada_ConceptoExistente_ConfirmaSincronizaTagYCeldas()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_selector_ok_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx);
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"),
+                Path.Combine(root, "local")));
+            var grid = form.GridPrincipal;
+
+            int fila = BuscarFilaPorConcepto(grid, escenario.Concepto.Id);
+            Assert.IsTrue(fila >= 0, "El concepto debe estar en el grid cargado.");
+
+            Assert.IsTrue(form.TryApplySelectedMatrixAssignment(
+                    fila,
+                    escenario.MatrizDestino,
+                    7m,
+                    preserveCurrentTexts: true),
+                "La fila persistida debe consumirse en la ruta de comando.");
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoAsignacionMatriz,
+                "La asignación de la matriz seleccionada debe confirmarse como comando.");
+
+            var persistido = LeerConceptoEnBase(dbPath, escenario.Concepto.Id);
+            Assert.AreEqual("1.1", persistido.Clave, "La clave actual se conserva.");
+            Assert.AreEqual(escenario.MatrizDestino.Id, persistido.MatrizId);
+            Assert.AreEqual("Concreto simple en obra", persistido.Descripcion,
+                "La descripción elaborada del usuario se conserva.");
+            Assert.AreEqual("m3", persistido.Unidad, "La unidad actual se conserva.");
+            Assert.AreEqual(7m, persistido.Cantidad);
+            Assert.AreEqual(50m, persistido.CostoDirectoUnitario);
+            Assert.AreEqual(350m, persistido.CostoDirectoTotal);
+            Assert.AreEqual(50m, persistido.PrecioUnitario);
+            Assert.AreEqual(350m, persistido.ImporteTotal);
+
+            var tag = (ConceptoPresupuesto)grid.Rows[fila].Tag!;
+            Assert.AreEqual("1.1", tag.Clave);
+            Assert.AreEqual(escenario.MatrizDestino.Id, tag.MatrizId);
+            Assert.AreEqual("Concreto simple en obra", tag.Descripcion);
+            Assert.AreEqual("m3", tag.Unidad);
+            Assert.AreEqual(7m, tag.Cantidad);
+            Assert.AreEqual(350m, tag.ImporteTotal);
+            Assert.AreEqual(persistido.FechaModificacion, tag.FechaModificacion,
+                "El Tag queda con la marca confirmada en la base.");
+            Assert.AreEqual(EntityState.Unchanged, ctx.Entry(tag).State,
+                "El Tag sincronizado queda Unchanged para no reescribirse.");
+
+            Assert.AreEqual("1.1", BuscarCelda(grid, fila, "Clave")!.Value?.ToString());
+            Assert.AreEqual("Concreto simple en obra",
+                BuscarCelda(grid, fila, "Descripcion")!.Value?.ToString());
+            Assert.AreEqual("m3", BuscarCelda(grid, fila, "Unidad")!.Value?.ToString());
+            Assert.AreEqual(7m, Convert.ToDecimal(BuscarCelda(grid, fila, "Cantidad")!.Value));
+            StringAssert.Contains(BuscarCelda(grid, fila, "PrecioUnitario")!.Value?.ToString() ?? string.Empty, "50");
+            StringAssert.Contains(BuscarCelda(grid, fila, "Importe")!.Value?.ToString() ?? string.Empty, "350");
+
+            int filaAgrupador = BuscarFilaPorConcepto(grid, escenario.Agrupador.Id);
+            Assert.IsTrue(filaAgrupador >= 0, "El agrupador debe estar en el grid cargado.");
+            Assert.AreEqual(350m, escenario.Agrupador.ImporteTotal,
+                "El agrupador compartido se sincroniza con el total confirmado.");
+            StringAssert.Contains(
+                BuscarCelda(grid, filaAgrupador, "Importe")!.Value?.ToString() ?? string.Empty,
+                "350",
+                "La celda del agrupador refleja el total confirmado.");
+            Assert.AreEqual(EntityState.Unchanged, ctx.Entry(escenario.Agrupador).State);
+
+            Assert.IsFalse(ctx.ChangeTracker.HasChanges(),
+                "La asignación confirmada no deja trabajo pendiente en el contexto compartido.");
+
+            // Un guardado ajeno posterior al éxito no puede volver a escribir la fila.
+            escenario.Proyecto.Descripcion = "cambio ajeno posterior al éxito";
+            ctx.SaveChanges();
+
+            var trasGuardadoAjeno = LeerConceptoEnBase(dbPath, escenario.Concepto.Id);
+            Assert.AreEqual(escenario.MatrizDestino.Id, trasGuardadoAjeno.MatrizId);
+            Assert.AreEqual(7m, trasGuardadoAjeno.Cantidad);
+            Assert.AreEqual(persistido.FechaModificacion, trasGuardadoAjeno.FechaModificacion,
+                "El contexto compartido no debe reescribir una fila ya confirmada.");
+            Assert.AreEqual(EntityState.Unchanged, ctx.Entry(tag).State);
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void AsignacionMatrizSeleccionada_FallaElUpdate_ConservaElBorradorYElReintentoConfirma()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_selector_fail_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx);
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"),
+                Path.Combine(root, "local")));
+            var grid = form.GridPrincipal;
+
+            int fila = BuscarFilaPorConcepto(grid, escenario.Concepto.Id);
+            Assert.IsTrue(fila >= 0, "El concepto debe estar en el grid cargado.");
+
+            CrearTriggerDeFallo(dbPath);
+
+            Assert.IsTrue(form.TryApplySelectedMatrixAssignment(
+                    fila,
+                    escenario.MatrizDestino,
+                    7m,
+                    preserveCurrentTexts: true));
+
+            Assert.AreEqual(BudgetOperationStatus.Failed, form.UltimoEstadoAsignacionMatriz,
+                "El UPDATE rechazado debe clasificarse como fallo revertido por el comando.");
+
+            // El borrador de la selección sigue visible, pero el Tag compartido no se mutó.
+            Assert.AreEqual("1.1", BuscarCelda(grid, fila, "Clave")!.Value?.ToString());
+            Assert.AreEqual("Concreto simple en obra",
+                BuscarCelda(grid, fila, "Descripcion")!.Value?.ToString());
+            Assert.AreEqual("m3", BuscarCelda(grid, fila, "Unidad")!.Value?.ToString());
+            Assert.AreEqual(7m, Convert.ToDecimal(BuscarCelda(grid, fila, "Cantidad")!.Value),
+                "El borrador de la selección conserva la cantidad propuesta.");
+
+            var tag = (ConceptoPresupuesto)grid.Rows[fila].Tag!;
+            Assert.AreEqual(escenario.MatrizOrigen.Id, tag.MatrizId,
+                "La ruta de comando no muta el Tag compartido antes de confirmar.");
+            Assert.AreEqual(10m, tag.Cantidad);
+            Assert.AreEqual(1000m, tag.ImporteTotal);
+            Assert.AreEqual(EntityState.Unchanged, ctx.Entry(tag).State,
+                "La entidad compartida no queda Modified por un comando fallido.");
+            Assert.IsFalse(ctx.ChangeTracker.HasChanges(),
+                "Un comando fallido no deja trabajo pendiente en el contexto compartido.");
+
+            var enBaseTrasFallo = LeerConceptoEnBase(dbPath, escenario.Concepto.Id);
+            Assert.AreEqual(escenario.MatrizOrigen.Id, enBaseTrasFallo.MatrizId,
+                "El UPDATE rechazado no puede quedar en la base.");
+            Assert.AreEqual(10m, enBaseTrasFallo.Cantidad);
+
+            // Un guardado ajeno posterior al fallo no puede arrastrar el borrador.
+            EliminarTriggerDeFallo(dbPath);
+            escenario.Proyecto.Descripcion = "cambio ajeno posterior al fallo";
+            ctx.SaveChanges();
+
+            Assert.AreEqual(escenario.MatrizOrigen.Id,
+                LeerConceptoEnBase(dbPath, escenario.Concepto.Id).MatrizId,
+                "Un guardado ajeno no puede confirmar el UPDATE abortado.");
+
+            // Reintento del mismo intento: se retira el trigger y se vuelve a ejecutar la selección.
+            Assert.IsTrue(form.TryApplySelectedMatrixAssignment(
+                    fila,
+                    escenario.MatrizDestino,
+                    7m,
+                    preserveCurrentTexts: true),
+                "El reintento debe consumirse en la ruta de asignación.");
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoAsignacionMatriz,
+                "El reintento sin trigger debe confirmarse.");
+
+            var persistido = LeerConceptoEnBase(dbPath, escenario.Concepto.Id);
+            Assert.AreEqual(escenario.MatrizDestino.Id, persistido.MatrizId);
+            Assert.AreEqual(7m, persistido.Cantidad);
+            Assert.AreEqual(350m, persistido.ImporteTotal);
+
+            Assert.AreEqual(escenario.MatrizDestino.Id, tag.MatrizId,
+                "El Tag se sincroniza tras el reintento.");
+            Assert.AreEqual(350m, tag.ImporteTotal);
+            Assert.AreEqual(EntityState.Unchanged, ctx.Entry(tag).State);
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void AsignacionMatrizSeleccionada_CambiosPendientesEnContextoCompartido_ConservaBorradorSinEscribir()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_selector_pending_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx);
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"),
+                Path.Combine(root, "local")));
+            var grid = form.GridPrincipal;
+
+            int fila = BuscarFilaPorConcepto(grid, escenario.Concepto.Id);
+            Assert.IsTrue(fila >= 0, "El concepto debe estar en el grid cargado.");
+
+            // Trabajo ajeno pendiente en el contexto compartido: el comando no debe
+            // enviarse, pero tampoco ejecutarse el guardado heredado.
+            escenario.Proyecto.Descripcion = "cambio pendiente ajeno";
+
+            Assert.IsTrue(form.TryApplySelectedMatrixAssignment(
+                    fila,
+                    escenario.MatrizDestino,
+                    7m,
+                    preserveCurrentTexts: true),
+                "La fila persistida debe consumirse sin caer a la ruta heredada.");
+
+            Assert.IsNull(form.UltimoEstadoAsignacionMatriz,
+                "Sin despacho no hay estado de comando; la distinción queda explícita.");
+
+            Assert.AreEqual("1.1", BuscarCelda(grid, fila, "Clave")!.Value?.ToString());
+            Assert.AreEqual("Concreto simple en obra",
+                BuscarCelda(grid, fila, "Descripcion")!.Value?.ToString());
+            Assert.AreEqual("m3", BuscarCelda(grid, fila, "Unidad")!.Value?.ToString());
+            Assert.AreEqual(7m, Convert.ToDecimal(BuscarCelda(grid, fila, "Cantidad")!.Value),
+                "El borrador de la selección queda visible.");
+
+            var tag = (ConceptoPresupuesto)grid.Rows[fila].Tag!;
+            Assert.AreEqual(escenario.MatrizOrigen.Id, tag.MatrizId,
+                "El Tag compartido no se muta antes de un commit.");
+            Assert.AreEqual(10m, tag.Cantidad);
+            Assert.AreEqual(EntityState.Unchanged, ctx.Entry(tag).State);
+            Assert.IsTrue(ctx.ChangeTracker.HasChanges(),
+                "El cambio ajeno pendiente no debe descartarse ni guardarse aquí.");
+
+            Assert.AreEqual(string.Empty,
+                LeerProyectoEnBase(dbPath, escenario.Proyecto.Id).Descripcion,
+                "No se escribe en disco el trabajo pendiente del contexto compartido.");
+
+            var conceptoEnBase = LeerConceptoEnBase(dbPath, escenario.Concepto.Id);
+            Assert.AreEqual(escenario.MatrizOrigen.Id, conceptoEnBase.MatrizId,
+                "No se escribe la asignación cuando el comando no se envió.");
+            Assert.AreEqual(10m, conceptoEnBase.Cantidad);
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void AsignacionMatrizSeleccionada_DescripcionEnEdicion_UsaTextoVisible()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_selector_edit_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx);
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"),
+                Path.Combine(root, "local")));
+            var grid = form.GridPrincipal;
+
+            int fila = BuscarFilaPorConcepto(grid, escenario.Concepto.Id);
+            Assert.IsTrue(fila >= 0, "El concepto debe estar en el grid cargado.");
+
+            var descCell = BuscarCelda(grid, fila, "Descripcion");
+            Assert.IsNotNull(descCell);
+            grid.CurrentCell = descCell;
+            form.CreateControl();
+            if (!grid.IsHandleCreated)
+                grid.CreateControl();
+
+            Assert.IsTrue(grid.BeginEdit(true),
+                "El harness debe permitir simular una Descripción en edición activa.");
+            var editor = grid.EditingControl as TextBox;
+            Assert.IsNotNull(editor, "La celda Descripción debe editarse con un TextBox.");
+            editor!.Text = "Descripción en edición activa";
+
+            Assert.IsTrue(form.TryApplySelectedMatrixAssignment(
+                    fila,
+                    escenario.MatrizDestino,
+                    7m,
+                    preserveCurrentTexts: true));
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoAsignacionMatriz);
+            Assert.AreEqual("Descripción en edición activa",
+                LeerConceptoEnBase(dbPath, escenario.Concepto.Id).Descripcion,
+                "El EndEdit previo debe confirmar el texto visible de la celda, no el valor viejo.");
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
     // ═════════════════════════════ Infraestructura ═════════════════════════════
 
     private sealed class Escenario
@@ -335,6 +670,14 @@ public class FormPresupuestoAsignacionMatrizComandoTests
         return verificacion.ConceptosPresupuesto
             .AsNoTracking()
             .Single(c => c.Id == conceptoId);
+    }
+
+    private static Proyecto LeerProyectoEnBase(string dbPath, int proyectoId)
+    {
+        using var verificacion = new SOPROContext(dbPath);
+        return verificacion.Proyectos
+            .AsNoTracking()
+            .Single(p => p.Id == proyectoId);
     }
 
     private static int BuscarFilaPorConcepto(DataGridView grid, int conceptoId)

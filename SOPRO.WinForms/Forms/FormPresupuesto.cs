@@ -6,6 +6,7 @@ using SOPRO.Application.DTOs.Presupuesto;
 using SOPRO.Application.DTOs.Catalog;
 using SOPRO.Application.DTOs.Matrices;
 using SOPRO.Application.Models.ExternalProjects;
+using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
 using SOPRO.Application.Services.Reporting;
@@ -607,7 +608,54 @@ namespace SOPRO.WinForms.Forms
             bool preserveUnitIfPresent = false,
             bool preserveDescriptionIfPresent = false)
         {
-            if (rowIndex < 0 || rowIndex >= dgvPresupuesto.Rows.Count) return;
+            TryApplySelectedMatrixAssignment(
+                rowIndex,
+                matriz,
+                cantidad,
+                preserveCurrentTexts,
+                forceMatrixDescription,
+                preserveKeyIfPresent,
+                preserveUnitIfPresent,
+                preserveDescriptionIfPresent);
+        }
+
+        /// <summary>
+        /// Asigna la matriz elegida en el selector/autocompletar. Si la fila ya está
+        /// persistida, la operación viaja como comando y no toca el Tag ni el guardado
+        /// heredado; el borrador solo se vuelca en las celdas si el comando no se
+        /// confirmó. Las filas nuevas sin Id conservan explícitamente la ruta heredada.
+        /// <para>
+        /// Límite conocido: la importación externa y el panel de matrices todavía pueden
+        /// dejar trabajo pendiente en el contexto compartido antes de esta asignación.
+        /// En ese caso el comando no se envía (se conserva el borrador, sin escritura);
+        /// reconciliar esas rutas queda fuera de esta migración.
+        /// </para>
+        /// </summary>
+        internal bool TryApplySelectedMatrixAssignment(
+            int rowIndex,
+            Matriz matriz,
+            decimal cantidad,
+            bool preserveCurrentTexts,
+            bool forceMatrixDescription = false,
+            bool preserveKeyIfPresent = false,
+            bool preserveUnitIfPresent = false,
+            bool preserveDescriptionIfPresent = false)
+        {
+            if (rowIndex < 0 || rowIndex >= dgvPresupuesto.Rows.Count) return false;
+
+            // El selector embebido puede aceptar mientras la celda de Descripción
+            // sigue en edición (el autocompletar ya hace su propio EndEdit). Se
+            // confirma antes de leer para que el borrador use el texto visible.
+            try
+            {
+                if (dgvPresupuesto.IsCurrentCellInEditMode)
+                    dgvPresupuesto.EndEdit();
+            }
+            catch
+            {
+                // Si el grid ya no puede confirmar la edición, se conserva lo que haya
+                // en las celdas; la asignación no debe fallar por ese motivo.
+            }
 
             var row = dgvPresupuesto.Rows[rowIndex];
             string? claveActual = (preserveCurrentTexts || preserveKeyIfPresent)
@@ -635,6 +683,30 @@ namespace SOPRO.WinForms.Forms
                 descripcionActual,
                 unidadActual);
 
+            if (row.Tag is ConceptoPresupuesto { Id: > 0 } conceptoExistente)
+            {
+                var despacho = TryApplyMatrixAssignmentWithCommand(
+                    rowIndex,
+                    draft.Clave,
+                    conceptoExistente,
+                    matriz.Id,
+                    draft,
+                    draft.Descripcion,
+                    draft.Unidad);
+
+                // Cualquier resultado que no confirme (incluido no enviar por cambios
+                // pendientes en el contexto compartido) conserva el borrador visible y
+                // termina aquí: nunca cae en ApplyDraft/GuardarCambios heredado.
+                if (despacho == MatrixAssignmentDispatch.NotSentPendingChanges
+                    || UltimoEstadoAsignacionMatriz != BudgetOperationStatus.Committed)
+                {
+                    ApplyAssignmentDraftToGrid(rowIndex, draft);
+                }
+
+                return true;
+            }
+
+            // Fila nueva aún sin Id: alta explícitamente heredada (ApplyDraft + GuardarCambios).
             ApplyAssignmentDraftToGrid(rowIndex, draft);
 
             var concepto = BudgetConceptAssignmentService.ApplyDraft(
@@ -647,6 +719,7 @@ namespace SOPRO.WinForms.Forms
             row.Tag = concepto;
             FinalizeBudgetConceptAssignment(rowIndex);
             GuardarCambios();
+            return true;
         }
 
         private void InicializarFormMatricesEmbebido()
