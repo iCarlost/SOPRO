@@ -37,10 +37,11 @@ namespace SOPRO.Application.Services
         }
 
         /// <summary>
-        /// Edita la Descripción o la Unidad de un concepto existente (ADR-0001) sobre un
-        /// contexto NUEVO por operación: valida pertenencia al proyecto y el valor
-        /// esperado del campo, aplica solo ese campo y confirma una sola vez. No
-        /// transporta ni recalcula importes.
+        /// Edita la Descripción, la Unidad o las Observaciones de un concepto existente
+        /// (ADR-0001) sobre un contexto NUEVO por operación: valida pertenencia al
+        /// proyecto y el valor esperado del campo, aplica solo ese campo y confirma una
+        /// sola vez. No transporta ni recalcula importes. Las Observaciones se escriben
+        /// en <see cref="ConceptoPresupuesto.Notas"/> sin normalizar.
         /// </summary>
         public static BudgetTextEditResult ExecuteTextEditCommand(
             IProjectDbContextFactory factory,
@@ -194,6 +195,7 @@ namespace SOPRO.Application.Services
             {
                 BudgetTextEditField.Descripcion => concepto.Descripcion,
                 BudgetTextEditField.Unidad => concepto.Unidad,
+                BudgetTextEditField.Observaciones => concepto.Notas ?? string.Empty,
                 _ => throw new ArgumentOutOfRangeException(nameof(command), command.Field, null)
             };
 
@@ -212,6 +214,9 @@ namespace SOPRO.Application.Services
                     break;
                 case BudgetTextEditField.Unidad:
                     concepto.Unidad = command.ProposedValue;
+                    break;
+                case BudgetTextEditField.Observaciones:
+                    concepto.Notas = command.ProposedValue;
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(command), command.Field, null);

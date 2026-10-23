@@ -217,7 +217,7 @@ namespace SOPRO.Application.Models.Presupuesto
 
         public DateTime FechaModificacion { get; }
 
-        internal static BudgetConfirmedConceptRow FromConcepto(ConceptoPresupuesto concepto)
+        public static BudgetConfirmedConceptRow FromConcepto(ConceptoPresupuesto concepto)
         {
             ArgumentNullException.ThrowIfNull(concepto);
 

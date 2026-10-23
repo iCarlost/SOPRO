@@ -462,10 +462,13 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            // Descripción/Unidad de una fila persistida: comando inmutable sobre un
-            // contexto propio. La rama termina aquí para no ejecutar el autoguardado
-            // heredado; solo las filas aún no persistidas siguen por esa ruta.
-            if (colDef.NombreInterno == "Descripcion" || colDef.NombreInterno == "Unidad")
+            // Descripción/Unidad/Observaciones de una fila persistida: comando
+            // inmutable sobre un contexto propio. La rama termina aquí para no
+            // ejecutar el autoguardado heredado; solo las filas aún no persistidas
+            // de Descripción/Unidad siguen por esa ruta.
+            if (colDef.NombreInterno == "Descripcion"
+                || colDef.NombreInterno == "Unidad"
+                || colDef.NombreInterno == "Observaciones")
             {
                 if (ProcesarEdicionTextoConComando(e.RowIndex, colDef.NombreInterno))
                 {
@@ -473,6 +476,27 @@ namespace SOPRO.WinForms.Forms
                         ActualizarEstadisticas();
                     return;
                 }
+
+                // Observaciones no tiene ruta heredada: sin comando disponible la
+                // edición queda como borrador visible y NUNCA cae al autoguardado
+                // genérico (que reescribiría todas las filas sin mapear el campo).
+                if (colDef.NombreInterno == "Observaciones")
+                    return;
+            }
+
+            // Autoguardado heredado SOLO para campos que el guardado efectivamente
+            // persiste (alta incremental de filas nuevas). Cualquier otra columna
+            // Personal (porcentajes derivados del proyecto, CargosAdicionales y
+            // demás pares columna↔propiedad sin regla de persistencia por fila) se
+            // descarta aquí: no existe mapeo NT que reconozca el cambio y el
+            // autoguardado genérico la ignoraría mientras reescribiría el resto.
+            if (colDef.NombreInterno != "Tipo"
+                && colDef.NombreInterno != "Clave"
+                && colDef.NombreInterno != "Descripcion"
+                && colDef.NombreInterno != "Unidad"
+                && colDef.NombreInterno != "Cantidad")
+            {
+                return;
             }
 
             GuardarCambios();

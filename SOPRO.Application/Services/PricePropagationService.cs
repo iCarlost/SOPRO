@@ -31,26 +31,54 @@ namespace SOPRO.Application.Services
 
         public static void PropagarEliminacion(SOPROContext ctx, List<int> matrizIdsAfectadas, int? proyectoId = null)
         {
-            if (!matrizIdsAfectadas.Any()) return;
+            var matrices = RecalcularCierreAuxiliarSinGuardar(ctx, matrizIdsAfectadas, proyectoId);
+            if (matrices.Count == 0) return;
 
-            LanzarSiHayCicloAscendente(ctx, matrizIdsAfectadas, proyectoId);
+            ctx.SaveChanges();
+        }
 
-            var matrices = CargarMatricesConNavegaciones(ctx, matrizIdsAfectadas);
+        /// <summary>
+        /// Recalcula SIN GUARDAR el cierre afectado por un cambio local en matrices:
+        /// las matrices origen y todas sus ascendientes auxiliares en orden topológico
+        /// (orígenes incluidos), las hojas del presupuesto que referencian cualquiera
+        /// de ellas y los agrupadores de sus proyectos. Usa los mismos bloques
+        /// canónicos que <see cref="Propagar"/> y <see cref="PropagarEliminacion"/>,
+        /// pero no llama a SaveChanges para que un comando confirme con UNA sola
+        /// escritura. Un ciclo alcanzable lanza <see cref="InvalidOperationException"/>
+        /// antes de mutar nada.
+        /// Devuelve las matrices recalculadas del cierre (matrices origen incluidas),
+        /// en el orden en que quedaron cargadas.
+        /// </summary>
+        internal static List<Matriz> RecalcularCierreAuxiliarSinGuardar(
+            SOPROContext ctx,
+            IReadOnlyCollection<int> matrizIdsOrigen,
+            int? proyectoId = null)
+        {
+            ArgumentNullException.ThrowIfNull(ctx);
+            ArgumentNullException.ThrowIfNull(matrizIdsOrigen);
+
+            var origen = matrizIdsOrigen.Where(id => id > 0).Distinct().ToList();
+            if (origen.Count == 0) return new List<Matriz>();
+
+            LanzarSiHayCicloAscendente(ctx, origen, proyectoId);
+
+            var matrices = CargarMatricesConNavegaciones(ctx, origen);
 
             // La propagación nunca cruza proyectos: una matriz de otro proyecto
             // no debe recalcularse por un Id numérico compartido.
             if (proyectoId.HasValue)
                 matrices = matrices.Where(m => m.ProyectoId == proyectoId.Value).ToList();
-            if (!matrices.Any()) return;
+            if (matrices.Count == 0) return new List<Matriz>();
 
             // El recálculo del cierre completo (orígenes incluidos) se hace en orden
             // topológico dentro de PropagarAuxiliares; hacerlo aquí en el orden de
             // carga dejaría obsoletos a los orígenes que dependen entre sí.
-            PropagarAuxiliares(ctx, matrizIdsAfectadas, matrices, proyectoId);
+            PropagarAuxiliares(ctx, origen, matrices, proyectoId);
 
             var todasIds = matrices.Select(m => m.Id).ToList();
             ActualizarConceptos(ctx, matrices, todasIds);
-            ctx.SaveChanges();
+
+            return matrices;
         }
 
         private static void Propagar(SOPROContext ctx, TipoComponenteMatriz tipo, int insumoId, int? proyectoId = null)
@@ -164,14 +192,14 @@ namespace SOPRO.Application.Services
                 concepto.CostoDirectoUnitario = engine.RoundAmount(mat.CostoDirecto);
                 concepto.CostoDirectoTotal    = engine.Multiply(concepto.Cantidad, concepto.CostoDirectoUnitario);
 
-                // Paridad con el recálculo de pantalla (FormPresupuesto.RefrescarPreciosDesdeDB):
+                // Paridad con el refresco de pantalla (FormPresupuesto.RefreshBudgetPrices):
                 // el Precio Unitario y el Importe Total también deben quedar al día en la
                 // propagación headless, sin depender de que el presupuesto esté abierto.
                 concepto.PrecioUnitario = BudgetPricingService.CalculateUnitPrice(proyecto, concepto.CostoDirectoUnitario);
                 concepto.ImporteTotal   = engine.Multiply(concepto.Cantidad, concepto.PrecioUnitario);
             }
 
-            // Paridad con RefrescarPreciosDesdeDB → RecalcularTodosLosTotales:
+            // Paridad con RefreshBudgetPrices → ActualizarAgrupadores:
             // los agrupadores padre se recalculan bottom-up con la política única
             // de ActualizarAgrupadores (misma que usa RecalculoGlobalService).
             _ = ActualizarAgrupadores(ctx, proyectos.Values.ToList());
@@ -395,7 +423,13 @@ namespace SOPRO.Application.Services
             todasMatrices.AddRange(matrices.Where(m => !existentes.Contains(m.Id)));
         }
 
-        private static List<Matriz> CargarMatricesConNavegaciones(SOPROContext ctx, List<int> ids)
+        /// <summary>
+        /// Carga las matrices indicadas con TODAS sus navegaciones de componente. Es el
+        /// punto único de carga del recálculo: los comandos que necesitan validar una
+        /// matriz antes de propagarla reutilizan esta consulta para que las entidades
+        /// rastreadas sean las mismas que verá el cierre.
+        /// </summary>
+        internal static List<Matriz> CargarMatricesConNavegaciones(SOPROContext ctx, List<int> ids)
         {
             return ctx.Matrices
                 .Include(m => m.Componentes).ThenInclude(c => c.Material)

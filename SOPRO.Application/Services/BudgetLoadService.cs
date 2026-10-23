@@ -176,7 +176,7 @@ namespace SOPRO.Application.Services
                 values["PorcentajeFinanciamiento"]= string.Empty;
                 values["PorcentajeUtilidad"]      = string.Empty;
                 values["CargosAdicionales"]       = string.Empty;
-                values["Observaciones"]           = string.Empty;
+                values["Observaciones"]           = concepto.Notas ?? string.Empty;
                 values["Indirectos"]              = string.Empty;
                 values["Financiamiento"]          = string.Empty;
                 values["Utilidad"]                = string.Empty;
@@ -223,7 +223,7 @@ namespace SOPRO.Application.Services
                 values["PorcentajeFinanciamiento"]= motor.FormatPorcentaje(proyecto.PorcentajeFinanciamiento) + "%";
                 values["PorcentajeUtilidad"]      = motor.FormatPorcentaje(proyecto.PorcentajeUtilidad) + "%";
                 values["CargosAdicionales"]       = string.Empty;
-                values["Observaciones"]           = string.Empty;
+                values["Observaciones"]           = concepto.Notas ?? string.Empty;
 
                 // [FIX-1] Columnas de desglose: valores del DesglosePrecios ya redondeados
                 values["Indirectos"]          = motor.FormatImporte(desglose.IndirectCosts);

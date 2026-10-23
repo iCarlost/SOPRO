@@ -27,6 +27,10 @@ namespace SOPRO.WinForms.Forms
     {
         private readonly SOPROContext _context;
         private Proyecto _proyecto;
+        // Decimales vistos por el form: distingue un cambio real de decimales de
+        // los disparos de ConfiguracionCambiada sin cambio (EstablecerProyecto se
+        // invoca en cada apertura de form, incluso sin modificar nada).
+        private (int Cantidad, int Importe, int Porcentaje) _decimalesConocidos;
         private bool _cargando = false;
         private bool _asignandoMatriz = false; // Suprime CellValueChanged durante asignación programática
         private bool _asignacionNuevaFilaPendienteReconciliacion; // Un commit incierto bloquea reintentos ciegos de alta
@@ -427,6 +431,7 @@ namespace SOPRO.WinForms.Forms
             _projectIndexService.RefreshKnownProjects(context.DatabasePath, force: true);
             // Recargar proyecto fresco desde BD para tener los % actualizados
             _proyecto = context.Proyectos.Find(proyecto.Id) ?? proyecto;
+            _decimalesConocidos = (_proyecto.DecimalesCantidad, _proyecto.DecimalesImporte, _proyecto.DecimalesPorcentaje);
 
             // Establecer proyecto para formateo global
             FormatoHelper.EstablecerProyecto(_proyecto);
@@ -511,13 +516,13 @@ namespace SOPRO.WinForms.Forms
             FormCatalogoManoObra.InsumosModificados += OnInsumosModificados;
             FormCatalogoHerramientas.InsumosModificados += OnInsumosModificados;
             FormCatalogoMaquinaria.InsumosModificados += OnInsumosModificados;
-            FormEditarMatriz.MatrizGuardada += OnInsumosModificados;
+            FormEditarMatriz.MatrizGuardada += OnMatrizGuardada;
 
             // También refrescar cuando el form gana foco (por si vienen de otra ventana)
             this.Activated += (s, e) =>
             {
                 ActualizarInfoPorcentajes();
-                RecalcularPreciosUnitarios();
+                RecargarPreciosDesdeBase();
             };
 
             // Liberar SIEMPRE las suscripciones a eventos estáticos: el form puede
@@ -544,36 +549,39 @@ namespace SOPRO.WinForms.Forms
             FormCatalogoManoObra.InsumosModificados -= OnInsumosModificados;
             FormCatalogoHerramientas.InsumosModificados -= OnInsumosModificados;
             FormCatalogoMaquinaria.InsumosModificados -= OnInsumosModificados;
-            FormEditarMatriz.MatrizGuardada -= OnInsumosModificados;
+            FormEditarMatriz.MatrizGuardada -= OnMatrizGuardada;
         }
 
         private void OnPorcentajesActualizados(object? sender, EventArgs e)
         {
             ActualizarInfoPorcentajes();
-            RecalcularPreciosUnitarios();
+            RefreshBudgetPrices();
         }
 
         private void OnIndirectosTransferidos(object? sender, EventArgs e)
         {
             ActualizarInfoPorcentajes();
-            RecalcularPreciosUnitarios();
+            RefreshBudgetPrices();
         }
 
         private void OnFinanciamientoTransferido(object? sender, EventArgs e)
         {
             ActualizarInfoPorcentajes();
-            RecalcularPreciosUnitarios();
+            RefreshBudgetPrices();
         }
 
         private void OnUtilidadTransferida(object? sender, EventArgs e)
         {
             ActualizarInfoPorcentajes();
-            RecalcularPreciosUnitarios();
+            RefreshBudgetPrices();
         }
 
         private void OnDecimalesActualizados(object? sender, EventArgs e)
         {
-            // Recargar proyecto y refrescar formateo
+            // Recargar proyecto y refrescar formateo. El recálculo de importes con
+            // los nuevos decimales lo ejecuta FormProyecto con RecalculoGlobalService
+            // y después invoca RecalcularTodo(), que reconcilia esta vista sin
+            // duplicar la escritura.
             var proyFresco = _context.Proyectos.Find(_proyecto.Id);
             if (proyFresco != null)
             {
@@ -581,13 +589,22 @@ namespace SOPRO.WinForms.Forms
                 _proyecto.DecimalesImporte = proyFresco.DecimalesImporte;
                 _proyecto.DecimalesPorcentaje = proyFresco.DecimalesPorcentaje;
                 FormatoHelper.EstablecerProyecto(_proyecto);
-                RecalcularPreciosUnitarios(); // Refrescar con nuevos decimales
             }
         }
 
         private void OnInsumosModificados(object? sender, EventArgs e)
         {
-            RefrescarPreciosDesdeDB();
+            // Los catálogos y la edición de insumos ya propagaron y guardaron sus
+            // cambios con PricePropagationService: aquí solo se reconcilia la vista.
+            RecargarPreciosDesdeBase();
+            RefrescarFuenteAutocompleteApu();
+        }
+
+        private void OnMatrizGuardada(object? sender, EventArgs e)
+        {
+            // El guardado de una matriz cambia su CostoDirecto pero no propaga a los
+            // conceptos: el refresco de precios se ejecuta como comando.
+            RefreshBudgetPrices();
             RefrescarFuenteAutocompleteApu();
         }
 
@@ -739,18 +756,17 @@ namespace SOPRO.WinForms.Forms
             // Conectar el panel al grid para que reaccione a la selección
             _panelMatricesEmbebido.ConectarPresupuesto(dgvPresupuesto);
 
-            // Cuando se edita la matriz desde el panel, recalcular la jerarquía
+            // Cuando se edita la matriz desde el panel, el panel ya guardó la matriz y
+            // actualizó las hojas con su ruta heredada; el comando única restablece los
+            // agrupadores y confirma la base con la política compartida.
             _panelMatricesEmbebido.MatrizActualizada += (sender, filaActualizada) =>
             {
-                int indicePadre = ObtenerIndicePadre(filaActualizada);
-                while (indicePadre >= 0)
-                {
-                    ActualizarTotalAgrupador(indicePadre);
-                    indicePadre = ObtenerIndicePadre(indicePadre);
-                }
+                RefreshBudgetPrices();
                 ReasignarNumerosConceptos();
                 dgvPresupuesto.Refresh();
             };
+
+            ConectarComandoCantidadComponente();
             _panelMatricesEmbebido.SolicitudCerrarWorkspace += (sender, e) =>
             {
                 if (!splitContainer.Panel2Collapsed)
@@ -761,93 +777,66 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Recarga los precios de TODOS los conceptos del presupuesto desde BD.
-        /// Llamar después de cerrar el APU Editor (FormMatrices → FormEditarMatriz).
-        /// </summary>
-        public void RefrescarPreciosDesdeDB()
-        {
-            int filaActual = -1;
-            int colActual = -1;
-            try
-            {
-                if (dgvPresupuesto.CurrentCell != null)
-                {
-                    filaActual = dgvPresupuesto.CurrentCell.RowIndex;
-                    colActual = dgvPresupuesto.CurrentCell.ColumnIndex;
-                }
-
-                for (int i = 0; i < dgvPresupuesto.Rows.Count; i++)
-                {
-                    var concepto = dgvPresupuesto.Rows[i].Tag as ConceptoPresupuesto;
-                    if (concepto == null || concepto.EsAgrupador || !concepto.MatrizId.HasValue) continue;
-
-                    // Recargar la matriz fresca desde BD
-                    var matriz = _context.Matrices
-                        .AsNoTracking()
-                        .FirstOrDefault(m => m.Id == concepto.MatrizId.Value);
-                    if (matriz == null) continue;
-
-                    decimal cdUnit = BudgetPricingService.RoundImporte(_proyecto, matriz.CostoDirecto);
-                    decimal nuevoPU = CalcularPU(cdUnit);
-                    decimal nuevoImp = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto, concepto.Cantidad, nuevoPU);
-                    concepto.CostoDirectoUnitario = cdUnit;
-                    concepto.CostoDirectoTotal = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto, concepto.Cantidad, cdUnit);
-                    concepto.PrecioUnitario = nuevoPU;   // persistir
-                    concepto.ImporteTotal = nuevoImp;  // persistir
-
-                    foreach (DataGridViewColumn col in dgvPresupuesto.Columns)
-                    {
-                        if (col.Tag is ColumnaPersonalizada colDef)
-                        {
-                            if (colDef.NombreInterno == "PrecioUnitario")
-                                dgvPresupuesto.Rows[i].Cells[col.Index].Value = nuevoPU.ToStringImporte();
-                            else if (colDef.NombreInterno == "Importe" || colDef.NombreInterno == "ImporteTotal")
-                                dgvPresupuesto.Rows[i].Cells[col.Index].Value = nuevoImp.ToStringImporte();
-                        }
-                    }
-                }
-                _context.SaveChanges(); // Guardar PU e ImporteTotal calculados
-                RecalcularTodosLosTotales();
-                GuardarCambios();       // Persistir totales de agrupadores en BD
-                dgvPresupuesto.Refresh();
-
-                if (filaActual >= 0 && filaActual < dgvPresupuesto.Rows.Count)
-                {
-                    try
-                    {
-                        int colRestaurar = (colActual >= 0 && colActual < dgvPresupuesto.Columns.Count) ? colActual : 0;
-                        dgvPresupuesto.CurrentCell = dgvPresupuesto.Rows[filaActual].Cells[colRestaurar];
-                        dgvPresupuesto.ClearSelection();
-                        dgvPresupuesto.Rows[filaActual].Selected = true;
-                    }
-                    catch { }
-                }
-
-                // Refrescar también el panel embebido con la fila actual restaurada.
-                // Recarga forzada desde BD: NotificarFilaCambiada es tragada por el guard
-                // de vista normal (_modoEdicionCabecera == true), por eso el panel no
-                // reflejaba los cambios de precio del Catálogo de Materiales.
-                _panelMatricesEmbebido?.RecargarMatrizVisibleDesdeBd();
-
-                // Actualizar el header con los % del proyecto
-                ActualizarInfoPorcentajes();
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"RefrescarPrecios: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Maneja el evento de cambio de configuración de decimales
+        /// Evento de <see cref="FormatoHelper"/>: se dispara en cada
+        /// <c>EstablecerProyecto</c>, incluso cuando los decimales NO cambian, así
+        /// que aquí nunca se mutan celdas económicas ni se escribe con
+        /// <c>GuardarCambios</c>. Los decimales los persiste upstream
+        /// (FormProyecto guarda y ejecuta RecalculoGlobalService); si efectivamente
+        /// cambiaron, reconciliar la vista con <see cref="RecargarPreciosDesdeBase"/>
+        /// (solo lectura); si no, basta reetiquetar el formato de la columna.
         /// </summary>
         private void OnConfiguracionCambiada(object? sender, EventArgs e)
         {
-            if (!this.Visible) return;
-            // Recargar proyecto desde BD para tener los decimales actualizados
-            _proyecto = _context.Proyectos.Find(_proyecto.Id);
+            if (IsDisposed || !this.Visible) return;
+            ProcesarCambioConfiguracionFormato();
+        }
 
-            // Actualizar formato de la columna Cantidad con los nuevos decimales
+        /// <summary>
+        /// Núcleo del manejo de <see cref="FormatoHelper.ConfiguracionCambiada"/>: el
+        /// evento se dispara en cada <c>EstablecerProyecto</c>, incluso cuando los
+        /// decimales NO cambian, así que aquí nunca se mutan celdas económicas ni se
+        /// escribe con <c>GuardarCambios</c>. Los decimales los persiste upstream
+        /// (FormProyecto guarda y ejecuta RecalculoGlobalService), así que la detección
+        /// se hace leyendo la base SIN tracking (no basta <c>Find</c>: la instancia
+        /// compartida puede seguir con decimales viejos). Si efectivamente cambiaron,
+        /// adoptarlos vía <see cref="SincronizarProyectoCompartido"/> y reconciliar la
+        /// vista con <see cref="RecargarPreciosDesdeBase"/> (solo lectura); si no,
+        /// basta reetiquetar el formato de la columna.
+        /// </summary>
+        internal void ProcesarCambioConfiguracionFormato()
+        {
+            var proyFresco = _context.Proyectos
+                .AsNoTracking()
+                .FirstOrDefault(p => p.Id == _proyecto.Id);
+            if (proyFresco == null)
+            {
+                ActualizarFormatoColumnaCantidad();
+                dgvPresupuesto.Refresh();
+                return;
+            }
+
+            var persistidos = (proyFresco.DecimalesCantidad, proyFresco.DecimalesImporte, proyFresco.DecimalesPorcentaje);
+            bool decimalesCambiaron = persistidos != _decimalesConocidos;
+            _decimalesConocidos = persistidos;
+
+            if (decimalesCambiaron)
+            {
+                // La persistencia ya la hizo el módulo que cambió los decimales;
+                // aquí solo se reconcilia la vista sin duplicar la escritura.
+                SincronizarProyectoCompartido(BudgetProjectCalculationBase.FromProyecto(proyFresco));
+                RecargarPreciosDesdeBase();
+            }
+
+            ActualizarFormatoColumnaCantidad();
+            dgvPresupuesto.Refresh();
+        }
+
+        /// <summary>
+        /// Reetiqueta el formato N de la columna Cantidad con los decimales
+        /// vigentes del proyecto. No recalcula ni persiste valores.
+        /// </summary>
+        private void ActualizarFormatoColumnaCantidad()
+        {
             foreach (DataGridViewColumn col in dgvPresupuesto.Columns)
             {
                 if (col.Tag is ColumnaPersonalizada colDef &&
@@ -856,46 +845,6 @@ namespace SOPRO.WinForms.Forms
                     col.DefaultCellStyle.Format = $"N{_proyecto.DecimalesCantidad}";
                 }
             }
-
-            // Reformatear TODAS las celdas del grid con los nuevos decimales
-            foreach (DataGridViewRow row in dgvPresupuesto.Rows)
-            {
-                var concepto = row.Tag as ConceptoPresupuesto;
-                if (concepto == null) continue;
-
-                // Recalcular valores con los nuevos decimales
-                if (!concepto.EsAgrupador && concepto.MatrizId.HasValue)
-                {
-                    decimal pu = CalcularPU(concepto.CostoDirectoUnitario);
-                    decimal importe = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto!, concepto.Cantidad, pu);
-
-                    // Actualizar cada celda con el nuevo formato
-                    foreach (DataGridViewColumn col in dgvPresupuesto.Columns)
-                    {
-                        if (col.Tag is ColumnaPersonalizada colDef)
-                        {
-                            switch (colDef.NombreInterno)
-                            {
-                                case "Cantidad":
-                                    // Re-formatear con los nuevos decimales de cantidad
-                                    row.Cells[col.Index].Value = BudgetPricingService.RoundQuantity(_proyecto, concepto.Cantidad);
-                                    break;
-                                case "PrecioUnitario":
-                                    row.Cells[col.Index].Value = pu.ToStringImporte();
-                                    break;
-                                case "Importe":
-                                    row.Cells[col.Index].Value = importe.ToStringImporte();
-                                    break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Recalcular totales con nuevos decimales
-            RecalcularTodosLosTotales();
-            GuardarCambios();       // Persistir totales de agrupadores en BD
-            dgvPresupuesto.Refresh();
         }
 
         private void ActualizarTitulo()
@@ -930,55 +879,6 @@ namespace SOPRO.WinForms.Forms
         private decimal CalcularPU(decimal costoDirecto)
         {
             return BudgetPricingService.CalculateUnitPrice(_proyecto, costoDirecto);
-        }
-
-        /// <summary>
-        /// Recalcula las columnas P.U. e Importe del grid usando los porcentajes actuales del proyecto.
-        /// Llamar después de cambiar porcentajes en FormPorcentajes/FormIndirectos.
-        /// </summary>
-        private void RecalcularPreciosUnitarios()
-        {
-            try
-            {
-                bool huboCambios = false;
-
-                for (int i = 0; i < dgvPresupuesto.Rows.Count; i++)
-                {
-                    var concepto = dgvPresupuesto.Rows[i].Tag as ConceptoPresupuesto;
-                    if (concepto == null || concepto.EsAgrupador) continue;
-
-                    decimal pu = CalcularPU(concepto.CostoDirectoUnitario);
-                    decimal imp = BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto, concepto.Cantidad, pu);
-
-                    // Actualizar grid
-                    foreach (DataGridViewColumn col in dgvPresupuesto.Columns)
-                    {
-                        if (col.Tag is ColumnaPersonalizada colDef)
-                        {
-                            if (colDef.NombreInterno == "PrecioUnitario")
-                                dgvPresupuesto.Rows[i].Cells[col.Index].Value = pu.ToStringImporte();
-                            else if (colDef.NombreInterno == "Importe" || colDef.NombreInterno == "ImporteTotal")
-                                dgvPresupuesto.Rows[i].Cells[col.Index].Value = imp.ToStringImporte();
-                        }
-                    }
-
-                    // Persistir en entidad y BD si cambió
-                    if (concepto.PrecioUnitario != pu || concepto.ImporteTotal != imp)
-                    {
-                        concepto.PrecioUnitario = pu;
-                        concepto.ImporteTotal = imp;
-                        huboCambios = true;
-                    }
-                }
-
-                if (huboCambios)
-                    _context.SaveChanges();
-
-                RecalcularTodosLosTotales(); // actualiza entidades agrupadoras en memoria
-                GuardarCambios();            // persiste los totales de agrupadores en BD
-                dgvPresupuesto.Refresh();
-            }
-            catch { /* silenciar errores en caso de que el grid no esté listo */ }
         }
 
         private void ConfigurarEventos()
@@ -1157,14 +1057,17 @@ namespace SOPRO.WinForms.Forms
 
         public void RecalcularTodo()
         {
-            // Recargar proyecto para tener decimales frescos
-            var proyFresco = _context.Proyectos.Find(_proyecto.Id);
+            // Recargar proyecto fresco (sin Find/tracked) para tener la base vigente.
+            var proyFresco = _context.Proyectos
+                .AsNoTracking()
+                .FirstOrDefault(p => p.Id == _proyecto.Id);
             if (proyFresco != null)
             {
-                _proyecto.DecimalesCantidad = proyFresco.DecimalesCantidad;
-                _proyecto.DecimalesImporte = proyFresco.DecimalesImporte;
-                _proyecto.DecimalesPorcentaje = proyFresco.DecimalesPorcentaje;
-                FormatoHelper.EstablecerProyecto(_proyecto);
+                // No se pisa un contexto con trabajo pendiente: en ese caso la
+                // reconciliación de precios tampoco se ejecuta (ver RecargarPreciosDesdeBase).
+                _context.ChangeTracker.DetectChanges();
+                if (!_context.ChangeTracker.HasChanges())
+                    SincronizarProyectoCompartido(BudgetProjectCalculationBase.FromProyecto(proyFresco));
             }
 
             // Actualizar formato de la columna Cantidad con los decimales actuales
@@ -1195,7 +1098,7 @@ namespace SOPRO.WinForms.Forms
                 }
             }
 
-            RefrescarPreciosDesdeDB();
+            RecargarPreciosDesdeBase();
             ValidarPresupuestoAntesDeContinuar(bloquear: false, titulo: "Validación de presupuesto");
         }
     }

@@ -474,6 +474,20 @@ namespace SOPRO.WinForms.Helpers
             context.SaveChanges();
         }
 
+        /// <summary>
+        /// Columnas cuyo valor por fila NO se carga desde la entidad ni se persiste
+        /// con ella: los porcentajes derivados del proyecto (% Indirectos,
+        /// % Financiamiento, % Utilidad) y CargosAdicionales. Ponerlas en solo
+        /// lectura evita ediciones que el autoguardado no puede mapear.
+        /// </summary>
+        public static bool EsColumnaSinPersistenciaPorFila(string? nombreInterno)
+        {
+            return string.Equals(nombreInterno, "PorcentajeIndirectos", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(nombreInterno, "PorcentajeFinanciamiento", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(nombreInterno, "PorcentajeUtilidad", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(nombreInterno, "CargosAdicionales", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static bool EsSetInicialLegacyPresupuesto(List<ColumnaPersonalizada> existentes)
         {
             if (existentes.Count != 17)

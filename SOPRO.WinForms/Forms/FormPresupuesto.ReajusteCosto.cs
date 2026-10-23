@@ -2,6 +2,7 @@
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.Application.DTOs.Presupuesto;
+using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Services;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Controls;
@@ -128,10 +129,16 @@ namespace SOPRO.WinForms.Forms
                 }
 
                 _context.SaveChanges();
-                RefrescarPreciosDesdeDB();
-                RecalcularTodosLosTotales();
-                GuardarCambios();
-                dgvPresupuesto.Refresh();
+                RefreshBudgetPrices();
+
+                if (UltimoEstadoRefrescoPrecios != BudgetOperationStatus.Committed)
+                {
+                    MessageBox.Show(
+                        "El ajuste de la matriz se guardó, pero los precios del presupuesto no pudieron " +
+                        "refrescarse. Recargue el presupuesto antes de continuar.",
+                        "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
 
                 decimal actualCoherente = ajustarPorImporte
                     ? BudgetPricingService.MultiplyUsingDisplayPrecision(_proyecto, cantidadConceptoOriginal, CalcularPU(result.CurrentCost))
@@ -254,10 +261,16 @@ namespace SOPRO.WinForms.Forms
             }
 
             _context.SaveChanges();
-            RefrescarPreciosDesdeDB();
-            RecalcularTodosLosTotales();
-            GuardarCambios();
-            dgvPresupuesto.Refresh();
+            RefreshBudgetPrices();
+
+            if (UltimoEstadoRefrescoPrecios != BudgetOperationStatus.Committed)
+            {
+                MessageBox.Show(
+                    "El ajuste de las matrices se guardó, pero los precios del presupuesto no pudieron " +
+                    "refrescarse. Recargue el presupuesto antes de continuar.",
+                    "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
             decimal logrado = ObtenerCeldaDecimal(rowIndex, "Importe");
             var conceptosIds = descendientes.Select(x => x.Id).ToHashSet();

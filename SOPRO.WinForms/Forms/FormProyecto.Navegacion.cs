@@ -31,7 +31,7 @@ namespace SOPRO.WinForms.Forms
                     if (ctrl is FormMatrices fm)
                         fm.RecargarMatrices();
                     else if (ctrl is FormPresupuesto pres)
-                        pres.RefrescarPreciosDesdeDB();
+                        pres.RecargarPreciosDesdeBase();
                 }
             }
         }

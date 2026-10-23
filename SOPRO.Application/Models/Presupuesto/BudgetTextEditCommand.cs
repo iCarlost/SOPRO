@@ -6,15 +6,17 @@ namespace SOPRO.Application.Models.Presupuesto
     public enum BudgetTextEditField
     {
         Descripcion,
-        Unidad
+        Unidad,
+        Observaciones
     }
 
     /// <summary>
-    /// Intención de edición de un campo de texto (Descripción o Unidad) de un concepto
-    /// existente (ADR-0001). Lleva solo identidad, el campo afectado, el valor que la
-    /// vista cargó y el valor propuesto; no transporta importes ni columnas calculadas.
-    /// Todos sus valores son de solo lectura para que un reintento repita exactamente
-    /// la misma operación.
+    /// Intención de edición de un campo de texto (Descripción, Unidad u Observaciones)
+    /// de un concepto existente (ADR-0001). Lleva solo identidad, el campo afectado, el
+    /// valor que la vista cargó y el valor propuesto; no transporta importes ni columnas
+    /// calculadas. Todos sus valores son de solo lectura para que un reintento repita
+    /// exactamente la misma operación. Las Observaciones se guardan tal cual llegan
+    /// (sin recortar ni normalizar), por lo que el texto es el único efecto del comando.
     /// </summary>
     public sealed class BudgetTextEditCommand
     {

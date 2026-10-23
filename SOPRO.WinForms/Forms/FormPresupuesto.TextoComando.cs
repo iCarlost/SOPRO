@@ -59,9 +59,15 @@ namespace SOPRO.WinForms.Forms
                 return true;
 
             string propuesta = celda.Value?.ToString() ?? string.Empty;
-            string actual = campo == BudgetTextEditField.Descripcion
-                ? concepto.Descripcion
-                : concepto.Unidad;
+            string actual = campo switch
+            {
+                BudgetTextEditField.Descripcion => concepto.Descripcion,
+                BudgetTextEditField.Unidad => concepto.Unidad,
+                // Observaciones → Notas en la entidad (persistido por el comando);
+                // StageTextEdit valida Notas ?? string.Empty. Contrato idéntico.
+                BudgetTextEditField.Observaciones => concepto.Notas ?? string.Empty,
+                _ => string.Empty,
+            };
 
             if (string.Equals(actual, propuesta, StringComparison.Ordinal))
                 return true;
@@ -121,6 +127,22 @@ namespace SOPRO.WinForms.Forms
                 return true;
             }
 
+            // Observaciones: el comando persistente del ensamblado Application es
+            // quien define el campo. Mientras el miembro no exista en el enum, la
+            // edición queda como borrador (sin autoguardado) y la ruta se activa
+            // automáticamente cuando el backend agregue el miembro.
+            if (string.Equals(nombreInterno, "Observaciones", StringComparison.OrdinalIgnoreCase))
+            {
+                if (Enum.IsDefined(typeof(BudgetTextEditField), "Observaciones"))
+                {
+                    campo = (BudgetTextEditField)Enum.Parse(typeof(BudgetTextEditField), "Observaciones");
+                    return true;
+                }
+
+                campo = default;
+                return false;
+            }
+
             campo = default;
             return false;
         }
@@ -143,8 +165,15 @@ namespace SOPRO.WinForms.Forms
                 case BudgetTextEditField.Unidad:
                     entidad.Unidad = confirmado.Value;
                     break;
+                case BudgetTextEditField.Observaciones:
+                    entidad.Notas = confirmado.Value;
+                    break;
                 default:
-                    throw new ArgumentOutOfRangeException(nameof(confirmado), confirmado.Field, null);
+                    // Otro campo de texto agregado por Application sin propiedad en la
+                    // entidad compartida: el valor confirmado ya coincide con el
+                    // borrador de la celda; nada más que copiar. Sólo se toca la marca
+                    // de modificación y se limpia el estado del tracker.
+                    break;
             }
 
             entidad.FechaModificacion = confirmado.FechaModificacion;

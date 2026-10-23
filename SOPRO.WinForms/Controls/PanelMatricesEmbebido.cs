@@ -450,6 +450,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 if (hijo != null)
                 {
                     _matrizActual = hijo;
+                    LiberarBloqueoEdicionCantidadComponente();
                     MostrarMatriz(hijo, null);
                 }
                 return;
@@ -670,6 +671,9 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 MostrarSinSeleccion("No se pudo cargar la APU asociada", "La fila apunta a una matriz inexistente o no disponible.");
                 return;
             }
+
+            // Recarga fresca desde la base: libera el bloqueo de la ruta de comando.
+            LiberarBloqueoEdicionCantidadComponente();
 
             _ultimaFilaCargada = fila;
             _ultimoConceptoId = concepto.Id;
@@ -1378,6 +1382,41 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
             if (string.IsNullOrEmpty(columnName))
                 return;
 
+            // Ruta de comando (ADR-0001): cantidad de un componente YA persistido.
+            // Undo/redo repite la MISMA intención como comando único; un resultado
+            // no confirmado conserva el borrador y NO cae en el guardado heredado,
+            // y el bloqueo por resultado incierto se respeta igual. El resto de
+            // columnas y los componentes temporales siguen la ruta heredada.
+            if (columnName == "colCantidad"
+                && !UsaComponentesTemporales()
+                && comp.Id > 0)
+            {
+                if (_edicionCantidadComponenteBloqueada)
+                    return;
+
+                var cantidadUndo = ParsearCantidadConServicio(value);
+                if (cantidadUndo is null)
+                {
+                    // Undo/redo con cantidad inválida: consumido, sin tocar la
+                    // entidad ni caer al guardado heredado.
+                    MostrarAvisoCantidadComponente(
+                        "Cantidad del componente",
+                        "La cantidad del componente no es válida; no se guardó nada.",
+                        MessageBoxIcon.Information);
+                    return;
+                }
+
+                if (ProcesarEdicionCantidadComponenteDialogo(rowIndex, cantidadUndo.Value))
+                {
+                    try
+                    {
+                        _dgvComponentes.CurrentCell = _dgvComponentes.Rows[rowIndex].Cells[columnIndex];
+                    }
+                    catch { }
+                    return;
+                }
+            }
+
             var editResult = MatrixComponentGridFlowService.ApplyCellEdit(
                 comp,
                 columnName,
@@ -1492,20 +1531,38 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
             using var frmRend = new Forms.FormRendimiento(nombre, comp.Cantidad);
             if (frmRend.ShowDialog() == DialogResult.OK)
             {
+                if (_modoCreacionMatriz)
+                {
+                    var editTemporal = MatrixComponentEditingService.UpdateQuantityFromDialog(comp, frmRend.Cantidad);
+                    if (editTemporal.Success)
+                        BeginInvoke(new Action(RefrescarVistaTemporal));
+                    return;
+                }
+
+                int filaDialogo = _dgvComponentes.CurrentRow?.Index ?? e.RowIndex;
+                bool persistida = comp is { Id: > 0 }
+                    && _matrizActual != null
+                    && comp.MatrizId == _matrizActual.Id;
+
+                // Ruta de comando (ADR-0001): mismo comando que la celda; la
+                // aplicación de la cantidad ocurre DENTRO, después de capturar
+                // las bases pre-edición, y la escritura es única.
+                if (persistida)
+                {
+                    ProcesarEdicionCantidadComponenteDialogo(filaDialogo, frmRend.Cantidad);
+                    return;
+                }
+
+                if (comp is { Id: > 0 })
+                    return;
+
                 var editResult = MatrixComponentEditingService.UpdateQuantityFromDialog(comp, frmRend.Cantidad);
                 if (editResult.Success)
                 {
-                    if (_modoCreacionMatriz)
-                    {
-                        BeginInvoke(new Action(RefrescarVistaTemporal));
-                    }
-                    else
-                    {
-                        _context.SaveChanges();
-                        if (_modoSubedicionComponente)
-                            _huboEdicionEnSubedicion = true;
-                        BeginInvoke(new Action(GuardarYPropagar));
-                    }
+                    _context.SaveChanges();
+                    if (_modoSubedicionComponente)
+                        _huboEdicionEnSubedicion = true;
+                    BeginInvoke(new Action(GuardarYPropagar));
                 }
             }
         }
@@ -1528,6 +1585,13 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
             };
 
             if (string.IsNullOrEmpty(columnName)) return;
+
+            // Ruta de comando (ADR-0001): celda Cantidad de un componente YA persistido.
+            // Atiende el borrador y el despacho aquí: NO continúa con guardado heredado.
+            if ( ConsumirEdicionCantidadComandoConUndo(e.RowIndex, e.ColumnIndex, value))
+            {
+                return;
+            }
 
             var editResult = MatrixComponentGridFlowService.ApplyCellEdit(
                 comp,
@@ -1559,15 +1623,7 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
                 && EsColumnaUndoPanel(_undoPanelColumnName)
                 && !string.Equals(_undoPanelOldValue, valorNuevoUndo, StringComparison.Ordinal))
             {
-                int rowIndex = e.RowIndex;
-                int columnIndex = e.ColumnIndex;
-                string oldValue = _undoPanelOldValue;
-                string newValue = valorNuevoUndo;
-                string descripcion = $"Editar componente ({_undoPanelColumnName})";
-                _undoManager.Push(new DelegateUndoableAction(
-                    descripcion,
-                    () => AplicarUndoRedoPanelCelda(rowIndex, columnIndex, oldValue),
-                    () => AplicarUndoRedoPanelCelda(rowIndex, columnIndex, newValue)));
+                RegistrarUndoPanel(e.RowIndex, e.ColumnIndex, valorNuevoUndo);
             }
 
             _undoPanelRowIndex = -1;

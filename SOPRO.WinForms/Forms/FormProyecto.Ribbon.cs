@@ -95,7 +95,7 @@ namespace SOPRO.WinForms.Forms
 
                 // Si es el presupuesto, recalcular P.U. e importes con la configuración actual
                 if (_formActivo is FormPresupuesto fp)
-                    fp.RefrescarPreciosDesdeDB();
+                    fp.RecargarPreciosDesdeBase();
 
                 if (_formActivo.GridPrincipal != null)
                     FormatoHelper.AjustarAutoAlturaFilas(_formActivo.GridPrincipal);

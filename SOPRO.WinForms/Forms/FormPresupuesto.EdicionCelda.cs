@@ -265,12 +265,12 @@ namespace SOPRO.WinForms.Forms
                 ActualizarEstadisticas();
                 dgvPresupuesto.Refresh();
             }
-            else
-            {
-                GuardarCambios();
-                ActualizarEstadisticas();
-                dgvPresupuesto.Refresh();
-            }
+            // Sin rama heredada: las únicas acciones apiladas a este apuntador
+            // provienen de columnas con autoguardado propio (Descripción/Unidad/
+            // Cantidad, véase EsColumnaUndoPresupuesto y CellEndEdit), y la reedición
+            // de Cantidad/disparo del evento arriba y la de texto ya consumió el
+            // comando en CellValueChanged. Llegar aquí con otro campo sería una
+            // columna sin persistencia por fila, que no debe reescribir el resto.
         }
 
         private void DgvPresupuesto_CellEndEdit(object sender, DataGridViewCellEventArgs e)
@@ -378,6 +378,15 @@ namespace SOPRO.WinForms.Forms
             if (!(colActual.Tag is ColumnaPersonalizada colDef)) return;
 
             string nombreInterno = colDef.NombreInterno;
+
+            // Campos sin persistencia por fila (porcentajes derivados del proyecto,
+            // CargosAdicionales): solo lectura. Editarlos terminaría en el
+            // autoguardado genérico, que no mapea el campo reelaborándolo.
+            if (ColumnasPresupuestoHelper.EsColumnaSinPersistenciaPorFila(nombreInterno))
+            {
+                e.Cancel = true;
+                return;
+            }
 
             // Si NO hay Tipo seleccionado, solo permitir editar Tipo
             if (tipoCell?.Value == null || string.IsNullOrWhiteSpace(tipoCell.Value.ToString()))
