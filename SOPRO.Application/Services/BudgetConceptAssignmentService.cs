@@ -152,9 +152,25 @@ namespace SOPRO.Application.Services
                 context.ConceptosPresupuesto.Add(concept);
             }
 
-            concept.Orden                = order;
-            concept.EsAgrupador          = false;
-            concept.Nivel                = 5;
+            concept.Orden       = order;
+            concept.EsAgrupador = false;
+            concept.Nivel       = 5;
+            ApplyDraftValues(concept, draft);
+
+            context.SaveChanges();
+            return concept;
+        }
+
+        /// <summary>
+        /// Vuelca en el concepto los valores del borrador sin guardar. Es la aritmética
+        /// canónica compartida por la ruta heredada (<see cref="ApplyDraft"/>, que crea o
+        /// actualiza y guarda) y por los comandos que aplican sobre un contexto nuevo.
+        /// </summary>
+        internal static void ApplyDraftValues(ConceptoPresupuesto concept, BudgetConceptAssignmentDraft draft)
+        {
+            if (concept == null) throw new ArgumentNullException(nameof(concept));
+            if (draft == null)   throw new ArgumentNullException(nameof(draft));
+
             concept.Clave                = draft.Clave        ?? string.Empty;
             concept.Descripcion          = draft.Descripcion  ?? string.Empty;
             concept.Unidad               = draft.Unidad       ?? string.Empty;
@@ -166,9 +182,6 @@ namespace SOPRO.Application.Services
             concept.MatrizId             = draft.MatrizId;
             concept.Matriz               = draft.Matriz;
             concept.FechaModificacion    = DateTime.Now;
-
-            context.SaveChanges();
-            return concept;
         }
 
         // ════════════════════════════════════════════════════════════════════════

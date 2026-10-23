@@ -31,13 +31,14 @@ namespace SOPRO.WinForms.Forms
         private Controls.PanelMatricesEmbebido _panelMatricesEmbebido;
         private SelectorApuEmbebidoControl? _selectorApuEmbebido;
         private int _selectorApuEmbebidoRowIndex = -1;
-        private EventHandler _onInsumosModificados; // Guardado para poder desuscribir al cerrar
         private bool _validacionAperturaMostrada = false;
         private readonly ExternalMatrixImportService _externalMatrixImportService = new(new ProjectDbContextFactory());
         private readonly IProjectDbContextFactory _factory = new ProjectDbContextFactory();
+        private readonly ProjectWorkspaceService _workspaceService;
         private readonly ProjectIndexService _projectIndexService;
         private readonly ProjectUsageService _projectUsageService;
         private readonly CatalogSearchService _catalogSearchService;
+        private bool _suscripcionesGlobalesLiberadas;
         private ListBox? _lstApuAutocomplete;
         private TextBox? _txtDescripcionEnEdicion;
         private List<CatalogSearchResultDto> _apuAutocompleteSource = new();
@@ -54,7 +55,12 @@ namespace SOPRO.WinForms.Forms
         private TextBox? _txtApuPreviewComponentes;
         private readonly Dictionary<string, MatrixPreviewInfo> _cachePreviewApu = new();
         private int _workspacePanelHeight = 0;
-        private string WorkspacePanelStatePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SOPRO", $"presupuesto_workspace_{_proyecto.Id}.txt");
+        /// <summary>
+        /// Ruta del estado del panel de workspace. Vive en la carpeta de datos
+        /// locales del workspace inyectado (por defecto <c>%LOCALAPPDATA%\SOPRO</c>),
+        /// de modo que una prueba pueda apuntarla a una carpeta temporal.
+        /// </summary>
+        internal string WorkspacePanelStatePath => Path.Combine(_workspaceService.LocalDataFolder, $"presupuesto_workspace_{_proyecto.Id}.txt");
         private readonly UndoManager _undoManager = new();
         private bool _isUndoRedo;
         private int _undoBudgetRowIndex = -1;
@@ -397,12 +403,24 @@ namespace SOPRO.WinForms.Forms
 
 
         public FormPresupuesto(SOPROContext context, Proyecto proyecto)
+            : this(context, proyecto, new ProjectWorkspaceService())
+        {
+        }
+
+        /// <summary>
+        /// Seam de composición para pruebas: permite inyectar el workspace (rutas
+        /// temporales) del que dependen el índice de proyectos, el uso de matrices,
+        /// la búsqueda de catálogo y el estado del panel de workspace, sin tocar las
+        /// carpetas del usuario. El constructor público conserva el comportamiento
+        /// de siempre delegando en este con <see cref="ProjectWorkspaceService"/>.
+        /// </summary>
+        internal FormPresupuesto(SOPROContext context, Proyecto proyecto, ProjectWorkspaceService workspaceService)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
+            _workspaceService = workspaceService ?? throw new ArgumentNullException(nameof(workspaceService));
             _formatoReporteService = new FormatoReporteService(_context);
-            var workspaceService = new ProjectWorkspaceService();
-            _projectIndexService = new ProjectIndexService(workspaceService);
-            _projectUsageService = new ProjectUsageService(workspaceService);
+            _projectIndexService = new ProjectIndexService(_workspaceService);
+            _projectUsageService = new ProjectUsageService(_workspaceService);
             _catalogSearchService = new CatalogSearchService(_projectIndexService, _projectUsageService, new ProjectDbContextFactory());
             _projectIndexService.RefreshKnownProjects(context.DatabasePath, force: true);
             // Recargar proyecto fresco desde BD para tener los % actualizados
@@ -480,51 +498,18 @@ namespace SOPRO.WinForms.Forms
             this.Shown += FormPresupuesto_Shown;
 
             // Suscribirse a eventos de actualización de porcentajes
-            FormPorcentajes.PorcentajesActualizados += (s, e) =>
-            {
-                ActualizarInfoPorcentajes();
-                RecalcularPreciosUnitarios();
-            };
-            FormIndirectos.IndirectosTransferidos += (s, e) =>
-            {
-                ActualizarInfoPorcentajes();
-                RecalcularPreciosUnitarios();
-            };
-            FormFinanciamiento.FinanciamientoTransferido += (s, e) =>
-            {
-                ActualizarInfoPorcentajes();
-                RecalcularPreciosUnitarios();
-            };
-            FormUtilidad.UtilidadTransferida += (s, e) =>
-            {
-                ActualizarInfoPorcentajes();
-                RecalcularPreciosUnitarios();
-            };
-            FormDatosProyecto.DecimalesActualizados += (s, e) =>
-            {
-                // Recargar proyecto y refrescar formateo
-                var proyFresco = _context.Proyectos.Find(_proyecto.Id);
-                if (proyFresco != null)
-                {
-                    _proyecto.DecimalesCantidad = proyFresco.DecimalesCantidad;
-                    _proyecto.DecimalesImporte = proyFresco.DecimalesImporte;
-                    _proyecto.DecimalesPorcentaje = proyFresco.DecimalesPorcentaje;
-                    FormatoHelper.EstablecerProyecto(_proyecto);
-                    RecalcularPreciosUnitarios(); // Refrescar con nuevos decimales
-                }
-            };
+            FormPorcentajes.PorcentajesActualizados += OnPorcentajesActualizados;
+            FormIndirectos.IndirectosTransferidos += OnIndirectosTransferidos;
+            FormFinanciamiento.FinanciamientoTransferido += OnFinanciamientoTransferido;
+            FormUtilidad.UtilidadTransferida += OnUtilidadTransferida;
+            FormDatosProyecto.DecimalesActualizados += OnDecimalesActualizados;
 
             // Refrescar cuando se elimina/modifica un insumo desde cualquier catálogo
-            _onInsumosModificados = (s, e) =>
-            {
-                RefrescarPreciosDesdeDB();
-                RefrescarFuenteAutocompleteApu();
-            };
-            FormCatalogoMateriales.InsumosModificados += _onInsumosModificados;
-            FormCatalogoManoObra.InsumosModificados += _onInsumosModificados;
-            FormCatalogoHerramientas.InsumosModificados += _onInsumosModificados;
-            FormCatalogoMaquinaria.InsumosModificados += _onInsumosModificados;
-            FormEditarMatriz.MatrizGuardada += _onInsumosModificados;
+            FormCatalogoMateriales.InsumosModificados += OnInsumosModificados;
+            FormCatalogoManoObra.InsumosModificados += OnInsumosModificados;
+            FormCatalogoHerramientas.InsumosModificados += OnInsumosModificados;
+            FormCatalogoMaquinaria.InsumosModificados += OnInsumosModificados;
+            FormEditarMatriz.MatrizGuardada += OnInsumosModificados;
 
             // También refrescar cuando el form gana foco (por si vienen de otra ventana)
             this.Activated += (s, e) =>
@@ -532,6 +517,76 @@ namespace SOPRO.WinForms.Forms
                 ActualizarInfoPorcentajes();
                 RecalcularPreciosUnitarios();
             };
+
+            // Liberar SIEMPRE las suscripciones a eventos estáticos: el form puede
+            // descartarse sin pasar por OnFormClosed (p. ej. Dispose en pruebas),
+            // y los eventos estáticos retendrían esta instancia y su contexto.
+            this.Disposed += (s, e) => LiberarSuscripcionesGlobales();
+        }
+
+
+        private void LiberarSuscripcionesGlobales()
+        {
+            if (_suscripcionesGlobalesLiberadas)
+                return;
+
+            _suscripcionesGlobalesLiberadas = true;
+
+            FormatoHelper.ConfiguracionCambiada -= OnConfiguracionCambiada;
+            FormPorcentajes.PorcentajesActualizados -= OnPorcentajesActualizados;
+            FormIndirectos.IndirectosTransferidos -= OnIndirectosTransferidos;
+            FormFinanciamiento.FinanciamientoTransferido -= OnFinanciamientoTransferido;
+            FormUtilidad.UtilidadTransferida -= OnUtilidadTransferida;
+            FormDatosProyecto.DecimalesActualizados -= OnDecimalesActualizados;
+            FormCatalogoMateriales.InsumosModificados -= OnInsumosModificados;
+            FormCatalogoManoObra.InsumosModificados -= OnInsumosModificados;
+            FormCatalogoHerramientas.InsumosModificados -= OnInsumosModificados;
+            FormCatalogoMaquinaria.InsumosModificados -= OnInsumosModificados;
+            FormEditarMatriz.MatrizGuardada -= OnInsumosModificados;
+        }
+
+        private void OnPorcentajesActualizados(object? sender, EventArgs e)
+        {
+            ActualizarInfoPorcentajes();
+            RecalcularPreciosUnitarios();
+        }
+
+        private void OnIndirectosTransferidos(object? sender, EventArgs e)
+        {
+            ActualizarInfoPorcentajes();
+            RecalcularPreciosUnitarios();
+        }
+
+        private void OnFinanciamientoTransferido(object? sender, EventArgs e)
+        {
+            ActualizarInfoPorcentajes();
+            RecalcularPreciosUnitarios();
+        }
+
+        private void OnUtilidadTransferida(object? sender, EventArgs e)
+        {
+            ActualizarInfoPorcentajes();
+            RecalcularPreciosUnitarios();
+        }
+
+        private void OnDecimalesActualizados(object? sender, EventArgs e)
+        {
+            // Recargar proyecto y refrescar formateo
+            var proyFresco = _context.Proyectos.Find(_proyecto.Id);
+            if (proyFresco != null)
+            {
+                _proyecto.DecimalesCantidad = proyFresco.DecimalesCantidad;
+                _proyecto.DecimalesImporte = proyFresco.DecimalesImporte;
+                _proyecto.DecimalesPorcentaje = proyFresco.DecimalesPorcentaje;
+                FormatoHelper.EstablecerProyecto(_proyecto);
+                RecalcularPreciosUnitarios(); // Refrescar con nuevos decimales
+            }
+        }
+
+        private void OnInsumosModificados(object? sender, EventArgs e)
+        {
+            RefrescarPreciosDesdeDB();
+            RefrescarFuenteAutocompleteApu();
         }
 
 
@@ -704,7 +759,7 @@ namespace SOPRO.WinForms.Forms
         /// <summary>
         /// Maneja el evento de cambio de configuración de decimales
         /// </summary>
-        private void OnConfiguracionCambiada(object sender, EventArgs e)
+        private void OnConfiguracionCambiada(object? sender, EventArgs e)
         {
             if (!this.Visible) return;
             // Recargar proyecto desde BD para tener los decimales actualizados
@@ -1014,11 +1069,7 @@ namespace SOPRO.WinForms.Forms
         {
             // Desuscribir eventos ESTÁTICOS para evitar "disposed context" si el form
             // se cierra mientras otros módulos siguen activos
-            FormCatalogoMateriales.InsumosModificados -= _onInsumosModificados;
-            FormCatalogoManoObra.InsumosModificados -= _onInsumosModificados;
-            FormCatalogoHerramientas.InsumosModificados -= _onInsumosModificados;
-            FormCatalogoMaquinaria.InsumosModificados -= _onInsumosModificados;
-            FormEditarMatriz.MatrizGuardada -= _onInsumosModificados;
+            LiberarSuscripcionesGlobales();
             base.OnFormClosed(e);
         }
 

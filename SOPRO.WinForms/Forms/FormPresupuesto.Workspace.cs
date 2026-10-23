@@ -5,6 +5,7 @@ using SOPRO.Application.DTOs.Presupuesto;
 using SOPRO.Application.DTOs.Catalog;
 using SOPRO.Application.DTOs.Matrices;
 using SOPRO.Application.Models.ExternalProjects;
+using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Services;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Controls;
@@ -581,7 +582,7 @@ namespace SOPRO.WinForms.Forms
             MostrarSelectorApuEmbebido(rowIndex, cantidadActual, null, filtroInicial);
         }
 
-        private bool TryApplyBudgetConceptAssignmentByKey(int rowIndex, bool showErrors = true)
+        internal bool TryApplyBudgetConceptAssignmentByKey(int rowIndex, bool showErrors = true)
         {
             if (rowIndex < 0 || rowIndex >= dgvPresupuesto.Rows.Count) return false;
 
@@ -626,6 +627,8 @@ namespace SOPRO.WinForms.Forms
             if (!assignment.HasAssignment || assignment.Draft == null)
                 return false;
 
+            var draft = assignment.Draft;
+
             if (assignment.RequiresConfirmation)
             {
                 var result = MessageBox.Show(
@@ -643,7 +646,28 @@ namespace SOPRO.WinForms.Forms
                 }
             }
 
-            ApplyAssignmentDraftToGrid(rowIndex, assignment.Draft);
+            // La asignación de una matriz a un concepto persistido ya no usa
+            // ApplyDraft/guardado heredado: viaja como comando inmutable a un contexto
+            // nuevo. ResolveByKey sigue cargando la matriz en el contexto compartido
+            // para resolver el mensaje y el borrador, pero el comando solo transporta
+            // su Id y la recarga/valida en el contexto de escritura.
+            if (assignment.SourceRowIndex < 0
+                && conceptoActual is { Id: > 0 }
+                && draft.MatrizId is int matrizId
+                && matrizId > 0)
+            {
+                return TryApplyMatrixAssignmentWithCommand(
+                    rowIndex,
+                    claveNueva,
+                    conceptoActual,
+                    matrizId,
+                    draft);
+            }
+
+            // Rutas aún NO migradas (alta de fila, copia desde otra fila, etc.):
+            // conservan el borrador + ApplyDraft sobre el contexto compartido y su
+            // guardado heredado de cierre (totales de agrupadores incluidos).
+            ApplyAssignmentDraftToGrid(rowIndex, draft);
 
             try
             {
@@ -652,10 +676,11 @@ namespace SOPRO.WinForms.Forms
                     _proyecto.Id,
                     CountConceptRowsBefore(rowIndex),
                     conceptoActual,
-                    assignment.Draft);
+                    draft);
 
                 row.Tag = concepto;
                 FinalizeBudgetConceptAssignment(rowIndex);
+                GuardarCambios();
                 return true;
             }
             catch (Exception ex)
@@ -666,6 +691,158 @@ namespace SOPRO.WinForms.Forms
                 }
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Clasificación de la última asignación de matriz ejecutada como comando, o
+        /// <c>null</c> si la asignación no llegó a enviarse (fila sin persistir, trabajo
+        /// pendiente en el contexto compartido o ruta aún heredada). Observabilidad
+        /// interna para las pruebas del ensamblado; no es API pública.
+        /// </summary>
+        internal BudgetOperationStatus? UltimoEstadoAsignacionMatriz { get; private set; }
+
+        /// <summary>
+        /// Asigna una matriz a un concepto YA persistido con la ruta de comando: no
+        /// muta el Tag compartido antes de conocer el resultado y no ejecuta el
+        /// guardado heredado para este evento. Si falla o entra en conflicto, la clave
+        /// editada permanece visible como borrador.
+        /// <para>
+        /// Límite conocido de esta migración parcial: el pegado sigue invocando
+        /// <c>GuardarCambios</c> al cerrar su operación; si una asignación falla dentro
+        /// del pegado, ese flush heredado todavía podría reescribir el borrador. No se
+        /// declara integridad de esa ruta hasta migrar el pegado como una sola operación.
+        /// </para>
+        /// </summary>
+        private bool TryApplyMatrixAssignmentWithCommand(
+            int rowIndex,
+            string claveNueva,
+            ConceptoPresupuesto conceptoActual,
+            int matrizId,
+            BudgetConceptAssignmentDraft draft)
+        {
+            UltimoEstadoAsignacionMatriz = null;
+
+            // Conservador: si el contexto compartido arrastra trabajo pendiente de
+            // otras rutas, no se envía el comando ni se guarda nada aquí.
+            _context.ChangeTracker.DetectChanges();
+            if (_context.ChangeTracker.HasChanges())
+                return false;
+
+            BudgetMatrixAssignmentResult resultado;
+            try
+            {
+                resultado = BudgetPersistenceService.ExecuteMatrixAssignmentCommand(
+                    _factory,
+                    _context.DatabasePath,
+                    new BudgetMatrixAssignmentCommand(
+                        _proyecto.Id,
+                        conceptoActual.Id,
+                        BudgetProjectCalculationBase.FromProyecto(_proyecto),
+                        BudgetConceptAssignmentBase.FromConcepto(conceptoActual),
+                        matrizId,
+                        claveNueva,
+                        descriptionOverride: null,
+                        unitOverride: null,
+                        draft.Cantidad));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Asignación de matriz: {ex.Message}");
+                return true;
+            }
+
+            UltimoEstadoAsignacionMatriz = resultado.Status;
+
+            if (!resultado.IsCommitted || resultado.Confirmed is null)
+            {
+                // Conflicto, fallo o resultado incierto: el borrador de la clave queda
+                // visible y el tracker compartido intacto. No se invoca el guardado
+                // heredado para este evento.
+                System.Diagnostics.Debug.WriteLine(
+                    $"Asignación de matriz no confirmada ({resultado.Status}): {resultado.Diagnostic}");
+                return true;
+            }
+
+            AplicarAsignacionMatrizConfirmada(rowIndex, conceptoActual, resultado.Confirmed);
+            return true;
+        }
+
+        /// <summary>
+        /// Vuelca lo CONFIRMADO por la asignación: sincroniza la entidad compartida y
+        /// las celdas visibles (incluidos los agrupadores recalculados) bajo el guard de
+        /// reentrada, y las deja <c>Unchanged</c> para que el autoguardado heredado de
+        /// otras rutas no las reescriba.
+        /// </summary>
+        private void AplicarAsignacionMatrizConfirmada(
+            int rowIndex,
+            ConceptoPresupuesto concepto,
+            BudgetMatrixAssignmentSnapshot confirmado)
+        {
+            var filasPorConcepto = ConstruirIndiceFilasPorConcepto();
+            bool asignandoPrevio = _asignandoMatriz;
+            _asignandoMatriz = true;
+            try
+            {
+                SincronizarEntidadAsignacion(concepto, confirmado);
+
+                var claveCell = ObtenerCeldaPorNombreInterno(rowIndex, "Clave");
+                var descCell = ObtenerCeldaPorNombreInterno(rowIndex, "Descripcion");
+                var unidadCell = ObtenerCeldaPorNombreInterno(rowIndex, "Unidad");
+                var cantidadCell = ObtenerCeldaPorNombreInterno(rowIndex, "Cantidad");
+                var puCell = ObtenerCeldaPorNombreInterno(rowIndex, "PrecioUnitario");
+                var importeCell = ObtenerCeldaPorNombreInterno(rowIndex, "Importe");
+
+                if (claveCell != null) claveCell.Value = confirmado.Clave;
+                if (descCell != null) descCell.Value = confirmado.Descripcion;
+                if (unidadCell != null) unidadCell.Value = confirmado.Unidad;
+                if (cantidadCell != null) cantidadCell.Value = confirmado.Cantidad;
+                if (puCell != null) puCell.Value = confirmado.PrecioUnitario.ToStringImporte();
+                if (importeCell != null) importeCell.Value = confirmado.ImporteTotal.ToStringImporte();
+
+                FinalizeBudgetConceptAssignment(rowIndex);
+
+                // La instantánea confirmada manda sobre el total que haya recalculado
+                // el grid: se aplica al final para que Tag y celdas coincidan con la base.
+                foreach (var agrupador in confirmado.Aggregators)
+                {
+                    var entidad = ResolverEntidadCompartida(filasPorConcepto, agrupador.ConceptId);
+                    if (entidad is not null)
+                        SincronizarEntidadCompartida(entidad, agrupador);
+
+                    if (!filasPorConcepto.TryGetValue(agrupador.ConceptId, out int filaAgrupador))
+                        continue;
+
+                    var importeAgrupadorCell = ObtenerCeldaPorNombreInterno(filaAgrupador, "Importe");
+                    if (importeAgrupadorCell != null)
+                        importeAgrupadorCell.Value = agrupador.ImporteTotal.ToStringImporte();
+                }
+            }
+            finally
+            {
+                _asignandoMatriz = asignandoPrevio;
+            }
+        }
+
+        private void SincronizarEntidadAsignacion(
+            ConceptoPresupuesto entidad,
+            BudgetMatrixAssignmentSnapshot confirmado)
+        {
+            entidad.Clave = confirmado.Clave;
+            entidad.Descripcion = confirmado.Descripcion;
+            entidad.Unidad = confirmado.Unidad;
+            entidad.Cantidad = confirmado.Cantidad;
+            entidad.CostoDirectoUnitario = confirmado.CostoDirectoUnitario;
+            entidad.CostoDirectoTotal = confirmado.CostoDirectoTotal;
+            entidad.PrecioUnitario = confirmado.PrecioUnitario;
+            entidad.ImporteTotal = confirmado.ImporteTotal;
+            entidad.MatrizId = confirmado.MatrizId;
+            entidad.FechaModificacion = confirmado.FechaModificacion;
+
+            var entry = _context.Entry(entidad);
+            if (entry.State == EntityState.Detached) return;
+
+            entry.OriginalValues.SetValues(entry.CurrentValues);
+            entry.State = EntityState.Unchanged;
         }
     }
 }

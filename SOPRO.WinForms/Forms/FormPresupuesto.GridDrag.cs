@@ -578,12 +578,24 @@ namespace SOPRO.WinForms.Forms
             var puCell = ObtenerCeldaPorNombreInterno(rowIndex, "PrecioUnitario");
             var importeCell = ObtenerCeldaPorNombreInterno(rowIndex, "Importe");
 
-            if (claveCell != null) claveCell.Value = draft.Clave;
-            if (descCell != null) descCell.Value = draft.Descripcion;
-            if (unidadCell != null) unidadCell.Value = draft.Unidad;
-            if (cantidadCell != null) cantidadCell.Value = draft.Cantidad;
-            if (puCell != null) puCell.Value = draft.PrecioUnitario.ToStringImporte();
-            if (importeCell != null) importeCell.Value = draft.ImporteTotal.ToStringImporte();
+            // Estas asignaciones son el borrador del propio asignador de matriz: no
+            // deben disparar los comandos por celda (cantidad/texto) antes de que el
+            // servicio de asignación aplique el draft completo.
+            bool asignandoPrevio = _asignandoMatriz;
+            _asignandoMatriz = true;
+            try
+            {
+                if (claveCell != null) claveCell.Value = draft.Clave;
+                if (descCell != null) descCell.Value = draft.Descripcion;
+                if (unidadCell != null) unidadCell.Value = draft.Unidad;
+                if (cantidadCell != null) cantidadCell.Value = draft.Cantidad;
+                if (puCell != null) puCell.Value = draft.PrecioUnitario.ToStringImporte();
+                if (importeCell != null) importeCell.Value = draft.ImporteTotal.ToStringImporte();
+            }
+            finally
+            {
+                _asignandoMatriz = asignandoPrevio;
+            }
         }
 
         private void FinalizeBudgetConceptAssignment(int rowIndex)

@@ -385,7 +385,7 @@ namespace SOPRO.WinForms.Forms
 
         private void DgvPresupuesto_CellValueChanged(object sender, DataGridViewCellEventArgs e)
         {
-            if (_cargando || _asignandoMatriz || e.RowIndex < 0) return;
+            if (_cargando || _asignandoMatriz || _actualizandoDesdeComando || e.RowIndex < 0) return;
 
             var colActual = dgvPresupuesto.Columns[e.ColumnIndex];
             if (!(colActual.Tag is ColumnaPersonalizada colDef)) return;
@@ -453,6 +453,16 @@ namespace SOPRO.WinForms.Forms
             // Si cambió cantidad en un concepto
             if (colDef.NombreInterno == "Cantidad")
             {
+                // Ruta vigente (ADR-0001): comando inmutable sobre contexto propio.
+                // La rama termina aquí para no ejecutar el autoguardado heredado.
+                if (ProcesarEdicionCantidadConComando(e.RowIndex))
+                {
+                    ActualizarEstadisticas();
+                    return;
+                }
+
+                // Ruta heredada: sólo filas de concepto aún no persistidas (Id = 0),
+                // que el comando no puede representar todavía.
                 var row = dgvPresupuesto.Rows[e.RowIndex];
                 var quantityResult = BudgetRowEditFlowService.HandleQuantityCellChange(
                     _proyecto,
@@ -490,8 +500,27 @@ namespace SOPRO.WinForms.Forms
 
             if (colDef.NombreInterno == "Clave")
             {
+                // La asignación ya resolvió su escritura (comando sobre contexto nuevo
+                // o ruta heredada, que guarda dentro de ApplyDraft). No debe caer en el
+                // autoguardado genérico de esta celda.
                 if (!TryApplyBudgetConceptAssignmentByKey(e.RowIndex))
                     return;
+
+                ActualizarEstadisticas();
+                return;
+            }
+
+            // Descripción/Unidad de una fila persistida: comando inmutable sobre un
+            // contexto propio. La rama termina aquí para no ejecutar el autoguardado
+            // heredado; solo las filas aún no persistidas siguen por esa ruta.
+            if (colDef.NombreInterno == "Descripcion" || colDef.NombreInterno == "Unidad")
+            {
+                if (ProcesarEdicionTextoConComando(e.RowIndex, colDef.NombreInterno))
+                {
+                    if (colDef.NombreInterno == "Descripcion")
+                        ActualizarEstadisticas();
+                    return;
+                }
             }
 
             GuardarCambios();

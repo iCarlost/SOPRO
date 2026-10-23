@@ -104,6 +104,11 @@ namespace SOPRO.WinForms.Forms
 
             if (hadChanges)
             {
+                // RIESGO CONOCIDO (ADR-0001, migración parcial): el pegado aún persiste
+                // por la ruta heredada. Las celdas de texto disparan sus comandos al
+                // asignarse, pero este flush puede volver a escribir Descripción/Unidad
+                // y confirmar un borrador cuyo comando hubiera fallado. Pendiente de
+                // migrar el pegado como una sola operación.
                 GuardarCambios();
                 ActualizarEstadisticas();
                 dgvPresupuesto.Refresh();
@@ -290,6 +295,12 @@ namespace SOPRO.WinForms.Forms
                 || string.Equals(nombreInterno, "Cantidad", StringComparison.OrdinalIgnoreCase);
         }
 
+        private static bool EsColumnaTextoPresupuesto(string? nombreInterno)
+        {
+            return string.Equals(nombreInterno, "Descripcion", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(nombreInterno, "Unidad", StringComparison.OrdinalIgnoreCase);
+        }
+
         private bool TryUndoBudgetEdit()
         {
             if (!_undoManager.CanUndo)
@@ -333,10 +344,18 @@ namespace SOPRO.WinForms.Forms
             dgvPresupuesto.CurrentCell = cell;
             cell.Value = value;
 
-            if (dgvPresupuesto.Columns[columnIndex].Tag is ColumnaPersonalizada colDef
-                && string.Equals(colDef.NombreInterno, "Cantidad", StringComparison.OrdinalIgnoreCase))
+            var colDefUndo = dgvPresupuesto.Columns[columnIndex].Tag as ColumnaPersonalizada;
+            if (string.Equals(colDefUndo?.NombreInterno, "Cantidad", StringComparison.OrdinalIgnoreCase))
             {
                 DgvPresupuesto_CellValueChanged(dgvPresupuesto, new DataGridViewCellEventArgs(columnIndex, rowIndex));
+            }
+            else if (EsColumnaTextoPresupuesto(colDefUndo?.NombreInterno))
+            {
+                // Asignar cell.Value ya disparó CellValueChanged, que consume la
+                // edición con el comando por operación; no se vuelve a guardar la
+                // misma fila por la ruta heredada.
+                ActualizarEstadisticas();
+                dgvPresupuesto.Refresh();
             }
             else
             {
