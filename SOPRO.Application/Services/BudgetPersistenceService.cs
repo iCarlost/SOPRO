@@ -121,6 +121,340 @@ namespace SOPRO.Application.Services
             return new BudgetMatrixAssignmentResult(execution.Result, execution.Confirmed, execution.Diagnostic);
         }
 
+        /// <summary>
+        /// Cambia el tipo de una fila del presupuesto (ADR-0001): actualiza el estado
+        /// jerárquico de un concepto existente o crea el concepto de una fila nueva,
+        /// sobre un contexto NUEVO por operación. Usa la normalización única de
+        /// <see cref="BudgetHierarchyService"/>, limpia los valores que la UI deja
+        /// vacíos cuando la fila pasa a agrupador, recalcula los agrupadores con
+        /// <see cref="PricePropagationService.ActualizarAgrupadores"/> (sin guardar) y
+        /// confirma una sola vez. El Id de una fila nueva se asigna en este contexto,
+        /// nunca en la vista.
+        /// </summary>
+        public static BudgetTypeChangeResult ExecuteTypeChangeCommand(
+            IProjectDbContextFactory factory,
+            string databasePath,
+            BudgetTypeChangeCommand command)
+        {
+            ArgumentNullException.ThrowIfNull(factory);
+            if (string.IsNullOrWhiteSpace(databasePath))
+                throw new ArgumentException("La ruta de la base del proyecto es requerida.", nameof(databasePath));
+            ArgumentNullException.ThrowIfNull(command);
+
+            var execution = BudgetWriteExecutor.Execute(
+                factory,
+                databasePath,
+                useTransaction: true,
+                context => StageTypeChange(context, command));
+
+            return new BudgetTypeChangeResult(execution.Result, execution.Confirmed, execution.Diagnostic);
+        }
+
+        /// <summary>
+        /// Elimina una o varias filas YA persistidas del presupuesto (ADR-0001) sobre un
+        /// contexto NUEVO por operación. Revalida proyecto, existencia y base esperada de
+        /// TODAS las filas, las elimina en una sola operación, recalcula los agrupadores
+        /// que permanecen con <see cref="PricePropagationService.ActualizarAgrupadores"/>
+        /// (sin guardar) y confirma una sola vez. Un conflicto o fallo deja la base sin
+        /// cambios; la vista conserva sus filas hasta conocer el resultado.
+        /// </summary>
+        public static BudgetDeletionResult ExecuteDeletionCommand(
+            IProjectDbContextFactory factory,
+            string databasePath,
+            BudgetDeletionCommand command)
+        {
+            ArgumentNullException.ThrowIfNull(factory);
+            if (string.IsNullOrWhiteSpace(databasePath))
+                throw new ArgumentException("La ruta de la base del proyecto es requerida.", nameof(databasePath));
+            ArgumentNullException.ThrowIfNull(command);
+
+            var execution = BudgetWriteExecutor.Execute(
+                factory,
+                databasePath,
+                useTransaction: true,
+                context => StageDeletion(context, command));
+
+            return new BudgetDeletionResult(execution.Result, execution.Confirmed, execution.Diagnostic);
+        }
+
+        private static BudgetWriteStep<BudgetDeletionSnapshot> StageDeletion(
+            SOPROContext context,
+            BudgetDeletionCommand command)
+        {
+            var proyecto = context.Proyectos
+                .AsNoTracking()
+                .FirstOrDefault(p => p.Id == command.ProjectId);
+
+            if (proyecto == null)
+                return BudgetWriteStep<BudgetDeletionSnapshot>.Abort(
+                    BudgetOperationResult.Conflict(
+                        $"El proyecto {command.ProjectId} no existe en la base; la vista debe recargarse."));
+
+            var ids = command.Targets.Select(t => t.ConceptId).ToList();
+
+            var conceptos = context.ConceptosPresupuesto
+                .Where(c => ids.Contains(c.Id))
+                .ToList();
+
+            if (conceptos.Count != ids.Count)
+                return BudgetWriteStep<BudgetDeletionSnapshot>.Abort(
+                    BudgetOperationResult.Conflict(
+                        "Una o más filas a eliminar ya no existen en la base; la vista debe recargarse."));
+
+            if (conceptos.Any(c => c.ProyectoId != command.ProjectId))
+                return BudgetWriteStep<BudgetDeletionSnapshot>.Abort(
+                    BudgetOperationResult.Conflict(
+                        "Una o más filas a eliminar no pertenecen al proyecto; la vista debe recargarse."));
+
+            var porId = conceptos.ToDictionary(c => c.Id);
+
+            foreach (var target in command.Targets)
+            {
+                var concepto = porId[target.ConceptId];
+                if (concepto.Orden != target.ExpectedOrder
+                    || concepto.Nivel != target.ExpectedLevel
+                    || concepto.EsAgrupador != target.ExpectedIsAggregator)
+                {
+                    return BudgetWriteStep<BudgetDeletionSnapshot>.Abort(
+                        BudgetOperationResult.Conflict(
+                            $"La fila {target.ConceptId} cambió en la base desde que se cargó; " +
+                            "la vista debe recargarse."));
+                }
+            }
+
+            // Dependencia explícita fuera del conjunto: eliminar solo el padre dejaría
+            // hijos huérfanos o haría fallar la FK. Se rechaza la operación completa.
+            bool haySubFilasFuera = context.ConceptosPresupuesto.Any(c =>
+                c.ProyectoId == command.ProjectId
+                && c.PadreId.HasValue
+                && ids.Contains(c.PadreId.Value)
+                && !ids.Contains(c.Id));
+
+            if (haySubFilasFuera)
+                return BudgetWriteStep<BudgetDeletionSnapshot>.Abort(
+                    BudgetOperationResult.Failed(
+                        "La selección deja sub-filas vinculadas fuera de la eliminación; " +
+                        "no se guardó nada."));
+
+            context.ConceptosPresupuesto.RemoveRange(conceptos);
+
+            // El recálculo debe ignorar las filas marcadas para eliminar: el SaveChanges
+            // aún no ocurrió y una consulta normal todavía las devolvería.
+            PricePropagationService.ActualizarAgrupadores(
+                context, new List<Proyecto> { proyecto }, ids);
+
+            var agrupadores = context.ConceptosPresupuesto
+                .Where(c => c.ProyectoId == command.ProjectId
+                    && c.EsAgrupador
+                    && !ids.Contains(c.Id))
+                .OrderBy(c => c.Orden)
+                .ThenBy(c => c.Id)
+                .ToList();
+
+            var snapshot = new BudgetDeletionSnapshot(
+                command.ProjectId,
+                ids,
+                agrupadores.Select(BudgetConfirmedConceptRow.FromConcepto).ToArray());
+
+            return BudgetWriteStep<BudgetDeletionSnapshot>.Commit(snapshot, ids);
+        }
+
+        /// <summary>
+        /// Reordena las filas YA persistidas del presupuesto (ADR-0001) sobre un contexto
+        /// NUEVO por operación. Revalida que el comando cubra todas las filas del
+        /// proyecto y que la base esperada de cada una siga vigente, aplica todos los
+        /// cambios de Orden, recalcula los agrupadores con la jerarquía resultante
+        /// (sin guardado intermedio) y confirma una sola vez. Un conflicto o fallo deja
+        /// la base sin cambios; la vista conserva su borrador visual.
+        /// </summary>
+        public static BudgetReorderResult ExecuteReorderCommand(
+            IProjectDbContextFactory factory,
+            string databasePath,
+            BudgetReorderCommand command)
+        {
+            ArgumentNullException.ThrowIfNull(factory);
+            if (string.IsNullOrWhiteSpace(databasePath))
+                throw new ArgumentException("La ruta de la base del proyecto es requerida.", nameof(databasePath));
+            ArgumentNullException.ThrowIfNull(command);
+
+            var execution = BudgetWriteExecutor.Execute(
+                factory,
+                databasePath,
+                useTransaction: true,
+                context => StageReorder(context, command));
+
+            return new BudgetReorderResult(execution.Result, execution.Confirmed, execution.Diagnostic);
+        }
+
+        private static BudgetWriteStep<BudgetReorderSnapshot> StageReorder(
+            SOPROContext context,
+            BudgetReorderCommand command)
+        {
+            var proyecto = context.Proyectos
+                .AsNoTracking()
+                .FirstOrDefault(p => p.Id == command.ProjectId);
+
+            if (proyecto == null)
+                return BudgetWriteStep<BudgetReorderSnapshot>.Abort(
+                    BudgetOperationResult.Conflict(
+                        $"El proyecto {command.ProjectId} no existe en la base; la vista debe recargarse."));
+
+            var ids = command.Targets.Select(t => t.ConceptId).ToList();
+
+            var conceptos = context.ConceptosPresupuesto
+                .Where(c => ids.Contains(c.Id))
+                .ToList();
+
+            if (conceptos.Count != ids.Count)
+                return BudgetWriteStep<BudgetReorderSnapshot>.Abort(
+                    BudgetOperationResult.Conflict(
+                        "Una o más filas reordenadas ya no existen en la base; la vista debe recargarse."));
+
+            if (conceptos.Any(c => c.ProyectoId != command.ProjectId))
+                return BudgetWriteStep<BudgetReorderSnapshot>.Abort(
+                    BudgetOperationResult.Conflict(
+                        "Una o más filas reordenadas no pertenecen al proyecto; la vista debe recargarse."));
+
+            // El Orden persistido es contiguo sobre las filas persistidas: si la vista
+            // no cubre todas las filas del proyecto, aplicarlo dejaría posiciones
+            // ambiguas. Se rechaza la operación completa.
+            int filasEnProyecto = context.ConceptosPresupuesto
+                .Count(c => c.ProyectoId == command.ProjectId);
+
+            if (filasEnProyecto != command.Targets.Count)
+                return BudgetWriteStep<BudgetReorderSnapshot>.Abort(
+                    BudgetOperationResult.Conflict(
+                        "La vista no contiene todas las filas del proyecto; la vista debe recargarse."));
+
+            var porId = conceptos.ToDictionary(c => c.Id);
+
+            foreach (var target in command.Targets)
+            {
+                var concepto = porId[target.ConceptId];
+                if (concepto.Orden != target.ExpectedOrder
+                    || concepto.Nivel != target.ExpectedLevel
+                    || concepto.EsAgrupador != target.ExpectedIsAggregator)
+                {
+                    return BudgetWriteStep<BudgetReorderSnapshot>.Abort(
+                        BudgetOperationResult.Conflict(
+                            $"La fila {target.ConceptId} cambió en la base desde que se cargó; " +
+                            "la vista debe recargarse."));
+                }
+            }
+
+            foreach (var target in command.Targets)
+                porId[target.ConceptId].Orden = target.ProposedOrder;
+
+            // La jerarquía se infiere por Orden/Nivel: recalcular sobre la lista ya
+            // reordenada evita el orden obsoleto que devolvería una consulta a la base.
+            var ordenados = conceptos
+                .OrderBy(c => c.Orden)
+                .ThenBy(c => c.Id)
+                .ToList();
+
+            PricePropagationService.ActualizarAgrupadores(proyecto, ordenados);
+
+            var snapshot = new BudgetReorderSnapshot(
+                command.ProjectId,
+                command.Targets
+                    .OrderBy(t => t.ProposedOrder)
+                    .Select(t => new BudgetConfirmedConceptOrder(t.ConceptId, t.ProposedOrder))
+                    .ToArray(),
+                ordenados
+                    .Where(c => c.EsAgrupador)
+                    .Select(BudgetConfirmedConceptRow.FromConcepto)
+                    .ToArray());
+
+            return BudgetWriteStep<BudgetReorderSnapshot>.Commit(snapshot, ids);
+        }
+
+        private static BudgetWriteStep<BudgetTypeChangeSnapshot> StageTypeChange(
+            SOPROContext context,
+            BudgetTypeChangeCommand command)
+        {
+            var proyecto = context.Proyectos
+                .AsNoTracking()
+                .FirstOrDefault(p => p.Id == command.ProjectId);
+
+            if (proyecto == null)
+                return BudgetWriteStep<BudgetTypeChangeSnapshot>.Abort(
+                    BudgetOperationResult.Conflict(
+                        $"El proyecto {command.ProjectId} no existe en la base; la vista debe recargarse."));
+
+            bool isAggregator = !string.Equals(command.Tipo, "Concepto", StringComparison.OrdinalIgnoreCase);
+            int level = BudgetHierarchyService.GetLevelFromType(command.Tipo);
+
+            ConceptoPresupuesto concepto;
+            bool stateAlreadyCorrect = false;
+
+            if (command.ConceptId is int conceptId)
+            {
+                var encontrado = context.ConceptosPresupuesto
+                    .FirstOrDefault(c => c.Id == conceptId && c.ProyectoId == command.ProjectId);
+
+                if (encontrado == null)
+                    return BudgetWriteStep<BudgetTypeChangeSnapshot>.Abort(
+                        BudgetOperationResult.Conflict(
+                            $"El concepto {conceptId} no pertenece al proyecto {command.ProjectId} " +
+                            "en la base; la vista debe recargarse."));
+
+                concepto = encontrado;
+                var expected = command.ExpectedConcept!;
+                if (concepto.Nivel != expected.Nivel || concepto.EsAgrupador != expected.EsAgrupador)
+                    return BudgetWriteStep<BudgetTypeChangeSnapshot>.Abort(
+                        BudgetOperationResult.Conflict(
+                            $"El estado del concepto {conceptId} cambió en la base desde que se cargó; " +
+                            "la vista debe recargarse."));
+
+                stateAlreadyCorrect = concepto.Nivel == level && concepto.EsAgrupador == isAggregator;
+                if (!stateAlreadyCorrect)
+                    BudgetConceptCreationService.ApplyExistingTypeState(concepto, isAggregator, level);
+            }
+            else
+            {
+                concepto = BudgetConceptCreationService.PrepareNewForTypeChange(
+                    context, command.ProjectId, command, isAggregator, level);
+                context.ConceptosPresupuesto.Add(concepto);
+            }
+
+            // Un no-op confirmado no debe tocar ningún agrupador (ni su marca de
+            // modificación): el resultado se clasifica como confirmado sin escritura.
+            if (!stateAlreadyCorrect)
+            {
+                PricePropagationService.ActualizarAgrupadores(
+                    context, new List<Proyecto> { proyecto });
+
+                // El Id de una fila nueva solo existe después del SaveChanges: la
+                // instantánea se materializa entonces, sin una segunda escritura.
+                return BudgetWriteStep<BudgetTypeChangeSnapshot>.CommitAfterSave(
+                    () => BuildTypeChangeSnapshot(context, command.ProjectId, concepto, stateAlreadyCorrect: false),
+                    () => new[] { concepto.Id });
+            }
+
+            return BudgetWriteStep<BudgetTypeChangeSnapshot>.Commit(
+                BuildTypeChangeSnapshot(context, command.ProjectId, concepto, stateAlreadyCorrect: true),
+                new[] { concepto.Id });
+        }
+
+        private static BudgetTypeChangeSnapshot BuildTypeChangeSnapshot(
+            SOPROContext context,
+            int projectId,
+            ConceptoPresupuesto concepto,
+            bool stateAlreadyCorrect)
+        {
+            var agrupadores = context.ConceptosPresupuesto
+                .Where(c => c.ProyectoId == projectId && c.EsAgrupador)
+                .OrderBy(c => c.Orden)
+                .ThenBy(c => c.Id)
+                .ToList();
+
+            return new BudgetTypeChangeSnapshot(
+                projectId,
+                BudgetConfirmedConceptDetail.FromConcepto(concepto),
+                agrupadores.Select(BudgetConfirmedConceptRow.FromConcepto).ToArray(),
+                stateAlreadyCorrect);
+        }
+
         private static BudgetWriteStep<BudgetMatrixAssignmentSnapshot> StageMatrixAssignment(
             SOPROContext context,
             BudgetMatrixAssignmentCommand command)
@@ -479,13 +813,17 @@ namespace SOPRO.Application.Services
             BudgetOperationResult? stopResult,
             TConfirmed? confirmed,
             IReadOnlyList<int> confirmedConceptIds,
-            string? diagnostic)
+            string? diagnostic,
+            Func<TConfirmed>? confirmedFactory = null,
+            Func<IReadOnlyList<int>>? confirmedConceptIdsFactory = null)
         {
             ShouldCommit = shouldCommit;
             StopResult = stopResult;
             Confirmed = confirmed;
             ConfirmedConceptIds = confirmedConceptIds;
             Diagnostic = diagnostic;
+            ConfirmedFactory = confirmedFactory;
+            ConfirmedConceptIdsFactory = confirmedConceptIdsFactory;
         }
 
         public bool ShouldCommit { get; }
@@ -498,10 +836,26 @@ namespace SOPRO.Application.Services
 
         public string? Diagnostic { get; }
 
+        /// <summary>
+        /// Materializa la instantánea después del SaveChanges; necesaria cuando el
+        /// Id de una entidad nueva solo existe una vez que la base lo asignó.
+        /// </summary>
+        public Func<TConfirmed>? ConfirmedFactory { get; }
+
+        /// <summary>Ids confirmados que dependen de Ids generados por la base.</summary>
+        public Func<IReadOnlyList<int>>? ConfirmedConceptIdsFactory { get; }
+
         internal static BudgetWriteStep<TConfirmed> Commit(
             TConfirmed confirmed,
             IReadOnlyList<int> confirmedConceptIds)
             => new(true, null, confirmed, confirmedConceptIds ?? Array.Empty<int>(), null);
+
+        internal static BudgetWriteStep<TConfirmed> CommitAfterSave(
+            Func<TConfirmed> confirmedFactory,
+            Func<IReadOnlyList<int>> confirmedConceptIdsFactory)
+            => new(true, null, null, Array.Empty<int>(), null,
+                confirmedFactory ?? throw new ArgumentNullException(nameof(confirmedFactory)),
+                confirmedConceptIdsFactory ?? throw new ArgumentNullException(nameof(confirmedConceptIdsFactory)));
 
         internal static BudgetWriteStep<TConfirmed> Abort(BudgetOperationResult result, string? diagnostic = null)
             => new(false, result ?? throw new ArgumentNullException(nameof(result)), null,
@@ -593,6 +947,48 @@ namespace SOPRO.Application.Services
                 return BudgetWriteExecution<TConfirmed>.Failed(MensajeFalloRevertido, diagnostic);
             }
 
+            TConfirmed confirmed;
+            IReadOnlyList<int> confirmedConceptIds;
+            try
+            {
+                confirmed = step.ConfirmedFactory is not null
+                    ? step.ConfirmedFactory()
+                    : step.Confirmed!;
+                confirmedConceptIds = step.ConfirmedConceptIdsFactory is not null
+                    ? step.ConfirmedConceptIdsFactory()
+                    : step.ConfirmedConceptIds;
+            }
+            catch (Exception ex)
+            {
+                // La escritura ya ocurrió dentro de la transacción: si la
+                // instantánea no se puede materializar, se revierte para no
+                // confirmar una operación que el llamador no puede reconciliar.
+                string? diagnostic = Describe(ex);
+                if (transaction == null)
+                {
+                    DisposeQuietly(context);
+                    return BudgetWriteExecution<TConfirmed>.OutcomeUnknown(
+                        MensajeCommitIncierto, diagnostic);
+                }
+
+                try
+                {
+                    transaction.Rollback();
+                }
+                catch (Exception rollbackFailure)
+                {
+                    DisposeQuietly(transaction);
+                    DisposeQuietly(context);
+                    return BudgetWriteExecution<TConfirmed>.OutcomeUnknown(
+                        MensajeReversionIncierta,
+                        diagnostic + " | rollback: " + Describe(rollbackFailure));
+                }
+
+                DisposeQuietly(transaction);
+                DisposeQuietly(context);
+                return BudgetWriteExecution<TConfirmed>.Failed(MensajeFalloRevertido, diagnostic);
+            }
+
             if (transaction != null)
             {
                 try
@@ -632,7 +1028,7 @@ namespace SOPRO.Application.Services
             }
 
             return BudgetWriteExecution<TConfirmed>.Committed(
-                step.Confirmed!, step.ConfirmedConceptIds, diagnostic: null);
+                confirmed, confirmedConceptIds, diagnostic: null);
         }
 
         private static void RollbackQuietly(IDbContextTransaction? transaction)

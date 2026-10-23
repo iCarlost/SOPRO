@@ -390,64 +390,16 @@ namespace SOPRO.WinForms.Forms
             var colActual = dgvPresupuesto.Columns[e.ColumnIndex];
             if (!(colActual.Tag is ColumnaPersonalizada colDef)) return;
 
-            // Si cambió el tipo → CREAR/ACTUALIZAR CONCEPTO INMEDIATAMENTE
+            // Si cambió el tipo → comando de cambio de tipo sobre contexto propio
+            // (ADR-0001). La rama termina aquí para no ejecutar el autoguardado
+            // heredado, tanto si se confirma como si falla o entra en conflicto.
             if (colDef.NombreInterno == "Tipo")
             {
                 var tipoCell = ObtenerCeldaPorNombreInterno(e.RowIndex, "Tipo");
                 if (tipoCell?.Value == null) return;
 
-                string tipo = tipoCell.Value.ToString()?.Trim() ?? string.Empty;
-                var row = dgvPresupuesto.Rows[e.RowIndex];
-
-                var typeResult = BudgetRowEditFlowService.HandleTypeCellChange(
-                    _context,
-                    _proyecto,
-                    new SOPRO.Application.Models.Presupuesto.BudgetRowTypeChangeInput
-                    {
-                        RowIndex = e.RowIndex,
-                        Tipo = tipo,
-                        Descripcion = ObtenerCeldaPorNombreInterno(e.RowIndex, "Descripcion")?.Value?.ToString() ?? string.Empty,
-                        Clave = ObtenerCeldaPorNombreInterno(e.RowIndex, "Clave")?.Value?.ToString() ?? string.Empty,
-                        Unidad = ObtenerCeldaPorNombreInterno(e.RowIndex, "Unidad")?.Value?.ToString() ?? string.Empty,
-                        ExistingConcept = row.Tag as ConceptoPresupuesto
-                    });
-
-                if (typeResult.Handled)
-                {
-                    row.Tag = typeResult.Concept;
-
-                    var unidadCell = ObtenerCeldaPorNombreInterno(e.RowIndex, "Unidad");
-                    var cantidadCell = ObtenerCeldaPorNombreInterno(e.RowIndex, "Cantidad");
-                    var puCell = ObtenerCeldaPorNombreInterno(e.RowIndex, "PrecioUnitario");
-                    var importeCell = ObtenerCeldaPorNombreInterno(e.RowIndex, "Importe");
-
-                    if (unidadCell != null)
-                    {
-                        unidadCell.ReadOnly = typeResult.UnitReadOnly;
-                        if (typeResult.IsAggregator) unidadCell.Value = typeResult.UnitValue;
-                    }
-
-                    if (cantidadCell != null)
-                    {
-                        cantidadCell.ReadOnly = typeResult.QuantityReadOnly;
-                        if (typeResult.IsAggregator) cantidadCell.Value = typeResult.QuantityValue;
-                    }
-
-                    if (typeResult.ClearCalculatedCells)
-                    {
-                        if (puCell != null) puCell.Value = typeResult.UnitPriceValue;
-                        if (importeCell != null) importeCell.Value = typeResult.AmountValue;
-                    }
-
-                    if (typeResult.RequiresRowInvalidate)
-                        dgvPresupuesto.InvalidateRow(e.RowIndex);
-
-                    if (typeResult.RequiresReassignSequence)
-                        ReasignarNumerosConceptos();
-
-                    if (typeResult.IgnoredBecauseStateIsAlreadyCorrect)
-                        return;
-                }
+                ProcesarCambioTipoConComando(e.RowIndex);
+                return;
             }
 
             // Si cambió cantidad en un concepto

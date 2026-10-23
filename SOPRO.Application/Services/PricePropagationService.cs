@@ -196,46 +196,87 @@ namespace SOPRO.Application.Services
         ///   3) Un agrupador sin hojas queda en cero. Redondeo con el motor del
         ///      proyecto.
         /// </summary>
-        internal static int ActualizarAgrupadores(SOPROContext ctx, List<Proyecto> proyectos)
+        internal static int ActualizarAgrupadores(
+            SOPROContext ctx,
+            List<Proyecto> proyectos,
+            IReadOnlyCollection<int>? idsExcluidos = null)
         {
             int actualizados = 0;
+            var excluidos = idsExcluidos?.ToList() ?? new List<int>();
 
             foreach (var proyecto in proyectos)
             {
-                var todos = ctx.ConceptosPresupuesto
-                    .Where(c => c.ProyectoId == proyecto.Id)
+                var consulta = ctx.ConceptosPresupuesto
+                    .Where(c => c.ProyectoId == proyecto.Id);
+
+                // Una eliminación en curso excluye las filas que aún no llegaron al
+                // SaveChanges: el recálculo debe reflejar solo lo que quedará en la base.
+                if (excluidos.Count > 0)
+                    consulta = consulta.Where(c => !excluidos.Contains(c.Id));
+
+                var todos = consulta
                     .OrderBy(c => c.Orden)
                     .ThenBy(c => c.Id)
                     .ToList();
 
-                var agrupadores = todos.Where(c => c.EsAgrupador).ToList();
-                if (agrupadores.Count == 0) continue;
+                actualizados += ActualizarAgrupadores(proyecto, todos);
+            }
 
-                var engine = CalculationEngineFactory.FromProyecto(proyecto);
+            return actualizados;
+        }
 
-                foreach (var agrupador in agrupadores)
+        /// <summary>
+        /// Variante para comandos que cambian el Orden antes del único SaveChanges: la
+        /// consulta a la base todavía devolvería el orden anterior, así que el llamador
+        /// entrega la lista YA ordenada según el Orden propuesto. La política de cálculo
+        /// es idéntica a la de <see cref="ActualizarAgrupadores(SOPROContext, List{Proyecto}, IReadOnlyCollection{int}?)"/>.
+        /// </summary>
+        internal static int ActualizarAgrupadores(
+            Proyecto proyecto,
+            IReadOnlyList<ConceptoPresupuesto> conceptosEnOrden)
+        {
+            ArgumentNullException.ThrowIfNull(proyecto);
+            ArgumentNullException.ThrowIfNull(conceptosEnOrden);
+
+            var agrupadores = conceptosEnOrden.Where(c => c.EsAgrupador).ToList();
+            if (agrupadores.Count == 0) return 0;
+
+            var engine = CalculationEngineFactory.FromProyecto(proyecto);
+            int actualizados = 0;
+
+            foreach (var agrupador in agrupadores)
+            {
+                int idx = -1;
+                for (int i = 0; i < conceptosEnOrden.Count; i++)
                 {
-                    int idx = todos.FindIndex(c => c.Id == agrupador.Id);
-                    var importes = new List<decimal>();
-
-                    for (int j = idx + 1; j < todos.Count; j++)
+                    if (ReferenceEquals(conceptosEnOrden[i], agrupador))
                     {
-                        var fila = todos[j];
-
-                        // Toda fila no agrupadora es un concepto de nivel 5.
-                        int nivelFila = fila.EsAgrupador ? fila.Nivel : 5;
-                        if (nivelFila <= agrupador.Nivel) break;
-                        if (fila.EsAgrupador) continue;
-
-                        importes.Add(fila.ImporteTotal);
+                        idx = i;
+                        break;
                     }
-
-                    decimal total = engine.SumAmounts(importes);
-                    agrupador.CostoDirectoTotal = total;
-                    agrupador.ImporteTotal       = total;
-                    agrupador.FechaModificacion  = DateTime.Now;
-                    actualizados++;
                 }
+
+                if (idx < 0) continue;
+
+                var importes = new List<decimal>();
+
+                for (int j = idx + 1; j < conceptosEnOrden.Count; j++)
+                {
+                    var fila = conceptosEnOrden[j];
+
+                    // Toda fila no agrupadora es un concepto de nivel 5.
+                    int nivelFila = fila.EsAgrupador ? fila.Nivel : 5;
+                    if (nivelFila <= agrupador.Nivel) break;
+                    if (fila.EsAgrupador) continue;
+
+                    importes.Add(fila.ImporteTotal);
+                }
+
+                decimal total = engine.SumAmounts(importes);
+                agrupador.CostoDirectoTotal = total;
+                agrupador.ImporteTotal       = total;
+                agrupador.FechaModificacion  = DateTime.Now;
+                actualizados++;
             }
 
             return actualizados;

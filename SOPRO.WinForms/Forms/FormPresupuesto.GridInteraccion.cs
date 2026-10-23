@@ -214,24 +214,7 @@ namespace SOPRO.WinForms.Forms
             if (result != DialogResult.Yes)
                 return;
 
-            for (int i = interaction.RowsToDelete.Count - 1; i >= 0; i--)
-            {
-                int idx = interaction.RowsToDelete[i];
-                var conceptoTag = dgvPresupuesto.Rows[idx].Tag as ConceptoPresupuesto;
-                if (conceptoTag != null && conceptoTag.Id > 0)
-                {
-                    var enBD = _context.ConceptosPresupuesto.Find(conceptoTag.Id);
-                    if (enBD != null) _context.ConceptosPresupuesto.Remove(enBD);
-                }
-                dgvPresupuesto.Rows.RemoveAt(idx);
-            }
-
-            _context.SaveChanges();
-            ReasignarNumerosConceptos();
-            RecalcularTodosLosTotales();
-            GuardarCambios();       // Persistir totales de agrupadores en BD
-            ActualizarEstadisticas();
-            dgvPresupuesto.Refresh();
+            EjecutarEliminacionDeFilas(interaction.RowsToDelete);
         }
 
         private bool TryDeleteMultipleSelectedConceptRows()
@@ -277,24 +260,7 @@ namespace SOPRO.WinForms.Forms
             if (result != DialogResult.Yes)
                 return true;
 
-            for (int i = selectedIndexes.Count - 1; i >= 0; i--)
-            {
-                int idx = selectedIndexes[i];
-                var conceptoTag = dgvPresupuesto.Rows[idx].Tag as ConceptoPresupuesto;
-                if (conceptoTag != null && conceptoTag.Id > 0)
-                {
-                    var enBD = _context.ConceptosPresupuesto.Find(conceptoTag.Id);
-                    if (enBD != null) _context.ConceptosPresupuesto.Remove(enBD);
-                }
-                dgvPresupuesto.Rows.RemoveAt(idx);
-            }
-
-            _context.SaveChanges();
-            ReasignarNumerosConceptos();
-            RecalcularTodosLosTotales();
-            GuardarCambios();       // Persistir totales de agrupadores en BD
-            ActualizarEstadisticas();
-            dgvPresupuesto.Refresh();
+            EjecutarEliminacionDeFilas(selectedIndexes);
             return true;
         }
 
