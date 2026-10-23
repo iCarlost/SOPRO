@@ -29,6 +29,7 @@ namespace SOPRO.WinForms.Forms
         private Proyecto _proyecto;
         private bool _cargando = false;
         private bool _asignandoMatriz = false; // Suprime CellValueChanged durante asignación programática
+        private bool _asignacionNuevaFilaPendienteReconciliacion; // Un commit incierto bloquea reintentos ciegos de alta
         private Controls.PanelMatricesEmbebido _panelMatricesEmbebido;
         private SelectorApuEmbebidoControl? _selectorApuEmbebido;
         private int _selectorApuEmbebidoRowIndex = -1;
@@ -683,13 +684,17 @@ namespace SOPRO.WinForms.Forms
                 descripcionActual,
                 unidadActual);
 
-            if (row.Tag is ConceptoPresupuesto { Id: > 0 } conceptoExistente)
+            var target = BudgetAssignmentTarget.ForMatrix(
+                matriz.Id, BudgetMatrixAssignmentBase.FromMatriz(matriz));
+
+            ConceptoPresupuesto? conceptoExistente = row.Tag as ConceptoPresupuesto;
+            if (conceptoExistente is { Id: > 0 })
             {
                 var despacho = TryApplyMatrixAssignmentWithCommand(
                     rowIndex,
                     draft.Clave,
                     conceptoExistente,
-                    matriz.Id,
+                    target,
                     draft,
                     draft.Descripcion,
                     draft.Unidad);
@@ -706,19 +711,23 @@ namespace SOPRO.WinForms.Forms
                 return true;
             }
 
-            // Fila nueva aún sin Id: alta explícitamente heredada (ApplyDraft + GuardarCambios).
-            ApplyAssignmentDraftToGrid(rowIndex, draft);
+            // Fila nueva genuina (Id 0/Tag null): alta atómica como comando. Si no se
+            // confirma, el borrador queda visible y la fila conserva su Id 0/Tag null.
+            var despachoNuevaFila = TryApplyMatrixAssignmentWithCommand(
+                rowIndex,
+                draft.Clave,
+                conceptoActual: null,
+                target,
+                draft,
+                draft.Descripcion,
+                draft.Unidad);
 
-            var concepto = BudgetConceptAssignmentService.ApplyDraft(
-                _context,
-                _proyecto.Id,
-                CountConceptRowsBefore(rowIndex),
-                row.Tag as ConceptoPresupuesto,
-                draft);
+            if (despachoNuevaFila == MatrixAssignmentDispatch.NotSentPendingChanges
+                || UltimoEstadoAsignacionMatriz != BudgetOperationStatus.Committed)
+            {
+                ApplyAssignmentDraftToGrid(rowIndex, draft);
+            }
 
-            row.Tag = concepto;
-            FinalizeBudgetConceptAssignment(rowIndex);
-            GuardarCambios();
             return true;
         }
 

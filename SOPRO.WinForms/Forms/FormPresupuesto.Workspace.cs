@@ -695,58 +695,96 @@ namespace SOPRO.WinForms.Forms
                 }
             }
 
-            // La asignación de una matriz a un concepto persistido ya no usa
-            // ApplyDraft/guardado heredado: viaja como comando inmutable a un contexto
-            // nuevo. ResolveByKey sigue cargando la matriz en el contexto compartido
-            // para resolver el mensaje y el borrador, pero el comando solo transporta
-            // su Id y la recarga/valida en el contexto de escritura.
-            if (assignment.SourceRowIndex < 0
-                && conceptoActual is { Id: > 0 }
-                && draft.MatrizId is int matrizId
-                && matrizId > 0)
+            // La asignación ya no usa ApplyDraft/guardado heredado: tanto la
+            // actualización de una fila persistida como el alta de una fila nueva
+            // (Id 0/Tag null) viajan como comando inmutable a un contexto nuevo.
+            // ResolveByKey solo resuelve la fuente y el borrador visible; el comando
+            // transporta identidad/bases inmutable y recalcula en Application.
+            var target = ConstruirTargetAsignacion(assignment, draft);
+            if (target is null)
+                return false;
+
+            if (conceptoActual is { Id: > 0 })
             {
                 return TryApplyMatrixAssignmentWithCommand(
                     rowIndex,
                     claveNueva,
                     conceptoActual,
-                    matrizId,
+                    target,
                     draft) == MatrixAssignmentDispatch.Sent;
             }
 
-            // Rutas aún NO migradas (alta de fila, copia desde otra fila, etc.):
-            // conservan el borrador + ApplyDraft sobre el contexto compartido y su
-            // guardado heredado de cierre (totales de agrupadores incluidos).
-            ApplyAssignmentDraftToGrid(rowIndex, draft);
+            var despachoNuevaFila = TryApplyMatrixAssignmentWithCommand(
+                rowIndex,
+                claveNueva,
+                conceptoActual: null,
+                target,
+                draft);
 
-            try
+            if (despachoNuevaFila == MatrixAssignmentDispatch.NotSentPendingChanges
+                || UltimoEstadoAsignacionMatriz != BudgetOperationStatus.Committed)
             {
-                var concepto = BudgetConceptAssignmentService.ApplyDraft(
-                    _context,
-                    _proyecto.Id,
-                    CountConceptRowsBefore(rowIndex),
-                    conceptoActual,
-                    draft);
+                // El alta no se confirmó (conflicto, fallo o trabajo ajeno pendiente):
+                // el borrador queda visible y la fila conserva su Id 0/Tag null.
+                ApplyAssignmentDraftToGrid(rowIndex, draft);
+            }
 
-                row.Tag = concepto;
-                FinalizeBudgetConceptAssignment(rowIndex);
-                GuardarCambios();
-                return true;
-            }
-            catch (Exception ex)
+            return true;
+        }
+
+        private BudgetAssignmentTarget? ConstruirTargetAsignacion(
+            BudgetConceptAssignmentResult assignment,
+            BudgetConceptAssignmentDraft draft)
+        {
+            if (assignment.SourceRowIndex >= 0 && assignment.SourceConcept is { Id: > 0 } origen)
+                return BudgetAssignmentTarget.ForSourceConcept(
+                    BudgetPasteSourceConceptSnapshot.FromConcepto(origen));
+
+            if (draft.Matriz is { Id: > 0 } matriz)
+                return BudgetAssignmentTarget.ForMatrix(
+                    matriz.Id, BudgetMatrixAssignmentBase.FromMatriz(matriz));
+
+            if (draft.MatrizId is int matrizId && matrizId > 0)
             {
-                if (showErrors)
-                {
-                    MessageBox.Show($"Error al aplicar clave: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-                return false;
+                var matrizActual = _context.Matrices
+                    .AsNoTracking()
+                    .FirstOrDefault(m => m.Id == matrizId);
+
+                if (matrizActual != null)
+                    return BudgetAssignmentTarget.ForMatrix(
+                        matrizActual.Id, BudgetMatrixAssignmentBase.FromMatriz(matrizActual));
             }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Construye el rowset COMPLETO de filas persistidas que la vista ve antes de
+        /// crear una fila, y la posición de inserción según la fila actual del grid.
+        /// </summary>
+        private BudgetAssignmentRowset ConstruirRowsetAsignacion(int rowIndex, out int insertionIndex)
+        {
+            var filas = new List<BudgetAssignmentRow>(dgvPresupuesto.Rows.Count);
+            insertionIndex = 0;
+
+            for (int i = 0; i < dgvPresupuesto.Rows.Count; i++)
+            {
+                if (dgvPresupuesto.Rows[i].Tag is not ConceptoPresupuesto concepto || concepto.Id <= 0)
+                    continue;
+
+                filas.Add(BudgetAssignmentRow.FromConcepto(concepto));
+                if (i < rowIndex)
+                    insertionIndex++;
+            }
+
+            return new BudgetAssignmentRowset(filas);
         }
 
         /// <summary>
         /// Clasificación de la última asignación de matriz ejecutada como comando, o
-        /// <c>null</c> si la asignación no llegó a enviarse (fila sin persistir, trabajo
-        /// pendiente en el contexto compartido o ruta aún heredada). Observabilidad
-        /// interna para las pruebas del ensamblado; no es API pública.
+        /// <c>null</c> si la asignación no llegó a enviarse (trabajo pendiente en el
+        /// contexto compartido o reintento bloqueado por un commit incierto).
+        /// Observabilidad interna para las pruebas del ensamblado; no es API pública.
         /// </summary>
         internal BudgetOperationStatus? UltimoEstadoAsignacionMatriz { get; private set; }
 
@@ -757,20 +795,16 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Asigna una matriz a un concepto YA persistido con la ruta de comando: no
-        /// muta el Tag compartido antes de conocer el resultado y no ejecuta el
-        /// guardado heredado para este evento. Si falla o entra en conflicto, la clave
-        /// editada permanece visible como borrador.
-        /// <para>
-        /// La ruta heredada sigue vigente para las operaciones aún no migradas; el
-        /// pegado ya NO la invoca (viaja como un único comando atómico).
-        /// </para>
+        /// Asigna una matriz/copia a un concepto persistido o crea una fila nueva con la
+        /// ruta de comando: no muta el Tag compartido antes de conocer el resultado y no
+        /// ejecuta el guardado heredado para este evento. Si falla o entra en conflicto,
+        /// la clave editada permanece visible como borrador.
         /// </summary>
         private MatrixAssignmentDispatch TryApplyMatrixAssignmentWithCommand(
             int rowIndex,
             string claveNueva,
-            ConceptoPresupuesto conceptoActual,
-            int matrizId,
+            ConceptoPresupuesto? conceptoActual,
+            BudgetAssignmentTarget target,
             BudgetConceptAssignmentDraft draft,
             string? descriptionOverride = null,
             string? unitOverride = null)
@@ -784,22 +818,55 @@ namespace SOPRO.WinForms.Forms
             if (_context.ChangeTracker.HasChanges())
                 return MatrixAssignmentDispatch.NotSentPendingChanges;
 
+            bool esNuevaFila = conceptoActual is null || conceptoActual.Id <= 0;
+
+            // Un commit incierto no autoriza a reintentar el alta a ciegas: pudo haber
+            // insertado la fila y solo se sabe reconciliando con la base.
+            if (esNuevaFila && _asignacionNuevaFilaPendienteReconciliacion)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    "Alta de fila bloqueada: la asignación anterior quedó en estado incierto; " +
+                    "reconcilie con la base antes de reintentar.");
+                return MatrixAssignmentDispatch.NotSentPendingChanges;
+            }
+
+            BudgetAssignmentRowset? rowset = null;
+            int? insertionIndex = null;
+            if (esNuevaFila)
+            {
+                rowset = ConstruirRowsetAsignacion(rowIndex, out int indice);
+                insertionIndex = indice;
+            }
+
             BudgetMatrixAssignmentResult resultado;
             try
             {
-                resultado = BudgetPersistenceService.ExecuteMatrixAssignmentCommand(
-                    _factory,
-                    _context.DatabasePath,
-                    new BudgetMatrixAssignmentCommand(
+                var command = esNuevaFila
+                    ? BudgetMatrixAssignmentCommand.ForNewRow(
                         _proyecto.Id,
-                        conceptoActual.Id,
                         BudgetProjectCalculationBase.FromProyecto(_proyecto),
-                        BudgetConceptAssignmentBase.FromConcepto(conceptoActual),
-                        matrizId,
+                        target,
                         claveNueva,
                         descriptionOverride,
                         unitOverride,
-                        draft.Cantidad));
+                        draft.Cantidad,
+                        rowset!,
+                        insertionIndex!.Value)
+                    : BudgetMatrixAssignmentCommand.ForExistingRow(
+                        _proyecto.Id,
+                        conceptoActual!.Id,
+                        BudgetProjectCalculationBase.FromProyecto(_proyecto),
+                        BudgetConceptAssignmentBase.FromConcepto(conceptoActual),
+                        target,
+                        claveNueva,
+                        descriptionOverride,
+                        unitOverride,
+                        draft.Cantidad);
+
+                resultado = BudgetPersistenceService.ExecuteMatrixAssignmentCommand(
+                    _factory,
+                    _context.DatabasePath,
+                    command);
             }
             catch (Exception ex)
             {
@@ -808,6 +875,9 @@ namespace SOPRO.WinForms.Forms
             }
 
             UltimoEstadoAsignacionMatriz = resultado.Status;
+
+            if (resultado.Status == BudgetOperationStatus.OutcomeUnknown && esNuevaFila)
+                _asignacionNuevaFilaPendienteReconciliacion = true;
 
             if (!resultado.IsCommitted || resultado.Confirmed is null)
             {
@@ -824,14 +894,14 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Vuelca lo CONFIRMADO por la asignación: sincroniza la entidad compartida y
-        /// las celdas visibles (incluidos los agrupadores recalculados) bajo el guard de
-        /// reentrada, y las deja <c>Unchanged</c> para que el autoguardado heredado de
-        /// otras rutas no las reescriba.
+        /// Vuelca lo CONFIRMADO por la asignación: adjunta el concepto creado cuando la
+        /// fila era nueva, sincroniza Tag y celdas visibles (incluidos los Orden
+        /// desplazados y los agrupadores recalculados) bajo el guard de reentrada y deja
+        /// todo <c>Unchanged</c> para que el autoguardado heredado no lo reescriba.
         /// </summary>
         private void AplicarAsignacionMatrizConfirmada(
             int rowIndex,
-            ConceptoPresupuesto concepto,
+            ConceptoPresupuesto? concepto,
             BudgetMatrixAssignmentSnapshot confirmado)
         {
             var filasPorConcepto = ConstruirIndiceFilasPorConcepto();
@@ -839,7 +909,15 @@ namespace SOPRO.WinForms.Forms
             _asignandoMatriz = true;
             try
             {
-                SincronizarEntidadAsignacion(concepto, confirmado);
+                if (concepto is { Id: > 0 })
+                {
+                    SincronizarEntidadAsignacion(concepto, confirmado);
+                }
+                else
+                {
+                    var entidadCreada = AdjuntarConceptoConfirmado(confirmado.Concept);
+                    dgvPresupuesto.Rows[rowIndex].Tag = entidadCreada;
+                }
 
                 var claveCell = ObtenerCeldaPorNombreInterno(rowIndex, "Clave");
                 var descCell = ObtenerCeldaPorNombreInterno(rowIndex, "Descripcion");
@@ -854,6 +932,18 @@ namespace SOPRO.WinForms.Forms
                 if (cantidadCell != null) cantidadCell.Value = confirmado.Cantidad;
                 if (puCell != null) puCell.Value = confirmado.PrecioUnitario.ToStringImporte();
                 if (importeCell != null) importeCell.Value = confirmado.ImporteTotal.ToStringImporte();
+
+                // Las filas posteriores pudieron desplazar su Orden dentro del mismo
+                // comando: la instantánea trae el rowset completo confirmado.
+                foreach (var fila in confirmado.Rows)
+                {
+                    if (fila.ConceptId == confirmado.ConceptId)
+                        continue;
+
+                    var entidadFila = ResolverEntidadCompartida(filasPorConcepto, fila.ConceptId);
+                    if (entidadFila is not null)
+                        SincronizarConceptoCompartido(entidadFila, fila);
+                }
 
                 FinalizeBudgetConceptAssignment(rowIndex);
 
@@ -877,6 +967,8 @@ namespace SOPRO.WinForms.Forms
             {
                 _asignandoMatriz = asignandoPrevio;
             }
+
+            _asignacionNuevaFilaPendienteReconciliacion = false;
         }
 
         private void SincronizarEntidadAsignacion(

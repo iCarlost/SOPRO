@@ -190,6 +190,7 @@ namespace SOPRO.WinForms.Forms
                 ReasignarNumerosConceptos();
                 CargarOverlaysFormato(); // Formato de celdas persistido (UNA consulta)
                 ActualizarEstadisticas();
+                _asignacionNuevaFilaPendienteReconciliacion = false;
 
                 if (stateToRestore != null && dgvPresupuesto.Rows.Count > 0)
                 {

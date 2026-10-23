@@ -55,16 +55,27 @@ namespace SOPRO.Application.Services
                         "Los parámetros de cálculo del proyecto cambiaron en la base desde que se cargó; " +
                         "la vista debe recargarse."));
 
+            return command.ConceptId is int conceptId
+                ? StageExistingConceptAssignment(context, proyecto, command, conceptId)
+                : StageNewConceptAssignment(context, proyecto, command);
+        }
+
+        private static BudgetWriteStep<BudgetMatrixAssignmentSnapshot> StageExistingConceptAssignment(
+            SOPROContext context,
+            Proyecto proyecto,
+            BudgetMatrixAssignmentCommand command,
+            int conceptId)
+        {
             var concepto = context.ConceptosPresupuesto
-                .FirstOrDefault(c => c.Id == command.ConceptId && c.ProyectoId == command.ProjectId);
+                .FirstOrDefault(c => c.Id == conceptId && c.ProyectoId == command.ProjectId);
 
             if (concepto == null)
                 return BudgetWriteStep<BudgetMatrixAssignmentSnapshot>.Abort(
                     BudgetOperationResult.Conflict(
-                        $"El concepto {command.ConceptId} no pertenece al proyecto {command.ProjectId} " +
+                        $"El concepto {conceptId} no pertenece al proyecto {command.ProjectId} " +
                         "en la base; la vista debe recargarse."));
 
-            if (concepto.EsAgrupador || command.ExpectedConcept.EsAgrupador)
+            if (concepto.EsAgrupador || command.ExpectedConcept!.EsAgrupador)
                 return BudgetWriteStep<BudgetMatrixAssignmentSnapshot>.Abort(
                     BudgetOperationResult.Failed(
                         "Un agrupador no admite asignación directa de matriz; no se guardó nada."));
@@ -72,60 +83,259 @@ namespace SOPRO.Application.Services
             if (!MatchesConceptAssignmentBase(concepto, command.ExpectedConcept))
                 return BudgetWriteStep<BudgetMatrixAssignmentSnapshot>.Abort(
                     BudgetOperationResult.Conflict(
-                        $"El concepto {command.ConceptId} cambió en la base desde que se cargó; " +
+                        $"El concepto {conceptId} cambió en la base desde que se cargó; " +
                         "la vista debe recargarse."));
 
-            var matriz = context.Matrices
-                .FirstOrDefault(m => m.Id == command.MatrixId && m.ProyectoId == command.ProjectId);
-
-            if (matriz == null)
-                return BudgetWriteStep<BudgetMatrixAssignmentSnapshot>.Abort(
-                    BudgetOperationResult.Conflict(
-                        $"La matriz {command.MatrixId} no pertenece al proyecto {command.ProjectId} " +
-                        "en la base; la vista debe recargarse."));
-
-            if (matriz.Tipo != TipoMatriz.APU)
-                return BudgetWriteStep<BudgetMatrixAssignmentSnapshot>.Abort(
-                    BudgetOperationResult.Failed(
-                        "Este tipo de matriz no se puede asignar directamente a un concepto del presupuesto. " +
-                        "Seleccione una matriz de tipo APU."));
-
-            // Única fuente de aritmética de la asignación: el servicio canónico.
-            var draft = BudgetConceptAssignmentService.BuildDraftFromSelectedMatrix(
-                proyecto,
-                matriz,
-                command.ProposedQuantity,
-                command.ProposedKey,
-                command.DescriptionOverride,
-                command.UnitOverride);
+            var draft = ResolveAssignmentDraft(context, proyecto, command, out var error);
+            if (draft is null)
+                return BudgetWriteStep<BudgetMatrixAssignmentSnapshot>.Abort(error!);
 
             BudgetConceptAssignmentService.ApplyDraftValues(concepto, draft);
 
             PricePropagationService.ActualizarAgrupadores(context, new List<Proyecto> { proyecto });
 
-            var agrupadores = context.ConceptosPresupuesto
-                .Where(c => c.ProyectoId == command.ProjectId && c.EsAgrupador)
+            var filas = LoadOrderedRows(context, command.ProjectId);
+            var snapshot = BuildMatrixAssignmentSnapshot(
+                command.ProjectId, concepto, filas, createdNewRow: false);
+
+            return BudgetWriteStep<BudgetMatrixAssignmentSnapshot>.Commit(
+                snapshot, new[] { concepto.Id });
+        }
+
+        /// <summary>
+        /// Crea una fila genuinamente nueva (Id 0/Tag null) dentro de la misma
+        /// transacción: revalida el rowset COMPLETO y la posición propuesta, desplaza el
+        /// Orden de las filas posteriores, recalcula los agrupadores sobre la lista
+        /// final explícita y confirma con UN solo SaveChanges. Un fallo revierte la
+        /// inserción, los desplazamientos y los totales juntos.
+        /// </summary>
+        private static BudgetWriteStep<BudgetMatrixAssignmentSnapshot> StageNewConceptAssignment(
+            SOPROContext context,
+            Proyecto proyecto,
+            BudgetMatrixAssignmentCommand command)
+        {
+            var expectedRowset = command.ExpectedRowset!;
+            int insertionIndex = command.ProposedInsertionIndex!.Value;
+
+            var existentes = LoadOrderedRows(context, command.ProjectId);
+
+            if (!MatchesAssignmentRowset(existentes, expectedRowset))
+                return BudgetWriteStep<BudgetMatrixAssignmentSnapshot>.Abort(
+                    BudgetOperationResult.Conflict(
+                        "El orden de las filas del presupuesto cambió en la base desde que se cargó; " +
+                        "la vista debe recargarse."));
+
+            if (insertionIndex > existentes.Count)
+                return BudgetWriteStep<BudgetMatrixAssignmentSnapshot>.Abort(
+                    BudgetOperationResult.Conflict(
+                        "La posición propuesta ya no existe en el presupuesto; la vista debe recargarse."));
+
+            var draft = ResolveAssignmentDraft(context, proyecto, command, out var error);
+            if (draft is null)
+                return BudgetWriteStep<BudgetMatrixAssignmentSnapshot>.Abort(error!);
+
+            // La fila nueva ocupa la posición propuesta; las posteriores se desplazan
+            // en el MISMO comando para que el Orden persistido siga siendo consistente.
+            int nuevoOrden;
+            if (insertionIndex < existentes.Count)
+            {
+                nuevoOrden = existentes[insertionIndex].Orden;
+                for (int i = insertionIndex; i < existentes.Count; i++)
+                    existentes[i].Orden += 1;
+            }
+            else
+            {
+                nuevoOrden = existentes.Count == 0 ? 0 : existentes[^1].Orden + 1;
+            }
+
+            var nuevo = new ConceptoPresupuesto
+            {
+                ProyectoId = command.ProjectId,
+                EsAgrupador = false,
+                Nivel = 5,
+                Orden = nuevoOrden,
+                ColumnasPersonalizadasJSON = string.Empty,
+                Notas = string.Empty,
+                FechaCreacion = DateTime.Now,
+                FechaModificacion = DateTime.Now
+            };
+
+            BudgetConceptAssignmentService.ApplyDraftValues(nuevo, draft);
+            context.ConceptosPresupuesto.Add(nuevo);
+
+            // La consulta a la base todavía devolvería el orden anterior: se entrega la
+            // lista final explícita, ya desplazada e incluyendo la fila nueva.
+            var listaFinal = existentes
+                .Concat(new[] { nuevo })
+                .OrderBy(c => c.Orden)
+                .ThenBy(c => c.Id == 0 ? int.MaxValue : c.Id)
+                .ToList();
+
+            PricePropagationService.ActualizarAgrupadores(proyecto, listaFinal);
+
+            // El Id de la fila nueva solo existe después del SaveChanges: la instantánea
+            // se materializa entonces, sin una segunda escritura.
+            return BudgetWriteStep<BudgetMatrixAssignmentSnapshot>.CommitAfterSave(
+                () =>
+                {
+                    var filas = LoadOrderedRows(context, command.ProjectId);
+                    var conceptoCreado = filas.First(c => c.Id == nuevo.Id);
+                    return BuildMatrixAssignmentSnapshot(
+                        command.ProjectId, conceptoCreado, filas, createdNewRow: true);
+                },
+                () => new[] { nuevo.Id });
+        }
+
+        private static BudgetConceptAssignmentDraft? ResolveAssignmentDraft(
+            SOPROContext context,
+            Proyecto proyecto,
+            BudgetMatrixAssignmentCommand command,
+            out BudgetOperationResult? error)
+        {
+            error = null;
+
+            if (command.Target.Kind == BudgetAssignmentTargetKind.Matrix)
+            {
+                var matriz = context.Matrices
+                    .FirstOrDefault(m => m.Id == command.Target.ReferenceId
+                        && m.ProyectoId == command.ProjectId);
+
+                if (matriz == null)
+                {
+                    error = BudgetOperationResult.Conflict(
+                        $"La matriz {command.Target.ReferenceId} no pertenece al proyecto {command.ProjectId} " +
+                        "en la base; la vista debe recargarse.");
+                    return null;
+                }
+
+                if (matriz.Tipo != TipoMatriz.APU)
+                {
+                    error = BudgetOperationResult.Failed(
+                        "Este tipo de matriz no se puede asignar directamente a un concepto del presupuesto. " +
+                        "Seleccione una matriz de tipo APU.");
+                    return null;
+                }
+
+                if (command.Target.ExpectedMatrix is { } expectedMatrix
+                    && !MatchesMatrixAssignmentBase(matriz, expectedMatrix))
+                {
+                    error = BudgetOperationResult.Conflict(
+                        $"La matriz {command.Target.ReferenceId} cambió en la base desde que se cargó; " +
+                        "la vista debe recargarse.");
+                    return null;
+                }
+
+                // Única fuente de aritmética de la asignación: el servicio canónico.
+                return BudgetConceptAssignmentService.BuildDraftFromSelectedMatrix(
+                    proyecto,
+                    matriz,
+                    command.ProposedQuantity,
+                    command.ProposedKey,
+                    command.DescriptionOverride,
+                    command.UnitOverride);
+            }
+
+            var sourceSnapshot = command.Target.SourceConcept!;
+            var origen = context.ConceptosPresupuesto
+                .AsNoTracking()
+                .FirstOrDefault(c => c.Id == sourceSnapshot.ConceptId
+                    && c.ProyectoId == command.ProjectId);
+
+            if (origen == null)
+            {
+                error = BudgetOperationResult.Conflict(
+                    $"La fila de origen {sourceSnapshot.ConceptId} ya no existe en el proyecto " +
+                    $"{command.ProjectId}; la vista debe recargarse.");
+                return null;
+            }
+
+            if (!MatchesConceptAssignmentBase(origen, sourceSnapshot.ExpectedConcept))
+            {
+                error = BudgetOperationResult.Conflict(
+                    $"La fila de origen {sourceSnapshot.ConceptId} cambió en la base desde que se cargó; " +
+                    "la vista debe recargarse.");
+                return null;
+            }
+
+            var draft = BudgetConceptAssignmentService.BuildDraftFromConcept(
+                proyecto,
+                command.ProposedKey,
+                new ConceptoPresupuesto
+                {
+                    Id = origen.Id,
+                    ProyectoId = origen.ProyectoId,
+                    Clave = sourceSnapshot.Clave,
+                    Descripcion = sourceSnapshot.Descripcion,
+                    Unidad = sourceSnapshot.Unidad,
+                    Cantidad = sourceSnapshot.Cantidad,
+                    CostoDirectoUnitario = sourceSnapshot.CostoDirectoUnitario,
+                    MatrizId = sourceSnapshot.MatrizId
+                });
+
+            if (!string.IsNullOrWhiteSpace(command.DescriptionOverride))
+                draft.Descripcion = command.DescriptionOverride;
+            if (!string.IsNullOrWhiteSpace(command.UnitOverride))
+                draft.Unidad = command.UnitOverride;
+
+            return draft;
+        }
+
+        private static List<ConceptoPresupuesto> LoadOrderedRows(SOPROContext context, int projectId)
+            => context.ConceptosPresupuesto
+                .Where(c => c.ProyectoId == projectId)
                 .OrderBy(c => c.Orden)
                 .ThenBy(c => c.Id)
                 .ToList();
 
-            var snapshot = new BudgetMatrixAssignmentSnapshot(
-                command.ProjectId,
-                concepto.Id,
-                concepto.Clave,
-                concepto.Descripcion,
-                concepto.Unidad,
-                concepto.Cantidad,
-                concepto.CostoDirectoUnitario,
-                concepto.CostoDirectoTotal,
-                concepto.PrecioUnitario,
-                concepto.ImporteTotal,
-                concepto.MatrizId,
-                concepto.FechaModificacion,
-                agrupadores.Select(BudgetConfirmedConceptRow.FromConcepto).ToArray());
+        private static bool MatchesAssignmentRowset(
+            IReadOnlyList<ConceptoPresupuesto> actual,
+            BudgetAssignmentRowset expected)
+        {
+            if (actual.Count != expected.Rows.Count)
+                return false;
 
-            return BudgetWriteStep<BudgetMatrixAssignmentSnapshot>.Commit(
-                snapshot, new[] { concepto.Id });
+            for (int i = 0; i < actual.Count; i++)
+            {
+                var fila = actual[i];
+                var esperada = expected.Rows[i];
+
+                if (fila.Id != esperada.ConceptId
+                    || fila.Orden != esperada.Orden
+                    || fila.Nivel != esperada.Nivel
+                    || fila.EsAgrupador != esperada.EsAgrupador)
+                    return false;
+            }
+
+            return true;
+        }
+
+        private static bool MatchesMatrixAssignmentBase(
+            Matriz matriz,
+            BudgetMatrixAssignmentBase expected)
+        {
+            return matriz.Id == expected.MatrixId
+                && matriz.ProyectoId == expected.ProjectId
+                && string.Equals(matriz.Clave ?? string.Empty, expected.Clave, StringComparison.Ordinal)
+                && string.Equals(matriz.Descripcion ?? string.Empty, expected.Descripcion, StringComparison.Ordinal)
+                && string.Equals(matriz.Unidad ?? string.Empty, expected.Unidad, StringComparison.Ordinal)
+                && matriz.Tipo == expected.Tipo
+                && matriz.CostoDirecto == expected.CostoDirecto;
+        }
+
+        private static BudgetMatrixAssignmentSnapshot BuildMatrixAssignmentSnapshot(
+            int projectId,
+            ConceptoPresupuesto concepto,
+            IReadOnlyList<ConceptoPresupuesto> filas,
+            bool createdNewRow)
+        {
+            return new BudgetMatrixAssignmentSnapshot(
+                projectId,
+                BudgetConfirmedConceptDetail.FromConcepto(concepto),
+                filas.Where(c => c.EsAgrupador)
+                    .Select(BudgetConfirmedConceptRow.FromConcepto)
+                    .ToArray(),
+                filas.Select(BudgetConfirmedConceptDetail.FromConcepto).ToArray(),
+                createdNewRow);
         }
 
         /// <summary>

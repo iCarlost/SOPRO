@@ -526,19 +526,6 @@ namespace SOPRO.WinForms.Forms
             return rows;
         }
 
-        private int CountConceptRowsBefore(int rowIndex)
-        {
-            int conceptosAntes = 0;
-            for (int i = 0; i < rowIndex; i++)
-            {
-                if (dgvPresupuesto.Rows[i].Tag != null)
-                {
-                    conceptosAntes++;
-                }
-            }
-            return conceptosAntes;
-        }
-
         private void ApplyAssignmentDraftToGrid(int rowIndex, SOPRO.Application.Models.Presupuesto.BudgetConceptAssignmentDraft draft)
         {
             var claveCell = ObtenerCeldaPorNombreInterno(rowIndex, "Clave");

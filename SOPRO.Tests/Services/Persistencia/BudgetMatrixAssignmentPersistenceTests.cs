@@ -524,6 +524,537 @@ public class BudgetMatrixAssignmentPersistenceTests
         }
     }
 
+    [TestMethod]
+    public void ExecuteMatrixAssignmentCommand_FilaNueva_InsercionMediaDesplazaOrdenesYRecalculaAgrupador()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int conceptoExistenteId;
+            int agrupadorId;
+            int matrizDestinoId;
+            BudgetMatrixAssignmentCommand command;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                proyectoId = scenario.Proyecto.Id;
+                conceptoExistenteId = scenario.Concepto.Id;
+
+                agrupadorId = AddAggregator(context, proyectoId, importeInicial: 1000m).Id;
+                matrizDestinoId = AddMatrix(
+                    context, proyectoId, "APU-002", "Acero de refuerzo", "kg", 50m).Id;
+
+                var matrix = context.Matrices.Single(m => m.Id == matrizDestinoId);
+                var rowset = BudgetAssignmentRowset.FromConceptos(
+                    context.ConceptosPresupuesto.Where(c => c.ProyectoId == proyectoId));
+
+                command = BudgetMatrixAssignmentCommand.ForNewRow(
+                    proyectoId,
+                    BudgetProjectCalculationBase.FromProyecto(scenario.Proyecto),
+                    BudgetAssignmentTarget.ForMatrix(
+                        matrix.Id, BudgetMatrixAssignmentBase.FromMatriz(matrix)),
+                    "APU-002",
+                    descriptionOverride: null,
+                    unitOverride: null,
+                    proposedQuantity: 10m,
+                    expectedRowset: rowset,
+                    proposedInsertionIndex: 1);
+
+                var result = BudgetPersistenceService.ExecuteMatrixAssignmentCommand(
+                    new ProjectDbContextFactory(), dbPath, command);
+
+                Assert.AreEqual(BudgetOperationStatus.Committed, result.Status, result.Message);
+                Assert.IsTrue(result.IsCommitted);
+                Assert.IsTrue(result.Confirmed!.CreatedNewRow);
+                Assert.AreNotEqual(0, result.Confirmed.ConceptId);
+                Assert.AreEqual(result.Confirmed.ConceptId,
+                    result.Operation.ConfirmedConceptIds.Single());
+
+                var confirmado = result.Confirmed;
+                Assert.AreEqual("APU-002", confirmado.Clave);
+                Assert.AreEqual("Acero de refuerzo", confirmado.Descripcion);
+                Assert.AreEqual(50m, confirmado.CostoDirectoUnitario);
+                Assert.AreEqual(500m, confirmado.CostoDirectoTotal);
+                Assert.AreEqual(500m, confirmado.ImporteTotal);
+
+                var filas = confirmado.Rows;
+                Assert.AreEqual(3, filas.Count);
+                Assert.AreEqual(1, filas.Single(f => f.ConceptId == confirmado.ConceptId).Orden,
+                    "La fila nueva ocupa la posición propuesta.");
+                Assert.AreEqual(2, filas.Single(f => f.ConceptId == conceptoExistenteId).Orden,
+                    "La fila posterior se desplaza en el mismo comando.");
+                Assert.AreEqual(0, filas.Single(f => f.ConceptId == agrupadorId).Orden);
+
+                var agrupadorConfirmado = confirmado.Aggregators.Single(a => a.ConceptId == agrupadorId);
+                Assert.AreEqual(1500m, agrupadorConfirmado.ImporteTotal,
+                    "El agrupador suma el concepto nuevo y el existente.");
+                Assert.AreEqual(1500m, agrupadorConfirmado.CostoDirectoTotal);
+
+                // El contexto compartido de la vista no escribe el presupuesto.
+                Assert.AreEqual(1, scenario.Concepto.Orden,
+                    "El comando no mueve la entidad tracked del contexto compartido.");
+                Assert.AreEqual(EntityState.Unchanged, context.Entry(scenario.Concepto).State);
+            }
+
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                var filas = verificacion.ConceptosPresupuesto
+                    .AsNoTracking()
+                    .Where(c => c.ProyectoId == proyectoId)
+                    .OrderBy(c => c.Orden)
+                    .ThenBy(c => c.Id)
+                    .ToList();
+
+                Assert.AreEqual(3, filas.Count);
+                var nuevo = filas.Single(c => c.Clave == "APU-002");
+                Assert.AreEqual(1, nuevo.Orden);
+                Assert.AreEqual(5, nuevo.Nivel);
+                Assert.IsFalse(nuevo.EsAgrupador);
+                Assert.AreEqual(matrizDestinoId, nuevo.MatrizId);
+                Assert.AreEqual(500m, nuevo.ImporteTotal);
+
+                Assert.AreEqual(2, filas.Single(c => c.Id == conceptoExistenteId).Orden);
+                Assert.AreEqual(1500m, filas.Single(c => c.Id == agrupadorId).ImporteTotal);
+            }
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ExecuteMatrixAssignmentCommand_FilaNueva_FalloDeTriggerRevierteTodoYElReintentoInsertaUnaSolaVez()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int conceptoExistenteId;
+            int agrupadorId;
+            BudgetMatrixAssignmentCommand command;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                proyectoId = scenario.Proyecto.Id;
+                conceptoExistenteId = scenario.Concepto.Id;
+                agrupadorId = AddAggregator(context, proyectoId, importeInicial: 1000m).Id;
+
+                var matrix = AddMatrix(
+                    context, proyectoId, "APU-002", "Acero de refuerzo", "kg", 50m);
+                var rowset = BudgetAssignmentRowset.FromConceptos(
+                    context.ConceptosPresupuesto.Where(c => c.ProyectoId == proyectoId));
+
+                command = BudgetMatrixAssignmentCommand.ForNewRow(
+                    proyectoId,
+                    BudgetProjectCalculationBase.FromProyecto(scenario.Proyecto),
+                    BudgetAssignmentTarget.ForMatrix(
+                        matrix.Id, BudgetMatrixAssignmentBase.FromMatriz(matrix)),
+                    "APU-002",
+                    descriptionOverride: null,
+                    unitOverride: null,
+                    proposedQuantity: 10m,
+                    expectedRowset: rowset,
+                    proposedInsertionIndex: 1);
+
+                context.Database.ExecuteSqlRaw(
+                    "CREATE TRIGGER trg_fail_insert_concepto BEFORE INSERT ON ConceptosPresupuesto " +
+                    "BEGIN SELECT RAISE(ABORT, 'fallo_simulado_insert'); END;");
+
+                var primerIntento = BudgetPersistenceService.ExecuteMatrixAssignmentCommand(
+                    new ProjectDbContextFactory(), dbPath, command);
+
+                Assert.AreEqual(BudgetOperationStatus.Failed, primerIntento.Status,
+                    primerIntento.Message);
+                Assert.IsNull(primerIntento.Confirmed);
+                Assert.IsNotNull(primerIntento.Diagnostic);
+                StringAssert.Contains(primerIntento.Diagnostic!, "fallo_simulado_insert");
+                Assert.IsFalse((primerIntento.Message ?? string.Empty).Contains(
+                    "fallo_simulado_insert", StringComparison.Ordinal));
+
+                using (var trasFallo = new SOPROContext(dbPath))
+                {
+                    Assert.AreEqual(2, trasFallo.ConceptosPresupuesto.Count(
+                        c => c.ProyectoId == proyectoId),
+                        "El fallo no deja la fila nueva.");
+                    Assert.AreEqual(1, trasFallo.ConceptosPresupuesto
+                        .AsNoTracking().Single(c => c.Id == conceptoExistenteId).Orden,
+                        "El fallo no deja los Ordenes desplazados.");
+                    Assert.AreEqual(1000m, trasFallo.ConceptosPresupuesto
+                        .AsNoTracking().Single(c => c.Id == agrupadorId).ImporteTotal,
+                        "El fallo no deja los totales del agrupador.");
+                }
+
+                context.Database.ExecuteSqlRaw("DROP TRIGGER trg_fail_insert_concepto;");
+
+                var reintento = BudgetPersistenceService.ExecuteMatrixAssignmentCommand(
+                    new ProjectDbContextFactory(), dbPath, command);
+
+                Assert.AreEqual(BudgetOperationStatus.Committed, reintento.Status,
+                    reintento.Message);
+                Assert.IsTrue(reintento.Confirmed!.CreatedNewRow);
+            }
+
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                var filas = verificacion.ConceptosPresupuesto
+                    .AsNoTracking()
+                    .Where(c => c.ProyectoId == proyectoId)
+                    .OrderBy(c => c.Orden)
+                    .ToList();
+
+                Assert.AreEqual(3, filas.Count, "El reintento inserta una sola fila.");
+                Assert.AreEqual(1, filas.Single(c => c.Clave == "APU-002").Orden);
+                Assert.AreEqual(2, filas.Single(c => c.Id == conceptoExistenteId).Orden);
+                Assert.AreEqual(1500m, filas.Single(c => c.Id == agrupadorId).ImporteTotal);
+            }
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ExecuteMatrixAssignmentCommand_FilaNueva_RowsetUOrdenObsoletoDevuelveConflictoSinInsertar()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int conceptoExistenteId;
+            BudgetMatrixAssignmentCommand command;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                proyectoId = scenario.Proyecto.Id;
+                conceptoExistenteId = scenario.Concepto.Id;
+
+                AddAggregator(context, proyectoId, importeInicial: 1000m);
+                var matrix = AddMatrix(
+                    context, proyectoId, "APU-002", "Acero de refuerzo", "kg", 50m);
+                var rowset = BudgetAssignmentRowset.FromConceptos(
+                    context.ConceptosPresupuesto.Where(c => c.ProyectoId == proyectoId));
+
+                command = BudgetMatrixAssignmentCommand.ForNewRow(
+                    proyectoId,
+                    BudgetProjectCalculationBase.FromProyecto(scenario.Proyecto),
+                    BudgetAssignmentTarget.ForMatrix(
+                        matrix.Id, BudgetMatrixAssignmentBase.FromMatriz(matrix)),
+                    "APU-002",
+                    descriptionOverride: null,
+                    unitOverride: null,
+                    proposedQuantity: 10m,
+                    expectedRowset: rowset,
+                    proposedInsertionIndex: 1);
+
+                // La misma fila cambia de Orden después de cargar la vista.
+                using (var otroModulo = new SOPROContext(dbPath))
+                {
+                    var concepto = otroModulo.ConceptosPresupuesto.Single(c => c.Id == conceptoExistenteId);
+                    concepto.Orden = 5;
+                    otroModulo.SaveChanges();
+                }
+
+                var result = BudgetPersistenceService.ExecuteMatrixAssignmentCommand(
+                    new ProjectDbContextFactory(), dbPath, command);
+
+                Assert.AreEqual(BudgetOperationStatus.Conflict, result.Status, result.Message);
+                Assert.IsNull(result.Confirmed);
+            }
+
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                Assert.AreEqual(2, verificacion.ConceptosPresupuesto.Count(
+                    c => c.ProyectoId == proyectoId));
+                Assert.AreEqual(0, verificacion.ConceptosPresupuesto.Count(
+                    c => c.ProyectoId == proyectoId && c.Clave == "APU-002"));
+            }
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ExecuteMatrixAssignmentCommand_FilaNueva_MatrizCambioCostoDevuelveConflictoSinInsertar()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int matrizDestinoId;
+            BudgetMatrixAssignmentCommand command;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                proyectoId = scenario.Proyecto.Id;
+
+                AddAggregator(context, proyectoId, importeInicial: 1000m);
+                var matrix = AddMatrix(
+                    context, proyectoId, "APU-002", "Acero de refuerzo", "kg", 50m);
+                matrizDestinoId = matrix.Id;
+
+                var rowset = BudgetAssignmentRowset.FromConceptos(
+                    context.ConceptosPresupuesto.Where(c => c.ProyectoId == proyectoId));
+
+                command = BudgetMatrixAssignmentCommand.ForNewRow(
+                    proyectoId,
+                    BudgetProjectCalculationBase.FromProyecto(scenario.Proyecto),
+                    BudgetAssignmentTarget.ForMatrix(
+                        matrix.Id, BudgetMatrixAssignmentBase.FromMatriz(matrix)),
+                    "APU-002",
+                    descriptionOverride: null,
+                    unitOverride: null,
+                    proposedQuantity: 10m,
+                    expectedRowset: rowset,
+                    proposedInsertionIndex: rowset.Rows.Count);
+
+                using (var otroModulo = new SOPROContext(dbPath))
+                {
+                    var matriz = otroModulo.Matrices.Single(m => m.Id == matrizDestinoId);
+                    matriz.CostoDirecto = 60m;
+                    otroModulo.SaveChanges();
+                }
+
+                var result = BudgetPersistenceService.ExecuteMatrixAssignmentCommand(
+                    new ProjectDbContextFactory(), dbPath, command);
+
+                Assert.AreEqual(BudgetOperationStatus.Conflict, result.Status, result.Message);
+                Assert.IsNull(result.Confirmed);
+            }
+
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                Assert.AreEqual(0, verificacion.ConceptosPresupuesto.Count(
+                    c => c.ProyectoId == proyectoId && c.Clave == "APU-002"));
+            }
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ExecuteMatrixAssignmentCommand_FilaNueva_CopiaDesdeConceptoConfirmaConAritmeticaCanonica()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int conceptoOrigenId;
+            BudgetMatrixAssignmentCommand command;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                proyectoId = scenario.Proyecto.Id;
+                conceptoOrigenId = scenario.Concepto.Id;
+
+                AddAggregator(context, proyectoId, importeInicial: 1000m);
+                var rowset = BudgetAssignmentRowset.FromConceptos(
+                    context.ConceptosPresupuesto.Where(c => c.ProyectoId == proyectoId));
+
+                command = BudgetMatrixAssignmentCommand.ForNewRow(
+                    proyectoId,
+                    BudgetProjectCalculationBase.FromProyecto(scenario.Proyecto),
+                    BudgetAssignmentTarget.ForSourceConcept(
+                        BudgetPasteSourceConceptSnapshot.FromConcepto(scenario.Concepto)),
+                    "C-COPIA",
+                    descriptionOverride: null,
+                    unitOverride: null,
+                    proposedQuantity: scenario.Concepto.Cantidad,
+                    expectedRowset: rowset,
+                    proposedInsertionIndex: rowset.Rows.Count);
+
+                var result = BudgetPersistenceService.ExecuteMatrixAssignmentCommand(
+                    new ProjectDbContextFactory(), dbPath, command);
+
+                Assert.AreEqual(BudgetOperationStatus.Committed, result.Status, result.Message);
+                var confirmado = result.Confirmed!;
+                Assert.IsTrue(confirmado.CreatedNewRow);
+                Assert.AreEqual("C-COPIA", confirmado.Clave);
+                Assert.AreEqual(scenario.Concepto.Descripcion, confirmado.Descripcion);
+                Assert.AreEqual(100m, confirmado.CostoDirectoUnitario);
+                Assert.AreEqual(1000m, confirmado.ImporteTotal);
+            }
+
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                var copia = verificacion.ConceptosPresupuesto
+                    .AsNoTracking()
+                    .Single(c => c.ProyectoId == proyectoId && c.Clave == "C-COPIA");
+                Assert.AreNotEqual(conceptoOrigenId, copia.Id);
+                Assert.AreEqual(1000m, copia.ImporteTotal);
+            }
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ExecuteMatrixAssignmentCommand_FilaNueva_OrigenCambiadoDevuelveConflictoSinInsertar()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int conceptoOrigenId;
+            BudgetMatrixAssignmentCommand command;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                proyectoId = scenario.Proyecto.Id;
+                conceptoOrigenId = scenario.Concepto.Id;
+                AddAggregator(context, proyectoId, importeInicial: 1000m);
+
+                var source = BudgetPasteSourceConceptSnapshot.FromConcepto(scenario.Concepto);
+                var rowset = BudgetAssignmentRowset.FromConceptos(
+                    context.ConceptosPresupuesto.Where(c => c.ProyectoId == proyectoId));
+
+                command = BudgetMatrixAssignmentCommand.ForNewRow(
+                    proyectoId,
+                    BudgetProjectCalculationBase.FromProyecto(scenario.Proyecto),
+                    BudgetAssignmentTarget.ForSourceConcept(source),
+                    "C-COPIA",
+                    descriptionOverride: null,
+                    unitOverride: null,
+                    proposedQuantity: 10m,
+                    expectedRowset: rowset,
+                    proposedInsertionIndex: 1);
+
+                using (var otroModulo = new SOPROContext(dbPath))
+                {
+                    var origen = otroModulo.ConceptosPresupuesto.Single(c => c.Id == conceptoOrigenId);
+                    origen.CostoDirectoUnitario = 120m;
+                    otroModulo.SaveChanges();
+                }
+
+                var result = BudgetPersistenceService.ExecuteMatrixAssignmentCommand(
+                    new ProjectDbContextFactory(), dbPath, command);
+
+                Assert.AreEqual(BudgetOperationStatus.Conflict, result.Status, result.Message);
+                Assert.IsNull(result.Confirmed);
+            }
+
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                Assert.AreEqual(0, verificacion.ConceptosPresupuesto.Count(
+                    c => c.ProyectoId == proyectoId && c.Clave == "C-COPIA"));
+            }
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ExecuteMatrixAssignmentCommand_FilaNueva_OrigenEliminadoDevuelveConflictoSinInsertar()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int conceptoOrigenId;
+            BudgetMatrixAssignmentCommand command;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                proyectoId = scenario.Proyecto.Id;
+                conceptoOrigenId = scenario.Concepto.Id;
+                AddAggregator(context, proyectoId, importeInicial: 1000m);
+
+                var source = BudgetPasteSourceConceptSnapshot.FromConcepto(scenario.Concepto);
+
+                // El rowset se toma después de la baja: así el conflicto es del origen,
+                // no del rowset.
+                using (var otroModulo = new SOPROContext(dbPath))
+                {
+                    var origen = otroModulo.ConceptosPresupuesto.Single(c => c.Id == conceptoOrigenId);
+                    otroModulo.ConceptosPresupuesto.Remove(origen);
+                    otroModulo.SaveChanges();
+                }
+
+                using var lectura = TestDbFactory.CreateContextAt(dbPath);
+                var rowset = BudgetAssignmentRowset.FromConceptos(
+                    lectura.ConceptosPresupuesto.Where(c => c.ProyectoId == proyectoId));
+
+                command = BudgetMatrixAssignmentCommand.ForNewRow(
+                    proyectoId,
+                    BudgetProjectCalculationBase.FromProyecto(scenario.Proyecto),
+                    BudgetAssignmentTarget.ForSourceConcept(source),
+                    "C-COPIA",
+                    descriptionOverride: null,
+                    unitOverride: null,
+                    proposedQuantity: 10m,
+                    expectedRowset: rowset,
+                    proposedInsertionIndex: rowset.Rows.Count);
+
+                var result = BudgetPersistenceService.ExecuteMatrixAssignmentCommand(
+                    new ProjectDbContextFactory(), dbPath, command);
+
+                Assert.AreEqual(BudgetOperationStatus.Conflict, result.Status, result.Message);
+                Assert.IsNull(result.Confirmed);
+            }
+
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                Assert.AreEqual(0, verificacion.ConceptosPresupuesto.Count(
+                    c => c.ProyectoId == proyectoId && c.Clave == "C-COPIA"));
+            }
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ResolveByKey_SinCoincidencia_NoGeneraAsignacionNiAlta()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                int filasIniciales = context.ConceptosPresupuesto.Count(
+                    c => c.ProyectoId == scenario.Proyecto.Id);
+
+                var result = BudgetConceptAssignmentService.ResolveByKey(
+                    context,
+                    scenario.Proyecto,
+                    currentRowIndex: 0,
+                    key: "NO-EXISTE",
+                    existingConcept: null,
+                    currentQuantityText: "1",
+                    rows: Array.Empty<BudgetConceptKeyRowSnapshot>());
+
+                Assert.IsFalse(result.HasAssignment);
+                Assert.IsNull(result.Draft);
+                Assert.AreEqual(filasIniciales, context.ConceptosPresupuesto.Count(
+                    c => c.ProyectoId == scenario.Proyecto.Id),
+                    "Una clave sin coincidencia no crea ni modifica filas.");
+            }
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
     // ═════════════════════════════ Infraestructura ═════════════════════════════
 
     private static BudgetMatrixAssignmentCommand Command(

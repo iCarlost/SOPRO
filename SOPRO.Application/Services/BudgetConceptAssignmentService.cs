@@ -124,47 +124,9 @@ namespace SOPRO.Application.Services
             return draft;
         }
 
-        public static ConceptoPresupuesto ApplyDraft(
-            SOPROContext context,
-            int proyectoId,
-            int order,
-            ConceptoPresupuesto? existingConcept,
-            BudgetConceptAssignmentDraft draft)
-        {
-            if (context == null) throw new ArgumentNullException(nameof(context));
-            if (draft == null)   throw new ArgumentNullException(nameof(draft));
-
-            ConceptoPresupuesto concept;
-            if (existingConcept != null && existingConcept.Id > 0)
-            {
-                concept = existingConcept;
-            }
-            else
-            {
-                concept = new ConceptoPresupuesto
-                {
-                    ProyectoId                = proyectoId,
-                    EsAgrupador               = false,
-                    Nivel                     = 5,
-                    ColumnasPersonalizadasJSON = string.Empty,
-                    Notas                     = string.Empty
-                };
-                context.ConceptosPresupuesto.Add(concept);
-            }
-
-            concept.Orden       = order;
-            concept.EsAgrupador = false;
-            concept.Nivel       = 5;
-            ApplyDraftValues(concept, draft);
-
-            context.SaveChanges();
-            return concept;
-        }
-
         /// <summary>
         /// Vuelca en el concepto los valores del borrador sin guardar. Es la aritmética
-        /// canónica compartida por la ruta heredada (<see cref="ApplyDraft"/>, que crea o
-        /// actualiza y guarda) y por los comandos que aplican sobre un contexto nuevo.
+        /// canónica compartida por los comandos que aplican sobre un contexto nuevo.
         /// </summary>
         internal static void ApplyDraftValues(ConceptoPresupuesto concept, BudgetConceptAssignmentDraft draft)
         {

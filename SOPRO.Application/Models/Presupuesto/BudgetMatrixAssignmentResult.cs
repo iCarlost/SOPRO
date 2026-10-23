@@ -42,35 +42,33 @@ namespace SOPRO.Application.Models.Presupuesto
     {
         internal BudgetMatrixAssignmentSnapshot(
             int projectId,
-            int conceptId,
-            string clave,
-            string descripcion,
-            string unidad,
-            decimal cantidad,
-            decimal costoDirectoUnitario,
-            decimal costoDirectoTotal,
-            decimal precioUnitario,
-            decimal importeTotal,
-            int? matrizId,
-            DateTime fechaModificacion,
-            IReadOnlyList<BudgetConfirmedConceptRow> aggregators)
+            BudgetConfirmedConceptDetail concept,
+            IReadOnlyList<BudgetConfirmedConceptRow> aggregators,
+            IReadOnlyList<BudgetConfirmedConceptDetail> rows,
+            bool createdNewRow)
         {
             ProjectId = projectId;
-            ConceptId = conceptId;
-            Clave = clave;
-            Descripcion = descripcion;
-            Unidad = unidad;
-            Cantidad = cantidad;
-            CostoDirectoUnitario = costoDirectoUnitario;
-            CostoDirectoTotal = costoDirectoTotal;
-            PrecioUnitario = precioUnitario;
-            ImporteTotal = importeTotal;
-            MatrizId = matrizId;
-            FechaModificacion = fechaModificacion;
+            Concept = concept ?? throw new ArgumentNullException(nameof(concept));
+            ConceptId = concept.ConceptId;
+            Clave = concept.Clave;
+            Descripcion = concept.Descripcion;
+            Unidad = concept.Unidad;
+            Cantidad = concept.Cantidad;
+            CostoDirectoUnitario = concept.CostoDirectoUnitario;
+            CostoDirectoTotal = concept.CostoDirectoTotal;
+            PrecioUnitario = concept.PrecioUnitario;
+            ImporteTotal = concept.ImporteTotal;
+            MatrizId = concept.MatrizId;
+            FechaModificacion = concept.FechaModificacion;
             Aggregators = aggregators ?? Array.Empty<BudgetConfirmedConceptRow>();
+            Rows = rows ?? Array.Empty<BudgetConfirmedConceptDetail>();
+            CreatedNewRow = createdNewRow;
         }
 
         public int ProjectId { get; }
+
+        /// <summary>Detalle completo del concepto asignado o creado.</summary>
+        public BudgetConfirmedConceptDetail Concept { get; }
 
         public int ConceptId { get; }
 
@@ -96,5 +94,14 @@ namespace SOPRO.Application.Models.Presupuesto
 
         /// <summary>Agrupadores del proyecto tal como quedaron tras el recálculo, por Orden e Id.</summary>
         public IReadOnlyList<BudgetConfirmedConceptRow> Aggregators { get; }
+
+        /// <summary>
+        /// TODAS las filas persistidas del proyecto tras confirmar, ordenadas por Orden
+        /// e Id. Incluye el concepto creado y las filas cuyo Orden se desplazó.
+        /// </summary>
+        public IReadOnlyList<BudgetConfirmedConceptDetail> Rows { get; }
+
+        /// <summary><c>true</c> si el comando creó la fila (Id 0/Tag null).</summary>
+        public bool CreatedNewRow { get; }
     }
 }

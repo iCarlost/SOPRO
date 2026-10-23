@@ -535,6 +535,242 @@ public class FormPresupuestoAsignacionMatrizComandoTests
         }
     }
 
+    [TestMethod]
+    public void AsignacionMatrizSeleccionada_FilaNueva_ConfirmaAdjuntaTagConIdYSincronizaCeldas()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_selector_new_ok_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx);
+            int conceptosIniciales = ContarConceptosEnBase(dbPath, escenario.Proyecto.Id);
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"),
+                Path.Combine(root, "local")));
+            var grid = form.GridPrincipal;
+
+            int filaNueva = BuscarFilaVacia(grid);
+            Assert.IsTrue(filaNueva >= 0, "Debe existir una fila vacía para el alta.");
+            Assert.IsNull(grid.Rows[filaNueva].Tag,
+                "La fila nueva debe ser genuinamente no persistida (Tag null).");
+
+            Assert.IsTrue(form.TryApplySelectedMatrixAssignment(
+                    filaNueva,
+                    escenario.MatrizDestino,
+                    7m,
+                    preserveCurrentTexts: false),
+                "La fila nueva debe consumirse en la ruta de comando.");
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoAsignacionMatriz,
+                "El alta de la fila debe confirmarse como comando.");
+
+            var tag = (ConceptoPresupuesto)grid.Rows[filaNueva].Tag!;
+            Assert.IsTrue(tag.Id > 0, "El Tag se adjunta con el Id generado en el comando.");
+            Assert.AreEqual(escenario.MatrizDestino.Id, tag.MatrizId);
+            Assert.AreEqual("APU-002", tag.Clave);
+            Assert.AreEqual(7m, tag.Cantidad);
+            Assert.AreEqual(350m, tag.ImporteTotal);
+            Assert.AreEqual(EntityState.Unchanged, ctx.Entry(tag).State,
+                "El Tag adjuntado queda Unchanged para no insertarse de nuevo.");
+
+            Assert.AreEqual(conceptosIniciales + 1, ContarConceptosEnBase(dbPath, escenario.Proyecto.Id),
+                "El alta crea exactamente una fila.");
+
+            var persistido = LeerConceptoEnBase(dbPath, tag.Id);
+            Assert.AreEqual(2, persistido.Orden, "La fila nueva se agrega al final del rowset.");
+            Assert.AreEqual(5, persistido.Nivel);
+            Assert.IsFalse(persistido.EsAgrupador);
+            Assert.AreEqual(escenario.MatrizDestino.Id, persistido.MatrizId);
+            Assert.AreEqual(350m, persistido.ImporteTotal);
+
+            Assert.AreEqual("APU-002", BuscarCelda(grid, filaNueva, "Clave")!.Value?.ToString());
+            Assert.AreEqual("Acero de refuerzo",
+                BuscarCelda(grid, filaNueva, "Descripcion")!.Value?.ToString());
+            StringAssert.Contains(
+                BuscarCelda(grid, filaNueva, "Importe")!.Value?.ToString() ?? string.Empty, "350");
+
+            Assert.AreEqual(1, LeerConceptoEnBase(dbPath, escenario.Concepto.Id).Orden,
+                "La fila existente conserva su Orden.");
+            Assert.AreEqual(1350m, escenario.Agrupador.ImporteTotal,
+                "El agrupador compartido se sincroniza con el total confirmado.");
+            Assert.AreEqual(EntityState.Unchanged, ctx.Entry(escenario.Agrupador).State);
+
+            Assert.IsFalse(ctx.ChangeTracker.HasChanges(),
+                "El alta confirmada no deja trabajo pendiente en el contexto compartido.");
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void AsignacionMatrizSeleccionada_FilaNuevaFallaElInsert_ConservaBorradorYElReintentoInsertaUnaSolaVez()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_selector_new_fail_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx);
+            int conceptosIniciales = ContarConceptosEnBase(dbPath, escenario.Proyecto.Id);
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"),
+                Path.Combine(root, "local")));
+            var grid = form.GridPrincipal;
+
+            int filaNueva = BuscarFilaVacia(grid);
+            Assert.IsTrue(filaNueva >= 0, "Debe existir una fila vacía para el alta.");
+
+            CrearTriggerDeFalloInsercion(dbPath);
+
+            Assert.IsTrue(form.TryApplySelectedMatrixAssignment(
+                    filaNueva,
+                    escenario.MatrizDestino,
+                    7m,
+                    preserveCurrentTexts: false));
+
+            Assert.AreEqual(BudgetOperationStatus.Failed, form.UltimoEstadoAsignacionMatriz,
+                "El INSERT rechazado debe clasificarse como fallo revertido.");
+
+            Assert.IsNull(grid.Rows[filaNueva].Tag,
+                "Un alta fallida conserva la fila como no persistida (Tag null).");
+            Assert.AreEqual("APU-002", BuscarCelda(grid, filaNueva, "Clave")!.Value?.ToString());
+            Assert.AreEqual("Acero de refuerzo",
+                BuscarCelda(grid, filaNueva, "Descripcion")!.Value?.ToString());
+            Assert.AreEqual(7m, Convert.ToDecimal(BuscarCelda(grid, filaNueva, "Cantidad")!.Value));
+            Assert.AreEqual(conceptosIniciales, ContarConceptosEnBase(dbPath, escenario.Proyecto.Id),
+                "El INSERT rechazado no deja la fila nueva.");
+            Assert.IsFalse(ctx.ChangeTracker.HasChanges(),
+                "Un alta fallida no deja trabajo pendiente en el contexto compartido.");
+
+            EliminarTriggerDeFalloInsercion(dbPath);
+
+            Assert.IsTrue(form.TryApplySelectedMatrixAssignment(
+                    filaNueva,
+                    escenario.MatrizDestino,
+                    7m,
+                    preserveCurrentTexts: false),
+                "El reintento debe consumirse en la ruta de asignación.");
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoAsignacionMatriz,
+                "El reintento sin trigger debe confirmarse.");
+
+            var tag = (ConceptoPresupuesto)grid.Rows[filaNueva].Tag!;
+            Assert.IsTrue(tag.Id > 0);
+            Assert.AreEqual(conceptosIniciales + 1, ContarConceptosEnBase(dbPath, escenario.Proyecto.Id),
+                "El reintento inserta una sola fila.");
+            Assert.AreEqual(tag.Id, LeerConceptoEnBase(dbPath, tag.Id).Id);
+            Assert.AreEqual(350m, tag.ImporteTotal);
+            Assert.AreEqual(EntityState.Unchanged, ctx.Entry(tag).State);
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void AsignacionMatrizSeleccionada_FilaCreadaPorCambioTipo_ActualizaLaExistenteSinDuplicar()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_tipo_luego_matriz_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx);
+            int conceptosIniciales = ContarConceptosEnBase(dbPath, escenario.Proyecto.Id);
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"),
+                Path.Combine(root, "local")));
+            var grid = form.GridPrincipal;
+
+            int filaNueva = BuscarFilaVacia(grid);
+            Assert.IsTrue(filaNueva >= 0, "Debe existir una fila vacía para el alta por Tipo.");
+
+            // El cambio de Tipo persiste la fila con Id generado por el comando.
+            var tipoCell = BuscarCelda(grid, filaNueva, "Tipo");
+            Assert.IsNotNull(tipoCell);
+            tipoCell!.Value = "Concepto";
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoCambioTipo,
+                "El cambio de tipo debe crear la fila persistida como comando.");
+            var tagCreado = (ConceptoPresupuesto)grid.Rows[filaNueva].Tag!;
+            Assert.IsTrue(tagCreado.Id > 0, "La fila creada por Tipo debe tener Id.");
+            int idCreado = tagCreado.Id;
+            Assert.AreEqual(conceptosIniciales + 1, ContarConceptosEnBase(dbPath, escenario.Proyecto.Id));
+
+            // Asignar la matriz debe ACTUALIZAR esa fila existente, nunca insertar otra.
+            Assert.IsTrue(form.TryApplySelectedMatrixAssignment(
+                    filaNueva,
+                    escenario.MatrizDestino,
+                    7m,
+                    preserveCurrentTexts: false));
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoAsignacionMatriz);
+            Assert.AreEqual(conceptosIniciales + 1, ContarConceptosEnBase(dbPath, escenario.Proyecto.Id),
+                "La asignación de una fila creada por Tipo no inserta un duplicado.");
+
+            var tagAsignado = (ConceptoPresupuesto)grid.Rows[filaNueva].Tag!;
+            Assert.AreEqual(idCreado, tagAsignado.Id,
+                "El Tag conserva el Id de la fila creada por el cambio de tipo.");
+            Assert.AreEqual(escenario.MatrizDestino.Id, tagAsignado.MatrizId);
+            Assert.AreEqual(350m, tagAsignado.ImporteTotal);
+            Assert.AreEqual(EntityState.Unchanged, ctx.Entry(tagAsignado).State);
+
+            var persistido = LeerConceptoEnBase(dbPath, idCreado);
+            Assert.AreEqual(idCreado, persistido.Id);
+            Assert.AreEqual(escenario.MatrizDestino.Id, persistido.MatrizId);
+            Assert.AreEqual(350m, persistido.ImporteTotal);
+            Assert.AreEqual(2, persistido.Orden,
+                "La actualización conserva la posición que le dio el alta por Tipo.");
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
     // ═════════════════════════════ Infraestructura ═════════════════════════════
 
     private sealed class Escenario
@@ -657,6 +893,37 @@ public class FormPresupuestoAsignacionMatrizComandoTests
 
     private static void EliminarTriggerDeFallo(string dbPath)
         => EjecutarSql(dbPath, "DROP TRIGGER trg_fail_concepto;");
+
+    private static void CrearTriggerDeFalloInsercion(string dbPath)
+        => EjecutarSql(dbPath,
+            "CREATE TRIGGER trg_fail_insert_concepto BEFORE INSERT ON ConceptosPresupuesto " +
+            "BEGIN SELECT RAISE(ABORT, 'fallo_simulado_insert'); END;");
+
+    private static void EliminarTriggerDeFalloInsercion(string dbPath)
+        => EjecutarSql(dbPath, "DROP TRIGGER trg_fail_insert_concepto;");
+
+    private static int ContarConceptosEnBase(string dbPath, int proyectoId)
+    {
+        using var verificacion = new SOPROContext(dbPath);
+        return verificacion.ConceptosPresupuesto
+            .AsNoTracking()
+            .Count(c => c.ProyectoId == proyectoId);
+    }
+
+    private static int BuscarFilaVacia(DataGridView grid)
+    {
+        for (int i = 0; i < grid.Rows.Count; i++)
+        {
+            if (grid.Rows[i].Tag is not null)
+                continue;
+
+            var tipo = BuscarCelda(grid, i, "Tipo")?.Value?.ToString();
+            if (string.IsNullOrWhiteSpace(tipo))
+                return i;
+        }
+
+        return -1;
+    }
 
     private static void EjecutarSql(string dbPath, string sql)
     {
