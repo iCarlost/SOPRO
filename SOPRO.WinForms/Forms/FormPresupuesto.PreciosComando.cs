@@ -99,25 +99,38 @@ namespace SOPRO.WinForms.Forms
         /// pendiente no se toca nada, para no pisar borradores ajenos.
         /// </summary>
         public void RecargarPreciosDesdeBase()
+            => IntentarRecargarPreciosDesdeBase();
+
+        /// <summary>
+        /// Núcleo verificable de <see cref="RecargarPreciosDesdeBase"/>: devuelve
+        /// <c>true</c> SÓLO cuando la lectura terminó y su instantánea quedó
+        /// aplicada sobre proyecto, filas, panel y grid. Errores de lectura, trabajo
+        /// pendiente, edición activa o proyecto ausente devuelven <c>false</c> sin
+        /// tocar nada; si las filas se aplicaron pero el panel no pudo reconciliar su
+        /// matriz visible, también devuelve <c>false</c> para que el llamador no
+        /// libere bloqueos sobre una vista parcial. El contrato público no cambia:
+        /// los llamadores heredados ignoran el resultado.
+        /// </summary>
+        internal bool IntentarRecargarPreciosDesdeBase()
         {
             if (_cargando || IsDisposed)
-                return;
+                return false;
 
             try
             {
                 _context.ChangeTracker.DetectChanges();
                 if (_context.ChangeTracker.HasChanges())
-                    return;
+                    return false;
 
                 if (dgvPresupuesto.IsCurrentCellInEditMode)
-                    return;
+                    return false;
 
                 var proyectoFresco = _context.Proyectos
                     .AsNoTracking()
                     .FirstOrDefault(p => p.Id == _proyecto.Id);
 
                 if (proyectoFresco == null)
-                    return;
+                    return false;
 
                 var filas = _context.ConceptosPresupuesto
                     .AsNoTracking()
@@ -129,12 +142,31 @@ namespace SOPRO.WinForms.Forms
                 SincronizarProyectoCompartido(BudgetProjectCalculationBase.FromProyecto(proyectoFresco));
                 AplicarFilasConfirmadas(filas.Select(BudgetConfirmedConceptRow.FromConcepto).ToArray());
                 ActualizarTitulo();
-                _panelMatricesEmbebido?.RecargarMatrizVisibleDesdeBd();
+
+                // La recarga sólo es segura para reconciliar si el panel existe y
+                // confirma que aplicó una matriz persistida. Sin selección/matriz
+                // visible, en modo creación o con borradores, NO hubo reconciliación
+                // visual y el llamador no puede liberar bloqueos.
+                if (_panelMatricesEmbebido == null
+                    || !_panelMatricesEmbebido.IntentarRecargarMatrizVisibleDesdeBd())
+                {
+                    return false;
+                }
+
                 dgvPresupuesto.Refresh();
+
+                // La instantánea sólo cuenta como aplicada si no dejó trabajo
+                // pendiente ni una edición activa a medio reconciliar.
+                _context.ChangeTracker.DetectChanges();
+                if (_context.ChangeTracker.HasChanges() || dgvPresupuesto.IsCurrentCellInEditMode)
+                    return false;
+
+                return true;
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"RecargarPrecios: {ex.Message}");
+                return false;
             }
         }
 

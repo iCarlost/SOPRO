@@ -99,12 +99,13 @@ namespace SOPRO.Application.Models.Presupuesto
             if (copia.Select(r => r.ComponentId).Distinct().Count() != copia.Length)
                 throw new ArgumentException("El fingerprint no admite componentes repetidos.", nameof(rows));
 
-            Rows = copia
+            Rows = Array.AsReadOnly(copia
                 .OrderBy(r => r.Orden)
                 .ThenBy(r => r.ComponentId)
-                .ToArray();
+                .ToArray());
         }
 
+        /// <summary>Filas ordenadas por Orden e Id, en colección de solo lectura.</summary>
         public IReadOnlyList<BudgetMatrixComponentQuantityBase> Rows { get; }
 
         public static BudgetMatrixComponentStateFingerprint FromComponentes(
@@ -169,11 +170,13 @@ namespace SOPRO.Application.Models.Presupuesto
     }
 
     /// <summary>
-    /// Base esperada de un insumo de catálogo para un alta de componente: identidad,
-    /// pertenencia (nula = maestro, o el proyecto), datos visibles y el valor que
-    /// interviene en el cálculo (precio unitario, salario real o costo horario) más
-    /// la marca de porcentaje de mano de obra. Cualquier cambio en la base invalida
-    /// el lote antes de escribir.
+    /// Base esperada de un insumo de catálogo o de una matriz auxiliar que interviene
+    /// en el cálculo de una matriz: identidad, pertenencia (nula = maestro, o el
+    /// proyecto), datos visibles y el valor que interviene en el cálculo (precio
+    /// unitario, salario real, costo horario o costo directo del auxiliar) más la
+    /// marca de porcentaje de mano de obra y, para auxiliares, el tipo de matriz
+    /// (una Cuadrilla cambia la elegibilidad de ajuste por mano de obra). Cualquier
+    /// cambio en la base invalida el lote o el reajuste antes de escribir.
     /// </summary>
     public sealed class BudgetMatrixComponentSourceBase
     {
@@ -185,7 +188,8 @@ namespace SOPRO.Application.Models.Presupuesto
             string descripcion,
             string unidad,
             decimal precioUnitario,
-            bool esPorcentajeManoDeObra)
+            bool esPorcentajeManoDeObra,
+            TipoMatriz? tipoMatriz = null)
         {
             if (sourceId <= 0)
                 throw new ArgumentOutOfRangeException(nameof(sourceId));
@@ -198,6 +202,7 @@ namespace SOPRO.Application.Models.Presupuesto
             Unidad = unidad ?? string.Empty;
             PrecioUnitario = precioUnitario;
             EsPorcentajeManoDeObra = esPorcentajeManoDeObra;
+            TipoMatriz = tipoMatriz;
         }
 
         public TipoComponenteMatriz TipoComponente { get; }
@@ -220,6 +225,44 @@ namespace SOPRO.Application.Models.Presupuesto
         public decimal PrecioUnitario { get; }
 
         public bool EsPorcentajeManoDeObra { get; }
+
+        /// <summary>
+        /// Tipo de la matriz auxiliar (Básico, APU o Cuadrilla); null para insumos de
+        /// catálogo. Una Cuadrilla se ajusta como mano de obra, así que un cambio de
+        /// tipo invalida cualquier base calculada con el tipo anterior.
+        /// </summary>
+        public TipoMatriz? TipoMatriz { get; }
+
+        /// <summary>
+        /// Traduce el componente a la base de su fuente usando la navegación cargada.
+        /// Es la traducción canónica de captura: falla si falta la navegación para no
+        /// construir una base incompleta que luego parezca válida.
+        /// </summary>
+        public static BudgetMatrixComponentSourceBase FromComponente(ComponenteMatriz componente)
+        {
+            ArgumentNullException.ThrowIfNull(componente);
+
+            return componente.TipoComponente switch
+            {
+                TipoComponenteMatriz.Material => FromMaterial(
+                    componente.Material ?? throw MissingNavigation(componente, nameof(componente.Material))),
+                TipoComponenteMatriz.ManoDeObra => FromManoDeObra(
+                    componente.ManoDeObra ?? throw MissingNavigation(componente, nameof(componente.ManoDeObra))),
+                TipoComponenteMatriz.Maquinaria => FromMaquinaria(
+                    componente.Maquinaria ?? throw MissingNavigation(componente, nameof(componente.Maquinaria))),
+                TipoComponenteMatriz.Auxiliar => FromAuxiliar(
+                    componente.Auxiliar ?? throw MissingNavigation(componente, nameof(componente.Auxiliar))),
+                TipoComponenteMatriz.Herramienta => FromHerramienta(
+                    componente.Herramienta ?? throw MissingNavigation(componente, nameof(componente.Herramienta))),
+                _ => throw new InvalidOperationException(
+                    $"El componente {componente.Id} tiene un tipo no soportado: {componente.TipoComponente}.")
+            };
+        }
+
+        private static InvalidOperationException MissingNavigation(
+            ComponenteMatriz componente,
+            string navegacion)
+            => new($"El componente {componente.Id} ({componente.TipoComponente}) no tiene cargada la navegación {navegacion}.");
 
         public static BudgetMatrixComponentSourceBase FromMaterial(Material material)
         {
@@ -279,6 +322,29 @@ namespace SOPRO.Application.Models.Presupuesto
                 herramienta.Unidad,
                 herramienta.PrecioUnitario,
                 herramienta.EsPorcentajeMO);
+        }
+
+        /// <summary>
+        /// Base de una matriz auxiliar referenciada por un componente: el valor que
+        /// interviene en el cálculo es su costo directo almacenado (el auxiliar entra
+        /// como hoja precalculada) y el tipo de matriz distingue una Cuadrilla (se
+        /// ajusta como mano de obra) de un Básico/APU. La pertenencia es la del
+        /// proyecto propietario.
+        /// </summary>
+        public static BudgetMatrixComponentSourceBase FromAuxiliar(Matriz matriz)
+        {
+            ArgumentNullException.ThrowIfNull(matriz);
+
+            return new BudgetMatrixComponentSourceBase(
+                TipoComponenteMatriz.Auxiliar,
+                matriz.Id,
+                matriz.ProyectoId,
+                matriz.Clave,
+                matriz.Descripcion,
+                matriz.Unidad,
+                matriz.CostoDirecto,
+                esPorcentajeManoDeObra: false,
+                tipoMatriz: matriz.Tipo);
         }
     }
 }

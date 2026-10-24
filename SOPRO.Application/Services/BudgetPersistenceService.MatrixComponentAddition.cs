@@ -373,7 +373,8 @@ namespace SOPRO.Application.Services
                 && string.Equals(actual.Descripcion, expected.Descripcion, StringComparison.Ordinal)
                 && string.Equals(actual.Unidad, expected.Unidad, StringComparison.Ordinal)
                 && actual.PrecioUnitario == expected.PrecioUnitario
-                && actual.EsPorcentajeManoDeObra == expected.EsPorcentajeManoDeObra;
+                && actual.EsPorcentajeManoDeObra == expected.EsPorcentajeManoDeObra
+                && actual.TipoMatriz == expected.TipoMatriz;
         }
 
         /// <summary>

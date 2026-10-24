@@ -378,6 +378,38 @@ namespace SOPRO.Application.Services
         }
 
         /// <summary>
+        /// Descubrimiento ÚNICO del cierre ascendente por aristas auxiliares: los
+        /// orígenes más todas las matrices del proyecto que dependen transitivamente de
+        /// ellos. No recarga ni muta matrices; lo comparten el recálculo y la validación
+        /// previa de comandos que necesitan rechazar un cierre con bases obsoletas antes
+        /// de ajustar nada.
+        /// </summary>
+        internal static HashSet<int> CalcularCierreAscendente(
+            SOPROContext ctx,
+            IEnumerable<int> matrizIdsOrigen,
+            int? proyectoId = null)
+        {
+            ArgumentNullException.ThrowIfNull(ctx);
+            ArgumentNullException.ThrowIfNull(matrizIdsOrigen);
+
+            var origen = matrizIdsOrigen.Where(id => id > 0).Distinct().ToHashSet();
+            var closure = new HashSet<int>(origen);
+            if (origen.Count == 0) return closure;
+
+            var padresPorAuxiliar = CargarAristasAuxiliar(ctx, proyectoId);
+            var frente = new Queue<int>(origen);
+            while (frente.Count > 0)
+            {
+                if (!padresPorAuxiliar.TryGetValue(frente.Dequeue(), out var padres)) continue;
+                foreach (var padre in padres)
+                    if (closure.Add(padre))
+                        frente.Enqueue(padre);
+            }
+
+            return closure;
+        }
+
+        /// <summary>
         /// Cierre ascendente (todas las matrices que dependen transitivamente de los
         /// orígenes, solo dentro del proyecto de la sesión) recalculado en orden
         /// topológico, ORÍGENES INCLUIDOS: dos matrices que contienen ambas el insumo
@@ -391,17 +423,11 @@ namespace SOPRO.Application.Services
             if (origen.Count == 0) return;
 
             var cargados = todasMatrices.Select(m => m.Id).ToHashSet();
-            var padresPorAuxiliar = CargarAristasAuxiliar(ctx, proyectoId);
 
-            var closure = new HashSet<int>(origen);
-            var frente = new Queue<int>(origen);
-            while (frente.Count > 0)
-            {
-                if (!padresPorAuxiliar.TryGetValue(frente.Dequeue(), out var padres)) continue;
-                foreach (var padre in padres)
-                    if (closure.Add(padre))
-                        frente.Enqueue(padre);
-            }
+            // Mismo descubrimiento que la validación previa de comandos: una sola
+            // definición de cierre ascendente evita que validación y recálculo
+            // discrepen sobre qué matrices participan.
+            var closure = CalcularCierreAscendente(ctx, origen, proyectoId);
 
             // Los padres descubiertos son siempre del proyecto de la sesión (aristas
             // filtradas); un origen de otro proyecto no se recalcula nunca (hoja

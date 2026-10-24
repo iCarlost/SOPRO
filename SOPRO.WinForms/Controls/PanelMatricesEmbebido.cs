@@ -74,6 +74,7 @@ namespace SOPRO.WinForms.Controls
         private string _cabeceraBaseDescripcion = string.Empty;
         private string _cabeceraBaseUnidad = string.Empty;
         private TipoMatriz _cabeceraBaseTipo = TipoMatriz.APU;
+        private bool? _celdaComponenteEnEdicionForzada;
 
         public PanelMatricesEmbebido(SOPROContext context, int proyectoId)
         {
@@ -94,6 +95,41 @@ namespace SOPRO.WinForms.Controls
                 || (_txtDescripcionMatriz?.Focused ?? false)
                 || (_txtUnidadMatriz?.Focused ?? false)
                 || ((_dgvComponentes?.IsCurrentCellInEditMode ?? false) && _dgvComponentes.EditingControl is TextBox);
+        }
+
+        /// <summary>
+        /// Matriz que el panel tiene cargada como vista (AsNoTracking), tal como el
+        /// usuario la está viendo. La usan las rutas que deben revalidar contra la
+        /// base que la pantalla mostraba y no contra una lectura fresca de la base.
+        /// </summary>
+        internal Matriz? MatrizVisibleEnPanel => _matrizActual;
+
+        /// <summary>
+        /// Indica si la cabecera que el panel está editando tiene cambios sin guardar.
+        /// Las rutas externas la usan para no reemplazar la matriz visible ni descartar
+        /// el borrador del usuario.
+        /// </summary>
+        internal bool TieneCambiosPendientesCabeceraEnPanel => TieneCambiosPendientesCabecera();
+
+        /// <summary>
+        /// Indica si el grid de componentes tiene una celda en edición. Mientras
+        /// exista ese borrador, <see cref="RecargarMatrizVisibleDesdeBd"/> no
+        /// reemplaza la matriz visible y la instantánea no puede sincronizarse;
+        /// las rutas externas deben abstenerse en vez de confirmar sobre un draft.
+        /// </summary>
+        internal bool TieneCeldaComponenteEnEdicionEnPanel
+            => _celdaComponenteEnEdicionForzada
+               ?? (_dgvComponentes?.IsCurrentCellInEditMode ?? false);
+
+        /// <summary>Fuerza el estado de edición de componentes para las pruebas del ensamblado.</summary>
+        internal void SimularCeldaComponenteEnEdicionParaPrueba(bool enEdicion)
+            => _celdaComponenteEnEdicionForzada = enEdicion;
+
+        /// <summary>Deja el panel sin fila ni matriz visible para las pruebas del ensamblado.</summary>
+        internal void SimularSinSeleccionParaPrueba()
+        {
+            _filaActual = -1;
+            MostrarSinSeleccion();
         }
 
 
@@ -434,33 +470,75 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             }
         }
 
-        /// <summary>Recarga desde BBDD la matriz del concepto visible (p.ej. cuando el Catálogo de Materiales cambió un precio). Ignora el short-circuit de fila/matriz igual.</summary>
+        /// <summary>
+        /// Recarga desde BBDD la matriz del concepto visible (p.ej. cuando el Catálogo
+        /// de Materiales cambió un precio). Conserva el contrato histórico para los
+        /// llamadores que sólo necesitan disparar la recarga; use
+        /// <see cref="IntentarRecargarMatrizVisibleDesdeBd"/> para saber si la vista
+        /// quedó realmente reconciliada.
+        /// </summary>
         public void RecargarMatrizVisibleDesdeBd()
-        {
-            if (_filaActual < 0) return;
-            if (_modoCreacionMatriz) return;
-            // No recargar mientras una celda está en edición (evita pisar lo que el usuario escribe).
-            if (_dgvComponentes != null && _dgvComponentes.IsCurrentCellInEditMode) return;
+            => IntentarRecargarMatrizVisibleDesdeBd();
 
-            // En subedición de componente el nivel abierto es el HIJO (cuadrilla/básico),
-            // no el P.U. del concepto: recargar ese hijo desde BD sin salir del modo ni
-            // reemplazar _matrizActual por el padre (rompería la UX de subedición).
-            if (_modoSubedicionComponente && _matrizEditandoId.HasValue)
+        /// <summary>
+        /// Intenta recargar y aplicar la matriz visible desde la base. Devuelve
+        /// <c>true</c> sólo si la vista quedó realmente reconciliada con una matriz
+        /// persistida:
+        /// <list type="bullet">
+        /// <item>carga normal => <c>true</c> sólo si <c>_matrizActual</c> es la
+        /// matriz fresca del concepto seleccionado;</item>
+        /// <item>sin fila/selección visible, fila null o que no es concepto,
+        /// agrupador, concepto sin MatrizId, modo creación, borrador de cabecera,
+        /// celda de componentes en edición, subedición de componente o falta de la
+        /// matriz esperada => <c>false</c>.</item>
+        /// </list>
+        /// No muestra prompts ni ejecuta <c>SaveChanges</c>.
+        /// </summary>
+        internal bool IntentarRecargarMatrizVisibleDesdeBd()
+        {
+            try
             {
-                var hijo = CargarMatrizConComponentes(_matrizEditandoId.Value, asNoTracking: true);
-                if (hijo != null)
+                if (_filaActual < 0)
+                    return false;
+
+                if (_modoCreacionMatriz)
+                    return false;
+
+                if (TieneCambiosPendientesCabecera())
+                    return false;
+
+                if (_dgvComponentes != null && _dgvComponentes.IsCurrentCellInEditMode)
+                    return false;
+
+                // En subedición de componente el nivel abierto es el HIJO (cuadrilla/básico),
+                // no el P.U. del concepto: recargar ese hijo desde BD sin salir del modo ni
+                // reemplazar _matrizActual por el padre (rompería la UX de subedición).
+                if (_modoSubedicionComponente && _matrizEditandoId.HasValue)
                 {
+                    var hijo = CargarMatrizConComponentes(_matrizEditandoId.Value, asNoTracking: true);
+                    if (hijo == null)
+                        return false;
+
                     _matrizActual = hijo;
                     LiberarBloqueoEdicionCantidadComponente();
                     // Recarga fresca del hijo: el cierre atómico confirmado deja de
                     // ser vigente conservando el bookkeeping heredado de la subedición.
                     _subedicionSoloCantidadConfirmada = false;
                     MostrarMatriz(hijo, null);
-                }
-                return;
-            }
 
-            CargarMatrizDeFila(_filaActual, forceReload: true);
+                    // La vista muestra el HIJO, no la matriz del concepto seleccionado:
+                    // la selección no quedó reconciliada aunque el hijo se refrescara.
+                    return false;
+                }
+
+                return IntentarCargarMatrizDeFila(_filaActual, forceReload: true);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"PanelMatricesEmbebido.IntentarRecargarMatrizVisibleDesdeBd: {ex.Message}");
+                return false;
+            }
         }
 
         private void ConfigurarMenuContextualComponentes()
@@ -648,12 +726,24 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
         }
 
         private void CargarMatrizDeFila(int fila, bool forceReload)
+            => IntentarCargarMatrizDeFila(fila, forceReload);
+
+        /// <summary>
+        /// Carga la matriz de la fila. Devuelve <c>true</c> sólo si
+        /// <c>_matrizActual</c> quedó apuntando a la matriz fresca del concepto
+        /// seleccionado. Sin selección, fila null/no concepto, agrupador, concepto
+        /// sin APU, recarga cancelada o matriz esperada ausente => <c>false</c>.
+        /// </summary>
+        private bool IntentarCargarMatrizDeFila(int fila, bool forceReload)
         {
             if (_dgvPresupuesto == null || fila < 0 || fila >= _dgvPresupuesto.Rows.Count)
-            { MostrarSinSeleccion(); return; }
+            {
+                MostrarSinSeleccion();
+                return false;
+            }
 
             if (!ConfirmarCambioDeContextoExterno(fila))
-                return;
+                return false;
 
             _filaActual = fila;
             var concepto = _dgvPresupuesto.Rows[fila].Tag as ConceptoPresupuesto;
@@ -661,19 +751,19 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             if (concepto == null)
             {
                 MostrarSinSeleccion("Selecciona un concepto del presupuesto para ver su APU", "");
-                return;
+                return false;
             }
 
             if (concepto.EsAgrupador)
             {
                 MostrarSinSeleccion("El elemento seleccionado es un agrupador", "Selecciona una fila tipo concepto para consultar o editar su APU.");
-                return;
+                return false;
             }
 
             if (concepto.MatrizId == null)
             {
                 MostrarSinSeleccion("Concepto sin APU asignada", "Usa la columna P.U. o la búsqueda inteligente en Descripción para vincular una matriz.");
-                return;
+                return false;
             }
 
             bool mismaFila = _ultimaFilaCargada == fila;
@@ -684,7 +774,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             {
                 ActualizarInfoConcepto(concepto);
                 ActualizarNavegacion();
-                return;
+                return _matrizActual.Id == concepto.MatrizId.Value;
             }
 
             // Cargar la matriz FRESCA desde BD solo cuando realmente cambia el concepto/matriz
@@ -693,7 +783,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             if (_matrizActual == null)
             {
                 MostrarSinSeleccion("No se pudo cargar la APU asociada", "La fila apunta a una matriz inexistente o no disponible.");
-                return;
+                return false;
             }
 
             // Recarga fresca desde la base: libera el bloqueo de la ruta de comando.
@@ -705,6 +795,8 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
 
             MostrarMatriz(_matrizActual, concepto);
             ActualizarNavegacion();
+
+            return _matrizActual != null && _matrizActual.Id == concepto.MatrizId.Value;
         }
 
         private void MostrarMatriz(Matriz matriz, ConceptoPresupuesto concepto)
