@@ -182,7 +182,8 @@ namespace SOPRO.Application.Services
             IReadOnlyList<int> confirmedConceptIds,
             string? diagnostic,
             Func<TConfirmed>? confirmedFactory = null,
-            Func<IReadOnlyList<int>>? confirmedConceptIdsFactory = null)
+            Func<IReadOnlyList<int>>? confirmedConceptIdsFactory = null,
+            bool skipSave = false)
         {
             ShouldCommit = shouldCommit;
             StopResult = stopResult;
@@ -191,9 +192,16 @@ namespace SOPRO.Application.Services
             Diagnostic = diagnostic;
             ConfirmedFactory = confirmedFactory;
             ConfirmedConceptIdsFactory = confirmedConceptIdsFactory;
+            ShouldSaveChanges = !skipSave;
         }
 
         public bool ShouldCommit { get; }
+
+        /// <summary>
+        /// False para comandos sin efectos (lote vacío): la instantánea se materializa
+        /// pero el ejecutor no llama a SaveChanges.
+        /// </summary>
+        public bool ShouldSaveChanges { get; }
 
         public BudgetOperationResult? StopResult { get; }
 
@@ -227,6 +235,11 @@ namespace SOPRO.Application.Services
         internal static BudgetWriteStep<TConfirmed> Abort(BudgetOperationResult result, string? diagnostic = null)
             => new(false, result ?? throw new ArgumentNullException(nameof(result)), null,
                 Array.Empty<int>(), diagnostic);
+
+        internal static BudgetWriteStep<TConfirmed> NoChanges(TConfirmed confirmed)
+            => new(true, null,
+                confirmed ?? throw new ArgumentNullException(nameof(confirmed)),
+                Array.Empty<int>(), null, skipSave: true);
     }
 
     /// <summary>
@@ -290,7 +303,8 @@ namespace SOPRO.Application.Services
 
             try
             {
-                context.SaveChanges();
+                if (step.ShouldSaveChanges)
+                    context.SaveChanges();
             }
             catch (Exception ex)
             {

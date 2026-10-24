@@ -47,6 +47,16 @@ namespace SOPRO.WinForms.Forms
 
                 AplicarInstantaneaComponente(snapshot.Project, snapshot.Leaves, snapshot.Aggregators);
             };
+
+            _panelMatricesEmbebido.AltasComponentesConfirmadas += (sender, snapshot) =>
+            {
+                if (IsDisposed || _cargando)
+                    return;
+                if (snapshot is null || snapshot.ProjectId != _proyecto.Id)
+                    return;
+
+                AplicarInstantaneaComponente(snapshot.Project, snapshot.Leaves, snapshot.Aggregators);
+            };
         }
 
         /// <summary>

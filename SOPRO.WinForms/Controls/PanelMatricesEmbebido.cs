@@ -895,18 +895,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 return;
             }
             if (!EnsureMatrixSavedForComponents()) return;
-            using var dlg = new Forms.FormSeleccionarInsumo(_context, _proyectoId, TipoComponenteMatriz.Material);
-            if (dlg.ShowDialog() != DialogResult.OK) return;
-            
-            foreach (var componente in dlg.ComponentesSeleccionados)
-            {
-                componente.MatrizId = _matrizActual.Id;
-                componente.Notas ??= "";
-                _context.ComponentesMatriz.Add(componente);
-            }
-            
-            _context.SaveChanges();
-            GuardarYPropagar();
+            AgregarComponentesPersistidos(TipoComponenteMatriz.Material);
         }
 
         private void BtnAgregarMO_Click(object sender, EventArgs e)
@@ -918,18 +907,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 return;
             }
             if (!EnsureMatrixSavedForComponents()) return;
-            using var dlg = new Forms.FormSeleccionarInsumo(_context, _proyectoId, TipoComponenteMatriz.ManoDeObra);
-            if (dlg.ShowDialog() != DialogResult.OK) return;
-            
-            foreach (var componente in dlg.ComponentesSeleccionados)
-            {
-                componente.MatrizId = _matrizActual.Id;
-                componente.Notas ??= "";
-                _context.ComponentesMatriz.Add(componente);
-            }
-            
-            _context.SaveChanges();
-            GuardarYPropagar();
+            AgregarComponentesPersistidos(TipoComponenteMatriz.ManoDeObra);
         }
 
         private void BtnAgregarMaquinaria_Click(object sender, EventArgs e)
@@ -941,18 +919,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 return;
             }
             if (!EnsureMatrixSavedForComponents()) return;
-            using var dlg = new Forms.FormSeleccionarInsumo(_context, _proyectoId, TipoComponenteMatriz.Maquinaria);
-            if (dlg.ShowDialog() != DialogResult.OK) return;
-            
-            foreach (var componente in dlg.ComponentesSeleccionados)
-            {
-                componente.MatrizId = _matrizActual.Id;
-                componente.Notas ??= "";
-                _context.ComponentesMatriz.Add(componente);
-            }
-            
-            _context.SaveChanges();
-            GuardarYPropagar();
+            AgregarComponentesPersistidos(TipoComponenteMatriz.Maquinaria);
         }
 
         private void BtnAgregarBasico_Click(object sender, EventArgs e)
@@ -964,18 +931,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 return;
             }
             if (!EnsureMatrixSavedForComponents()) return;
-            using var dlg = new Forms.FormSeleccionarInsumo(_context, _proyectoId, TipoComponenteMatriz.Auxiliar);
-            if (dlg.ShowDialog() != DialogResult.OK) return;
-            
-            foreach (var componente in dlg.ComponentesSeleccionados)
-            {
-                componente.MatrizId = _matrizActual.Id;
-                componente.Notas ??= "";
-                _context.ComponentesMatriz.Add(componente);
-            }
-            
-            _context.SaveChanges();
-            GuardarYPropagar();
+            AgregarComponentesPersistidos(TipoComponenteMatriz.Auxiliar);
         }
         
         private void BtnAgregarHerramienta_Click(object sender, EventArgs e)
@@ -987,18 +943,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 return;
             }
             if (!EnsureMatrixSavedForComponents()) return;
-            using var dlg = new Forms.FormSeleccionarInsumo(_context, _proyectoId, TipoComponenteMatriz.Herramienta);
-            if (dlg.ShowDialog() != DialogResult.OK) return;
-            
-            foreach (var componente in dlg.ComponentesSeleccionados)
-            {
-                componente.MatrizId = _matrizActual.Id;
-                componente.Notas ??= "";
-                _context.ComponentesMatriz.Add(componente);
-            }
-            
-            _context.SaveChanges();
-            GuardarYPropagar();
+            AgregarComponentesPersistidos(TipoComponenteMatriz.Herramienta);
         }
 
         // ── Eliminar componente ────────────────────────────────────────
