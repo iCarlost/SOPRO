@@ -42,16 +42,29 @@ namespace SOPRO.WinForms.Controls
         private IntentoCantidadComponente? _intentoCantidadPendiente;
 
         /// <summary>
-        /// Bloquea nuevas ediciones de cantidad de componente tras un resultado
-        /// <see cref="BudgetOperationStatus.OutcomeUnknown"/>: reintentar sin
-        /// reconcilar duplicaría un ciclo cuyo commit no se sabe si ocurrió.
-        /// Solo una recarga segura del panel lo libera.
+        /// Bloquea TODA mutación de componentes del panel (edición de cantidad y
+        /// eliminación) tras un resultado <see cref="BudgetOperationStatus.OutcomeUnknown"/>:
+        /// reintentar sin reconcilar duplicaría un ciclo cuyo commit no se sabe
+        /// si ocurrió. Solo una recarga segura del panel lo libera.
         /// </summary>
         private bool _edicionCantidadComponenteBloqueada;
 
         /// <summary>Punto de aislamiento de avisos para las pruebas; el panel no abre avisos modales propios en la ruta de comando.</summary>
         internal static Action<string, string, MessageBoxIcon> MostrarAvisoCantidadComponente { get; set; }
             = (titulo, mensaje, icono) => MessageBox.Show(mensaje, titulo, MessageBoxButtons.OK, icono);
+
+        /// <summary>Punto de aislamiento de avisos de la ruta de eliminación para las pruebas.</summary>
+        internal static Action<string, string, MessageBoxIcon> MostrarAvisoEliminacionComponente { get; set; }
+            = (titulo, mensaje, icono) => MessageBox.Show(mensaje, titulo, MessageBoxButtons.OK, icono);
+
+        /// <summary>Bases pre-eliminación inmutables construidas SOLO desde la vista (matriz AsNoTracking y rowset de tags).</summary>
+        private sealed class BasesEliminacionComponente
+        {
+            public BudgetProjectCalculationBase Proyecto = null!;
+            public BudgetMatrixCalculationBase Matriz = null!;
+            public BudgetMatrixComponentFingerprint Componentes = null!;
+            public BudgetMatrixComponentQuantityBase Componente = null!;
+        }
 
         /// <summary>Detalle técnico del último despacho no enviado; nunca se muestra.</summary>
         internal string? UltimaRazonSinDespachar { get; private set; }
@@ -78,6 +91,28 @@ namespace SOPRO.WinForms.Controls
         /// para el refresco de precios.
         /// </summary>
         public event EventHandler<BudgetMatrixComponentQuantitySnapshot>? CantidadComponenteConfirmada;
+
+        /// <summary>
+        /// Instantánea confirmada por la ruta de comando de ELIMINACIÓN de un
+        /// componente persistido (matrices afectadas, componentes recalculados,
+        /// hojas y agrupadores del presupuesto). La consume FormPresupuesto
+        /// aplicando filas por Id; el panel removió el componente antes de emitir.
+        /// </summary>
+        public event EventHandler<BudgetMatrixComponentDeletionSnapshot>? ComponenteMatrizEliminadoConfirmado;
+
+        /// <summary>
+        /// Clasificación de la última eliminación de componente ejecutada como
+        /// comando, o <c>null</c> si no llegó a enviarse (trabajo pendiente en el
+        /// contexto compartido, transición ambigua o bases no construibles).
+        /// Observabilidad interna para las pruebas; no se muestra en la UI.
+        /// </summary>
+        internal BudgetOperationStatus? UltimoEstadoEliminacionComponente { get; private set; }
+
+        /// <summary>Detalle técnico de la última eliminación no despachada; nunca se muestra.</summary>
+        internal string? UltimaRazonEliminacionSinDespachar { get; private set; }
+
+        /// <summary>Indicador interno para las pruebas del bloqueo por resultado incierto.</summary>
+        internal bool BloqueoComponentesActivo => _edicionCantidadComponenteBloqueada;
 
         /// <summary>
         /// Ruta de comando para la celda Cantidad de un componente persistido.
@@ -470,6 +505,249 @@ namespace SOPRO.WinForms.Controls
                 .ToDictionary(g => g.Key, g => g.First());
             foreach (var entrada in _context.ChangeTracker.Entries<ComponenteMatriz>())
             {
+                if (!componentesPorId.TryGetValue(entrada.Entity.Id, out var fila))
+                    continue;
+                entrada.Entity.Cantidad = fila.Cantidad;
+                entrada.Entity.Rendimiento = fila.Rendimiento;
+                entrada.Entity.Importe = fila.Importe;
+                entrada.OriginalValues.SetValues(entrada.CurrentValues);
+                entrada.State = EntityState.Unchanged;
+            }
+        }
+
+        // ══════════════════ Ruta de comando: ELIMINACIÓN de componente persistido ══════════════════
+
+        /// <summary>
+        /// Ruta de comando para la eliminación de un componente YA persistido
+        /// (llamada por <see cref="DgvComponentes_CellClick"/> tras la confirmación
+        /// del usuario; los componentes temporales del modo de creación NO pasan
+        /// por aquí). Construye las bases inmutables solo desde la vista (matriz
+        /// AsNoTracking y rowset de tags), exige el contexto compartido limpio y
+        /// despacha <see cref="BudgetPersistenceService.ExecuteMatrixComponentDeletionCommand"/>
+        /// sobre un contexto nuevo. Jamás toca la ruta heredada
+        /// (Remove/SaveChanges/GuardarYPropagar): el componente compartido nunca
+        /// se marca Deleted desde la vista, así ningún SaveChanges ajeno la
+        /// re-elimina. Devuelve <c>false</c> solo cuando la fila no corresponde a
+        /// un componente persistido de esta ruta.
+        /// </summary>
+        internal bool ProcesarEliminacionComponentePersistida(int rowIndex)
+        {
+            UltimoEstadoEliminacionComponente = null;
+            UltimaRazonEliminacionSinDespachar = null;
+
+            if (_dgvComponentes == null)
+                return false;
+            if (rowIndex < 0 || rowIndex >= _dgvComponentes.Rows.Count)
+                return false;
+            if (UsaComponentesTemporales())
+                return false;
+
+            var comp = ObtenerComponentePorFilaTrabajo(rowIndex);
+            if (comp == null)
+                return false;
+
+            if (comp.Id <= 0)
+                return false;
+
+            if (_edicionCantidadComponenteBloqueada)
+            {
+                UltimaRazonEliminacionSinDespachar = "Panel bloqueado por resultado incierto previo";
+                MostrarAvisoEliminacionComponente(
+                    "Eliminar componente",
+                    "La eliminación no se procesó: hay una operación previa cuyo resultado no se sabe si " +
+                    "quedó guardado. Cierre y vuelva a abrir el presupuesto para reconciliar la vista.",
+                    MessageBoxIcon.Warning);
+                return true;
+            }
+
+            if (_matrizActual == null || comp.MatrizId != _matrizActual.Id)
+            {
+                MostrarAvisoEliminacionComponente(
+                    "Eliminar componente",
+                    "La matriz del componente cambió en el panel; el componente no se eliminó.",
+                    MessageBoxIcon.Warning);
+                return true;
+            }
+
+            _context.ChangeTracker.DetectChanges();
+            if (_context.ChangeTracker.HasChanges())
+            {
+                UltimaRazonEliminacionSinDespachar = "Contexto compartido sucio";
+                MostrarAvisoEliminacionComponente(
+                    "Eliminar componente",
+                    "El componente no se eliminó: hay cambios pendientes en el contexto; revise y " +
+                    "reintente, o recargue la vista.",
+                    MessageBoxIcon.Information);
+                return true;
+            }
+
+            if (EsTransicionCeldaAmbigua(rowIndex))
+            {
+                UltimaRazonEliminacionSinDespachar = "Transición de celda ambigua";
+                MostrarAvisoEliminacionComponente(
+                    "Eliminar componente",
+                    "El componente no se eliminó: hay una celda en edición; cierre la edición y reintente.",
+                    MessageBoxIcon.Information);
+                return true;
+            }
+
+            var bases = PrepararBasesEliminacion(comp);
+            if (bases == null)
+            {
+                MostrarAvisoEliminacionComponente(
+                    "Eliminar componente",
+                    "El componente no se eliminó: la vista no está sincronizada con la base; recargue y reintente.",
+                    MessageBoxIcon.Warning);
+                return true;
+            }
+
+            var rowset = CapturarRowsetPresupuesto();
+            if (rowset == null)
+            {
+                MostrarAvisoEliminacionComponente(
+                    "Eliminar componente",
+                    "El componente no se eliminó: el rowset del presupuesto no está íntegro en la vista; recargue y reintente.",
+                    MessageBoxIcon.Warning);
+                return true;
+            }
+
+            BudgetMatrixComponentDeletionResult resultado;
+            try
+            {
+                resultado = BudgetPersistenceService.ExecuteMatrixComponentDeletionCommand(
+                    _factoryComando,
+                    _context.DatabasePath,
+                    new BudgetMatrixComponentDeletionCommand(
+                        _proyectoId,
+                        bases.Proyecto,
+                        bases.Matriz,
+                        bases.Componentes,
+                        bases.Componente,
+                        rowset));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Eliminación de componente: {ex.Message}");
+                MostrarAvisoEliminacionComponente(
+                    "Eliminar componente",
+                    "El componente no se eliminó por un problema inesperado; revise y reintente.",
+                    MessageBoxIcon.Warning);
+                return true;
+            }
+
+            UltimoEstadoEliminacionComponente = resultado.Status;
+
+            if (!resultado.IsCommitted || resultado.Confirmed is null)
+            {
+                if (resultado.Status == BudgetOperationStatus.OutcomeUnknown)
+                {
+                    _edicionCantidadComponenteBloqueada = true;
+                    MostrarAvisoEliminacionComponente(
+                        "Eliminar componente",
+                        "No se sabe si la eliminación quedó guardada. Cierre y vuelva a abrir el " +
+                        "presupuesto para reconciliar la vista.",
+                        MessageBoxIcon.Warning);
+                }
+                else
+                {
+                    MostrarAvisoEliminacionComponente(
+                        "Eliminar componente",
+                        resultado.Message ?? "El componente no se eliminó.",
+                        MessageBoxIcon.Information);
+                }
+                return true;
+            }
+
+            AplicarEliminacionComponenteConfirmada(comp, resultado.Confirmed);
+            return true;
+        }
+
+        /// <summary>
+        /// Bases pre-eliminación construidas SOLO desde la vista: la matriz
+        /// <see cref="_matrizActual"/> es AsNoTracking (nunca toca el tracker en el
+        /// render) y el componente es la entidad de presentación, no la tracked.
+        /// </summary>
+        private BasesEliminacionComponente? PrepararBasesEliminacion(ComponenteMatriz comp)
+        {
+            var proyecto = _context.Proyectos.AsNoTracking()
+                .FirstOrDefault(p => p.Id == _proyectoId);
+            if (proyecto == null)
+                return null;
+
+            return new BasesEliminacionComponente
+            {
+                Proyecto = BudgetProjectCalculationBase.FromProyecto(proyecto),
+                Matriz = BudgetMatrixCalculationBase.FromMatriz(_matrizActual!),
+                Componentes = BudgetMatrixComponentFingerprint.FromComponentes(_matrizActual!.Componentes),
+                Componente = BudgetMatrixComponentQuantityBase.FromComponente(comp),
+            };
+        }
+
+        /// <summary>
+        /// Aplica la instantánea confirmada de la eliminación: remueve SOLO el
+        /// componente confirmado de la vista, sincroniza las entidades compartidas
+        /// afectadas como Unchanged, deja Detached la entidad compartida del
+        /// componente eliminado (ningún SaveChanges ajeno puede re-eliminarla),
+        /// repinta el panel desde los componentes confirmados y notifica a
+        /// FormPresupuesto; todo sin segunda escritura.
+        /// </summary>
+        private void AplicarEliminacionComponenteConfirmada(ComponenteMatriz comp, BudgetMatrixComponentDeletionSnapshot snapshot)
+        {
+            if (_matrizActual != null)
+            {
+                var removido = _matrizActual.Componentes
+                    .FirstOrDefault(c => c.Id == snapshot.DeletedComponentId);
+                if (removido != null)
+                    _matrizActual.Componentes.Remove(removido);
+
+                if (_matrizActual.Id == snapshot.Matrix.MatrixId)
+                {
+                    _matrizActual.CostoDirecto = snapshot.Matrix.CostoDirecto;
+                    _matrizActual.FechaModificacion = snapshot.Matrix.FechaModificacion;
+                }
+            }
+
+            MarcarAfectadasUnchangedEliminacion(snapshot);
+
+            var entradaObjetivo = _context.ChangeTracker.Entries<ComponenteMatriz>()
+                .FirstOrDefault(e => e.Entity.Id == snapshot.DeletedComponentId);
+            if (entradaObjetivo != null)
+                entradaObjetivo.State = EntityState.Detached;
+
+            if (_matrizActual != null)
+                PintarComponentesEnGrid(_matrizActual.Componentes);
+
+            ComponenteMatrizEliminadoConfirmado?.Invoke(this, snapshot);
+        }
+
+        /// <summary>
+        /// Marca SOLO las entidades compartidas tracked afectadas por la eliminación
+        /// como Unchanged con OriginalValues sincronizados (la entidad del
+        /// componente eliminado NO se toca aquí: se desconecta aparte); las
+        /// entidades Modified ajenas se conservan y el ChangeTracker jamás se limpia.
+        /// </summary>
+        private void MarcarAfectadasUnchangedEliminacion(BudgetMatrixComponentDeletionSnapshot snapshot)
+        {
+            var matricesPorId = snapshot.AffectedMatrices
+                .GroupBy(m => m.MatrixId)
+                .ToDictionary(g => g.Key, g => g.First());
+            foreach (var entrada in _context.ChangeTracker.Entries<Matriz>())
+            {
+                if (!matricesPorId.TryGetValue(entrada.Entity.Id, out var fila))
+                    continue;
+                entrada.Entity.CostoDirecto = fila.CostoDirecto;
+                entrada.Entity.FechaModificacion = fila.FechaModificacion;
+                entrada.OriginalValues.SetValues(entrada.CurrentValues);
+                entrada.State = EntityState.Unchanged;
+            }
+
+            var componentesPorId = snapshot.AffectedComponents
+                .GroupBy(c => c.ComponentId)
+                .ToDictionary(g => g.Key, g => g.First());
+            foreach (var entrada in _context.ChangeTracker.Entries<ComponenteMatriz>())
+            {
+                if (entrada.Entity.Id == snapshot.DeletedComponentId)
+                    continue;
                 if (!componentesPorId.TryGetValue(entrada.Entity.Id, out var fila))
                     continue;
                 entrada.Entity.Cantidad = fila.Cantidad;

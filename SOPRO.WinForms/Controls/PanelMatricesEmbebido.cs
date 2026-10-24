@@ -1002,11 +1002,15 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
         }
 
         // ── Eliminar componente ────────────────────────────────────────
+        /// <summary>Seam de confirmación para las pruebas; producción usa el diálogo modal.</summary>
+        internal static Func<bool> ConfirmarEliminarComponente { get; set; }
+            = () => MessageBox.Show("¿Eliminar este componente?", "Confirmar", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+
         private void DgvComponentes_CellClick(object sender, DataGridViewCellEventArgs e)
         {
             if (e.RowIndex < 0 || _dgvComponentes.Columns["ColEliminar"] == null) return;
             if (e.ColumnIndex != _dgvComponentes.Columns["ColEliminar"].Index) return;
-            if (MessageBox.Show("¿Eliminar este componente?", "Confirmar", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            if (!ConfirmarEliminarComponente()) return;
 
             if (_modoCreacionMatriz)
             {
@@ -1017,14 +1021,11 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 return;
             }
 
+            // Componente YA persistido: ruta de comando única (ADR-0001). El guardado
+            // viaja en el comando sobre un contexto nuevo; la vista nunca marca la
+            // entidad compartida como Deleted ni recalcula por su cuenta.
             if (_matrizActual == null) return;
-            int compId = Convert.ToInt32(_dgvComponentes.Rows[e.RowIndex].Cells["ColId"].Value);
-
-            var comp = _context.ComponentesMatriz.Find(compId);
-            if (comp == null) return;
-            _context.ComponentesMatriz.Remove(comp);
-            _context.SaveChanges();
-            GuardarYPropagar();
+            ProcesarEliminacionComponentePersistida(e.RowIndex);
         }
 
         // Contorno azul de 2px sobre la celda activa (replica el estilo del presupuesto).
