@@ -313,6 +313,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _matrizPadreIdSubedicion = null;
             _filaPadreSubedicion = null;
             _huboEdicionEnSubedicion = false;
+            _subedicionSoloCantidadConfirmada = false;
             _modoCreacionMatriz = false;
             _modoEdicionCabecera = false;
             _matrizEditandoId = null;
@@ -451,6 +452,9 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 {
                     _matrizActual = hijo;
                     LiberarBloqueoEdicionCantidadComponente();
+                    // Recarga fresca del hijo: el cierre atómico confirmado deja de
+                    // ser vigente conservando el bookkeeping heredado de la subedición.
+                    _subedicionSoloCantidadConfirmada = false;
                     MostrarMatriz(hijo, null);
                 }
                 return;
@@ -512,6 +516,10 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _filaPadreSubedicion = _dgvComponentes.CurrentRow?.Index;
             _modoSubedicionComponente = true;
 
+            // Reintento libre: la subedición arranca sin cierre atómico confirmado;
+            // solo las ediciones por comando de cantidad lo activan.
+            _subedicionSoloCantidadConfirmada = false;
+
             BeginEditMatrix(
                 comp.AuxiliarId.Value,
                 onSaved: _ => FinalizarSubedicionComponente(true),
@@ -526,11 +534,13 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             int matrizPadreId = _matrizPadreIdSubedicion.Value;
             int? filaPadre = _filaPadreSubedicion;
             bool huboEdicion = _huboEdicionEnSubedicion;
+            bool soloCantidadConfirmada = _subedicionSoloCantidadConfirmada;
 
             _modoSubedicionComponente = false;
             _matrizPadreIdSubedicion = null;
             _filaPadreSubedicion = null;
             _huboEdicionEnSubedicion = false;
+            _subedicionSoloCantidadConfirmada = false;
             _onMatrixHeaderSaved = null;
             _onMatrixHeaderCancelled = null;
             _modoEdicionCabecera = false;
@@ -538,10 +548,24 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             // Salida por Guardar (refrescarPadre == true) recalcula siempre; salida por
             // Cancelar solo propaga si hubo ediciones guardadas durante la subedición,
             // para no dejar el P.U. padre y la fila del concepto obsoletos.
-            if (refrescarPadre || huboEdicion)
+            // EXCEPCIÓN (cierre atómico confirmado): si TODAS las ediciones guardadas
+            // fueron comandos de cantidad, su instantánea ya recalculó el cierre
+            // hijo → ascendientes → hojas/agrupadores; repetir el recálculo heredado
+            // añadiría SaveChanges/MatrizActualizada sin nada que aplicar, así que
+            // TAMBIÉN la salida por Guardar salta el recálculo heredado. El guardado
+            // de cabecera del botón Guardar es una escritura propia previa y separada,
+            // sin repropropagación de presupuesto en la salida.
+            // Un guardado heredado limpió el flag (GuardarYPropagar / edición
+            // heredada): el recálculo heredado de salida vuelve a exigirse.
+            bool recalcularPadre = !soloCantidadConfirmada && (refrescarPadre || huboEdicion);
+
+            if (recalcularPadre)
                 RecalcularMatrizYConceptos(matrizPadreId);
 
-            var matrizPadre = CargarMatrizConComponentes(matrizPadreId, false);
+            // Con el cierre atómico confirmado (y recálculo omitido), el padre se
+            // muestra AsNoTracking: la vista heredó los valores confirmados sin
+            // segunda escritura.
+            var matrizPadre = CargarMatrizConComponentes(matrizPadreId, soloCantidadConfirmada && !recalcularPadre);
             if (matrizPadre == null)
             {
                 MostrarSinSeleccion("No se pudo regresar a la matriz padre", "La matriz padre ya no está disponible.");
@@ -754,6 +778,11 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
         // Se llama automáticamente después de agregar/eliminar. No hay botón Guardar.
         private void GuardarYPropagar()
         {
+            // Un guardado heredado en subedición invalida el cierre atómico
+            // confirmado: la salida volverá a recalcular el padre heredado.
+            if (_modoSubedicionComponente)
+                _subedicionSoloCantidadConfirmada = false;
+
             if (_matrizActual == null || _filaActual < 0) return;
             try
             {
@@ -1108,6 +1137,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             if (matriz == null) return;
 
             _huboEdicionEnSubedicion = false;
+            _subedicionSoloCantidadConfirmada = false;
             _modoCreacionMatriz = false;
             _modoEdicionCabecera = true;
             _matrizEditandoId = matrizId;
@@ -1507,7 +1537,10 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
                 {
                     _context.SaveChanges();
                     if (_modoSubedicionComponente)
+                    {
                         _huboEdicionEnSubedicion = true;
+                        _subedicionSoloCantidadConfirmada = false;
+                    }
                     BeginInvoke(new Action(GuardarYPropagar));
                 }
             }
@@ -1585,7 +1618,10 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
             {
                 _context.SaveChanges();
                 if (_modoSubedicionComponente)
+                {
                     _huboEdicionEnSubedicion = true;
+                    _subedicionSoloCantidadConfirmada = false;
+                }
                 BeginInvoke(new Action(GuardarYPropagar));
             }
         }

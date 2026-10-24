@@ -650,6 +650,295 @@ public class PanelMatricesComponenteCantidadComandoTests
         }
     }
 
+    [TestMethod]
+    public void SubedicionCantidadComando_SalirNoRecalculaNiGuarda_CierreAtomicoYaConfirmado()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_anidada_salida_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        PanelMatricesEmbebido.MostrarAvisoCantidadComponente = (_, _, _) => { };
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenarioAnidado(ctx);
+            var hijoId = escenario.Hijo!.Value;
+            var hijoAuxiliar = escenario.MatrizApu.Componentes
+                .Single(c => c.TipoComponente == TipoComponenteMatriz.Auxiliar);
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"), Path.Combine(root, "local")));
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+            var dgvComp = panel.DgvComponentesInterno;
+
+            panel.NotificarFilaCambiada(BuscarFilaPorConcepto(grid, escenario.Hoja1.Id));
+
+            int guardasCompartidos = 0;
+            ctx.SavedChanges += (_, __) => guardasCompartidos++;
+
+            // Entrada REAL al hijo anidado por la ruta del panel, con el contexto
+            // del grid sobre el componente auxiliar pintado del padre.
+            panel.SelectFilaComponenteParaPrueba(hijoAuxiliar.Id);
+            panel.EntrarSubedicionComponenteParaPrueba();
+            Assert.IsTrue(panel.EstaEnSubedicionComponenteParaPrueba,
+                "La subedición del panel debe haber arrancado.");
+            Assert.IsFalse(panel.SubedicionSoloCantidadConfirmada,
+                "Sin ediciones aún: el cierre atómico no está marcado.");
+
+            int filaMaq = BuscarFilaComponente(dgvComp, escenario.ComponenteMaquinariaId!.Value);
+            Assert.IsTrue(filaMaq >= 0);
+
+            bool consumida = panel.ProcesarEdicionCantidadComponenteDialogo(filaMaq, 4m);
+            Assert.IsTrue(consumida);
+            Assert.AreEqual(BudgetOperationStatus.Committed, panel.UltimoEstadoEdicionCantidadComponente,
+                panel.UltimaRazonSinDespachar);
+            Assert.IsTrue(panel.SubedicionSoloCantidadConfirmada,
+                "El cierre atómico confirmado queda marcado para la salida.");
+
+            // Trabajo ajeno visible justo antes de salir: la salida con cierre
+            // atómico confirmado NO debe recalcular el padre ni emitir SaveChanges.
+            var ajenaAntesDeSalir = AgregarConceptoAjeno(ctx, escenario);
+            int guardasAntesDeSalir = guardasCompartidos;
+            bool eventoMatrizActualizada = false;
+            panel.MatrizActualizada += (_, __) => eventoMatrizActualizada = true;
+
+            // Salida por Cancelar de la subedición: el cierre atómico confirmado
+            // recalculó hijo → ascendientes → hojas/agrupadores; la salida NO
+            // repite el recálculo heredado NI emite SaveChanges compartido.
+            panel.FinalizarSubedicionComponenteParaPrueba(refrescarPadre: false);
+
+            Assert.AreEqual(EntityState.Added, ctx.Entry(ajenaAntesDeSalir).State,
+                "La salida con cierre confirmado conserva el ajeno pendiente sin tocarlo.");
+            Assert.AreEqual(guardasAntesDeSalir, guardasCompartidos,
+                "La salida con cierre atómico confirmado NO emite SaveChanges del compartido.");
+            Assert.IsFalse(eventoMatrizActualizada,
+                "Con el cierre confirmado la salida no repite la propagación heredada.");
+            Assert.IsFalse(panel.EstaEnSubedicionComponenteParaPrueba, "La subedición terminó.");
+            Assert.IsFalse(panel.SubedicionSoloCantidadConfirmada, "El flag se reinicia al salir.");
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                Assert.IsFalse(verificacion.ConceptosPresupuesto.AsNoTracking()
+                    .Any(c => c.Clave == "AJENA-SUB"),
+                    "La salida con cierre confirmado no persiste trabajo ajeno.");
+            }
+
+            // La base conserva exactamente el estado del cierre atómico, sin reescritura.
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                var padre = verificacion.Matrices.AsNoTracking().Single(m => m.Id == escenario.MatrizApu.Id);
+                Assert.AreEqual(166m, padre.CostoDirecto,
+                    "120 material + 30 MO + 16 cuadrilla recalculados por el comando.");
+
+                var hoja = verificacion.ConceptosPresupuesto.AsNoTracking().Single(c => c.Id == escenario.Hoja1.Id);
+                Assert.AreEqual(166m, hoja.CostoDirectoUnitario);
+                Assert.AreEqual(1660m, hoja.ImporteTotal);
+
+                var agrupadorDb = verificacion.ConceptosPresupuesto.AsNoTracking().Single(c => c.Id == escenario.Agrupador.Id);
+                Assert.AreEqual(2490m, agrupadorDb.ImporteTotal,
+                    "El cierre atómico recalculó también los agrupadores: 166×10 + 166×5.");
+            }
+
+            // La vista del panel regresa al padre con lo confirmado (AsNoTracking).
+            int filaAuxiliarPadre = BuscarFilaComponente(dgvComp, hijoAuxiliar.Id);
+            Assert.IsTrue(filaAuxiliarPadre >= 0, "El padre (con su componente auxiliar) vuelve a pintarse.");
+            StringAssert.Contains(panel.LblDirInterno.Text, 166m.ToStringImporte());
+
+            int filaHojaFinal = BuscarFilaPorConcepto(grid, escenario.Hoja1.Id);
+            Assert.AreEqual(166m.ToStringImporte(), BuscarCelda(grid, filaHojaFinal, "PrecioUnitario")!.Value?.ToString());
+            Assert.AreEqual(1660m.ToStringImporte(), BuscarCelda(grid, filaHojaFinal, "Importe")!.Value?.ToString());
+        }
+        finally
+        {
+            PanelMatricesEmbebido.MostrarAvisoCantidadComponente = AvisoPorDefecto;
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void SubedicionCantidadComando_SalidaPorGuardar_SinRecalculoHeredadoNiPropagacion()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_anidada_guardar_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        PanelMatricesEmbebido.MostrarAvisoCantidadComponente = (_, _, _) => { };
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenarioAnidado(ctx);
+            var hijoAuxiliar = escenario.MatrizApu.Componentes
+                .Single(c => c.TipoComponente == TipoComponenteMatriz.Auxiliar);
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"), Path.Combine(root, "local")));
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+
+            panel.NotificarFilaCambiada(BuscarFilaPorConcepto(grid, escenario.Hoja1.Id));
+
+            int guardasCompartidos = 0;
+            ctx.SavedChanges += (_, __) => guardasCompartidos++;
+
+            panel.SelectFilaComponenteParaPrueba(hijoAuxiliar.Id);
+            panel.EntrarSubedicionComponenteParaPrueba();
+            Assert.IsTrue(panel.EstaEnSubedicionComponenteParaPrueba);
+            Assert.IsFalse(panel.SubedicionSoloCantidadConfirmada);
+
+            // 1) Comando de cantidad confirmado (cierre atómico hijo→padre→hojas).
+            int filaMaq = BuscarFilaComponente(panel.DgvComponentesInterno, escenario.ComponenteMaquinariaId!.Value);
+            Assert.IsTrue(panel.ProcesarEdicionCantidadComponenteDialogo(filaMaq, 4m));
+            Assert.AreEqual(BudgetOperationStatus.Committed, panel.UltimoEstadoEdicionCantidadComponente);
+            Assert.IsTrue(panel.SubedicionSoloCantidadConfirmada);
+
+            // Trabajo ajeno visible justo antes de salir: la salida POR GUARDAR con
+            // cierre atómico confirmado tampoco debe preciso tocarlo.
+            var ajenaAntesDeSalir = AgregarConceptoAjeno(ctx, escenario);
+            int guardasAntesDeSalir = guardasCompartidos;
+            bool eventoMatrizActualizada = false;
+            panel.MatrizActualizada += (_, __) => eventoMatrizActualizada = true;
+
+            // Salida POR GUARDAR (como el botón Guardar de la subedición) que invoca
+            // onSaved → refrescarPadre=true: el cierre confirmado omite el recálculo
+            // heredado (sin SaveChanges extra ni MatrizActualizada).
+            panel.FinalizarSubedicionComponenteParaPrueba(refrescarPadre: true);
+
+            Assert.IsFalse(panel.EstaEnSubedicionComponenteParaPrueba, "La subedición terminó.");
+            Assert.IsFalse(panel.SubedicionSoloCantidadConfirmada, "El flag se reinicia al salir.");
+            Assert.AreEqual(guardasAntesDeSalir, guardasCompartidos,
+                "La salida por Guardar con cierre confirmado NO emite SaveChanges del compartido.");
+            Assert.IsFalse(eventoMatrizActualizada,
+                "La salida por Guardar con cierre confirmado no repite MatrizActualizada heredada.");
+            Assert.AreEqual(EntityState.Added, ctx.Entry(ajenaAntesDeSalir).State,
+                "El ajeno visible se conserva pendiente sin onda en la salida.");
+
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                Assert.AreEqual(4m, verificacion.ComponentesMatriz.AsNoTracking()
+                    .Single(c => c.Id == escenario.ComponenteMaquinariaId!.Value).Cantidad);
+                Assert.AreEqual(166m, verificacion.Matrices.AsNoTracking().Single(m => m.Id == escenario.MatrizApu.Id).CostoDirecto);
+                var hoja = verificacion.ConceptosPresupuesto.AsNoTracking().Single(c => c.Id == escenario.Hoja1.Id);
+                Assert.AreEqual(166m, hoja.CostoDirectoUnitario);
+                Assert.AreEqual(1660m, hoja.ImporteTotal);
+            }
+
+            int filaAuxiliar = BuscarFilaComponente(panel.DgvComponentesInterno, hijoAuxiliar.Id);
+            Assert.IsTrue(filaAuxiliar >= 0, "El padre vuelve a pintarse tras la salida por Guardar.");
+            StringAssert.Contains(panel.LblDirInterno.Text, 166m.ToStringImporte());
+        }
+        finally
+        {
+            PanelMatricesEmbebido.MostrarAvisoCantidadComponente = AvisoPorDefecto;
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void SubedicionEdicionHeredadaDespuesDelComando_SalidaEjecutaRecalculoHeredado()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_anidada_legado_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        PanelMatricesEmbebido.MostrarAvisoCantidadComponente = (_, _, _) => { };
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenarioAnidado(ctx);
+            var hijoAuxiliar = escenario.MatrizApu.Componentes
+                .Single(c => c.TipoComponente == TipoComponenteMatriz.Auxiliar);
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"), Path.Combine(root, "local")));
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+            var dgvComp = panel.DgvComponentesInterno;
+
+            panel.NotificarFilaCambiada(BuscarFilaPorConcepto(grid, escenario.Hoja1.Id));
+
+            int guardasCompartidos = 0;
+            ctx.SavedChanges += (_, __) => guardasCompartidos++;
+
+            panel.SelectFilaComponenteParaPrueba(hijoAuxiliar.Id);
+            panel.EntrarSubedicionComponenteParaPrueba();
+
+            // 1) Comando de cantidad confirmado (cierre atómico del hijo→padre).
+            int filaMaq = BuscarFilaComponente(dgvComp, escenario.ComponenteMaquinariaId!.Value);
+            Assert.IsTrue(panel.ProcesarEdicionCantidadComponenteDialogo(filaMaq, 4m));
+            Assert.AreEqual(BudgetOperationStatus.Committed, panel.UltimoEstadoEdicionCantidadComponente);
+            Assert.IsTrue(panel.SubedicionSoloCantidadConfirmada);
+
+            // 2) Una edición heredada durante la subedición (reproducción del
+            //    bookkeeping legado de celda persistida: SaveChanges + registro de
+            //    edición + GuardarYPropagar) limpia el flag atómico: su salida
+            //    DEBE volver a recalcular.
+            panel.SimularEdicionLegadaSubedicionParaPrueba();
+            Assert.IsFalse(panel.SubedicionSoloCantidadConfirmada,
+                "Una edición heredada en subedición limpia el cierre atómico confirmado.");
+
+            // 3) Salir por Cancelar: con edición heredada registrada, el recálculo
+            //    heredado de salida SE ejecuta y persiste el trabajo ajeno visible.
+            AgregarConceptoAjeno(ctx, escenario);
+            int guardasAntesDeSalir = guardasCompartidos;
+            panel.FinalizarSubedicionComponenteParaPrueba(refrescarPadre: false);
+
+            Assert.IsFalse(panel.EstaEnSubedicionComponenteParaPrueba);
+            Assert.IsFalse(panel.SubedicionSoloCantidadConfirmada);
+            Assert.IsTrue(guardasCompartidos > guardasAntesDeSalir,
+                "La salida con edición heredada persistida ejecuta el recálculo heredado.");
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                Assert.IsTrue(verificacion.ConceptosPresupuesto.AsNoTracking()
+                    .Any(c => c.Clave == "AJENA-SUB"),
+                    "El recálculo heredado de salida persiste el trabajo ajeno (protección activa).");
+            }
+
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                var hoja = verificacion.ConceptosPresupuesto.AsNoTracking().Single(c => c.Id == escenario.Hoja1.Id);
+                Assert.AreEqual(166m, hoja.CostoDirectoUnitario);
+                Assert.AreEqual(1660m, hoja.ImporteTotal);
+                var padre = verificacion.Matrices.AsNoTracking().Single(m => m.Id == escenario.MatrizApu.Id);
+                Assert.AreEqual(166m, padre.CostoDirecto);
+            }
+        }
+        finally
+        {
+            PanelMatricesEmbebido.MostrarAvisoCantidadComponente = AvisoPorDefecto;
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
     // ═════════════════════════════ Infraestructura ═════════════════════════════
 
     private sealed class EscenarioPanel
@@ -882,6 +1171,32 @@ public class PanelMatricesComponenteCantidadComandoTests
             Hijo = hijo.Id,
             ComponenteMaquinariaId = compMaquinaria.Id,
         };
+    }
+
+    private static ConceptoPresupuesto AgregarConceptoAjeno(
+        SOPROContext ctx, EscenarioPanel escenario)
+    {
+        var ajena = new ConceptoPresupuesto
+        {
+            ProyectoId = escenario.Proyecto.Id,
+            Clave = "AJENA-SUB",
+            Descripcion = "Trabajo ajeno en el compartido",
+            EsAgrupador = false,
+            Nivel = 1,
+            Orden = 99,
+            Unidad = string.Empty,
+            ColumnasPersonalizadasJSON = string.Empty,
+            Notas = string.Empty,
+            Cantidad = 0m,
+            CostoDirectoUnitario = 0m,
+            CostoDirectoTotal = 0m,
+            PrecioUnitario = 0m,
+            ImporteTotal = 0m,
+            FechaModificacion = new DateTime(2026, 1, 1),
+        };
+        ctx.ConceptosPresupuesto.Add(ajena);
+        ctx.ChangeTracker.DetectChanges();
+        return ajena;
     }
 
     private static void CrearTriggerDeFallo(string dbPath)

@@ -49,6 +49,19 @@ namespace SOPRO.WinForms.Controls
         /// </summary>
         private bool _edicionCantidadComponenteBloqueada;
 
+        /// <summary>
+        /// Todas las ediciones registradas en la subedición en curso fueron
+        /// comandos de cantidad confirmados, cuyo cierre ya recalculó la
+        /// ascendencia completa y las hojas/agrupadores; al salir de la
+        /// subedición por cancelar se puede saltar el recálculo heredado. Se
+        /// limpia en la entrada de la subedición, en cada guardado heredado y al
+        /// finalizar, para que una edición heredada exija siempre el recálculo.
+        /// </summary>
+        private bool _subedicionSoloCantidadConfirmada;
+
+        /// <summary>Indicador interno para las pruebas del cierre atómico de la subedición.</summary>
+        internal bool SubedicionSoloCantidadConfirmada => _subedicionSoloCantidadConfirmada;
+
         /// <summary>Punto de aislamiento de avisos para las pruebas; el panel no abre avisos modales propios en la ruta de comando.</summary>
         internal static Action<string, string, MessageBoxIcon> MostrarAvisoCantidadComponente { get; set; }
             = (titulo, mensaje, icono) => MessageBox.Show(mensaje, titulo, MessageBoxButtons.OK, icono);
@@ -398,7 +411,10 @@ namespace SOPRO.WinForms.Controls
             _intentoCantidadPendiente = null;
 
             if (_modoSubedicionComponente && _matrizPadreIdSubedicion.HasValue)
+            {
                 _huboEdicionEnSubedicion = true;
+                _subedicionSoloCantidadConfirmada = true;
+            }
 
             AplicarInstantaneaCantidadComponente(resultado.Confirmed);
             return true;
@@ -767,6 +783,55 @@ namespace SOPRO.WinForms.Controls
 
         /// <summary>Acceso del ensamblado de pruebas al grid del panel.</summary>
         internal DataGridView DgvComponentesInterno => _dgvComponentes;
+
+        /// <summary>Salida de subedición reproducible para las pruebas (mismo maker que el botón Guardar/Cancelar).</summary>
+        internal void FinalizarSubedicionComponenteParaPrueba(bool refrescarPadre)
+            => FinalizarSubedicionComponente(refrescarPadre);
+
+        /// <summary>Guardar heredado reproducible para las pruebas (verifica el bookkeeping de subedición).</summary>
+        internal void GuardarYPropagarParaPrueba()
+            => GuardarYPropagar();
+
+        /// <summary>Estado de subedición observable para las pruebas.</summary>
+        internal bool EstaEnSubedicionComponenteParaPrueba
+            => _modoSubedicionComponente && _matrizPadreIdSubedicion.HasValue;
+
+        /// <summary>Selecciona la fila del componente indicado (contexto para la subedición real del panel).</summary>
+        internal void SelectFilaComponenteParaPrueba(int componenteId)
+        {
+            if (_dgvComponentes == null)
+                return;
+
+            for (int i = 0; i < _dgvComponentes.Rows.Count; i++)
+            {
+                var cell = _dgvComponentes.Rows[i].Cells["ColId"];
+                if (cell?.Value != null && Convert.ToInt32(cell.Value) == componenteId)
+                {
+                    _dgvComponentes.CurrentCell = _dgvComponentes.Rows[i].Cells[0];
+                    return;
+                }
+            }
+        }
+
+        /// <summary>Entrada real de subedición por la ruta contextual del panel, para las pruebas.</summary>
+        internal void EntrarSubedicionComponenteParaPrueba()
+            => EditarMatrizComponenteDesdeContexto();
+
+        /// <summary>
+        /// Reproduce el bookkeeping heredado de una edición de celda persistida y
+        /// guardada en subedición (SaveChanges, registro de edición heredada,
+        /// invalidación del cierre atómico y GuardarYPropagar), para las pruebas.
+        /// </summary>
+        internal void SimularEdicionLegadaSubedicionParaPrueba()
+        {
+            if (!_modoSubedicionComponente)
+                return;
+
+            _context.SaveChanges();
+            _huboEdicionEnSubedicion = true;
+            _subedicionSoloCantidadConfirmada = false;
+            GuardarYPropagar();
+        }
 
         /// <summary>
         /// Semilla de edición para las pruebas: reproduce el bookkeeping de
