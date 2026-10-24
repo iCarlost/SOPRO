@@ -25,19 +25,6 @@ namespace SOPRO.WinForms.Forms
     public partial class FormPresupuesto
     {
 
-        private void GuardarCambios()
-        {
-            try
-            {
-                var rows = ConstruirFilasPresupuesto(includeOnlyExisting: true);
-                BudgetPersistenceService.ApplyAutoSaveChanges(_context, rows);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Auto-guardado: {ex.Message}");
-            }
-        }
-
         private List<BudgetConceptRowDto> ConstruirFilasPresupuesto(bool includeOnlyExisting = false)
         {
             var rows = new List<BudgetConceptRowDto>();

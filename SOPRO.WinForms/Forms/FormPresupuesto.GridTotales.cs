@@ -484,12 +484,10 @@ namespace SOPRO.WinForms.Forms
                     return;
             }
 
-            // Autoguardado heredado SOLO para campos que el guardado efectivamente
-            // persiste (alta incremental de filas nuevas). Cualquier otra columna
-            // Personal (porcentajes derivados del proyecto, CargosAdicionales y
-            // demás pares columna↔propiedad sin regla de persistencia por fila) se
-            // descarta aquí: no existe mapeo NT que reconozca el cambio y el
-            // autoguardado genérico la ignoraría mientras reescribiría el resto.
+            // Solo las columnas con semántica de fila reconocida llegan aquí. Las
+            // filas sin Id permanecen como borrador hasta que un comando explícito
+            // las cree; el antiguo ApplyAutoSaveChanges no las insertaba y su
+            // SaveChanges compartido podía confirmar trabajo ajeno.
             if (colDef.NombreInterno != "Tipo"
                 && colDef.NombreInterno != "Clave"
                 && colDef.NombreInterno != "Descripcion"
@@ -498,8 +496,6 @@ namespace SOPRO.WinForms.Forms
             {
                 return;
             }
-
-            GuardarCambios();
 
             // Actualizar estadísticas solo si cambió algo relevante
             if (colDef.NombreInterno == "Tipo" ||
