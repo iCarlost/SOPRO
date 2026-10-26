@@ -244,6 +244,9 @@ namespace SOPRO.WinForms.Forms
 
         private void AplicarCeldasEconomicas(int rowIndex, BudgetConfirmedConceptRow fila)
         {
+            var rowTag = dgvPresupuesto.Rows[rowIndex].Tag as ConceptoPresupuesto;
+            bool esAgrupador = rowTag is not null && rowTag.EsAgrupador;
+
             foreach (DataGridViewColumn col in dgvPresupuesto.Columns)
             {
                 if (col.Tag is not ColumnaPersonalizada colDef)
@@ -258,7 +261,11 @@ namespace SOPRO.WinForms.Forms
                         dgvPresupuesto.Rows[rowIndex].Cells[col.Index].Value = fila.CostoDirectoTotal.ToStringImporte();
                         break;
                     case "PrecioUnitario":
-                        dgvPresupuesto.Rows[rowIndex].Cells[col.Index].Value = fila.PrecioUnitario.ToStringImporte();
+                        // Un agrupador muestra la celda P.U. vacía (como en la carga
+                        // inicial): el dato subyacente permanece en la entidad/DTO.
+                        dgvPresupuesto.Rows[rowIndex].Cells[col.Index].Value = esAgrupador
+                            ? string.Empty
+                            : fila.PrecioUnitario.ToStringImporte();
                         break;
                     case "Importe":
                     case "ImporteTotal":
