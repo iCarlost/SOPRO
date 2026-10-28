@@ -19,7 +19,15 @@ namespace SOPRO.Application.Services
             _distributionService = new ProgramacionDistributionService(_timeProvider);
         }
 
-        public ProgramGenerationResult GenerateFromBudget(SOPROContext context, int proyectoId, DateTime fechaInicio, TipoPeriodoPrograma tipoPeriodo)
+        /// <summary>
+        /// Generación base DENTRO de una transacción ya abierta por
+        /// <see cref="ProgramacionSynchronizationService"/> (genera programa, actividades,
+        /// periodos y calendario con varios SaveChanges internos bajo un solo commit).
+        /// NO es un punto de entrada de la UI: no abre transacción, no ejecuta el
+        /// <see cref="BudgetWriteExecutor"/> ni revalida el programa activo esperado.
+        /// Fuera de este ensamblado debe usarse la ruta atómica de sincronización.
+        /// </summary>
+        internal ProgramGenerationResult GenerateFromBudget(SOPROContext context, int proyectoId, DateTime fechaInicio, TipoPeriodoPrograma tipoPeriodo)
         {
             var proyecto = context.Proyectos.FirstOrDefault(p => p.Id == proyectoId);
             if (proyecto == null)

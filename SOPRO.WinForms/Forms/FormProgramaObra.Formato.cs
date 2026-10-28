@@ -396,6 +396,14 @@ namespace SOPRO.WinForms.Forms
             _flushFormatoProgramado = false;
             if (_pendientesFormato.Count == 0) return;
 
+            // Con la persistencia incierta (programa o formato) no se escribe: los
+            // pendientes se descartan en la reconciliación completa.
+            if (EstaBloqueadoParaOperar)
+            {
+                _pendientesFormato.Clear();
+                return;
+            }
+
             var cambios = ColapsarCambiosFormato(_pendientesFormato);
             _pendientesFormato.Clear();
 
@@ -494,85 +502,21 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Lectura FRESCA del formato persistido del Programa de Obra: overrides de
-        /// celda y estilos de fila se releen con un contexto NUEVO (sin caché ni
-        /// tracker compartido) y SÓLO si la lectura COMPLETA tuvo éxito se reemplazan
-        /// ambas cachés y se reconcilia el historial (desbloquea Undo/Redo y descarta
-        /// las acciones obsoletas).
-        ///
-        /// Es la salida obligatoria tras un resultado INCIERTO de formato: la caché
-        /// anterior no es evidencia de nada. Si cualquiera de las dos lecturas falla,
-        /// NO se toca ninguna caché y NO se reconcilia: el historial sigue bloqueado
-        /// y las rutas de pintado siguen sin cachear datos parciales.
+        /// Lectura FRESCA del estado persistido que reconcilia la vista tras un resultado
+        /// INCIERTO. Se conserva el nombre histórico, pero la reconciliación es COMPLETA:
+        /// relee el programa, los overrides de celda Y los estilos de fila con un contexto
+        /// NUEVO y sólo desbloquea cuando las tres lecturas tienen éxito. Leer sólo el
+        /// formato NO autoriza a liberar el bloqueo (la vista del programa también puede
+        /// ser obsoleta).
         /// </summary>
         /// <param name="factory">Seam de pruebas; en producción la fábrica del formulario.</param>
         internal bool RecargarFormatoPersistidoDesdeBase(IProjectDbContextFactory? factory = null)
-        {
-            Dictionary<ReportCellAddress, ReportStyleOverlay> overlays;
-            Dictionary<string, ReportStyleOverlay> estilosFila;
-
-            try
-            {
-                using var contextoFresco = (factory ?? _factory).Create(_context.DatabasePath);
-                var servicio = new FormatoReporteService(contextoFresco);
-
-                overlays = new Dictionary<ReportCellAddress, ReportStyleOverlay>(
-                    servicio.CargarCeldas(_proyecto.Id, FormatoTipoReporte));
-                estilosFila = new Dictionary<string, ReportStyleOverlay>(
-                    servicio.CargarEstilosFila(_proyecto.Id, FormatoTipoReporte),
-                    StringComparer.OrdinalIgnoreCase);
-            }
-            catch (Exception ex)
-            {
-                // Sin lectura verificada no hay reconciliación: se conserva el bloqueo
-                // y las cachés anteriores (no se publica un estado parcial).
-                System.Diagnostics.Debug.WriteLine($"RecargarFormatoPersistidoDesdeBase: {ex.Message}");
-                return false;
-            }
-
-            _overlaysFormato = overlays;
-            _estilosFilaFormato = estilosFila;
-            _estilosFilaFormatoProyectoId = _proyecto.Id;
-
-            // Los overrides pendientes eran parte del estado incierto: no se vuelcan.
-            _pendientesFormato.Clear();
-
-            // Recién con la base releída el historial puede descartarse y desbloquearse.
-            FormatoCeldasPersistence.ReconciliarSiCorresponde(_undoManager);
-
-            if (dgvActividades is not null && !dgvActividades.IsDisposed)
-                dgvActividades.Invalidate();
-
-            return true;
-        }
-
-        /// <summary>
-        /// Restablece la apariencia configurada del Programa de Obra del proyecto
-        /// actual: elimina los overrides de celda y los estilos de fila persistidos
-        /// del par (ProyectoId, <see cref="FormatoTipoReporte"/>) —sólo de ESTE tipo
-        /// de reporte— e invalida las cachés en memoria, de modo que el repintado use
-        /// los defaults (conceptos con fondo blanco, agrupadores con su color por
-        /// defecto). Un fallo al limpiar la persistencia se registra para diagnóstico
-        /// y NO interrumpe el flujo de borrado del programa.
-        /// </summary>
-        internal void RestablecerFormatoProgramaObra()
-        {
-            try
-            {
-                FormatoService.EliminarCeldas(_proyecto.Id, FormatoTipoReporte);
-                FormatoService.EliminarEstilosFila(_proyecto.Id, FormatoTipoReporte);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"RestablecerFormatoProgramaObra: {ex.Message}");
-            }
-
-            InvalidarCachesFormatoProgramaObra();
-        }
+            => ReconciliarProgramaYFormatoDesdeBase(factory);
 
         /// <summary>
         /// Descarta las cachés en memoria del formato de Programa de Obra; la próxima
-        /// consulta recarga desde la base (ya sin overrides tras el reset).
+        /// consulta recarga desde la base. No escribe: el borrado del programa ya eliminó
+        /// los overrides/estilos en su propia transacción.
         /// </summary>
         private void InvalidarCachesFormatoProgramaObra()
         {
@@ -580,6 +524,10 @@ namespace SOPRO.WinForms.Forms
             _estilosFilaFormato = null;
             _estilosFilaFormatoProyectoId = -1;
         }
+
+        /// <summary>Seam de pruebas: hay cachés de formato publicadas en memoria.</summary>
+        internal bool TieneCachesFormatoCargadas
+            => _overlaysFormato is not null || _estilosFilaFormato is not null;
 
         /// <summary>
         /// Construye el snapshot neutral del Programa de Obra poblado con los overrides

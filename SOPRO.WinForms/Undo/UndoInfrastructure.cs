@@ -1,11 +1,26 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace SOPRO.WinForms.Undo
 {
+    /// <summary>
+    /// Familia de una acción del historial. Las operaciones de PROGRAMA (edición de
+    /// actividades/dependencias, comandos atómicos de sincronización/recálculo/borrado)
+    /// invalidan el historial del programa; las de FORMATO (overlays de celda y estilos
+    /// de fila) invalidan el historial de formato. Descartar una familia NUNCA altera
+    /// el bloqueo por reconciliación ni el historial de la otra.
+    /// </summary>
+    internal enum UndoFamily
+    {
+        Programa,
+        Formato
+    }
+
     internal interface IUndoableAction
     {
         string Description { get; }
+        UndoFamily Familia { get; }
         void Undo();
         void Redo();
     }
@@ -15,14 +30,20 @@ namespace SOPRO.WinForms.Undo
         private readonly Action _undo;
         private readonly Action _redo;
 
-        public DelegateUndoableAction(string description, Action undo, Action redo)
+        public DelegateUndoableAction(
+            string description,
+            Action undo,
+            Action redo,
+            UndoFamily familia = UndoFamily.Programa)
         {
             Description = description ?? string.Empty;
             _undo = undo ?? throw new ArgumentNullException(nameof(undo));
             _redo = redo ?? throw new ArgumentNullException(nameof(redo));
+            Familia = familia;
         }
 
         public string Description { get; }
+        public UndoFamily Familia { get; }
         public void Undo() => _undo();
         public void Redo() => _redo();
     }
@@ -64,15 +85,19 @@ namespace SOPRO.WinForms.Undo
             string description,
             IReadOnlyList<UndoChange> changes,
             Action<IReadOnlyList<UndoChange>> applyBefore,
-            Action<IReadOnlyList<UndoChange>> applyAfter)
+            Action<IReadOnlyList<UndoChange>> applyAfter,
+            UndoFamily familia = UndoFamily.Formato)
         {
             Description = description ?? string.Empty;
             _changes = changes ?? throw new ArgumentNullException(nameof(changes));
             _applyBefore = applyBefore ?? throw new ArgumentNullException(nameof(applyBefore));
             _applyAfter = applyAfter ?? throw new ArgumentNullException(nameof(applyAfter));
+            Familia = familia;
         }
 
         public string Description { get; }
+
+        public UndoFamily Familia { get; }
 
         public int ChangeCount => _changes.Count;
 
@@ -207,6 +232,31 @@ namespace SOPRO.WinForms.Undo
         {
             _undoStack.Clear();
             _redoStack.Clear();
+        }
+
+        /// <summary>
+        /// Descarta SÓLO las acciones de <paramref name="familia"/> en undo y redo,
+        /// conservando el resto del historial y SIN liberar
+        /// <see cref="RequiresReconciliation"/>: descartar acciones obsoletas no es
+        /// reconciliar con la base. El orden de las acciones conservadas no cambia.
+        /// </summary>
+        public void DescartarPorFamilia(UndoFamily familia)
+        {
+            DescartarFamilia(_undoStack, familia);
+            DescartarFamilia(_redoStack, familia);
+        }
+
+        private static void DescartarFamilia(Stack<IUndoableAction> stack, UndoFamily familia)
+        {
+            if (stack.Count == 0) return;
+            if (!stack.Any(a => a.Familia == familia)) return;
+
+            // La enumeración de Stack va de tope a base: se reempuja al revés para
+            // que el tope conserve el mismo orden relativo.
+            var conservadas = stack.Where(a => a.Familia != familia).Reverse().ToList();
+            stack.Clear();
+            foreach (var accion in conservadas)
+                stack.Push(accion);
         }
     }
 }

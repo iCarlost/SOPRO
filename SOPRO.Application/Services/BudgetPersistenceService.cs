@@ -240,6 +240,14 @@ namespace SOPRO.Application.Services
             => new(true, null,
                 confirmed ?? throw new ArgumentNullException(nameof(confirmed)),
                 Array.Empty<int>(), null, skipSave: true);
+
+        /// <summary>
+        /// Señal de continuación para la etapa previa de
+        /// <c>BudgetWriteExecutor.ExecuteWorkTransaction</c>: la decisión real la toma el
+        /// callback de trabajo dentro de la transacción (no hay instantánea todavía).
+        /// </summary>
+        internal static BudgetWriteStep<TConfirmed> Proceed()
+            => new(true, null, null, Array.Empty<int>(), null);
     }
 
     /// <summary>
@@ -412,6 +420,264 @@ namespace SOPRO.Application.Services
                 confirmed, confirmedConceptIds, diagnostic: null);
         }
 
+        /// <summary>
+        /// Variante transaccional para operaciones de TRABAJO que necesitan varios
+        /// <see cref="DbContext.SaveChanges"/> internos bajo un solo commit (p. ej. una
+        /// sincronización de aplicación). El ejecutor NO guarda por su cuenta: el
+        /// callback <paramref name="work"/> es el único dueño de los SaveChanges y debe
+        /// devolver <see cref="BudgetWriteStep{TConfirmed}.Commit"/> (o
+        /// <see cref="BudgetWriteStep{TConfirmed}.CommitAfterSave"/>) o
+        /// <see cref="BudgetWriteStep{TConfirmed}.Abort"/>. Cualquier excepción o rechazo
+        /// posterior a sus escrituras revierte la transacción completa; solo se devuelve
+        /// un resultado confirmado cuando el commit y el cierre son verificables.
+        /// </summary>
+        internal static BudgetWriteExecution<TConfirmed> ExecuteWorkTransaction<TConfirmed>(
+            IProjectDbContextFactory factory,
+            string databasePath,
+            Func<SOPROContext, BudgetWriteStep<TConfirmed>> work)
+            where TConfirmed : class
+            => ExecuteWorkTransaction(factory, databasePath, stage: null, work);
+
+        /// <summary>
+        /// Variante transaccional con decisión previa: <paramref name="stage"/> se ejecuta
+        /// antes de abrir la transacción y no debe escribir. Si aborta, no se toca la base;
+        /// si devuelve <see cref="BudgetWriteStep{TConfirmed}.NoChanges"/>, no se abre
+        /// transacción ni se invoca <paramref name="work"/> ni se guarda nada.
+        /// </summary>
+        internal static BudgetWriteExecution<TConfirmed> ExecuteWorkTransaction<TConfirmed>(
+            IProjectDbContextFactory factory,
+            string databasePath,
+            Func<SOPROContext, BudgetWriteStep<TConfirmed>>? stage,
+            Func<SOPROContext, BudgetWriteStep<TConfirmed>> work)
+            where TConfirmed : class
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            if (string.IsNullOrWhiteSpace(databasePath))
+                throw new ArgumentException("La ruta de la base del proyecto es requerida.", nameof(databasePath));
+            if (work == null) throw new ArgumentNullException(nameof(work));
+
+            SOPROContext? context = null;
+            try
+            {
+                context = factory.Create(databasePath);
+            }
+            catch (Exception ex)
+            {
+                DisposeQuietly(context);
+                return BudgetWriteExecution<TConfirmed>.Failed(MensajeFalloRevertido, Describe(ex));
+            }
+
+            if (stage != null)
+            {
+                BudgetWriteStep<TConfirmed> stageStep;
+                try
+                {
+                    stageStep = stage(context);
+                }
+                catch (Exception ex)
+                {
+                    // La etapa previa no escribe: nada que revertir.
+                    DisposeQuietly(context);
+                    return BudgetWriteExecution<TConfirmed>.Failed(MensajeFalloRevertido, Describe(ex));
+                }
+
+                if (!stageStep.ShouldCommit)
+                {
+                    DisposeQuietly(context);
+                    return BudgetWriteExecution<TConfirmed>.Aborted(
+                        stageStep.StopResult!, stageStep.Diagnostic);
+                }
+
+                if (!stageStep.ShouldSaveChanges)
+                    return CommittedWithoutWrite(stageStep.Confirmed!, stageStep.ConfirmedConceptIds, context);
+            }
+
+            IDbContextTransaction transaction;
+            try
+            {
+                transaction = context.Database.BeginTransaction();
+            }
+            catch (Exception ex)
+            {
+                DisposeQuietly(context);
+                return BudgetWriteExecution<TConfirmed>.Failed(MensajeFalloRevertido, Describe(ex));
+            }
+
+            BudgetWriteStep<TConfirmed> workStep;
+            try
+            {
+                workStep = work(context);
+            }
+            catch (Exception ex)
+            {
+                // El callback pudo haber guardado antes de fallar: revertir siempre.
+                return RevertAfterWork<TConfirmed>(
+                    transaction,
+                    context,
+                    BudgetOperationResult.Failed(MensajeFalloRevertido),
+                    Describe(ex));
+            }
+
+            if (!workStep.ShouldCommit || !workStep.ShouldSaveChanges)
+            {
+                // Rechazo posterior a las escrituras (o uso inválido de NoChanges dentro
+                // del trabajo: la decisión de no tocar la base pertenece a la etapa previa).
+                var stopResult = workStep.StopResult
+                    ?? BudgetOperationResult.Failed(MensajeFalloRevertido);
+                string? diagnostic = workStep.StopResult is null
+                    ? "El callback de trabajo devolvió NoChanges después de abrir la transacción."
+                    : workStep.Diagnostic;
+                return RevertAfterWork<TConfirmed>(transaction, context, stopResult, diagnostic);
+            }
+
+            TConfirmed confirmed;
+            IReadOnlyList<int> confirmedConceptIds;
+            try
+            {
+                confirmed = workStep.ConfirmedFactory is not null
+                    ? workStep.ConfirmedFactory()
+                    : workStep.Confirmed!;
+                confirmedConceptIds = workStep.ConfirmedConceptIdsFactory is not null
+                    ? workStep.ConfirmedConceptIdsFactory()
+                    : workStep.ConfirmedConceptIds;
+            }
+            catch (Exception ex)
+            {
+                // La escritura ya ocurrió dentro de la transacción: si la instantánea no
+                // se puede materializar, se revierte para no confirmar algo no reconciliable.
+                return RevertAfterWork<TConfirmed>(
+                    transaction,
+                    context,
+                    BudgetOperationResult.Failed(MensajeFalloRevertido),
+                    Describe(ex));
+            }
+
+            try
+            {
+                transaction.Commit();
+            }
+            catch (Exception ex)
+            {
+                DisposeQuietly(transaction);
+                DisposeQuietly(context);
+                return BudgetWriteExecution<TConfirmed>.OutcomeUnknown(
+                    MensajeCommitIncierto, Describe(ex));
+            }
+
+            try
+            {
+                transaction.Dispose();
+            }
+            catch (Exception ex)
+            {
+                DisposeQuietly(context);
+                return BudgetWriteExecution<TConfirmed>.OutcomeUnknown(
+                    MensajeCommitIncierto, Describe(ex));
+            }
+
+            try
+            {
+                context.Dispose();
+            }
+            catch (Exception ex)
+            {
+                return BudgetWriteExecution<TConfirmed>.OutcomeUnknown(
+                    MensajeCommitIncierto, Describe(ex));
+            }
+
+            return BudgetWriteExecution<TConfirmed>.Committed(
+                confirmed, confirmedConceptIds, diagnostic: null);
+        }
+
+        /// <summary>Cierra un contexto en el que no se escribió nada y confirma la instantánea.</summary>
+        private static BudgetWriteExecution<TConfirmed> CommittedWithoutWrite<TConfirmed>(
+            TConfirmed confirmed,
+            IReadOnlyList<int> confirmedConceptIds,
+            SOPROContext context)
+            where TConfirmed : class
+        {
+            try
+            {
+                context.Dispose();
+            }
+            catch (Exception ex)
+            {
+                return BudgetWriteExecution<TConfirmed>.OutcomeUnknown(
+                    MensajeCommitIncierto, Describe(ex));
+            }
+
+            return BudgetWriteExecution<TConfirmed>.Committed(
+                confirmed, confirmedConceptIds, diagnostic: null);
+        }
+
+        /// <summary>
+        /// Revierte la transacción de trabajo y clasifica: el rechazo original (fallo o
+        /// conflicto) solo si la reversión Y el cierre de transacción/contexto se
+        /// confirmaron; en caso contrario, resultado incierto.
+        /// </summary>
+        private static BudgetWriteExecution<TConfirmed> RevertAfterWork<TConfirmed>(
+            IDbContextTransaction transaction,
+            SOPROContext context,
+            BudgetOperationResult result,
+            string? diagnostic)
+            where TConfirmed : class
+        {
+            try
+            {
+                transaction.Rollback();
+            }
+            catch (Exception rollbackFailure)
+            {
+                DisposeQuietly(transaction);
+                DisposeQuietly(context);
+                return BudgetWriteExecution<TConfirmed>.OutcomeUnknown(
+                    MensajeReversionIncierta,
+                    diagnostic + " | rollback: " + Describe(rollbackFailure));
+            }
+
+            // Reversión confirmada: todavía falta cerrar transacción y contexto. Un cierre
+            // no verificable deja la operación sin estado final comprobable, así que no se
+            // afirma el rechazo original (ADR-0001: reconciliar antes de reintentar).
+            var cleanupFailure = CloseAfterRollback(transaction, context);
+            if (cleanupFailure is not null)
+            {
+                return BudgetWriteExecution<TConfirmed>.OutcomeUnknown(
+                    MensajeCierreIncierto,
+                    diagnostic + " | cleanup: " + cleanupFailure);
+            }
+
+            return BudgetWriteExecution<TConfirmed>.Aborted(result, diagnostic);
+        }
+
+        /// <summary>
+        /// Cierra transacción y contexto después de una reversión confirmada sin lanzar:
+        /// devuelve el diagnóstico de los cierres fallidos, o <c>null</c> si todos cerraron.
+        /// </summary>
+        private static string? CloseAfterRollback(IDbContextTransaction transaction, SOPROContext context)
+        {
+            List<string>? failures = null;
+
+            try
+            {
+                transaction.Dispose();
+            }
+            catch (Exception ex)
+            {
+                (failures ??= new()).Add("transaccion: " + Describe(ex));
+            }
+
+            try
+            {
+                context.Dispose();
+            }
+            catch (Exception ex)
+            {
+                (failures ??= new()).Add("contexto: " + Describe(ex));
+            }
+
+            return failures is null ? null : string.Join("; ", failures);
+        }
+
         private static void RollbackQuietly(IDbContextTransaction? transaction)
         {
             if (transaction == null) return;
@@ -445,5 +711,9 @@ namespace SOPRO.Application.Services
         private const string MensajeCommitIncierto =
             "No se pudo confirmar si el guardado del presupuesto quedó en la base. " +
             "Reconcilie con la base antes de reintentar.";
+
+        private const string MensajeCierreIncierto =
+            "No se pudo guardar el presupuesto; la reversión se confirmó pero no se pudo verificar " +
+            "el cierre de la operación. Reconcilie con la base antes de reintentar.";
     }
 }

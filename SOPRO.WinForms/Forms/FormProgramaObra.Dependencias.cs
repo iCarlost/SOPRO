@@ -30,6 +30,12 @@ namespace SOPRO.WinForms.Forms
             if (_cargando)
                 return;
 
+            if (BloqueaEdicionPrograma())
+            {
+                e.Cancel = true;
+                return;
+            }
+
             BeginInvoke(new Action(GuardarDependenciasActuales));
         }
 
@@ -40,6 +46,12 @@ namespace SOPRO.WinForms.Forms
             _undoDependenciaColumnIndex = -1;
             _undoDependenciaColumnName = string.Empty;
             _undoDependenciaOldValue = null;
+
+            if (BloqueaEdicionPrograma())
+            {
+                e.Cancel = true;
+                return;
+            }
 
             if (e.RowIndex < 0 || e.RowIndex >= dgvDependencias.Rows.Count)
                 return;
@@ -83,7 +95,7 @@ namespace SOPRO.WinForms.Forms
 
         private void dgvDependencias_CellEndEdit(object? sender, DataGridViewCellEventArgs e)
         {
-            if (_cargando || e.RowIndex < 0)
+            if (_cargando || e.RowIndex < 0 || EstaBloqueadoParaOperar)
                 return;
 
             if (_cancelandoEdicionDependencia)
@@ -186,6 +198,9 @@ namespace SOPRO.WinForms.Forms
 
         private void GuardarDependenciasActuales()
         {
+            if (EstaBloqueadoParaOperar)
+                return;
+
             var actividad = GetActividadSeleccionada();
             if (actividad == null || _programaActual == null)
                 return;

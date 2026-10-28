@@ -30,6 +30,12 @@ namespace SOPRO.WinForms.Forms
             if (_cargando || _programaActual == null || e.RowIndex < 0 || e.ColumnIndex < 0)
                 return;
 
+            if (EstaBloqueadoParaOperar)
+            {
+                e.Cancel = true;
+                return;
+            }
+
             var columnName = dgvActividades.Columns[e.ColumnIndex].Name;
             if (columnName is not "colFechaInicio" and not "colFechaFin")
                 return;
@@ -112,7 +118,7 @@ namespace SOPRO.WinForms.Forms
 
         private async void dgvActividades_CellEndEdit(object sender, DataGridViewCellEventArgs e)
         {
-            if (_cargando || e.RowIndex < 0 || _programaActual == null)
+            if (_cargando || e.RowIndex < 0 || _programaActual == null || EstaBloqueadoParaOperar)
                 return;
 
             var row = dgvActividades.Rows[e.RowIndex];

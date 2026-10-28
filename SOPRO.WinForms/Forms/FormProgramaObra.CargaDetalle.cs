@@ -27,6 +27,32 @@ namespace SOPRO.WinForms.Forms
 
         internal void CargarPrograma(DataGridViewStateSnapshot? stateToRestore = null)
         {
+            // Durante un bloqueo por resultado incierto la recarga es la ruta SEGURA de
+            // reconciliación: lectura fresca de programa + formato, NUNCA SaveChanges ni
+            // la ruta heredada LoadProgram (que recalcula y guarda).
+            if (EstaBloqueadoParaOperar)
+            {
+                if (!ReconciliarProgramaYFormatoDesdeBase())
+                    lblEstado.Text = "No se pudo releer la base. El programa sigue bloqueado; reintente «Recargar».";
+                return;
+            }
+
+            var programa = _loadService.LoadProgram(_context, _proyecto.Id);
+            AplicarProgramaEnUi(programa, stateToRestore);
+            ActualizarHabilitacionPrograma();
+        }
+
+        /// <summary>
+        /// Publica en la vista un programa ya leído (DTO). No lee ni escribe la base:
+        /// la carga normal y la reconciliación comparten exactamente esta publicación.
+        /// Con <paramref name="publicacion"/> (ruta de lectura fresca) tampoco consulta
+        /// la base: Curva S, Gantt y plazo vienen del snapshot leído antes de tocar la UI.
+        /// </summary>
+        private void AplicarProgramaEnUi(
+            ProgramLoadDto? programa,
+            DataGridViewStateSnapshot? stateToRestore,
+            PublicacionProgramaSnapshot? publicacion = null)
+        {
             dgvActividades.SuspendLayout();
             dgvPeriodos.SuspendLayout();
             dgvDistribucion.SuspendLayout();
@@ -36,13 +62,7 @@ namespace SOPRO.WinForms.Forms
             {
                 _cargando = true;
 
-                // Si el formato quedó en estado INCIERTO, la recarga del programa (botón
-                // Recargar) es la ruta segura para releerlo desde la base y reconciliar el
-                // historial. Best-effort: si falla, sigue bloqueado y no se cachea nada.
-                if (_undoManager.RequiresReconciliation)
-                    RecargarFormatoPersistidoDesdeBase();
-
-                _programaActual = _loadService.LoadProgram(_context, _proyecto.Id);
+                _programaActual = programa;
                 _actividades = new BindingList<ActivityGridRowDto>();
                 _periodos = new BindingList<PeriodEditDto>();
 
@@ -53,7 +73,7 @@ namespace SOPRO.WinForms.Forms
                     dgvDistribucion.DataSource = null;
                     dgvDependencias.DataSource = null;
                     LimpiarCurvaS();
-                    ActualizarGantt();
+                    ActualizarGantt(publicacion?.Gantt);
                     lblEstado.Text = "No existe un programa de obra generado para este proyecto.";
                     return;
                 }
@@ -70,9 +90,9 @@ namespace SOPRO.WinForms.Forms
                 FormatearGridPeriodos();
                 AplicarConfiguracionColumnas();
 
-                ActualizarEstadoGeneral();
-                CargarCurvaS();
-                ActualizarGantt();
+                ActualizarEstadoGeneral(publicacion);
+                CargarCurvaS(publicacion?.CurvaS);
+                ActualizarGantt(publicacion?.Gantt);
 
                 _detalleSeleccionDeferred = false;
                 _ultimaActividadDetalleId = null;
@@ -167,6 +187,12 @@ namespace SOPRO.WinForms.Forms
             if (e.RowIndex < 0)
                 return;
 
+            if (BloqueaEdicionPrograma())
+            {
+                e.Cancel = true;
+                return;
+            }
+
             _undoActividadRowIndex = -1;
             _undoActividadColumnIndex = -1;
             _undoActividadColumnName = string.Empty;
@@ -192,7 +218,7 @@ namespace SOPRO.WinForms.Forms
             }
         }
 
-        private void ActualizarEstadoGeneral()
+        private void ActualizarEstadoGeneral(PublicacionProgramaSnapshot? publicacion = null)
         {
             if (_programaActual == null)
             {
@@ -217,7 +243,9 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            var dias = _calculationService.CalculateBusinessDaysInclusive(_context, _programaActual.ProgramaObraId, inicio, fin);
+            var dias = publicacion is not null
+                ? publicacion.PlazoDiasHabiles ?? 0
+                : _calculationService.CalculateBusinessDaysInclusive(_context, _programaActual.ProgramaObraId, inicio, fin);
             lblEstado.Text = $"Programa cargado: {agrupadores} agrupadores, {conceptos} conceptos, {_periodos.Count} periodos. Plazo total: {dias} días hábiles ({inicio:dd/MM/yyyy} → {fin:dd/MM/yyyy}).";
         }
 

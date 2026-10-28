@@ -21,23 +21,49 @@ namespace SOPRO.WinForms.Forms
 {
     /// <summary>
     /// Acciones principales: generar, recargar, recalcular, calendario y tipo de período.
+    /// Todas las mutaciones del programa pasan por las rutas atómicas con fábrica y
+    /// programa activo esperado; la vista se publica releyendo desde un contexto NUEVO
+    /// y de sólo lectura (nunca SaveChanges sobre el contexto compartido).
     /// </summary>
     public partial class FormProgramaObra
     {
 
         private void btnGenerarPrograma_Click(object sender, EventArgs e)
         {
+            EjecutarGenerarPrograma();
+        }
+
+        /// <summary>
+        /// Ruta real del botón Generar (también seam de pruebas): genera el programa base
+        /// con la ruta atómica y publica una lectura fresca. Un no-op confirmado
+        /// (<see cref="ProgramSyncResult.SinCambios"/>) no invalida nada.
+        /// </summary>
+        internal bool EjecutarGenerarPrograma()
+        {
+            if (!PuedeMutarPrograma("generar el programa"))
+                return false;
+
             try
             {
                 UseWaitCursor = true;
                 var fechaInicio = _proyecto.FechaInicio == default ? DateTime.Today : _proyecto.FechaInicio.Date;
-                var result = _generationService.GenerateFromBudget(_context, _proyecto.Id, fechaInicio, ObtenerTipoPeriodoSeleccionado());
-                lblEstado.Text = result.Message;
-                CargarPrograma();
+                var result = _syncService.GenerateProgram(
+                    _factory,
+                    _context.DatabasePath,
+                    _proyecto.Id,
+                    _programaActual?.ProgramaObraId,
+                    fechaInicio,
+                    ObtenerTipoPeriodoSeleccionado());
+
+                if (!ProcesarResultadoPrograma(result, descartarFormato: false))
+                    return false;
+
+                return RecargarProgramaDesdeContextoFresco();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al generar el programa: {ex.Message}", "Programación", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Notificador.Error($"Error al generar el programa: {ex.Message}");
+                return false;
             }
             finally
             {
@@ -50,111 +76,104 @@ namespace SOPRO.WinForms.Forms
             CargarPrograma(DataGridViewStateHelper.Capture(dgvActividades));
         }
 
-        private async void btnRecalcular_Click(object sender, EventArgs e)
+        private void btnRecalcular_Click(object sender, EventArgs e)
         {
-            if (_programaActual == null)
-            {
-                try
-                {
-                    SetOcupado(true, "Sincronizando programa...");
-                    var dbPath = _context.DatabasePath;
-                    var proyectoIdSync = _proyecto.Id;
-                    var resultSinPrograma = await Task.Run(() =>
-                    {
-                        using var ctx = _factory.Create(dbPath);
-                        return _syncService.SyncFromBudget(ctx, proyectoIdSync);
-                    });
-                    lblEstado.Text = resultSinPrograma.Message;
-                    CargarPrograma();
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Error al sincronizar el programa: {ex.Message}", "Programación", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-                finally
-                {
-                    SetOcupado(false);
-                }
-                return;
-            }
+            EjecutarRecalculoPrograma();
+        }
+
+        /// <summary>
+        /// Recalcula el programa con la ruta atómica (recálculo, periodos, distribución y
+        /// recálculo final en UN commit). Si aún no hay programa, sincroniza desde el
+        /// presupuesto en la misma ruta segura. Devuelve true sólo si se publicó una
+        /// lectura fresca (commit con cambios).
+        /// </summary>
+        internal bool EjecutarRecalculoPrograma()
+        {
+            if (!PuedeMutarPrograma("recalcular el programa"))
+                return false;
 
             try
             {
+                UseWaitCursor = true;
                 var state = DataGridViewStateHelper.Capture(dgvActividades);
-                SetOcupado(true, "Recalculando programa...");
-                var programaId = _programaActual.ProgramaObraId;
-                var tipoPeriodo = ObtenerTipoPeriodoSeleccionado();
-                var dbPathRecalc = _context.DatabasePath;
-                await Task.Run(() =>
-                {
-                    using var ctx = _factory.Create(dbPathRecalc);
-                    _calculationService.RecalculateProgram(ctx, programaId);
-                    RegenerarPeriodosYDistribuciones(ctx, programaId, tipoPeriodo);
-                });
-                CargarPrograma(state);
-                lblEstado.Text = "Programa recalculado correctamente.";
+
+                var result = _programaActual == null
+                    ? _syncService.SyncFromBudget(
+                        _factory,
+                        _context.DatabasePath,
+                        _proyecto.Id,
+                        expectedActiveProgramaId: null)
+                    : _syncService.RecalculateProgram(
+                        _factory,
+                        _context.DatabasePath,
+                        _proyecto.Id,
+                        _programaActual.ProgramaObraId,
+                        tipoPeriodo: null);
+
+                if (!ProcesarResultadoPrograma(result, descartarFormato: false))
+                    return false;
+
+                return RecargarProgramaDesdeContextoFresco(state);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al recalcular el programa: {ex.Message}", "Programación", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Notificador.Error($"Error al recalcular el programa: {ex.Message}");
+                return false;
             }
             finally
             {
-                SetOcupado(false);
+                UseWaitCursor = false;
             }
         }
 
-        private async void btnCalendario_Click(object sender, EventArgs e)
+        private void btnCalendario_Click(object sender, EventArgs e)
         {
+            if (!PuedeMutarPrograma("actualizar el calendario"))
+                return;
+
             if (_programaActual == null)
             {
-                MessageBox.Show("Primero genera o carga un programa de obra.", "Programación", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                Notificador.Informar("Primero genera o carga un programa de obra.");
                 return;
             }
 
             using var frm = new FormCalendarioLaboral(_context, _proyecto, _programaActual.CalendarioLaboralId);
-            if (frm.ShowDialog(this) == DialogResult.OK && frm.CalendarioActualizado)
-            {
-                if (!_programaActual.CalendarioLaboralId.HasValue)
-                {
-                    var programa = _context.ProgramasObra.FirstOrDefault(p => p.Id == _programaActual.ProgramaObraId);
-                    var calendario = _context.CalendariosLaborales
-                        .Where(c => c.ProyectoId == _proyecto.Id && c.Activo)
-                        .OrderByDescending(c => c.Id)
-                        .FirstOrDefault();
-                    if (programa != null && calendario != null)
-                    {
-                        programa.CalendarioLaboralId = calendario.Id;
-                        _context.SaveChanges();
-                    }
-                }
+            if (frm.ShowDialog(this) != DialogResult.OK || !frm.CalendarioActualizado)
+                return;
 
-                var state = DataGridViewStateHelper.Capture(dgvActividades);
-                var programaId2 = _programaActual.ProgramaObraId;
-                var tipoPeriodo2 = ObtenerTipoPeriodoSeleccionado();
-                var dbPathCalendario = _context.DatabasePath;
-                SetOcupado(true, "Actualizando calendario...");
-                try
-                {
-                    await Task.Run(() =>
-                    {
-                        using var ctx = _factory.Create(dbPathCalendario);
-                        _calculationService.RecalculateProgram(ctx, programaId2);
-                        RegenerarPeriodosYDistribuciones(ctx, programaId2, tipoPeriodo2);
-                    });
-                    CargarPrograma(state);
-                    lblEstado.Text = "Calendario laboral actualizado.";
-                }
-                catch (Exception ex2)
-                {
-                    MessageBox.Show($"Error al actualizar el calendario: {ex2.Message}", "Programación", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-                finally
-                {
-                    SetOcupado(false);
-                }
-            }
+            var state = DataGridViewStateHelper.Capture(dgvActividades);
+            var expected = _programaActual.ProgramaObraId;
+
+            // Si el programa aún no tenía calendario, se enlaza el activo más reciente
+            // DENTRO de la transacción del recálculo (no hay SaveChanges previo suelto).
+            var calendarioParaEnlazar = _programaActual.CalendarioLaboralId is null
+                ? ObtenerCalendarioActivoId()
+                : null;
+
+            var result = _syncService.RecalculateProgram(
+                _factory,
+                _context.DatabasePath,
+                _proyecto.Id,
+                expected,
+                tipoPeriodo: null,
+                calendarioLaboralId: calendarioParaEnlazar);
+
+            if (ProcesarResultadoPrograma(result, descartarFormato: false))
+                RecargarProgramaDesdeContextoFresco(state);
         }
+
+        /// <summary>
+        /// Id del calendario activo más reciente del proyecto (sólo lectura). Es el que
+        /// la vista enlaza al programa cuando este no tenía calendario; el enlace lo
+        /// aplica la ruta atómica de recálculo dentro de su transacción.
+        /// </summary>
+        private int? ObtenerCalendarioActivoId()
+            => _context.CalendariosLaborales
+                .AsNoTracking()
+                .Where(c => c.ProyectoId == _proyecto.Id && c.Activo)
+                .OrderByDescending(c => c.Id)
+                .Select(c => (int?)c.Id)
+                .FirstOrDefault();
 
         private TipoPeriodoPrograma ObtenerTipoPeriodoSeleccionado()
         {
@@ -193,66 +212,89 @@ namespace SOPRO.WinForms.Forms
             GuardarLayoutPersistido();
         }
 
-        private async void cmbTipoPeriodo_SelectedIndexChanged(object sender, EventArgs e)
+        private void cmbTipoPeriodo_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (_cargando || _programaActual == null)
                 return;
 
+            var nuevoTipo = ObtenerTipoPeriodoSeleccionado();
+            if (_programaActual.TipoPeriodo == nuevoTipo)
+                return;
+
+            AplicarTipoPeriodoPrograma(nuevoTipo);
+        }
+
+        /// <summary>
+        /// Cambia el tipo de período con la ruta atómica: el servicio actualiza
+        /// TipoPeriodo/Duración y regenera periodos/distribuciones en un solo commit,
+        /// revalidando el programa activo esperado. Un conflicto restaura el combo.
+        /// </summary>
+        internal bool AplicarTipoPeriodoPrograma(TipoPeriodoPrograma nuevoTipo)
+        {
+            if (_programaActual == null)
+                return false;
+
+            if (!PuedeMutarPrograma("cambiar el tipo de período"))
+            {
+                RestaurarTipoPeriodoEnCombo();
+                return false;
+            }
+
             try
             {
-                var nuevoTipo = ObtenerTipoPeriodoSeleccionado();
-                if (_programaActual.TipoPeriodo == nuevoTipo)
-                    return;
-
+                UseWaitCursor = true;
                 var state = DataGridViewStateHelper.Capture(dgvActividades);
-                var programa = _context.ProgramasObra.FirstOrDefault(p => p.Id == _programaActual.ProgramaObraId);
-                if (programa == null)
-                    return;
+                var result = _syncService.RecalculateProgram(
+                    _factory,
+                    _context.DatabasePath,
+                    _proyecto.Id,
+                    _programaActual.ProgramaObraId,
+                    nuevoTipo);
 
-                programa.TipoPeriodo = nuevoTipo;
-                programa.DuracionPeriodoDias = nuevoTipo switch
+                if (!ProcesarResultadoPrograma(result, descartarFormato: false))
                 {
-                    TipoPeriodoPrograma.Dia => 1,
-                    TipoPeriodoPrograma.Semana => 7,
-                    TipoPeriodoPrograma.Quincena => 15,
-                    TipoPeriodoPrograma.Mes => 30,
-                    _ => 7
-                };
-                programa.FechaModificacion = DateTime.Now;
-                _context.SaveChanges();
+                    RestaurarTipoPeriodoEnCombo();
+                    return false;
+                }
 
-                var programaId3 = programa.Id;
-                var dbPathTipoPeriodo = _context.DatabasePath;
-                SetOcupado(true, $"Regenerando periodos en modo {nuevoTipo}...");
-                await Task.Run(() =>
-                {
-                    using var ctx = _factory.Create(dbPathTipoPeriodo);
-                    _calculationService.RecalculateProgram(ctx, programaId3);
-                    RegenerarPeriodosYDistribuciones(ctx, programaId3, nuevoTipo);
-                });
-                CargarPrograma(state);
-                lblEstado.Text = $"Periodos regenerados en modo {nuevoTipo}.";
+                return RecargarProgramaDesdeContextoFresco(state);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al cambiar el tipo de periodo: {ex.Message}", "Programación", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Notificador.Error($"Error al cambiar el tipo de periodo: {ex.Message}");
+                RestaurarTipoPeriodoEnCombo();
+                return false;
             }
             finally
             {
-                SetOcupado(false);
+                UseWaitCursor = false;
+            }
+        }
+
+        /// <summary>Revierte el combo al tipo del programa publicado (sin re-disparar).</summary>
+        private void RestaurarTipoPeriodoEnCombo()
+        {
+            if (_programaActual == null)
+                return;
+
+            var anterior = _cargando;
+            _cargando = true;
+            try
+            {
+                cmbTipoPeriodo.SelectedItem = _programaActual.TipoPeriodo;
+            }
+            finally
+            {
+                _cargando = anterior;
             }
         }
 
         // ── Control de estado ocupado — deshabilita disparadores mientras corre async ──
         private void SetOcupado(bool ocupado, string mensaje = "")
         {
+            _ocupado = ocupado;
             UseWaitCursor  = ocupado;
-            // Deshabilitar controles que disparan operaciones pesadas
-            btnRecalcular.Enabled   = !ocupado;
-            cmbTipoPeriodo.Enabled      = !ocupado;
-            btnCalendario.Enabled       = !ocupado;
-            btnSincronizar.Enabled      = !ocupado;
-            btnReconstruir.Enabled      = !ocupado;
+            ActualizarHabilitacionPrograma();
             if (!string.IsNullOrEmpty(mensaje))
                 lblEstado.Text = mensaje;
         }

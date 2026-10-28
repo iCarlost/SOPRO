@@ -283,4 +283,65 @@ public class UndoManagerTests
         Assert.AreEqual(0, manager.UndoCount, "Una acción incierta no entra al stack.");
         Assert.IsFalse(manager.CanUndo);
     }
+
+    // ═══════════ Familias: descartar una sin tocar la otra ═══════════
+
+    [TestMethod]
+    public void DescartarPorFamilia_ConservaLaOtraFamiliaYSuOrden()
+    {
+        var manager = new UndoManager();
+        var registro = new List<string>();
+
+        Assert.IsTrue(manager.Execute(new DelegateUndoableAction(
+            "programa 1", () => registro.Add("u-prog1"), () => registro.Add("r-prog1"))));
+        Assert.IsTrue(manager.Execute(CrearAccion(registro, celdas: 1)));
+        Assert.IsTrue(manager.Execute(new DelegateUndoableAction(
+            "programa 2", () => registro.Add("u-prog2"), () => registro.Add("r-prog2"))));
+        Assert.AreEqual(3, manager.UndoCount);
+
+        manager.DescartarPorFamilia(UndoFamily.Formato);
+
+        Assert.AreEqual(2, manager.UndoCount, "Sólo se descarta la familia solicitada.");
+        Assert.AreEqual(0, manager.RedoCount);
+
+        // El tope sigue siendo la acción de programa más reciente.
+        registro.Clear();
+        Assert.IsTrue(manager.Undo());
+        Assert.AreEqual("u-prog2", registro.Single());
+        Assert.IsTrue(manager.Undo());
+        Assert.AreEqual("u-prog1", registro.Last());
+        Assert.IsFalse(manager.CanUndo);
+        Assert.AreEqual(2, manager.RedoCount);
+
+        // El redo conserva ambas acciones de programa.
+        registro.Clear();
+        Assert.IsTrue(manager.Redo());
+        Assert.IsTrue(manager.Redo());
+        CollectionAssert.AreEqual(new[] { "r-prog1", "r-prog2" }, registro);
+    }
+
+    [TestMethod]
+    public void DescartarPorFamilia_NoLiberaElBloqueoPorReconciliacion()
+    {
+        var manager = new UndoManager();
+        var registro = new List<string>();
+        Assert.IsTrue(manager.Execute(CrearAccion(registro, celdas: 1)));
+        Assert.IsTrue(manager.Execute(new DelegateUndoableAction(
+            "programa", () => registro.Add("u"), () => registro.Add("r"))));
+
+        manager.SuspendForReconciliation();
+        manager.DescartarPorFamilia(UndoFamily.Formato);
+        manager.DescartarPorFamilia(UndoFamily.Programa);
+
+        Assert.IsTrue(manager.RequiresReconciliation,
+            "Descartar historial no es reconciliar con la base.");
+        Assert.AreEqual(0, manager.UndoCount);
+        Assert.IsFalse(manager.CanUndo);
+        Assert.ThrowsExactly<InvalidOperationException>(() => manager.Undo());
+        Assert.ThrowsExactly<InvalidOperationException>(() => manager.Execute(CrearAccion(registro, 1)));
+
+        manager.ReconciliarTrasLecturaFresca();
+        Assert.IsFalse(manager.RequiresReconciliation);
+        Assert.IsTrue(manager.Execute(CrearAccion(registro, 1)));
+    }
 }

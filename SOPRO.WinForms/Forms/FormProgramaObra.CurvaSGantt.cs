@@ -184,14 +184,20 @@ namespace SOPRO.WinForms.Forms
             }
         }
 
-        private void ActualizarGantt()
+        /// <summary>
+        /// Reconstruye el modelo del Gantt para la vista seleccionada. Con
+        /// <paramref name="modeloPublicado"/> usa el modelo YA construido durante la
+        /// lectura fresca (publicación sin consultar la base); sin él, la interacción
+        /// normal lo construye con el contexto de la vista.
+        /// </summary>
+        private void ActualizarGantt(GanttRenderModel? modeloPublicado = null)
         {
             if (_ganttControl == null)
                 return;
 
             var vista = ObtenerVistaCurvaSeleccionada();
             var tipoPeriodo = ObtenerTipoPeriodoSeleccionado();
-            var model = vista switch
+            var model = modeloPublicado ?? vista switch
             {
                 CurvaSViewMode.Financiera => _ganttService.BuildFinancialGantt(_context, _programaActual, tipoPeriodo),
                 CurvaSViewMode.Ambas => _ganttService.BuildFinancialGantt(_context, _programaActual, tipoPeriodo, mixedMode: true),
@@ -379,7 +385,15 @@ namespace SOPRO.WinForms.Forms
             SolicitarRedibujoCurvaS();
         }
 
-        private void CargarCurvaS()
+        /// <summary>Seam de pruebas: filas de Curva S publicadas en la vista.</summary>
+        internal IReadOnlyList<CurvaSRowDto> CurvaSPublicada => _curvaS;
+
+        /// <summary>
+        /// Publica la Curva S de la vista. Con <paramref name="filasPublicadas"/> usa las
+        /// filas YA leídas con el contexto fresco de la publicación (no consulta la base);
+        /// sin ellas, la carga normal las calcula con el contexto de la vista.
+        /// </summary>
+        private void CargarCurvaS(IReadOnlyList<CurvaSRowDto>? filasPublicadas = null)
         {
             if (_programaActual == null)
             {
@@ -387,7 +401,9 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            var rows = _curvaSService.BuildFinancialCurve(_context, _programaActual.ProgramaObraId);
+            var rows = filasPublicadas is not null
+                ? filasPublicadas.ToList()
+                : _curvaSService.BuildFinancialCurve(_context, _programaActual.ProgramaObraId);
             _curvaS = new BindingList<CurvaSRowDto>(rows);
             if (_dgvCurvaS != null)
                 _dgvCurvaS.DataSource = _curvaS;

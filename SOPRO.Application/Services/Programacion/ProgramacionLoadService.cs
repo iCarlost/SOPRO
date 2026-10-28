@@ -32,6 +32,20 @@ namespace SOPRO.Application.Services
             // Recalcular antes de cargar para que importes y acumulados respeten la precisión de pantalla vigente.
             new ProgramacionCalculationService().RecalculateProgram(context, programaObraId);
 
+            return ProyectarPrograma(context, programaObraId);
+        }
+
+        /// <summary>
+        /// Lectura del programa SIN recalcular ni guardar: proyecta el DTO y calcula los
+        /// resúmenes de agrupadores en memoria. Es la ruta de publicación de la vista
+        /// después de un comando atómico y la de reconciliación tras un resultado
+        /// incierto (contexto nuevo, sólo lectura). Nunca llama a SaveChanges.
+        /// </summary>
+        public ProgramLoadDto? LoadProgramByIdReadOnly(SOPROContext context, int programaObraId)
+            => ProyectarPrograma(context, programaObraId);
+
+        private static ProgramLoadDto? ProyectarPrograma(SOPROContext context, int programaObraId)
+        {
             var programa = context.ProgramasObra
                 .AsNoTracking()
                 .Where(p => p.Id == programaObraId)
@@ -193,14 +207,29 @@ namespace SOPRO.Application.Services
 
         public ProgramLoadDto? LoadProgram(SOPROContext context, int proyectoId)
         {
-            var programaId = context.ProgramasObra
+            var programaId = LeerProgramaActivoId(context, proyectoId);
+
+            return programaId.HasValue ? LoadProgramById(context, programaId.Value) : null;
+        }
+
+        /// <summary>
+        /// Variante de sólo lectura de <see cref="LoadProgram"/>: no recalcula ni
+        /// persiste nada. Devuelve la proyección del programa activo tal como está en
+        /// la base, con los resúmenes calculados en memoria.
+        /// </summary>
+        public ProgramLoadDto? LoadProgramReadOnly(SOPROContext context, int proyectoId)
+        {
+            var programaId = LeerProgramaActivoId(context, proyectoId);
+
+            return programaId.HasValue ? LoadProgramByIdReadOnly(context, programaId.Value) : null;
+        }
+
+        private static int? LeerProgramaActivoId(SOPROContext context, int proyectoId)
+            => context.ProgramasObra
                 .Where(p => p.ProyectoId == proyectoId && p.Activo)
                 .OrderBy(p => p.Id)
                 .Select(p => (int?)p.Id)
                 .FirstOrDefault();
-
-            return programaId.HasValue ? LoadProgramById(context, programaId.Value) : null;
-        }
 
         public CalendarEditDto LoadCalendar(SOPROContext context, int proyectoId, int? calendarioId = null)
         {
