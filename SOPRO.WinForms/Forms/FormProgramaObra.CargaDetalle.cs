@@ -25,11 +25,14 @@ namespace SOPRO.WinForms.Forms
     public partial class FormProgramaObra
     {
 
-        internal void CargarPrograma(DataGridViewStateSnapshot? stateToRestore = null)
+        internal void CargarPrograma(DataGridViewStateSnapshot? stateToRestore = null, bool escrituraConfirmada = true)
         {
+            // Toda recarga de la vista es de SÓLO LECTURA y con contexto NUEVO: nunca
+            // SaveChanges ni la ruta heredada LoadProgram (que recalcula y guarda) sobre
+            // el contexto compartido, cuyo tracker puede contener periodos o
+            // distribuciones ya reemplazados.
             // Durante un bloqueo por resultado incierto la recarga es la ruta SEGURA de
-            // reconciliación: lectura fresca de programa + formato, NUNCA SaveChanges ni
-            // la ruta heredada LoadProgram (que recalcula y guarda).
+            // reconciliación: lectura fresca de programa + formato.
             if (EstaBloqueadoParaOperar)
             {
                 if (!ReconciliarProgramaYFormatoDesdeBase())
@@ -37,9 +40,10 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            var programa = _loadService.LoadProgram(_context, _proyecto.Id);
-            AplicarProgramaEnUi(programa, stateToRestore);
-            ActualizarHabilitacionPrograma();
+            if (!RecargarProgramaDesdeContextoFresco(stateToRestore, escrituraConfirmada))
+            {
+                lblEstado.Text = "No se pudo releer el programa. La vista quedó bloqueada; presione «Recargar».";
+            }
         }
 
         /// <summary>

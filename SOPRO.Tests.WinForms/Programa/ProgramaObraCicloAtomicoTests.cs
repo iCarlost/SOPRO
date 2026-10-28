@@ -200,9 +200,9 @@ public class ProgramaObraCicloAtomicoTests
             var proyectoId = GenerarPrograma(dbPath, proyecto.Id);
             var direccion = SembrarFormato(dbPath, proyectoId);
 
-            // 1ª creación: comando de sincronización. 2ª: lectura fresca (falla). 3ª:
-            // recarga manual de «Recargar» (éxito).
-            var factory = new ReadFailureOnSecondCreateFactory(dbPath);
+            // 1ª creación: carga inicial del formulario. 2ª: comando de sincronización.
+            // 3ª: lectura fresca (falla). 4ª: recarga manual de «Recargar» (éxito).
+            var factory = new ReadFailureOnFreshReadFactory(dbPath);
             form = new FormProgramaObra(ctx, proyecto, factory);
             Mostrar(form);
             EmpujarHistorial(form);
@@ -820,14 +820,15 @@ public class ProgramaObraCicloAtomicoTests
 
     /// <summary>
     /// Simula el commit ya realizado seguido de un fallo al cerrar el contexto (sólo en
-    /// el PRIMER cierre). El ejecutor lo clasifica como OutcomeUnknown; las lecturas
-    /// frescas posteriores usan contextos que cierran normalmente.
+    /// el SEGUNDO cierre: el primero es la carga inicial del formulario, que ahora es
+    /// una lectura fresca de sólo lectura). El ejecutor lo clasifica como
+    /// OutcomeUnknown; las lecturas frescas posteriores cierran normalmente.
     /// </summary>
     private sealed class DisposeThrowingOnceFactory : IProjectDbContextFactory
     {
         private readonly string _dbPath;
         private int _createCount;
-        private bool _failed;
+        private int _disposeCount;
 
         public DisposeThrowingOnceFactory(string dbPath) => _dbPath = dbPath;
 
@@ -836,12 +837,7 @@ public class ProgramaObraCicloAtomicoTests
         public SOPROContext Create(string databasePath)
         {
             Interlocked.Increment(ref _createCount);
-            return new DisposeThrowingContext(_dbPath, () =>
-            {
-                if (_failed) return false;
-                _failed = true;
-                return true;
-            });
+            return new DisposeThrowingContext(_dbPath, () => Interlocked.Increment(ref _disposeCount) == 2);
         }
 
         public Task<SOPROContext> CreateAsync(string databasePath, CancellationToken cancellationToken = default)
@@ -866,24 +862,25 @@ public class ProgramaObraCicloAtomicoTests
     }
 
     /// <summary>
-    /// Fábrica que falla al crear el contexto de la SEGUNDA operación (la lectura
-    /// fresca posterior al commit). El comando y la recarga manual usan contextos
+    /// Fábrica que falla al crear el contexto de la TERCERA operación: la primera es la
+    /// carga inicial del formulario, la segunda el comando y la tercera la lectura
+    /// fresca posterior al commit. El comando y la recarga manual usan contextos
     /// reales, de modo que se distingue «commit conocido + vista obsoleta» de
     /// «persistencia incierta».
     /// </summary>
-    private sealed class ReadFailureOnSecondCreateFactory : IProjectDbContextFactory
+    private sealed class ReadFailureOnFreshReadFactory : IProjectDbContextFactory
     {
         private readonly string _dbPath;
         private int _createCount;
 
-        public ReadFailureOnSecondCreateFactory(string dbPath) => _dbPath = dbPath;
+        public ReadFailureOnFreshReadFactory(string dbPath) => _dbPath = dbPath;
 
         public int CreateCount => Volatile.Read(ref _createCount);
 
         public SOPROContext Create(string databasePath)
         {
             var numero = Interlocked.Increment(ref _createCount);
-            if (numero == 2)
+            if (numero == 3)
                 throw new InvalidOperationException("lectura_fresca_simulada_fallida");
 
             return new SOPROContext(_dbPath);

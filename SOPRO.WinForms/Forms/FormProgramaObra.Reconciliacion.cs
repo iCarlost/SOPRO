@@ -77,6 +77,14 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         internal bool BloqueaEdicionPrograma()
         {
+            if (_ocupado || _cargando)
+            {
+                lblEstado.Text = _ocupado
+                    ? "Hay una operación del programa en curso. Espere a que termine antes de editar otra celda."
+                    : "La vista del programa se está actualizando. Espere antes de editar otra celda.";
+                return true;
+            }
+
             if (!EstaBloqueadoParaOperar)
                 return false;
 
@@ -101,10 +109,13 @@ namespace SOPRO.WinForms.Forms
             btnCalendario.Enabled = habilitado;
             cmbTipoPeriodo.Enabled = habilitado;
 
-            dgvActividades.ReadOnly = bloqueado;
-            dgvDependencias.ReadOnly = bloqueado;
-            dgvDependencias.AllowUserToAddRows = !bloqueado;
-            dgvDependencias.AllowUserToDeleteRows = !bloqueado;
+            // Mientras corre una operación asíncrona no se edita NINGUNA celda: la
+            // celda editada y el grid quedarían con datos que la recarga va a reemplazar.
+            var edicionBloqueada = bloqueado || _ocupado;
+            dgvActividades.ReadOnly = edicionBloqueada;
+            dgvDependencias.ReadOnly = edicionBloqueada;
+            dgvDependencias.AllowUserToAddRows = !edicionBloqueada;
+            dgvDependencias.AllowUserToDeleteRows = !edicionBloqueada;
         }
 
         /// <summary>
@@ -229,36 +240,50 @@ namespace SOPRO.WinForms.Forms
         /// comando confirmado. No recalcula ni guarda: la operación atómica ya dejó la
         /// base consistente. TODAS las lecturas (programa, Curva S, Gantt, plazo) ocurren
         /// antes de cambiar estado de UI y sobre el contexto fresco; si cualquiera falla
-        /// la persistencia SIGUE CONFIRMADA pero la vista queda BLOQUEADA (cachés/grid
-        /// obsoletos) hasta que «Recargar» obtenga una lectura completa.
+        /// la vista queda BLOQUEADA (cachés/grid obsoletos) hasta que «Recargar» obtenga
+        /// una lectura completa.
+        /// <paramref name="escrituraConfirmada"/> clasifica el fallo: un write confirmado
+        /// (commit) se informa como «se guardó»; un write rechazado (Ok=false, nada se
+        /// escribió) NO puede afirmar que se guardó. En ambos casos se conserva el lock.
         /// </summary>
-        private bool RecargarProgramaDesdeContextoFresco(DataGridViewStateSnapshot? stateToRestore = null)
+        private bool RecargarProgramaDesdeContextoFresco(
+            DataGridViewStateSnapshot? stateToRestore = null,
+            bool escrituraConfirmada = true)
         {
             if (EstaBloqueadoParaOperar)
                 return false;
 
             ProgramLoadDto? programa;
             PublicacionProgramaSnapshot publicacion;
+            UltimoErrorLecturaFresca = null;
             try
             {
                 using var contextoFresco = _factory.Create(_context.DatabasePath);
-                programa = _loadService.LoadProgramReadOnly(contextoFresco, _proyecto.Id);
-                publicacion = PrepararPublicacionPrograma(programa, contextoFresco);
+                programa = LeerProgramaParaPublicacion(contextoFresco);
+                publicacion = PrepararSnapshotParaPublicacion(programa, contextoFresco);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"RecargarProgramaDesdeContextoFresco: {ex.Message}");
+                // Si la lectura del programa o el snapshot ya registraron la causa, se
+                // conserva ese detalle (fase exacta); si no, el fallo fue al abrir el
+                // contexto de lectura.
+                var detalle = UltimoErrorLecturaFresca
+                    ?? RegistrarErrorLecturaFresca("apertura del contexto de lectura", ex);
 
-                // El commit ya se confirmó: NO es un OutcomeUnknown de persistencia. Pero
-                // la vista no puede operar con cachés que no reflejan la base hasta la
-                // lectura completa de «Recargar».
+                // Un write confirmado NO es un OutcomeUnknown de persistencia; uno
+                // rechazado (Ok=false) no escribió nada. En ambos casos la vista no puede
+                // operar con cachés que no reflejan la base hasta «Recargar».
                 BloquearPorPublicacionFallida(
-                    "La operación se guardó, pero la vista no se pudo actualizar. Presione «Recargar».",
-                    "La operación se guardó, pero no se pudo releer el programa. La vista quedó bloqueada: presione «Recargar» antes de continuar.");
+                    escrituraConfirmada
+                        ? $"La operación se guardó, pero la vista no se pudo actualizar. Presione «Recargar». Detalle: {detalle}"
+                        : $"La operación fue rechazada y la vista no se pudo actualizar. Presione «Recargar». Detalle: {detalle}",
+                    escrituraConfirmada
+                        ? $"La operación se guardó, pero no se pudo releer el programa. La vista quedó bloqueada: presione «Recargar» antes de continuar. Detalle: {detalle}"
+                        : $"La operación fue rechazada (nada se escribió) y no se pudo refrescar la vista. La vista quedó bloqueada: presione «Recargar» antes de continuar. Detalle: {detalle}");
                 return false;
             }
 
-            if (!PublicarProgramaDesdeSnapshot(programa, publicacion, stateToRestore))
+            if (!PublicarProgramaDesdeSnapshot(programa, publicacion, stateToRestore, escrituraConfirmada))
                 return false;
 
             ActualizarHabilitacionPrograma();
@@ -266,13 +291,84 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
+        /// Recarga verificada tras una edición del programa (actividad, dependencia o
+        /// undo/redo): publica una lectura FRESCA de sólo lectura sobre un contexto
+        /// nuevo y devuelve true SÓLO si la vista quedó publicada sin bloqueo. Con la
+        /// vista ya bloqueada reconcilia programa + formato. Cualquier fallo deja la
+        /// vista bloqueada e informada; nunca propaga la excepción al bucle de UI.
+        /// <paramref name="escrituraConfirmada"/> evita afirmar «se guardó» cuando el
+        /// write fue rechazado (Ok=false).
+        /// </summary>
+        private bool RecargarProgramaVerificado(
+            DataGridViewStateSnapshot? stateToRestore = null,
+            bool escrituraConfirmada = true)
+        {
+            if (IsDisposed)
+                return false;
+
+            try
+            {
+                CargarPrograma(stateToRestore, escrituraConfirmada);
+                return !EstaBloqueadoParaOperar;
+            }
+            catch (Exception ex)
+            {
+                var detalle = RegistrarErrorLecturaFresca("RecargarProgramaVerificado", ex);
+                _requiereLecturaFresca = true;
+                _undoManager.SuspendForReconciliation();
+                ActualizarHabilitacionPrograma();
+                lblEstado.Text = escrituraConfirmada
+                    ? $"La operación se guardó, pero la vista no se pudo actualizar. Presione «Recargar». Detalle: {detalle}"
+                    : $"La operación fue rechazada y la vista no se pudo actualizar. Presione «Recargar». Detalle: {detalle}";
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Lectura del programa con la fase identificada: si falla, registra si el error
+        /// fue al leer el programa (no al construir Curva S/Gantt). El commit ya está
+        /// confirmado, así que el diagnóstico debe distinguir la fase exacta.
+        /// </summary>
+        private ProgramLoadDto? LeerProgramaParaPublicacion(SOPROContext contextoFresco)
+        {
+            try
+            {
+                return _loadService.LoadProgramReadOnly(contextoFresco, _proyecto.Id);
+            }
+            catch (Exception ex)
+            {
+                RegistrarErrorLecturaFresca("lectura del programa", ex);
+                throw;
+            }
+        }
+
+        /// <summary>Snapshot de publicación (Curva S, Gantt, plazo) con fase identificada.</summary>
+        private PublicacionProgramaSnapshot PrepararSnapshotParaPublicacion(
+            ProgramLoadDto? programa,
+            SOPROContext contextoFresco)
+        {
+            try
+            {
+                return PrepararPublicacionPrograma(programa, contextoFresco);
+            }
+            catch (Exception ex)
+            {
+                RegistrarErrorLecturaFresca("snapshot de publicación (Curva S/Gantt/plazo)", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Aplica en la UI el snapshot ya leído. Si la publicación falla, la vista queda
         /// marcada para lectura fresca (nunca se libera el bloqueo con caches parciales).
+        /// <paramref name="escrituraConfirmada"/> evita afirmar «se guardó» si el write
+        /// fue rechazado.
         /// </summary>
         private bool PublicarProgramaDesdeSnapshot(
             ProgramLoadDto? programa,
             PublicacionProgramaSnapshot publicacion,
-            DataGridViewStateSnapshot? stateToRestore)
+            DataGridViewStateSnapshot? stateToRestore,
+            bool escrituraConfirmada = true)
         {
             try
             {
@@ -281,13 +377,39 @@ namespace SOPRO.WinForms.Forms
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"PublicarProgramaDesdeSnapshot: {ex.Message}");
+                var detalle = RegistrarErrorLecturaFresca("PublicarProgramaDesdeSnapshot", ex);
                 BloquearPorPublicacionFallida(
-                    "La vista no se pudo actualizar. Presione «Recargar» antes de continuar.",
-                    "No se pudo publicar la vista del programa. La vista quedó bloqueada: presione «Recargar» antes de continuar.");
+                    escrituraConfirmada
+                        ? $"La vista no se pudo actualizar. Presione «Recargar» antes de continuar. Detalle: {detalle}"
+                        : $"La operación fue rechazada y la vista no se pudo actualizar. Presione «Recargar» antes de continuar. Detalle: {detalle}",
+                    escrituraConfirmada
+                        ? $"No se pudo publicar la vista del programa. La vista quedó bloqueada: presione «Recargar» antes de continuar. Detalle: {detalle}"
+                        : $"La operación fue rechazada (nada se escribió) y no se pudo publicar la vista del programa. La vista quedó bloqueada: presione «Recargar» antes de continuar. Detalle: {detalle}");
                 return false;
             }
         }
+
+        /// <summary>
+        /// Registra el error de la última lectura/publicación fresca fallida. Antes se
+        /// descartaba en <c>Debug.WriteLine</c> (invisible en Release), así que un fallo
+        /// real de lectura posterior al commit no dejaba rastro de su causa. El detalle
+        /// se muestra al usuario y queda accesible para diagnóstico/pruebas.
+        /// </summary>
+        private string RegistrarErrorLecturaFresca(string origen, Exception ex)
+        {
+            var detalle = $"{ex.GetType().Name}: {ex.Message}";
+            UltimoErrorLecturaFresca = $"{origen}: {detalle}";
+            System.Diagnostics.Debug.WriteLine(
+                $"[ProgramaObra] {origen} falló: {ex}");
+            return detalle;
+        }
+
+        /// <summary>
+        /// Causa del último fallo de lectura/publicación fresca (null si no hubo). Seam
+        /// de diagnóstico: antes el error sólo iba a Debug y era imposible saber por qué
+        /// la vista quedó bloqueada.
+        /// </summary>
+        internal string? UltimoErrorLecturaFresca { get; private set; }
 
         /// <summary>
         /// Estado seguro cuando la lectura/publicación fresca no termina: se conserva el
@@ -320,9 +442,10 @@ namespace SOPRO.WinForms.Forms
 
             try
             {
+                UltimoErrorLecturaFresca = null;
                 using var contextoFresco = (factory ?? _factory).Create(_context.DatabasePath);
-                programa = _loadService.LoadProgramReadOnly(contextoFresco, _proyecto.Id);
-                publicacion = PrepararPublicacionPrograma(programa, contextoFresco);
+                programa = LeerProgramaParaPublicacion(contextoFresco);
+                publicacion = PrepararSnapshotParaPublicacion(programa, contextoFresco);
 
                 var servicioFormato = new FormatoReporteService(contextoFresco);
                 overlays = new Dictionary<ReportCellAddress, ReportStyleOverlay>(
@@ -335,7 +458,8 @@ namespace SOPRO.WinForms.Forms
             {
                 // Sin lectura verificada no hay reconciliación: se conserva el bloqueo
                 // y las cachés anteriores (no se publica un estado parcial).
-                System.Diagnostics.Debug.WriteLine($"ReconciliarProgramaYFormatoDesdeBase: {ex.Message}");
+                if (UltimoErrorLecturaFresca is null)
+                    RegistrarErrorLecturaFresca("ReconciliarProgramaYFormatoDesdeBase", ex);
                 return false;
             }
 
@@ -347,7 +471,7 @@ namespace SOPRO.WinForms.Forms
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"ReconciliarProgramaYFormatoDesdeBase (publicación): {ex.Message}");
+                RegistrarErrorLecturaFresca("ReconciliarProgramaYFormatoDesdeBase (publicación)", ex);
                 return false;
             }
 

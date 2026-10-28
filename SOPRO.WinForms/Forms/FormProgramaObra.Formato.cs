@@ -426,16 +426,12 @@ namespace SOPRO.WinForms.Forms
                 if (ex.Status != BudgetOperationStatus.OutcomeUnknown)
                     RevertirCambiosFormato(cambios);
 
-                MessageBox.Show(ex.Message, "Formato", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Notificador.Error(ex.Message);
             }
             catch (Exception ex)
             {
                 RevertirCambiosFormato(cambios);
-                MessageBox.Show(
-                    $"No se pudo guardar el formato de las celdas:\n{ex.Message}",
-                    "Formato",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                Notificador.Error($"No se pudo guardar el formato de las celdas:\n{ex.Message}");
             }
         }
 

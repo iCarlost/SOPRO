@@ -112,25 +112,47 @@ namespace SOPRO.WinForms.Forms
 
             e.Cancel = true;
             dgvActividades.CancelEdit();
-            MessageBox.Show(validation.Error, "Programación", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            Notificador.Advertir(validation.Error);
             lblEstado.Text = validation.Error;
         }
 
         private async void dgvActividades_CellEndEdit(object sender, DataGridViewCellEventArgs e)
         {
-            if (_cargando || e.RowIndex < 0 || _programaActual == null || EstaBloqueadoParaOperar)
+            await ProcesarFinEdicionActividadAsync(e.RowIndex, e.ColumnIndex);
+        }
+
+        /// <summary>
+        /// Fin de edición de una celda de actividad. El guardado se ejecuta en un
+        /// contexto CORTO (nunca el compartido: éste conservaría periodos y
+        /// distribuciones ya reemplazados con IDs nuevos y un DELETE posterior
+        /// afectaría 0 filas → DbUpdateConcurrencyException). Después del recálculo la
+        /// vista se publica con una lectura FRESCA de sólo lectura. Un fallo nunca
+        /// informa éxito: suspende por resultado incierto y relee para verificar.
+        /// </summary>
+        internal async Task ProcesarFinEdicionActividadAsync(int rowIndex, int columnIndex)
+        {
+            if (_cargando || _ocupado || _programaActual == null || EstaBloqueadoParaOperar)
                 return;
 
-            var row = dgvActividades.Rows[e.RowIndex];
+            if (rowIndex < 0 || rowIndex >= dgvActividades.Rows.Count)
+                return;
+
+            if (columnIndex < 0 || columnIndex >= dgvActividades.Columns.Count)
+                return;
+
+            var row = dgvActividades.Rows[rowIndex];
             if (row.DataBoundItem is not ActivityGridRowDto dto)
                 return;
 
             var gridState = DataGridViewStateHelper.Capture(dgvActividades);
+            var columnName = dgvActividades.Columns[columnIndex].Name;
+            var dbPath = _context.DatabasePath;
 
             try
             {
                 _cargando = true;
-                NormalizarActividadEditada(dto, dgvActividades.Columns[e.ColumnIndex].Name);
+                SetOcupado(true, $"Actualizando '{dto.Clave}'...");
+                NormalizarActividadEditada(dto, columnName);
 
                 var saveDto = new ActivityEditDto
                 {
@@ -154,24 +176,32 @@ namespace SOPRO.WinForms.Forms
                     Orden = dto.Orden
                 };
 
-                var result = _persistenceService.SaveActivity(_context, saveDto);
+                (bool Ok, string Error, int? ActividadId) result;
+                using (var contextoEdicion = _factory.Create(dbPath))
+                {
+                    result = _persistenceService.SaveActivity(contextoEdicion, saveDto);
+                }
+
                 if (!result.Ok)
                 {
-                    MessageBox.Show(result.Error, "Programación", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    RecargarProgramaDiferido(gridState);
+                    Notificador.Advertir(result.Error);
+                    _cargando = false;
+                    RecargarProgramaVerificado(gridState, escrituraConfirmada: false);
                     return;
                 }
+
+                // El undo se registra antes de la fase asíncrona: ya hay commit y no
+                // depende del recálculo (que puede fallar y suspender el historial).
+                RegistrarUndoEdicionActividad(rowIndex, columnIndex, dto);
 
                 // Recalcular solo esta actividad y redistribuirla — no todo el programa
                 var actividadId  = dto.Id;
                 var programaId   = _programaActual.ProgramaObraId;
                 var tipoPeriodo  = ObtenerTipoPeriodoSeleccionado();
-                var dbPathAct = _context.DatabasePath;
-                SetOcupado(true, $"Actualizando '{dto.Clave}'...");
 
                 await Task.Run(() =>
                 {
-                    using var ctx = _factory.Create(dbPathAct);
+                    using var ctx = _factory.Create(dbPath);
                     // 1. Recalcular fechas de esta actividad
                     _calculationService.RecalculateActivity(ctx, actividadId);
                     // 2. Redistribuir solo esta actividad
@@ -182,32 +212,23 @@ namespace SOPRO.WinForms.Forms
                     RegenerarPeriodosYDistribuciones(ctx, programaId, tipoPeriodo);
                 });
 
-                if (!_isUndoRedo
-                    && e.RowIndex == _undoActividadRowIndex
-                    && e.ColumnIndex == _undoActividadColumnIndex
-                    && EsColumnaUndoActividad(_undoActividadColumnName))
-                {
-                    var oldValue = _undoActividadOldValue;
-                    var newValue = ObtenerValorUndoActividad(dto, _undoActividadColumnName);
-                    if (!SonValoresUndoIguales(oldValue, newValue))
-                    {
-                        int rowIndex = e.RowIndex;
-                        string columnName = _undoActividadColumnName;
-                        string descripcion = $"Editar {columnName} en programa";
-                        _undoManager.Push(new DelegateUndoableAction(
-                            descripcion,
-                            () => AplicarUndoRedoActividadCelda(rowIndex, columnName, oldValue),
-                            () => AplicarUndoRedoActividadCelda(rowIndex, columnName, newValue)));
-                    }
-                }
+                // Cede el hilo para que DataGridView termine de confirmar la celda antes
+                // de reemplazar el DataSource; la recarga se publica fuera del evento.
+                await Task.Yield();
+                if (IsDisposed)
+                    return;
+
+                if (!RecargarProgramaVerificado(gridState))
+                    return;
 
                 lblEstado.Text = $"Actividad '{dto.Clave}' actualizada.";
-                RecargarProgramaDiferido(gridState);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"No se pudo guardar la actividad: {ex.Message}", "Programación", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                RecargarProgramaDiferido(gridState);
+                System.Diagnostics.Debug.WriteLine($"ProcesarFinEdicionActividadAsync: {ex}");
+                _cargando = false;
+                SuspenderPorResultadoIncierto($"No se pudo guardar la actividad: {ex.Message}");
+                RecargarProgramaVerificado(gridState);
             }
             finally
             {
@@ -220,26 +241,130 @@ namespace SOPRO.WinForms.Forms
             }
         }
 
-
-        private void RecargarProgramaDiferido(DataGridViewStateSnapshot? stateToRestore = null)
+        private void RegistrarUndoEdicionActividad(int rowIndex, int columnIndex, ActivityGridRowDto dto)
         {
-            if (!IsHandleCreated || IsDisposed)
+            if (_isUndoRedo
+                || rowIndex != _undoActividadRowIndex
+                || columnIndex != _undoActividadColumnIndex
+                || !EsColumnaUndoActividad(_undoActividadColumnName))
                 return;
 
-            _pendingGridStateRestore = stateToRestore;
-
-            if (_programaReloadPending)
+            var columnName = _undoActividadColumnName;
+            var oldValue = _undoActividadOldValue;
+            var newValue = ObtenerValorUndoActividad(dto, columnName);
+            if (SonValoresUndoIguales(oldValue, newValue))
                 return;
 
-            _programaReloadPending = true;
-            BeginInvoke(new Action(() =>
+            _undoManager.Push(new DelegateUndoableAction(
+                $"Editar {columnName} en programa",
+                () => AplicarUndoRedoActividadCelda(rowIndex, columnName, oldValue),
+                () => AplicarUndoRedoActividadCelda(rowIndex, columnName, newValue)));
+        }
+
+        // ── Seams de pruebas (STA, sin diálogos): ejecutan el ciclo real de edición ──
+
+        /// <summary>
+        /// Ejecuta el ciclo REAL de BeginEdit + commit de una fecha en el grid de
+        /// actividades y espera la operación asíncrona con su recarga verificada.
+        /// </summary>
+        internal bool EditarFechaActividad(int rowIndex, string columnName, DateTime fecha)
+        {
+            if (rowIndex < 0 || rowIndex >= dgvActividades.Rows.Count)
+                return false;
+
+            if (!dgvActividades.Columns.Contains(columnName))
+                return false;
+
+            var columna = dgvActividades.Columns[columnName];
+            var cancelacion = new DataGridViewCellCancelEventArgs(columna.Index, rowIndex);
+            dgvActividades_CellBeginEdit(dgvActividades, cancelacion);
+            if (cancelacion.Cancel)
+                return false;
+
+            if (dgvActividades.Rows[rowIndex].DataBoundItem is not ActivityGridRowDto dto)
+                return false;
+
+            if (columnName == "colFechaInicio")
+                dto.FechaInicioProgramada = fecha;
+            else if (columnName == "colFechaFin")
+                dto.FechaFinProgramada = fecha;
+            else
+                return false;
+
+            dgvActividades.Rows[rowIndex].Cells[columna.Index].Value = fecha;
+            dgvActividades_CellEndEdit(dgvActividades, new DataGridViewCellEventArgs(columna.Index, rowIndex));
+            return EsperarOperacionPrograma();
+        }
+
+        /// <summary>
+        /// Ejecuta el ciclo REAL de BeginEdit + commit de la duración (días hábiles) en
+        /// el grid de actividades: actualiza el DTO enlazado, la celda, dispara el
+        /// <c>CellEndEdit</c> real (validación/normalización/guardado/recarga fresca) y
+        /// espera la operación asíncrona. Es el escenario reportado: dos conceptos con
+        /// duración exactamente 5 y recarga entre ediciones.
+        /// </summary>
+        internal bool EditarDuracionDiasActividad(int rowIndex, int duracionDias)
+            => IniciarEdicionDuracionDiasActividad(rowIndex, duracionDias) && EsperarOperacionPrograma();
+
+        /// <summary>
+        /// Igual que <see cref="EditarDuracionDiasActividad"/> pero SIN esperar: devuelve
+        /// en cuanto el handler real llega a su fase asíncrona. Seam de pruebas para
+        /// verificar que, mientras la operación está en curso, otra edición se cancela
+        /// en <c>CellBeginEdit</c> y no se pierde silenciosamente.
+        /// </summary>
+        internal bool IniciarEdicionDuracionDiasActividad(int rowIndex, int duracionDias)
+        {
+            const string columnaDuracion = "colDuracionDias";
+            if (rowIndex < 0 || rowIndex >= dgvActividades.Rows.Count)
+                return false;
+
+            if (!dgvActividades.Columns.Contains(columnaDuracion))
+                return false;
+
+            var columna = dgvActividades.Columns[columnaDuracion];
+            var cancelacion = new DataGridViewCellCancelEventArgs(columna.Index, rowIndex);
+            dgvActividades_CellBeginEdit(dgvActividades, cancelacion);
+            if (cancelacion.Cancel)
+                return false;
+
+            if (dgvActividades.Rows[rowIndex].DataBoundItem is not ActivityGridRowDto dto)
+                return false;
+
+            dto.DuracionDiasHabiles = duracionDias;
+            dgvActividades.Rows[rowIndex].Cells[columna.Index].Value = duracionDias;
+            dgvActividades_CellEndEdit(dgvActividades, new DataGridViewCellEventArgs(columna.Index, rowIndex));
+            return true;
+        }
+
+        /// <summary>Hay una operación de edición en curso (ocupado o recargando).</summary>
+        internal bool OperacionProgramaEnCurso => _ocupado || _cargando;
+
+        /// <summary>
+        /// Seam de pruebas: intenta el <c>CellBeginEdit</c> real del grid de actividades
+        /// y devuelve false si la edición fue cancelada (operación en curso/bloqueo).
+        /// </summary>
+        internal bool IntentarEditarCeldaActividad(int rowIndex, int columnIndex)
+        {
+            var cancelacion = new DataGridViewCellCancelEventArgs(columnIndex, rowIndex);
+            dgvActividades_CellBeginEdit(dgvActividades, cancelacion);
+            return !cancelacion.Cancel;
+        }
+
+        /// <summary>
+        /// Bombea mensajes hasta que la operación asíncrona del programa termina
+        /// (incluida su recarga fresca). Devuelve false si excede el tiempo máximo.
+        /// </summary>
+        internal bool EsperarOperacionPrograma(int milisegundosMaximos = 30000)
+        {
+            var limite = DateTime.UtcNow.AddMilliseconds(milisegundosMaximos);
+            while (_ocupado && DateTime.UtcNow < limite)
             {
-                _programaReloadPending = false;
-                if (IsDisposed)
-                    return;
+                System.Windows.Forms.Application.DoEvents();
+                System.Threading.Thread.Sleep(5);
+            }
 
-                CargarPrograma(_pendingGridStateRestore);
-            }));
+            System.Windows.Forms.Application.DoEvents();
+            return !_ocupado;
         }
 
         private void NormalizarActividadEditada(ActivityGridRowDto dto, string columnName)

@@ -369,9 +369,10 @@ public class ProgramaObraBloqueoFormatoYCurvaSTests
 
     /// <summary>
     /// Deja fuera de servicio la tabla de distribuciones al crear el contexto de la
-    /// LECTURA FRESCA (segunda creación): el programa se puede leer, pero la Curva S
-    /// y el Gantt financiero fallan. <see cref="RestaurarDistribuciones"/> permite que
-    /// la recarga posterior sea completa.
+    /// LECTURA FRESCA posterior al comando (tercera creación: la primera es la carga
+    /// inicial del formulario y la segunda el comando): el programa se puede leer, pero
+    /// la Curva S y el Gantt financiero fallan. <see cref="RestaurarDistribuciones"/>
+    /// permite que la recarga posterior sea completa.
     /// </summary>
     private sealed class DistribucionesRotaEnLecturaFrescaFactory : IProjectDbContextFactory
     {
@@ -386,7 +387,7 @@ public class ProgramaObraBloqueoFormatoYCurvaSTests
         public SOPROContext Create(string databasePath)
         {
             var numero = Interlocked.Increment(ref _createCount);
-            if (numero == 2)
+            if (numero == 3)
                 Renombrar(desde: Tabla, hacia: TablaRota);
 
             return new SOPROContext(_dbPath);

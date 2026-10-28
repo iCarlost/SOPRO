@@ -68,7 +68,6 @@ namespace SOPRO.WinForms.Forms
         private bool _curvaSRedrawPending = false;
         private bool _detalleSeleccionRefreshPending = false;
         private bool _visualProgramRefreshPending = false;
-        private bool _programaReloadPending = false;
         private bool _detalleSeleccionDeferred = false;
         private int? _ultimaActividadDetalleId = null;
         private bool _layoutPersistenceReady = false;
