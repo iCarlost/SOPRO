@@ -8,6 +8,7 @@ namespace SOPRO.WinForms.Forms
         private System.Windows.Forms.Label lblSubtitulo;
         private System.Windows.Forms.ToolStrip toolPrograma;
         private System.Windows.Forms.ToolStripButton btnRecalcular;
+        private System.Windows.Forms.ToolStripButton btnRecargar;
         private System.Windows.Forms.ToolStripButton btnCalendario;
         private System.Windows.Forms.ToolStripButton btnSincronizar;
         private System.Windows.Forms.ToolStripButton btnReconstruir;
@@ -92,6 +93,7 @@ namespace SOPRO.WinForms.Forms
             lblTitulo = new Label();
             toolPrograma = new ToolStrip();
             btnRecalcular = new ToolStripButton();
+            btnRecargar = new ToolStripButton();
             btnCalendario = new ToolStripButton();
             btnSincronizar = new ToolStripButton();
             btnReconstruir = new ToolStripButton();
@@ -206,7 +208,7 @@ namespace SOPRO.WinForms.Forms
             // 
             toolPrograma.GripStyle = ToolStripGripStyle.Hidden;
             toolPrograma.ImageScalingSize = new Size(20, 20);
-            toolPrograma.Items.AddRange(new ToolStripItem[] { btnRecalcular, btnCalendario, btnSincronizar, btnReconstruir, btnBorrarPrograma, lblTipoPeriodo, cmbTipoPeriodo, lblVistaCurva, cmbVistaCurva, lblPieGantt, cmbPieGantt, lblEtiquetaSegmentoGantt, cmbEtiquetaSegmentoGantt, btnToggleDetalle, btnConfigColumnas, btnCerrar });
+            toolPrograma.Items.AddRange(new ToolStripItem[] { btnRecalcular, btnRecargar, btnCalendario, btnSincronizar, btnReconstruir, btnBorrarPrograma, lblTipoPeriodo, cmbTipoPeriodo, lblVistaCurva, cmbVistaCurva, lblPieGantt, cmbPieGantt, lblEtiquetaSegmentoGantt, cmbEtiquetaSegmentoGantt, btnToggleDetalle, btnConfigColumnas, btnCerrar });
             toolPrograma.Location = new Point(0, 68);
             toolPrograma.Name = "toolPrograma";
             toolPrograma.Padding = new Padding(8, 4, 8, 4);
@@ -222,6 +224,15 @@ namespace SOPRO.WinForms.Forms
             btnRecalcular.Size = new Size(84, 20);
             btnRecalcular.Text = "\U0001f9ee Recalcular";
             btnRecalcular.Click += btnRecalcular_Click;
+
+            // btnRecargar
+            btnRecargar.DisplayStyle = ToolStripItemDisplayStyle.Text;
+            btnRecargar.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            btnRecargar.Name = "btnRecargar";
+            btnRecargar.Size = new Size(88, 20);
+            btnRecargar.Text = "\u21bb Recargar";
+            btnRecargar.ToolTipText = "Volver a leer el proyecto desde disco";
+            btnRecargar.Click += btnRecargar_Click;
             // 
             // btnCalendario
             // 

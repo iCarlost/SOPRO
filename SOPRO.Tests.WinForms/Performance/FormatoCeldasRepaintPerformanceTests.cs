@@ -6,6 +6,7 @@ using System.Linq;
 using System.Windows.Forms;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SOPRO.Tests.WinForms.TestInfrastructure;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Materials;
@@ -107,13 +108,14 @@ public class FormatoCeldasRepaintPerformanceTests
         // Se formatea la columna PrecioUnitario de TODAS las filas: peor caso del
         // camino de acierto (hit del diccionario) en el repaint.
         var lote = Enumerable.Range(1, FilasGrid)
-            .Select(i => new CambioFormatoCelda(
+            .Select(i => new CambioFormatoCeldaCommand(
                 Vista,
                 ClaveFilaReporte.Insumo(i),
                 "PrecioUnitario",
-                new ReportStyleOverlay(ColorFondo: "#112233", Negrita: true)))
+                ExpectedOverlay: null,
+                ProposedOverlay: new ReportStyleOverlay(ColorFondo: "#112233", Negrita: true)))
             .ToList();
-        service.AplicarCeldas(proyectoId, MaterialesTipo, lote);
+        FormatoTestWriter.Aplicar(ctx, proyectoId, MaterialesTipo, lote);
 
         using var grid = CrearGrid(FilasGrid);
         Assert.AreEqual(FilasGrid, grid.Rows.Count, "El grid debe materializar las 5.000 filas.");
@@ -159,11 +161,12 @@ public class FormatoCeldasRepaintPerformanceTests
 
         // Sólo 25 overrides en un grid de 5.000 filas (3 columnas = 15.000 celdas).
         var lote = Enumerable.Range(1, 25)
-            .Select(i => new CambioFormatoCelda(
+            .Select(i => new CambioFormatoCeldaCommand(
                 Vista, ClaveFilaReporte.Insumo(i), "PrecioUnitario",
-                new ReportStyleOverlay(ColorFondo: "#445566")))
+                ExpectedOverlay: null,
+                ProposedOverlay: new ReportStyleOverlay(ColorFondo: "#445566")))
             .ToList();
-        service.AplicarCeldas(proyectoId, MaterialesTipo, lote);
+        FormatoTestWriter.Aplicar(ctx, proyectoId, MaterialesTipo, lote);
 
         using var grid = CrearGrid(FilasGrid);
         var formato = new CatalogoFormatoCeldas(grid, ctx, proyectoId, MaterialesTipo, Vista);

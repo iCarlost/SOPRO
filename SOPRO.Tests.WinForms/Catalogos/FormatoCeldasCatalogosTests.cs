@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SOPRO.Tests.WinForms.TestInfrastructure;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Materials;
@@ -208,7 +209,7 @@ public class FormatoCeldasCatalogosTests
             new(new ReportCellAddress(Vista, ClaveFilaReporte.Insumo(2), "Descripcion"), null, overlay),
         };
 
-        service.AplicarCeldas(proyectoId, MaterialesTipo,
+        FormatoTestWriter.Aplicar(ctx, proyectoId, MaterialesTipo,
             FormCatalogoMateriales.ConstruirLoteCambios(cambios, aplicarAntes: false));
 
         var recargado = new FormatoReporteService(ctx).CargarCeldas(proyectoId, MaterialesTipo);
@@ -236,8 +237,8 @@ public class FormatoCeldasCatalogosTests
         var accion = new CompositeUndoableAction(
             "Formato de 10 celdas",
             cambios.Select(c => new UndoChange(c.Antes, c.Despues)).ToList(),
-            _ => service.AplicarCeldas(proyectoId, MaterialesTipo, FormCatalogoMateriales.ConstruirLoteCambios(cambios, aplicarAntes: true)),
-            _ => service.AplicarCeldas(proyectoId, MaterialesTipo, FormCatalogoMateriales.ConstruirLoteCambios(cambios, aplicarAntes: false)));
+            _ => FormatoTestWriter.Aplicar(ctx, proyectoId, MaterialesTipo, FormCatalogoMateriales.ConstruirLoteCambios(cambios, aplicarAntes: true)),
+            _ => FormatoTestWriter.Aplicar(ctx, proyectoId, MaterialesTipo, FormCatalogoMateriales.ConstruirLoteCambios(cambios, aplicarAntes: false)));
 
         Assert.IsTrue(manager.Execute(accion));
         Assert.AreEqual(1, manager.UndoCount, "El rango de 10 celdas es UNA sola acción.");
@@ -267,9 +268,9 @@ public class FormatoCeldasCatalogosTests
 
         var cambios = new[]
         {
-            new CambioFormatoSeleccion(new ReportCellAddress(Vista, "INS:1", "PrecioUnitario"), null, new ReportStyleOverlay()),
+            new CambioFormatoSeleccion(new ReportCellAddress(Vista, "INS:1", "PrecioUnitario"), new ReportStyleOverlay(ColorFondo: "#123456"), new ReportStyleOverlay()),
         };
-        service.AplicarCeldas(proyectoId, MaterialesTipo,
+        FormatoTestWriter.Aplicar(ctx, proyectoId, MaterialesTipo,
             FormCatalogoMateriales.ConstruirLoteCambios(cambios, aplicarAntes: false));
         ctx.ChangeTracker.Clear();
 

@@ -94,6 +94,11 @@ namespace SOPRO.WinForms.Forms
                 _isUndoRedo = true;
                 return _undoManager.Undo();
             }
+            catch (FormatoCeldasPersistenceException ex)
+            {
+                FormatoCeldasPersistence.ManejarErrorDeFormato(ex);
+                return false;
+            }
             finally
             {
                 _isUndoRedo = false;
@@ -109,6 +114,11 @@ namespace SOPRO.WinForms.Forms
             {
                 _isUndoRedo = true;
                 return _undoManager.Redo();
+            }
+            catch (FormatoCeldasPersistenceException ex)
+            {
+                FormatoCeldasPersistence.ManejarErrorDeFormato(ex);
+                return false;
             }
             finally
             {

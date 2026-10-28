@@ -25,7 +25,7 @@ namespace SOPRO.WinForms.Forms
     public partial class FormProgramaObra
     {
 
-        private void CargarPrograma(DataGridViewStateSnapshot? stateToRestore = null)
+        internal void CargarPrograma(DataGridViewStateSnapshot? stateToRestore = null)
         {
             dgvActividades.SuspendLayout();
             dgvPeriodos.SuspendLayout();
@@ -35,6 +35,13 @@ namespace SOPRO.WinForms.Forms
             try
             {
                 _cargando = true;
+
+                // Si el formato quedó en estado INCIERTO, la recarga del programa (botón
+                // Recargar) es la ruta segura para releerlo desde la base y reconciliar el
+                // historial. Best-effort: si falla, sigue bloqueado y no se cachea nada.
+                if (_undoManager.RequiresReconciliation)
+                    RecargarFormatoPersistidoDesdeBase();
+
                 _programaActual = _loadService.LoadProgram(_context, _proyecto.Id);
                 _actividades = new BindingList<ActivityGridRowDto>();
                 _periodos = new BindingList<PeriodEditDto>();

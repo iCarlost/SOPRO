@@ -4,10 +4,12 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using SOPRO.Application.DTOs.Programacion;
+using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Core.Entities;
+using SOPRO.Data.Factories;
 using SOPRO.Reporting.Formatting;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Undo;
@@ -42,6 +44,19 @@ namespace SOPRO.WinForms.Forms
 
         private Dictionary<string, ReportStyleOverlay>? _estilosFilaFormato;
         private int _estilosFilaFormatoProyectoId = -1;
+
+        /// <summary>
+        /// Estilos de usuario "vacíos" que se devuelven mientras el estado persistido
+        /// es incierto: se pintan los defaults y NO se memoiza nada.
+        /// </summary>
+        private static readonly IReadOnlyDictionary<string, ReportStyleOverlay> SinEstilosFilaUsuario =
+            new Dictionary<string, ReportStyleOverlay>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Historial de undo/redo de la vista (interno para pruebas del módulo: permite
+        /// verificar el bloqueo por resultado incierto y su reconciliación).
+        /// </summary>
+        internal UndoManager HistorialUndo => _undoManager;
 
         private FormatoReporteService FormatoService
             => _formatoReporteService ??= new FormatoReporteService(_context);
@@ -159,35 +174,16 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Construye el lote que <see cref="FormatoReporteService.AplicarCeldas"/>
-        /// persiste: con <paramref name="aplicarAntes"/> se toma el estado "antes"
-        /// (undo) y en otro caso el "después" (do/redo). Un overlay <c>null</c> indica
-        /// BORRAR el override de esa celda.
+        /// Construye el lote de comandos con base esperada que
+        /// <see cref="FormatoCeldasCommandService"/> persiste: con
+        /// <paramref name="aplicarAntes"/> el estado deseado es el "antes" (undo) y
+        /// la base esperada el "después"; en otro caso, al revés. Un overlay
+        /// <c>null</c> en el estado deseado indica BORRAR el override.
         /// </summary>
-        internal static IReadOnlyList<CambioFormatoCelda> ConstruirLoteCambios(
+        internal static IReadOnlyList<CambioFormatoCeldaCommand> ConstruirLoteCambios(
             IEnumerable<CambioFormatoSeleccion> cambios,
             bool aplicarAntes)
-        {
-            var lote = new List<CambioFormatoCelda>();
-            if (cambios is null) return lote;
-
-            foreach (var cambio in cambios)
-            {
-                if (cambio is null || cambio.Direccion is null) continue;
-
-                var vista = string.IsNullOrEmpty(cambio.Direccion.ClaveVista)
-                    ? FormatoVista
-                    : cambio.Direccion.ClaveVista;
-
-                lote.Add(new CambioFormatoCelda(
-                    vista,
-                    cambio.Direccion.ClaveFila,
-                    cambio.Direccion.NombreColumna,
-                    aplicarAntes ? cambio.Antes : cambio.Despues));
-            }
-
-            return lote;
-        }
+            => FormatoLoteCambios.Construir(cambios, aplicarAntes, FormatoVista);
 
         // ── IGridSeleccionFormato ─────────────────────────────────────────────
 
@@ -227,6 +223,7 @@ namespace SOPRO.WinForms.Forms
         public void AplicarOverlayCelda(ReportCellAddress direccion, ReportStyleOverlay overlay)
         {
             if (direccion is null || overlay is null) return;
+            if (_undoManager.RequiresReconciliation) return;
 
             var overlays = _overlaysFormato ?? CargarOverlaysFormato();
             var antes = overlays.TryGetValue(direccion, out var previo) ? previo : null;
@@ -264,6 +261,11 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         internal IReadOnlyDictionary<string, ReportStyleOverlay> ObtenerEstilosFilaUsuario()
         {
+            // Estado INCIERTO: ni memoria ni caché parcial. Los estilos se vuelven a
+            // leer SÓLO en la recarga completa (celdas + estilos) que reconcilia.
+            if (_undoManager.RequiresReconciliation)
+                return SinEstilosFilaUsuario;
+
             if (_estilosFilaFormato is not null && _estilosFilaFormatoProyectoId == _proyecto.Id)
                 return _estilosFilaFormato;
 
@@ -358,6 +360,12 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         private Dictionary<ReportCellAddress, ReportStyleOverlay> CargarOverlaysFormato()
         {
+            // Con la persistencia INCIERTA no se cachea ni se pinta una lectura
+            // PARCIAL (sólo celdas, sin estilos de fila): esta ruta no puede
+            // reconciliar ni desbloquear por sí sola.
+            if (_undoManager.RequiresReconciliation)
+                return new Dictionary<ReportCellAddress, ReportStyleOverlay>();
+
             try
             {
                 _overlaysFormato = new Dictionary<ReportCellAddress, ReportStyleOverlay>(
@@ -405,6 +413,13 @@ namespace SOPRO.WinForms.Forms
             {
                 _undoManager.Execute(accion);
             }
+            catch (FormatoCeldasPersistenceException ex)
+            {
+                if (ex.Status != BudgetOperationStatus.OutcomeUnknown)
+                    RevertirCambiosFormato(cambios);
+
+                MessageBox.Show(ex.Message, "Formato", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
             catch (Exception ex)
             {
                 RevertirCambiosFormato(cambios);
@@ -448,10 +463,12 @@ namespace SOPRO.WinForms.Forms
 
         private void AplicarCambiosFormato(IReadOnlyList<CambioFormatoSeleccion> cambios, bool aplicarAntes)
         {
-            FormatoService.AplicarCeldas(
+            FormatoCeldasPersistence.Aplicar(
+                _context.DatabasePath,
                 _proyecto.Id,
                 FormatoTipoReporte,
-                ConstruirLoteCambios(cambios, aplicarAntes));
+                ConstruirLoteCambios(cambios, aplicarAntes),
+                _undoManager);
 
             foreach (var cambio in cambios)
                 EstablecerOverlayEnMemoria(cambio.Direccion, aplicarAntes ? cambio.Antes : cambio.Despues);
@@ -474,6 +491,59 @@ namespace SOPRO.WinForms.Forms
                 overlays.Remove(direccion);
             else
                 overlays[direccion] = overlay;
+        }
+
+        /// <summary>
+        /// Lectura FRESCA del formato persistido del Programa de Obra: overrides de
+        /// celda y estilos de fila se releen con un contexto NUEVO (sin caché ni
+        /// tracker compartido) y SÓLO si la lectura COMPLETA tuvo éxito se reemplazan
+        /// ambas cachés y se reconcilia el historial (desbloquea Undo/Redo y descarta
+        /// las acciones obsoletas).
+        ///
+        /// Es la salida obligatoria tras un resultado INCIERTO de formato: la caché
+        /// anterior no es evidencia de nada. Si cualquiera de las dos lecturas falla,
+        /// NO se toca ninguna caché y NO se reconcilia: el historial sigue bloqueado
+        /// y las rutas de pintado siguen sin cachear datos parciales.
+        /// </summary>
+        /// <param name="factory">Seam de pruebas; en producción la fábrica del formulario.</param>
+        internal bool RecargarFormatoPersistidoDesdeBase(IProjectDbContextFactory? factory = null)
+        {
+            Dictionary<ReportCellAddress, ReportStyleOverlay> overlays;
+            Dictionary<string, ReportStyleOverlay> estilosFila;
+
+            try
+            {
+                using var contextoFresco = (factory ?? _factory).Create(_context.DatabasePath);
+                var servicio = new FormatoReporteService(contextoFresco);
+
+                overlays = new Dictionary<ReportCellAddress, ReportStyleOverlay>(
+                    servicio.CargarCeldas(_proyecto.Id, FormatoTipoReporte));
+                estilosFila = new Dictionary<string, ReportStyleOverlay>(
+                    servicio.CargarEstilosFila(_proyecto.Id, FormatoTipoReporte),
+                    StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception ex)
+            {
+                // Sin lectura verificada no hay reconciliación: se conserva el bloqueo
+                // y las cachés anteriores (no se publica un estado parcial).
+                System.Diagnostics.Debug.WriteLine($"RecargarFormatoPersistidoDesdeBase: {ex.Message}");
+                return false;
+            }
+
+            _overlaysFormato = overlays;
+            _estilosFilaFormato = estilosFila;
+            _estilosFilaFormatoProyectoId = _proyecto.Id;
+
+            // Los overrides pendientes eran parte del estado incierto: no se vuelcan.
+            _pendientesFormato.Clear();
+
+            // Recién con la base releída el historial puede descartarse y desbloquearse.
+            FormatoCeldasPersistence.ReconciliarSiCorresponde(_undoManager);
+
+            if (dgvActividades is not null && !dgvActividades.IsDisposed)
+                dgvActividades.Invalidate();
+
+            return true;
         }
 
         /// <summary>

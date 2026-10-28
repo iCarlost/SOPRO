@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SOPRO.Tests.WinForms.TestInfrastructure;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Reporting;
@@ -152,7 +153,7 @@ public class FormatoCeldasFinanciamientoTests
             new(new ReportCellAddress(Vista, FormFinanciamiento.ClaveFilaFormato(2), "colEgresos"), null, overlay),
         };
 
-        service.AplicarCeldas(proyectoId, Tipo, FormFinanciamiento.ConstruirLoteCambios(cambios, aplicarAntes: false));
+        FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormFinanciamiento.ConstruirLoteCambios(cambios, aplicarAntes: false));
 
         var recargado = new FormatoReporteService(ctx).CargarCeldas(proyectoId, Tipo);
 
@@ -179,8 +180,8 @@ public class FormatoCeldasFinanciamientoTests
         var accion = new CompositeUndoableAction(
             "Formato de 10 celdas",
             cambios.Select(c => new UndoChange(c.Antes, c.Despues)).ToList(),
-            _ => service.AplicarCeldas(proyectoId, Tipo, FormFinanciamiento.ConstruirLoteCambios(cambios, aplicarAntes: true)),
-            _ => service.AplicarCeldas(proyectoId, Tipo, FormFinanciamiento.ConstruirLoteCambios(cambios, aplicarAntes: false)));
+            _ => FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormFinanciamiento.ConstruirLoteCambios(cambios, aplicarAntes: true)),
+            _ => FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormFinanciamiento.ConstruirLoteCambios(cambios, aplicarAntes: false)));
 
         Assert.IsTrue(manager.Execute(accion));
         Assert.AreEqual(1, manager.UndoCount, "El rango de 10 celdas es UNA sola acción.");
@@ -209,9 +210,9 @@ public class FormatoCeldasFinanciamientoTests
 
         var cambios = new[]
         {
-            new CambioFormatoSeleccion(new ReportCellAddress(Vista, "PER:1", "colCD"), null, new ReportStyleOverlay()),
+            new CambioFormatoSeleccion(new ReportCellAddress(Vista, "PER:1", "colCD"), new ReportStyleOverlay(ColorFondo: "#123456"), new ReportStyleOverlay()),
         };
-        service.AplicarCeldas(proyectoId, Tipo, FormFinanciamiento.ConstruirLoteCambios(cambios, aplicarAntes: false));
+        FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormFinanciamiento.ConstruirLoteCambios(cambios, aplicarAntes: false));
         ctx.ChangeTracker.Clear();
 
         Assert.AreEqual(0, ctx.FormatosCeldaReporte.Count(), "Un overlay vacío elimina la fila de formato.");

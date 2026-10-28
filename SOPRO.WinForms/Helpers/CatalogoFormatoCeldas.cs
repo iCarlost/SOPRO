@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
+using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Materials;
@@ -39,6 +40,7 @@ namespace SOPRO.WinForms.Helpers
         private readonly string _tipoReporte;
         private readonly string _claveVista;
         private readonly FormatoReporteService _service;
+        private readonly string _databasePath;
         private readonly UndoManager _undoManager = new();
 
         private Dictionary<ReportCellAddress, ReportStyleOverlay>? _overlays;
@@ -58,6 +60,7 @@ namespace SOPRO.WinForms.Helpers
             _tipoReporte = tipoReporte ?? throw new ArgumentNullException(nameof(tipoReporte));
             _claveVista = claveVista ?? string.Empty;
             _service = new FormatoReporteService(context);
+            _databasePath = context.DatabasePath;
         }
 
         /// <summary>
@@ -75,10 +78,30 @@ namespace SOPRO.WinForms.Helpers
         public bool CanRedo => _undoManager.CanRedo;
 
         /// <summary>Deshace la última acción de formato por celdas. <c>false</c> si no hay nada.</summary>
-        public bool TryUndo() => _undoManager.Undo();
+        public bool TryUndo()
+        {
+            if (!_undoManager.CanUndo) return false;
+
+            try { return _undoManager.Undo(); }
+            catch (FormatoCeldasPersistenceException ex)
+            {
+                FormatoCeldasPersistence.ManejarErrorDeFormato(ex);
+                return false;
+            }
+        }
 
         /// <summary>Rehace la última acción de formato por celdas. <c>false</c> si no hay nada.</summary>
-        public bool TryRedo() => _undoManager.Redo();
+        public bool TryRedo()
+        {
+            if (!_undoManager.CanRedo) return false;
+
+            try { return _undoManager.Redo(); }
+            catch (FormatoCeldasPersistenceException ex)
+            {
+                FormatoCeldasPersistence.ManejarErrorDeFormato(ex);
+                return false;
+            }
+        }
 
         // ── Delegación de IGridSeleccionFormato ────────────────────────────────
 
@@ -123,6 +146,7 @@ namespace SOPRO.WinForms.Helpers
         public void AplicarOverlayCelda(ReportCellAddress direccion, ReportStyleOverlay overlay)
         {
             if (direccion is null || overlay is null || _proyectoId is not > 0) return;
+            if (_undoManager.RequiresReconciliation) return;
 
             var overlays = _overlays ?? CargarDeBaseDatos();
             var antes = overlays.TryGetValue(direccion, out var previo) ? previo : null;
@@ -152,8 +176,16 @@ namespace SOPRO.WinForms.Helpers
 
             try
             {
-                return new Dictionary<ReportCellAddress, ReportStyleOverlay>(
+                var cargados = new Dictionary<ReportCellAddress, ReportStyleOverlay>(
                     _service.CargarCeldas(_proyectoId.Value, _tipoReporte));
+
+                if (_undoManager.RequiresReconciliation)
+                {
+                    _pendientes.Clear();
+                    FormatoCeldasPersistence.ReconciliarSiCorresponde(_undoManager);
+                }
+
+                return cargados;
             }
             catch (Exception ex)
             {
@@ -217,6 +249,13 @@ namespace SOPRO.WinForms.Helpers
             {
                 _undoManager.Execute(accion);
             }
+            catch (FormatoCeldasPersistenceException ex)
+            {
+                if (ex.Status != BudgetOperationStatus.OutcomeUnknown)
+                    RevertirCambios(cambios);
+
+                MessageBox.Show(ex.Message, "Formato", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
             catch (Exception ex)
             {
                 RevertirCambios(cambios);
@@ -230,10 +269,12 @@ namespace SOPRO.WinForms.Helpers
 
         private void AplicarCambios(IReadOnlyList<CambioFormatoSeleccion> cambios, bool aplicarAntes)
         {
-            _service.AplicarCeldas(
+            FormatoCeldasPersistence.Aplicar(
+                _databasePath,
                 _proyectoId!.Value,
                 _tipoReporte,
-                ConstruirLote(cambios, aplicarAntes, _claveVista));
+                ConstruirLote(cambios, aplicarAntes, _claveVista),
+                _undoManager);
 
             foreach (var cambio in cambios)
                 EstablecerOverlayEnMemoria(cambio.Direccion, aplicarAntes ? cambio.Antes : cambio.Despues);
@@ -328,36 +369,17 @@ namespace SOPRO.WinForms.Helpers
         }
 
         /// <summary>
-        /// Construye el lote que <see cref="FormatoReporteService.AplicarCeldas"/>
-        /// persiste: con <paramref name="aplicarAntes"/> se toma el estado "antes"
-        /// (undo) y en otro caso el "después" (do/redo). Un overlay <c>null</c>
-        /// indica BORRAR el override de esa celda.
+        /// Construye el lote de comandos con base esperada que
+        /// <see cref="FormatoCeldasCommandService"/> persiste: con
+        /// <paramref name="aplicarAntes"/> el estado deseado es el "antes" (undo) y
+        /// la base esperada el "después"; en otro caso, al revés. Un overlay
+        /// <c>null</c> en el estado deseado indica BORRAR el override.
         /// </summary>
-        public static IReadOnlyList<CambioFormatoCelda> ConstruirLote(
+        public static IReadOnlyList<CambioFormatoCeldaCommand> ConstruirLote(
             IEnumerable<CambioFormatoSeleccion> cambios,
             bool aplicarAntes,
             string claveVista)
-        {
-            var lote = new List<CambioFormatoCelda>();
-            if (cambios is null) return lote;
-
-            foreach (var cambio in cambios)
-            {
-                if (cambio?.Direccion is null) continue;
-
-                var vista = string.IsNullOrEmpty(cambio.Direccion.ClaveVista)
-                    ? claveVista ?? string.Empty
-                    : cambio.Direccion.ClaveVista;
-
-                lote.Add(new CambioFormatoCelda(
-                    vista,
-                    cambio.Direccion.ClaveFila,
-                    cambio.Direccion.NombreColumna,
-                    aplicarAntes ? cambio.Antes : cambio.Despues));
-            }
-
-            return lote;
-        }
+            => FormatoLoteCambios.Construir(cambios, aplicarAntes, claveVista);
 
         /// <summary>
         /// Colapsa los cambios pendientes a UNA entrada por dirección: el primer

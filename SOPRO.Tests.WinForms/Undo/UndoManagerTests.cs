@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SOPRO.Application.Models.Presupuesto;
+using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Undo;
 
 namespace SOPRO.Tests.WinForms.Undo;
@@ -138,5 +140,147 @@ public class UndoManagerTests
         Assert.AreEqual(0, manager.UndoCount);
         Assert.AreEqual(0, manager.RedoCount);
         Assert.AreEqual(0, registro.Count, "Sin cambios no debe invocarse ningún callback.");
+    }
+
+    // ═══════════ Invariante Peek → aplicar → Pop/Push ═══════════
+
+    [TestMethod]
+    public void UndoConFalloRevertido_ConservaAmbosStacksYLaAccion()
+    {
+        var manager = new UndoManager();
+        var registro = new List<string>();
+        var accion = new CompositeUndoableAction(
+            Descripcion,
+            new List<UndoChange> { new("antes", "despues") },
+            applyBefore: _ => throw new FormatoCeldasPersistenceException(
+                BudgetOperationStatus.Failed, "fallo revertido", "diagnostico"),
+            applyAfter: _ => registro.Add("redo"));
+
+        Assert.IsTrue(manager.Execute(accion));
+        Assert.AreEqual(1, manager.UndoCount);
+        registro.Clear();
+
+        var ex = Assert.ThrowsExactly<FormatoCeldasPersistenceException>(() => manager.Undo());
+
+        Assert.AreEqual(BudgetOperationStatus.Failed, ex.Status);
+        Assert.AreEqual(1, manager.UndoCount, "Un fallo revertido NO debe consumir la acción.");
+        Assert.AreEqual(0, manager.RedoCount, "Tampoco debe moverla al stack de redo.");
+        Assert.IsTrue(manager.CanUndo);
+        Assert.IsFalse(manager.CanRedo);
+        Assert.AreEqual(0, registro.Count, "No se aplicó ni repintó el estado de éxito.");
+    }
+
+    [TestMethod]
+    public void RedoConFalloRevertido_ConservaAmbosStacksYLaAccion()
+    {
+        var manager = new UndoManager();
+        var registro = new List<string>();
+        bool fallarRedo = false;
+
+        var accion = new CompositeUndoableAction(
+            Descripcion,
+            new List<UndoChange> { new("antes", "despues") },
+            applyBefore: _ => registro.Add("undo"),
+            applyAfter: _ =>
+            {
+                if (fallarRedo) throw new FormatoCeldasPersistenceException(
+                    BudgetOperationStatus.Failed, "fallo revertido", "diagnostico");
+                registro.Add("redo");
+            });
+
+        Assert.IsTrue(manager.Execute(accion));
+        Assert.IsTrue(manager.Undo());
+        Assert.AreEqual(1, manager.RedoCount);
+
+        fallarRedo = true;
+        Assert.ThrowsExactly<FormatoCeldasPersistenceException>(() => manager.Redo());
+
+        Assert.AreEqual(1, manager.RedoCount, "Un redo fallido NO debe consumir la acción.");
+        Assert.AreEqual(0, manager.UndoCount, "Tampoco debe devolverla al stack de undo.");
+        Assert.IsTrue(manager.CanRedo);
+        Assert.IsFalse(manager.CanUndo);
+    }
+
+    [TestMethod]
+    public void ExecuteConFalloRevertido_NoApilaYNoTocaElHistorialPrevio()
+    {
+        var manager = new UndoManager();
+        var registro = new List<string>();
+        Assert.IsTrue(manager.Execute(CrearAccion(registro, celdas: 2)));
+
+        var conFallo = CrearAccion(
+            registro, celdas: 3,
+            aplicarDespuesOverride: () => throw new FormatoCeldasPersistenceException(
+                BudgetOperationStatus.Failed, "fallo revertido", "diagnostico"));
+
+        Assert.ThrowsExactly<FormatoCeldasPersistenceException>(() => manager.Execute(conFallo));
+        Assert.AreEqual(1, manager.UndoCount, "El historial previo sigue intacto.");
+        Assert.AreEqual(0, manager.RedoCount);
+    }
+
+    // ═══════════ Resultado incierto: bloqueo hasta reconciliar ═══════════
+
+    [TestMethod]
+    public void UndoConResultadoIncierto_BloqueaYNoPierdeElHistorialHastaReconciliar()
+    {
+        var manager = new UndoManager();
+        var registro = new List<string>();
+
+        var accion = new CompositeUndoableAction(
+            Descripcion,
+            new List<UndoChange> { new("antes", "despues") },
+            applyBefore: _ =>
+            {
+                manager.SuspendForReconciliation();
+                throw new FormatoCeldasPersistenceException(
+                    BudgetOperationStatus.OutcomeUnknown, "resultado incierto", "diagnostico");
+            },
+            applyAfter: _ => registro.Add("redo"));
+
+        Assert.IsTrue(manager.Execute(accion));
+
+        Assert.ThrowsExactly<FormatoCeldasPersistenceException>(() => manager.Undo());
+
+        Assert.IsTrue(manager.RequiresReconciliation);
+        Assert.AreEqual(1, manager.UndoCount, "El historial se conserva hasta decidir qué descartar.");
+        Assert.IsFalse(manager.CanUndo, "Bloqueado: no se puede deshacer sin leer la base.");
+        Assert.IsFalse(manager.CanRedo);
+        Assert.ThrowsExactly<InvalidOperationException>(() => manager.Undo());
+        Assert.ThrowsExactly<InvalidOperationException>(() => manager.Redo());
+        Assert.ThrowsExactly<InvalidOperationException>(() => manager.Execute(CrearAccion(registro, 1)));
+
+        // Reconciliación explícita tras una lectura fresca: descarta el historial
+        // obsoleto y libera el manager para acciones nuevas.
+        manager.ReconciliarTrasLecturaFresca();
+
+        Assert.IsFalse(manager.RequiresReconciliation);
+        Assert.AreEqual(0, manager.UndoCount);
+        Assert.AreEqual(0, manager.RedoCount);
+        Assert.IsTrue(manager.Execute(CrearAccion(registro, 1)));
+        Assert.AreEqual(1, manager.UndoCount);
+    }
+
+    [TestMethod]
+    public void ExecuteConResultadoIncierto_MarcaBloqueoSinApilarLaAccion()
+    {
+        var manager = new UndoManager();
+        var registro = new List<string>();
+
+        var accion = new CompositeUndoableAction(
+            Descripcion,
+            new List<UndoChange> { new("antes", "despues") },
+            applyBefore: _ => registro.Add("undo"),
+            applyAfter: _ =>
+            {
+                manager.SuspendForReconciliation();
+                throw new FormatoCeldasPersistenceException(
+                    BudgetOperationStatus.OutcomeUnknown, "resultado incierto", "diagnostico");
+            });
+
+        Assert.ThrowsExactly<FormatoCeldasPersistenceException>(() => manager.Execute(accion));
+
+        Assert.IsTrue(manager.RequiresReconciliation);
+        Assert.AreEqual(0, manager.UndoCount, "Una acción incierta no entra al stack.");
+        Assert.IsFalse(manager.CanUndo);
     }
 }

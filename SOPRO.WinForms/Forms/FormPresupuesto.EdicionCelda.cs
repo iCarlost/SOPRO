@@ -5,6 +5,7 @@ using SOPRO.Application.DTOs.Presupuesto;
 using SOPRO.Application.DTOs.Catalog;
 using SOPRO.Application.DTOs.Matrices;
 using SOPRO.Application.Models.ExternalProjects;
+using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
 using SOPRO.Application.Services.Reporting;
@@ -219,6 +220,11 @@ namespace SOPRO.WinForms.Forms
                 _isUndoRedo = true;
                 return _undoManager.Undo();
             }
+            catch (FormatoCeldasPersistenceException ex)
+            {
+                FormatoCeldasPersistence.ManejarErrorDeFormato(ex);
+                return false;
+            }
             finally
             {
                 _isUndoRedo = false;
@@ -234,6 +240,11 @@ namespace SOPRO.WinForms.Forms
             {
                 _isUndoRedo = true;
                 return _undoManager.Redo();
+            }
+            catch (FormatoCeldasPersistenceException ex)
+            {
+                FormatoCeldasPersistence.ManejarErrorDeFormato(ex);
+                return false;
             }
             finally
             {
@@ -565,35 +576,16 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Construye el lote que <see cref="FormatoReporteService.AplicarCeldas"/>
-        /// persiste: con <paramref name="aplicarAntes"/> se toma el estado "antes"
-        /// (undo) y en otro caso el "después" (do/redo). Un overlay <c>null</c>
-        /// indica BORRAR el override de esa celda.
+        /// Construye el lote de comandos con base esperada que
+        /// <see cref="FormatoCeldasCommandService"/> persiste: con
+        /// <paramref name="aplicarAntes"/> el estado deseado es el "antes" (undo) y
+        /// la base esperada el "después"; en otro caso, al revés. Un overlay
+        /// <c>null</c> en el estado deseado indica BORRAR el override.
         /// </summary>
-        internal static IReadOnlyList<CambioFormatoCelda> ConstruirLoteCambios(
+        internal static IReadOnlyList<CambioFormatoCeldaCommand> ConstruirLoteCambios(
             IEnumerable<CambioFormatoSeleccion> cambios,
             bool aplicarAntes)
-        {
-            var lote = new List<CambioFormatoCelda>();
-            if (cambios is null) return lote;
-
-            foreach (var cambio in cambios)
-            {
-                if (cambio is null || cambio.Direccion is null) continue;
-
-                var vista = string.IsNullOrEmpty(cambio.Direccion.ClaveVista)
-                    ? FormatoVistaPresupuesto
-                    : cambio.Direccion.ClaveVista;
-
-                lote.Add(new CambioFormatoCelda(
-                    vista,
-                    cambio.Direccion.ClaveFila,
-                    cambio.Direccion.NombreColumna,
-                    aplicarAntes ? cambio.Antes : cambio.Despues));
-            }
-
-            return lote;
-        }
+            => FormatoLoteCambios.Construir(cambios, aplicarAntes, FormatoVistaPresupuesto);
 
         /// <summary>
         /// Carga (UNA sola consulta por proyecto/tipo) los overrides persistidos en
@@ -611,6 +603,15 @@ namespace SOPRO.WinForms.Forms
             {
                 System.Diagnostics.Debug.WriteLine($"CargarOverlaysFormato: {ex.Message}");
                 _overlaysFormato = new Dictionary<ReportCellAddress, ReportStyleOverlay>();
+                return;
+            }
+
+            // Lectura fresca: si la persistencia quedó incierta, la caché ya se
+            // reemplazó y el historial obsoleto se descarta de forma explícita.
+            if (_undoManager.RequiresReconciliation)
+            {
+                _pendientesFormato.Clear();
+                FormatoCeldasPersistence.ReconciliarSiCorresponde(_undoManager);
             }
         }
 
@@ -654,6 +655,19 @@ namespace SOPRO.WinForms.Forms
                 // Execute aplica el "después" (persiste + repinta) y sólo si tiene
                 // éxito apila la acción; ante un fallo no queda nada a medias.
                 _undoManager.Execute(accion);
+            }
+            catch (FormatoCeldasPersistenceException ex)
+            {
+                // Resultado incierto: NO se revierte ni se reintenta; el manager ya
+                // quedó suspendido hasta una lectura fresca de overlays.
+                if (ex.Status != BudgetOperationStatus.OutcomeUnknown)
+                    RevertirCambiosFormato(cambios);
+
+                MessageBox.Show(
+                    ex.Message,
+                    "Formato",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
             }
             catch (Exception ex)
             {
@@ -702,10 +716,12 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         private void AplicarCambiosFormato(IReadOnlyList<CambioFormatoSeleccion> cambios, bool aplicarAntes)
         {
-            _formatoReporteService.AplicarCeldas(
+            FormatoCeldasPersistence.Aplicar(
+                _context.DatabasePath,
                 _proyecto.Id,
                 FormatoTipoReporte,
-                ConstruirLoteCambios(cambios, aplicarAntes));
+                ConstruirLoteCambios(cambios, aplicarAntes),
+                _undoManager);
 
             foreach (var cambio in cambios)
                 EstablecerOverlayEnMemoria(cambio.Direccion, aplicarAntes ? cambio.Antes : cambio.Despues);
