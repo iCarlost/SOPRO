@@ -30,6 +30,12 @@ namespace SOPRO.WinForms.Forms
             if (_cargando)
                 return;
 
+            if (BloqueaEdicionPrograma())
+            {
+                e.Cancel = true;
+                return;
+            }
+
             BeginInvoke(new Action(GuardarDependenciasActuales));
         }
 
@@ -40,6 +46,12 @@ namespace SOPRO.WinForms.Forms
             _undoDependenciaColumnIndex = -1;
             _undoDependenciaColumnName = string.Empty;
             _undoDependenciaOldValue = null;
+
+            if (BloqueaEdicionPrograma())
+            {
+                e.Cancel = true;
+                return;
+            }
 
             if (e.RowIndex < 0 || e.RowIndex >= dgvDependencias.Rows.Count)
                 return;
@@ -55,6 +67,17 @@ namespace SOPRO.WinForms.Forms
                     _undoDependenciaOldValue = ObtenerValorUndoDependencia(row, columnName);
                 }
             }
+        }
+
+        /// <summary>
+        /// Seam de pruebas: intenta el <c>CellBeginEdit</c> real del grid de dependencias
+        /// y devuelve false si la edición fue cancelada (operación en curso o bloqueo).
+        /// </summary>
+        internal bool IntentarEditarCeldaDependencia(int rowIndex, int columnIndex)
+        {
+            var cancelacion = new DataGridViewCellCancelEventArgs(columnIndex, rowIndex);
+            dgvDependencias_CellBeginEdit(dgvDependencias, cancelacion);
+            return !cancelacion.Cancel;
         }
 
         private void dgvDependencias_EditingControlShowing(object? sender, DataGridViewEditingControlShowingEventArgs e)
@@ -83,7 +106,7 @@ namespace SOPRO.WinForms.Forms
 
         private void dgvDependencias_CellEndEdit(object? sender, DataGridViewCellEventArgs e)
         {
-            if (_cargando || e.RowIndex < 0)
+            if (_cargando || e.RowIndex < 0 || EstaBloqueadoParaOperar)
                 return;
 
             if (_cancelandoEdicionDependencia)
@@ -105,26 +128,7 @@ namespace SOPRO.WinForms.Forms
                     return;
 
                 NormalizarDependenciaEditada(row);
-                GuardarDependenciasActuales();
-
-                if (!_isUndoRedo
-                    && e.RowIndex == _undoDependenciaRowIndex
-                    && e.ColumnIndex == _undoDependenciaColumnIndex
-                    && EsColumnaUndoDependencia(_undoDependenciaColumnName))
-                {
-                    var oldValue = _undoDependenciaOldValue;
-                    var newValue = ObtenerValorUndoDependencia(row, _undoDependenciaColumnName);
-                    if (!SonValoresUndoIguales(oldValue, newValue))
-                    {
-                        int rowIndex = e.RowIndex;
-                        string columnName = _undoDependenciaColumnName;
-                        string descripcion = $"Editar {columnName} en dependencias";
-                        _undoManager.Push(new DelegateUndoableAction(
-                            descripcion,
-                            () => AplicarUndoRedoDependenciaCelda(rowIndex, columnName, oldValue),
-                            () => AplicarUndoRedoDependenciaCelda(rowIndex, columnName, newValue)));
-                    }
-                }
+                _ = GuardarDependenciasActualesAsync(e.RowIndex, e.ColumnIndex, row);
             }
             catch (IndexOutOfRangeException)
             {
@@ -145,8 +149,7 @@ namespace SOPRO.WinForms.Forms
             }
         }
 
-        private void NormalizarDependenciaEditada(DependenciaEditableRow row)
-        {
+        private void NormalizarDependenciaEditada(DependenciaEditableRow row)        {
             row.DesfaseDias = Math.Max(0, row.DesfaseDias);
 
             if (!row.ActividadOrigenId.HasValue || row.ActividadOrigenId.Value <= 0)
@@ -184,8 +187,26 @@ namespace SOPRO.WinForms.Forms
             dgvDependencias.Refresh();
         }
 
-        private void GuardarDependenciasActuales()
+        private async void GuardarDependenciasActuales()
         {
+            await GuardarDependenciasActualesAsync();
+        }
+
+        /// <summary>
+        /// Guarda las dependencias de la actividad seleccionada en un contexto CORTO
+        /// (nunca el compartido: sus distribuciones/periodos pueden estar obsoletos y
+        /// un DELETE afectaría 0 filas), regenera periodos/distribuciones en otro
+        /// contexto y publica una lectura FRESCA de sólo lectura. Un fallo no informa
+        /// éxito: suspende por resultado incierto y relee para verificar.
+        /// </summary>
+        private async Task GuardarDependenciasActualesAsync(
+            int undoRowIndex = -1,
+            int undoColumnIndex = -1,
+            DependenciaEditableRow? filaUndo = null)
+        {
+            if (_cargando || _ocupado || EstaBloqueadoParaOperar)
+                return;
+
             var actividad = GetActividadSeleccionada();
             if (actividad == null || _programaActual == null)
                 return;
@@ -196,52 +217,117 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            var deps = _dependenciasEditables
-                .Select(x =>
-                {
-                    NormalizarDependenciaEditada(x);
-                    return x;
-                })
-                .Where(x => x.ActividadOrigenId.HasValue && x.ActividadOrigenId.Value > 0)
-                .GroupBy(x => x.ActividadOrigenId!.Value)
-                .Select(g => g.First())
-                .Select(x => new DependencyEditDto
-                {
-                    ActividadOrigenId = x.ActividadOrigenId!.Value,
-                    ActividadDestinoId = actividad.Id,
-                    TipoDependencia = Enum.TryParse<TipoDependenciaActividad>(x.TipoDependencia, true, out var tipo)
-                        ? tipo.Normalizar()
-                        : TipoDependenciaActividad.FS,
-                    DesfaseDias = Math.Max(0, x.DesfaseDias)
-                })
-                .ToList();
-
-            var state = DataGridViewStateHelper.Capture(dgvActividades);
-            var result = _persistenceService.SaveDependencies(_context, actividad.Id, deps);
-            if (!result.Ok)
+            List<DependencyEditDto> deps;
+            DataGridViewStateSnapshot state;
+            try
             {
-                MessageBox.Show(result.Error, "Programación", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                deps = _dependenciasEditables
+                    .Select(x =>
+                    {
+                        NormalizarDependenciaEditada(x);
+                        return x;
+                    })
+                    .Where(x => x.ActividadOrigenId.HasValue && x.ActividadOrigenId.Value > 0)
+                    .GroupBy(x => x.ActividadOrigenId!.Value)
+                    .Select(g => g.First())
+                    .Select(x => new DependencyEditDto
+                    {
+                        ActividadOrigenId = x.ActividadOrigenId!.Value,
+                        ActividadDestinoId = actividad.Id,
+                        TipoDependencia = Enum.TryParse<TipoDependenciaActividad>(x.TipoDependencia, true, out var tipo)
+                            ? tipo.Normalizar()
+                            : TipoDependenciaActividad.FS,
+                        DesfaseDias = Math.Max(0, x.DesfaseDias)
+                    })
+                    .ToList();
+
+                state = DataGridViewStateHelper.Capture(dgvActividades);
+            }
+            catch (IndexOutOfRangeException)
+            {
+                _cancelandoEdicionDependencia = false;
+                return;
+            }
+            catch (InvalidOperationException)
+            {
+                _cancelandoEdicionDependencia = false;
                 return;
             }
 
             var programaIdDep = _programaActual.ProgramaObraId;
             var tipoPeriodoDep = ObtenerTipoPeriodoSeleccionado();
             var dbPathDep = _context.DatabasePath;
-            SetOcupado(true, $"Actualizando dependencias de '{actividad.Clave}'...");
-            _ = Task.Run(() =>
+
+            try
+            {
+                SetOcupado(true, $"Actualizando dependencias de '{actividad.Clave}'...");
+
+                (bool Ok, string Error) result;
+                using (var contextoDependencias = _factory.Create(dbPathDep))
+                {
+                    result = _persistenceService.SaveDependencies(contextoDependencias, actividad.Id, deps);
+                }
+
+                if (!result.Ok)
+                {
+                    Notificador.Advertir(result.Error);
+                    RecargarProgramaVerificado(state, escrituraConfirmada: false);
+                    return;
+                }
+
+                RegistrarUndoEdicionDependencia(undoRowIndex, undoColumnIndex, filaUndo);
+
+                await Task.Run(() =>
                 {
                     using var ctx = _factory.Create(dbPathDep);
                     RegenerarPeriodosYDistribuciones(ctx, programaIdDep, tipoPeriodoDep);
-                })
-                .ContinueWith(_ =>
-                {
-                    BeginInvoke(new Action(() =>
-                    {
-                        SetOcupado(false);
-                        lblEstado.Text = $"Dependencias de '{actividad.Clave}' actualizadas.";
-                        RecargarProgramaDiferido(state);
-                    }));
                 });
+
+                // Cede el hilo antes de repoblar el grid (fuera del evento de edición).
+                await Task.Yield();
+                if (IsDisposed)
+                    return;
+
+                if (!RecargarProgramaVerificado(state))
+                    return;
+
+                lblEstado.Text = $"Dependencias de '{actividad.Clave}' actualizadas.";
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"GuardarDependenciasActualesAsync: {ex}");
+                SuspenderPorResultadoIncierto($"No se pudieron guardar las dependencias: {ex.Message}");
+                RecargarProgramaVerificado(state);
+            }
+            finally
+            {
+                SetOcupado(false);
+            }
+        }
+
+        private void RegistrarUndoEdicionDependencia(
+            int rowIndex,
+            int columnIndex,
+            DependenciaEditableRow? filaUndo)
+        {
+            if (_isUndoRedo || filaUndo is null || rowIndex < 0 || columnIndex < 0)
+                return;
+
+            if (rowIndex != _undoDependenciaRowIndex
+                || columnIndex != _undoDependenciaColumnIndex
+                || !EsColumnaUndoDependencia(_undoDependenciaColumnName))
+                return;
+
+            var columnName = _undoDependenciaColumnName;
+            var oldValue = _undoDependenciaOldValue;
+            var newValue = ObtenerValorUndoDependencia(filaUndo, columnName);
+            if (SonValoresUndoIguales(oldValue, newValue))
+                return;
+
+            _undoManager.Push(new DelegateUndoableAction(
+                $"Editar {columnName} en dependencias",
+                () => AplicarUndoRedoDependenciaCelda(rowIndex, columnName, oldValue),
+                () => AplicarUndoRedoDependenciaCelda(rowIndex, columnName, newValue)));
         }
 
         private void tabPrograma_SelectedIndexChanged(object? sender, EventArgs e)

@@ -86,6 +86,14 @@ namespace SOPRO.WinForms.Forms
 
         private bool TryUndoPrograma()
         {
+            // Con una edición en curso (worker/recarga) el historial no es aplicable:
+            // no se llama a UndoManager para no mover stacks ni tocar DTO/DB a medias.
+            if (OperacionProgramaEnCurso)
+            {
+                lblEstado.Text = "Hay una operación del programa en curso. Espere a que termine antes de deshacer.";
+                return false;
+            }
+
             if (!_undoManager.CanUndo)
                 return false;
 
@@ -107,6 +115,12 @@ namespace SOPRO.WinForms.Forms
 
         private bool TryRedoPrograma()
         {
+            if (OperacionProgramaEnCurso)
+            {
+                lblEstado.Text = "Hay una operación del programa en curso. Espere a que termine antes de rehacer.";
+                return false;
+            }
+
             if (!_undoManager.CanRedo)
                 return false;
 
@@ -124,6 +138,38 @@ namespace SOPRO.WinForms.Forms
             {
                 _isUndoRedo = false;
             }
+        }
+
+        /// <summary>
+        /// Seam de pruebas: intenta el Undo real SIN esperar la operación en curso.
+        /// </summary>
+        internal bool IntentarUndoPrograma() => TryUndoPrograma();
+
+        /// <summary>
+        /// Seam de pruebas: intenta el Redo real SIN esperar la operación en curso.
+        /// </summary>
+        internal bool IntentarRedoPrograma() => TryRedoPrograma();
+
+        /// <summary>
+        /// Seam de pruebas: ejecuta el Undo real (misma ruta que Ctrl+Z) y espera a que
+        /// termine la operación asíncrona con su recarga fresca.
+        /// </summary>
+        internal bool EjecutarUndoPrograma()
+        {
+            var ejecutado = TryUndoPrograma();
+            EsperarOperacionPrograma();
+            return ejecutado;
+        }
+
+        /// <summary>
+        /// Seam de pruebas: ejecuta el Redo real (misma ruta que Ctrl+Y) y espera a que
+        /// termine la operación asíncrona con su recarga fresca.
+        /// </summary>
+        internal bool EjecutarRedoPrograma()
+        {
+            var ejecutado = TryRedoPrograma();
+            EsperarOperacionPrograma();
+            return ejecutado;
         }
 
         private void AplicarUndoRedoActividadCelda(int rowIndex, string columnName, object? value)
@@ -181,7 +227,7 @@ namespace SOPRO.WinForms.Forms
         private void Dgv_DataError(object? sender, DataGridViewDataErrorEventArgs e)
         {
             e.ThrowException = false;
-            MessageBox.Show("El valor capturado no tiene un formato válido.", "Programación", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            Notificador.Advertir("El valor capturado no tiene un formato válido.");
         }
 
         private sealed class DistribucionRow

@@ -20,7 +20,7 @@ namespace SOPRO.WinForms.Forms
     {
         private readonly SOPROContext _context;
         private readonly Proyecto _proyecto;
-        private readonly IProjectDbContextFactory _factory = new ProjectDbContextFactory();
+        private readonly IProjectDbContextFactory _factory;
         private readonly ProgramacionLoadService _loadService = new();
         private readonly ProgramacionGenerationService _generationService = new();
         private readonly ProgramacionCalculationService _calculationService = new();
@@ -37,6 +37,9 @@ namespace SOPRO.WinForms.Forms
         private BindingList<DependenciaEditableRow> _dependenciasEditables = new();
         private BindingList<CurvaSRowDto> _curvaS = new();
         private bool _cargando = false;
+        private bool _ocupado = false;
+        private bool _programaOperacionIncierta = false;
+        private bool _requiereLecturaFresca = false;
         private DataGridViewStateSnapshot? _pendingGridStateRestore;
         private readonly BindingList<ActividadLookupItem> _actividadesLookup = new();
         private bool _cancelandoEdicionDependencia = false;
@@ -65,7 +68,6 @@ namespace SOPRO.WinForms.Forms
         private bool _curvaSRedrawPending = false;
         private bool _detalleSeleccionRefreshPending = false;
         private bool _visualProgramRefreshPending = false;
-        private bool _programaReloadPending = false;
         private bool _detalleSeleccionDeferred = false;
         private int? _ultimaActividadDetalleId = null;
         private bool _layoutPersistenceReady = false;
@@ -80,6 +82,21 @@ namespace SOPRO.WinForms.Forms
         public DataGridView GridBusqueda => dgvActividades;
         public event EventHandler? ColumnaSeleccionadaCambiada;
         public ColumnaPersonalizada ColumnaSeleccionada => _columnaRibbon!;
+
+        /// <summary>Seam de mensajes/confirmaciones; en producción usa diálogos modales.</summary>
+        internal NotificadorPrograma Notificador { get; } = new();
+
+        /// <summary>La última operación del programa no pudo confirmarse contra la base.</summary>
+        internal bool ProgramaOperacionIncierta => _programaOperacionIncierta;
+
+        /// <summary>
+        /// El comando SÍ se confirmó, pero la vista no pudo releer la base: las cachés
+        /// y el grid son obsoletos hasta que «Recargar» obtenga una lectura completa.
+        /// </summary>
+        internal bool RequiereLecturaFresca => _requiereLecturaFresca;
+
+        /// <summary>Programa publicado en la vista (DTO ya calculado).</summary>
+        internal ProgramLoadDto? ProgramaActual => _programaActual;
 
         private enum CurvaSViewMode
         {
@@ -115,9 +132,20 @@ namespace SOPRO.WinForms.Forms
         };
 
         public FormProgramaObra(SOPROContext context, Proyecto proyecto)
+            : this(context, proyecto, new ProjectDbContextFactory())
+        {
+        }
+
+        /// <summary>
+        /// Constructor con fábrica de contextos inyectable (seam de pruebas para
+        /// simular resultados inciertos y lecturas frescas fallidas). En producción
+        /// se usa el constructor público con <see cref="ProjectDbContextFactory"/>.
+        /// </summary>
+        internal FormProgramaObra(SOPROContext context, Proyecto proyecto, IProjectDbContextFactory factory)
         {
             _context = context;
             _proyecto = proyecto;
+            _factory = factory ?? throw new ArgumentNullException(nameof(factory));
             FormatoHelper.EstablecerProyecto(_proyecto);
             InitializeComponent();
             ConfigurarFormulario();
@@ -309,8 +337,26 @@ namespace SOPRO.WinForms.Forms
             return true;
         }
 
+        /// <summary>
+        /// Motivo mostrado cuando la vista está bloqueada y se intenta persistir la
+        /// configuración de columnas: el bloqueo exige recargar desde la base.
+        /// </summary>
+        private const string MensajeBloqueoFormatoColumnas =
+            "El formato de columnas está bloqueado hasta recargar desde la base. Presione «Recargar».";
+
         public void AplicarFormato(ColumnaPersonalizada fmt)
         {
+            if (fmt == null) return;
+
+            // Con la vista bloqueada no se muta el contexto compartido: una entidad
+            // modificada aquí dejaría cambios pendientes o un SaveChanges suelto
+            // durante la reconciliación.
+            if (EstaBloqueadoParaOperar)
+            {
+                lblEstado.Text = MensajeBloqueoFormatoColumnas;
+                return;
+            }
+
             if (_colProgRibbon == null) return;
             _colProgRibbon.NombreFuente = fmt.NombreFuente;
             _colProgRibbon.TamanoFuente = fmt.TamanoFuente;
@@ -328,6 +374,16 @@ namespace SOPRO.WinForms.Forms
 
         public void AplicarFormatoGlobal(ColumnaPersonalizada fmt)
         {
+            if (fmt == null) return;
+
+            // Mismo bloqueo que AplicarFormato: nada de mutar/SaveChanges del
+            // contexto compartido mientras la vista no refleje la base.
+            if (EstaBloqueadoParaOperar)
+            {
+                lblEstado.Text = MensajeBloqueoFormatoColumnas;
+                return;
+            }
+
             foreach (var cfg in _columnasConfig)
             {
                 cfg.NombreFuente = fmt.NombreFuente;
@@ -344,7 +400,8 @@ namespace SOPRO.WinForms.Forms
             AplicarConfiguracionColumnas();
         }
 
-        private void NotificarColumnaSeleccionada(int colIndex)
+        /// <summary>Seam de pruebas: selecciona una columna del grid como el ribbon.</summary>
+        internal void NotificarColumnaSeleccionada(int colIndex)
         {
             _colProgRibbon = null;
             _columnaRibbon = null;
@@ -375,6 +432,12 @@ namespace SOPRO.WinForms.Forms
         private void dgvActividades_ColumnWidthChanged(object? sender, DataGridViewColumnEventArgs e)
         {
             if (_cargandoColumnas || e?.Column?.Tag is not ColumnaProgramaObra cfg) return;
+
+            // Bloqueado: el ancho visible puede cambiar, pero no se persiste ni se
+            // consulta el contexto compartido (ningún SaveChanges durante la
+            // reconciliación). La recarga completa repone el ancho persistido.
+            if (EstaBloqueadoParaOperar) return;
+
             if (e.Column.Width <= 20) return;
             var db = _context.ColumnasProgramaObra.Find(cfg.Id);
             if (db == null) return;

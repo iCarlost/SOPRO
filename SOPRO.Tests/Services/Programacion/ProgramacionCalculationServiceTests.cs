@@ -2,6 +2,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SOPRO.Application.Services;
 using SOPRO.Application.Services.Programacion;
 using SOPRO.Core.Entities;
+using SOPRO.Data.Factories;
 using SOPRO.Tests.TestInfrastructure;
 using Sopro.Calculation;
 
@@ -118,8 +119,14 @@ public class ProgramacionCalculationServiceTests
         context.ConceptosPresupuesto.Add(concepto);
         context.SaveChanges();
 
-        var result = new ProgramacionSynchronizationService().SyncFromBudget(context, proyecto.Id);
+        var result = new ProgramacionSynchronizationService()
+            .SyncFromBudget(
+                new ProjectDbContextFactory(),
+                context.DatabasePath,
+                proyecto.Id,
+                expectedActiveProgramaId: programa.Id);
 
+        Assert.AreEqual(SOPRO.Application.Models.Presupuesto.BudgetOperationStatus.Committed, result.Status);
         Assert.IsTrue(result.Success);
         var actividad = context.ActividadesProgramadas.Single(a => a.ProgramaObraId == programa.Id && !a.EsResumen);
         Assert.AreEqual(DateTime.Today.Date, actividad.FechaInicioProgramada!.Value.Date);

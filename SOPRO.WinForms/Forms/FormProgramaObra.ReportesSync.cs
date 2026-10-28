@@ -164,17 +164,25 @@ namespace SOPRO.WinForms.Forms
 
         private void btnSincronizar_Click(object sender, EventArgs e)
         {
+            if (!PuedeMutarPrograma("sincronizar el programa"))
+                return;
+
             try
             {
                 UseWaitCursor = true;
                 var state = DataGridViewStateHelper.Capture(dgvActividades);
-                var result = _syncService.SyncFromBudget(_context, _proyecto.Id);
-                lblEstado.Text = result.Message;
-                CargarPrograma(state);
+                var result = _syncService.SyncFromBudget(
+                    _factory,
+                    _context.DatabasePath,
+                    _proyecto.Id,
+                    _programaActual?.ProgramaObraId);
+
+                if (ProcesarResultadoPrograma(result, descartarFormato: false))
+                    RecargarProgramaDesdeContextoFresco(state);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al sincronizar el programa: {ex.Message}", "Programación", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Notificador.Error($"Error al sincronizar el programa: {ex.Message}");
             }
             finally
             {
@@ -184,25 +192,30 @@ namespace SOPRO.WinForms.Forms
 
         private void btnReconstruir_Click(object sender, EventArgs e)
         {
-            var confirm = MessageBox.Show(
-                "Se reconstruirá el programa desde el presupuesto. Esto eliminará dependencias, distribuciones y ajustes manuales del programa actual.\n\n¿Deseas continuar?",
-                "Reconstruir programa",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
+            if (!PuedeMutarPrograma("reconstruir el programa"))
+                return;
 
-            if (confirm != DialogResult.Yes)
+            var confirm = Notificador.Preguntar(
+                "Se reconstruirá el programa desde el presupuesto. Esto eliminará dependencias, distribuciones y ajustes manuales del programa actual.\n\n¿Deseas continuar?");
+
+            if (!confirm)
                 return;
 
             try
             {
                 UseWaitCursor = true;
-                var result = _syncService.RebuildProgram(_context, _proyecto.Id);
-                lblEstado.Text = result.Message;
-                CargarPrograma();
+                var result = _syncService.RebuildProgram(
+                    _factory,
+                    _context.DatabasePath,
+                    _proyecto.Id,
+                    _programaActual?.ProgramaObraId);
+
+                if (ProcesarResultadoPrograma(result, descartarFormato: false))
+                    RecargarProgramaDesdeContextoFresco();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al reconstruir el programa: {ex.Message}", "Programación", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Notificador.Error($"Error al reconstruir el programa: {ex.Message}");
             }
             finally
             {
@@ -212,34 +225,34 @@ namespace SOPRO.WinForms.Forms
 
         private void btnBorrarPrograma_Click(object sender, EventArgs e)
         {
-            var confirm = MessageBox.Show(
-                "Se eliminará por completo el programa de obra del proyecto, incluyendo actividades, dependencias, distribuciones y calendarios.\n\n¿Deseas continuar?",
-                "Borrar programa",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
+            if (!PuedeMutarPrograma("borrar el programa"))
+                return;
 
-            if (confirm != DialogResult.Yes)
+            var confirm = Notificador.Preguntar(
+                "Se eliminará por completo el programa de obra del proyecto, incluyendo actividades, dependencias, distribuciones y calendarios.\n\n¿Deseas continuar?");
+
+            if (!confirm)
                 return;
 
             try
             {
                 UseWaitCursor = true;
-                var result = _syncService.DeleteProgram(_context, _proyecto.Id);
-                lblEstado.Text = result.Message;
+                var result = _syncService.DeleteProgram(
+                    _factory,
+                    _context.DatabasePath,
+                    _proyecto.Id,
+                    _programaActual?.ProgramaObraId);
 
-                // "Borrar programa" = reset total de la apariencia configurada del
-                // Programa de Obra: al eliminarlo se descartan sus overrides de
-                // celda y estilos de fila persistidos (sólo de este tipo de reporte)
-                // para que al reconstruirlo las filas nazcan con los defaults.
-                // Sólo si el borrado del programa tuvo éxito.
-                if (result.Success)
-                    RestablecerFormatoProgramaObra();
-
-                CargarPrograma();
+                // El comando ya eliminó en la MISMA transacción los overrides de celda y
+                // los estilos de fila del reporte ProgramaObra. Tras un commit con cambios
+                // sólo se invalidan las cachés en memoria y se descartan ambas familias:
+                // no hay reset ni escritura adicional desde la UI.
+                if (ProcesarResultadoPrograma(result, descartarFormato: true))
+                    RecargarProgramaDesdeContextoFresco();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al borrar el programa: {ex.Message}", "Programación", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Notificador.Error($"Error al borrar el programa: {ex.Message}");
             }
             finally
             {
