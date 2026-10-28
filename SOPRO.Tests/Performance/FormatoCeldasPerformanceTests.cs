@@ -6,10 +6,12 @@ using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 using SOPRO.Tests.TestInfrastructure;
 
 namespace SOPRO.Tests.Performance;
@@ -116,7 +118,6 @@ public class FormatoCeldasPerformanceTests
     public void AplicarCeldas_LotesDe1_10_100_1000_YUndo_PorDebajoDeUmbral()
     {
         using var ctx = TestDbFactory.CreateContext();
-        var service = new FormatoReporteService(ctx);
 
         var tiemposAplicar = new Dictionary<int, long>();
         var tiemposUndo = new Dictionary<int, long>();
@@ -126,15 +127,16 @@ public class FormatoCeldasPerformanceTests
             var proyectoId = AgregarProyecto(ctx, $"Proyecto-{tamano}");
 
             var lote = Enumerable.Range(1, tamano)
-                .Select(i => new CambioFormatoCelda(
+                .Select(i => new CambioFormatoCeldaCommand(
                     string.Empty,
                     ClaveFilaReporte.Concepto(i),
                     "ImporteTotal",
-                    new ReportStyleOverlay(ColorFondo: "#010203", Negrita: true)))
+                    ExpectedOverlay: null,
+                    ProposedOverlay: new ReportStyleOverlay(ColorFondo: "#010203", Negrita: true)))
                 .ToList();
 
             var sw = Stopwatch.StartNew();
-            service.AplicarCeldas(proyectoId, Tipo, lote);
+            FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, lote);
             sw.Stop();
             tiemposAplicar[tamano] = sw.ElapsedMilliseconds;
 
@@ -144,11 +146,14 @@ public class FormatoCeldasPerformanceTests
 
             // Undo = reaplicar el estado "antes" (null = borrar) en un único lote.
             var loteUndo = lote
-                .Select(c => new CambioFormatoCelda(c.ClaveVista, c.ClaveFila, c.NombreColumna, Estilo: null))
+                .Select(c => new CambioFormatoCeldaCommand(
+                    c.ClaveVista, c.ClaveFila, c.NombreColumna,
+                    ExpectedOverlay: c.ProposedOverlay,
+                    ProposedOverlay: null))
                 .ToList();
 
             sw.Restart();
-            service.AplicarCeldas(proyectoId, Tipo, loteUndo);
+            FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, loteUndo);
             sw.Stop();
             tiemposUndo[tamano] = sw.ElapsedMilliseconds;
 
@@ -179,18 +184,20 @@ public class FormatoCeldasPerformanceTests
         ctx.Database.EnsureDeleted();
         ctx.Database.EnsureCreated();
         var proyectoId = AgregarProyecto(ctx);
-        var service = new FormatoReporteService(ctx);
 
         var lote = Enumerable.Range(1, 25)
-            .Select(i => new CambioFormatoCelda(
+            .Select(i => new CambioFormatoCeldaCommand(
                 string.Empty, ClaveFilaReporte.Concepto(i), "ImporteTotal",
-                new ReportStyleOverlay(ColorFondo: "#0A0B0C")))
+                ExpectedOverlay: null,
+                ProposedOverlay: new ReportStyleOverlay(ColorFondo: "#0A0B0C")))
             .ToList();
 
         ctx.Interceptor.TransaccionesIniciadas = 0;
-        service.AplicarCeldas(proyectoId, Tipo, lote);
+        var resultado = FormatoCeldasCommandService.ExecuteAplicarCeldasCommand(
+            new CountingTransactionFactory(ctx.Interceptor), dbPath, proyectoId, Tipo, lote);
         var aperturas = ctx.Interceptor.TransaccionesIniciadas;
 
+        Assert.AreEqual(BudgetOperationStatus.Committed, resultado.Status, resultado.Message);
         TestContext.WriteLine($"[perf] AplicarCeldas 25 celdas abrió {aperturas} transacción(es) (esperado 1).");
         Assert.AreEqual(1, aperturas,
             "El lote debe envolverse en UNA sola transacción (no una por celda).");
@@ -208,6 +215,37 @@ public class FormatoCeldasPerformanceTests
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             optionsBuilder.AddInterceptors(Interceptor);
+            base.OnConfiguring(optionsBuilder);
+        }
+    }
+
+    private sealed class CountingTransactionFactory : IProjectDbContextFactory
+    {
+        private readonly TransactionCounterInterceptor _interceptor;
+
+        public CountingTransactionFactory(TransactionCounterInterceptor interceptor)
+            => _interceptor = interceptor;
+
+        public SOPROContext Create(string databasePath)
+            => new CountingTransactionContext(databasePath, _interceptor);
+
+        public Task<SOPROContext> CreateAsync(string databasePath, CancellationToken cancellationToken = default)
+            => Task.FromResult(Create(databasePath));
+    }
+
+    private sealed class CountingTransactionContext : SOPROContext
+    {
+        private readonly TransactionCounterInterceptor _interceptor;
+
+        public CountingTransactionContext(string dbPath, TransactionCounterInterceptor interceptor)
+            : base(dbPath)
+        {
+            _interceptor = interceptor;
+        }
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            optionsBuilder.AddInterceptors(_interceptor);
             base.OnConfiguring(optionsBuilder);
         }
     }

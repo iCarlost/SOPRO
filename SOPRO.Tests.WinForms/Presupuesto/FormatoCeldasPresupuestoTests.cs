@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SOPRO.Tests.WinForms.TestInfrastructure;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
 using SOPRO.Core.Entities;
@@ -300,7 +301,7 @@ public class FormatoCeldasPresupuestoTests
             new(new ReportCellAddress(Vista, ClaveFilaReporte.Concepto(2), "Importe"), null, overlay),
         };
 
-        service.AplicarCeldas(proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(cambios, aplicarAntes: false));
+        FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(cambios, aplicarAntes: false));
 
         // Recargar: nuevo servicio sobre el mismo contexto (como reabrir el form).
         var recargado = new FormatoReporteService(ctx).CargarCeldas(proyectoId, Tipo);
@@ -334,7 +335,7 @@ public class FormatoCeldasPresupuestoTests
         var cambios = coordinador.AplicarASeleccion(overlay);
 
         // Flush que haría FormPresupuesto: persistir el lote producido por el coordinador.
-        service.AplicarCeldas(proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(cambios, aplicarAntes: false));
+        FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(cambios, aplicarAntes: false));
 
         // "Recargar" → diccionario en memoria repoblado y celda re-pintada con precedencia.
         var recargado = new FormatoReporteService(ctx).CargarCeldas(proyectoId, Tipo);
@@ -365,8 +366,8 @@ public class FormatoCeldasPresupuestoTests
         var accion = new CompositeUndoableAction(
             "Formato de 10 celdas",
             cambios.Select(c => new UndoChange(c.Antes, c.Despues)).ToList(),
-            _ => service.AplicarCeldas(proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(cambios, aplicarAntes: true)),
-            _ => service.AplicarCeldas(proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(cambios, aplicarAntes: false)));
+            _ => FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(cambios, aplicarAntes: true)),
+            _ => FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(cambios, aplicarAntes: false)));
 
         Assert.IsTrue(manager.Execute(accion));
         Assert.AreEqual(1, manager.UndoCount, "El rango de 10 celdas es UNA sola acción.");
@@ -398,9 +399,9 @@ public class FormatoCeldasPresupuestoTests
 
         var cambios = new[]
         {
-            new CambioFormatoSeleccion(new ReportCellAddress(Vista, "C:1", "Importe"), null, new ReportStyleOverlay()),
+            new CambioFormatoSeleccion(new ReportCellAddress(Vista, "C:1", "Importe"), new ReportStyleOverlay(ColorFondo: "#123456"), new ReportStyleOverlay()),
         };
-        service.AplicarCeldas(proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(cambios, aplicarAntes: false));
+        FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(cambios, aplicarAntes: false));
         ctx.ChangeTracker.Clear();
 
         Assert.AreEqual(0, ctx.FormatosCeldaReporte.Count(), "Un overlay vacío elimina la fila de formato.");
@@ -541,10 +542,10 @@ public class FormatoCeldasPresupuestoTests
         var dirX = new ReportCellAddress(Vista, ClaveFilaReporte.Concepto(1), "Importe");
         var dirY = new ReportCellAddress(Vista, ClaveFilaReporte.Concepto(2), "Importe");
 
-        service.AplicarCeldas(proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(
+        FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(
             new[] { new CambioFormatoSeleccion(dirX, null, new ReportStyleOverlay(ColorFondo: "#FFFF00")) },
             aplicarAntes: false));
-        service.AplicarCeldas(proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(
+        FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(
             new[] { new CambioFormatoSeleccion(dirY, null, new ReportStyleOverlay(AlineacionHorizontal: ReportTextAlignment.Centro)) },
             aplicarAntes: false));
 
@@ -580,7 +581,7 @@ public class FormatoCeldasPresupuestoTests
             grid, new[] { grid.Rows[iB].Cells[0] }).Single();
         Assert.AreNotEqual(dirA, dirB, "Las claves de agrupadores distintos deben ser únicas.");
 
-        service.AplicarCeldas(proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(
+        FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormPresupuesto.ConstruirLoteCambios(
             new[] { new CambioFormatoSeleccion(dirA, null, new ReportStyleOverlay(ColorFondo: "#FFFF00")) },
             aplicarAntes: false));
 

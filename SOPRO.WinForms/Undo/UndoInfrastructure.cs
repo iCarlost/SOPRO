@@ -89,9 +89,18 @@ namespace SOPRO.WinForms.Undo
     {
         private readonly Stack<IUndoableAction> _undoStack = new();
         private readonly Stack<IUndoableAction> _redoStack = new();
+        private bool _requiresReconciliation;
 
-        public bool CanUndo => _undoStack.Count > 0;
-        public bool CanRedo => _redoStack.Count > 0;
+        /// <summary>
+        /// Indica que la persistencia quedó en estado INCIERTO
+        /// (<see cref="SOPRO.Application.Models.Presupuesto.BudgetOperationStatus.OutcomeUnknown"/>):
+        /// el historial y las acciones de formato deben quedar bloqueados hasta una
+        /// lectura fresca de la base. Nunca se revierte ni se reintenta solo.
+        /// </summary>
+        public bool RequiresReconciliation => _requiresReconciliation;
+
+        public bool CanUndo => !_requiresReconciliation && _undoStack.Count > 0;
+        public bool CanRedo => !_requiresReconciliation && _redoStack.Count > 0;
 
         /// <summary>Número de acciones apiladas para deshacer (solo lectura).</summary>
         public int UndoCount => _undoStack.Count;
@@ -99,9 +108,34 @@ namespace SOPRO.WinForms.Undo
         /// <summary>Número de acciones apiladas para rehacer (solo lectura).</summary>
         public int RedoCount => _redoStack.Count;
 
+        /// <summary>
+        /// Bloquea Undo/Redo/Execute tras un resultado incierto. NO borra el
+        /// historial: la reconciliación explícita decide qué descartar.
+        /// </summary>
+        public void SuspendForReconciliation()
+        {
+            _requiresReconciliation = true;
+        }
+
+        /// <summary>
+        /// Libera el bloqueo SOLO después de una lectura fresca de los overlays
+        /// persistidos y descarta el historial, que ya no corresponde a ninguna
+        /// base conocida. Es una acción explícita del consumidor.
+        /// </summary>
+        public void ReconciliarTrasLecturaFresca()
+        {
+            _undoStack.Clear();
+            _redoStack.Clear();
+            _requiresReconciliation = false;
+        }
+
         public void Push(IUndoableAction action)
         {
             if (action == null) throw new ArgumentNullException(nameof(action));
+            if (_requiresReconciliation)
+                throw new InvalidOperationException(
+                    "La persistencia está en estado incierto: recargue el formato antes de continuar.");
+
             _undoStack.Push(action);
             _redoStack.Clear();
         }
@@ -116,6 +150,9 @@ namespace SOPRO.WinForms.Undo
         public bool Execute(IUndoableAction action)
         {
             if (action == null) throw new ArgumentNullException(nameof(action));
+            if (_requiresReconciliation)
+                throw new InvalidOperationException(
+                    "La persistencia está en estado incierto: recargue el formato antes de continuar.");
 
             if (action is CompositeUndoableAction compuesta && !compuesta.HasChanges)
                 return false;
@@ -128,20 +165,40 @@ namespace SOPRO.WinForms.Undo
             return true;
         }
 
+        /// <summary>
+        /// Deshace la última acción con el invariante Peek → aplicar → Pop/Push:
+        /// si el callback lanza, ni el stack de undo ni el de redo cambian (no se
+        /// pierde la acción ni se finge que el cambio se revirtió).
+        /// </summary>
         public bool Undo()
         {
+            if (_requiresReconciliation)
+                throw new InvalidOperationException(
+                    "La persistencia está en estado incierto: recargue el formato antes de continuar.");
+
             if (_undoStack.Count == 0) return false;
-            var action = _undoStack.Pop();
+
+            var action = _undoStack.Peek();
             action.Undo();
+            _undoStack.Pop();
             _redoStack.Push(action);
             return true;
         }
 
+        /// <summary>
+        /// Rehace la última acción con el mismo invariante que <see cref="Undo"/>.
+        /// </summary>
         public bool Redo()
         {
+            if (_requiresReconciliation)
+                throw new InvalidOperationException(
+                    "La persistencia está en estado incierto: recargue el formato antes de continuar.");
+
             if (_redoStack.Count == 0) return false;
-            var action = _redoStack.Pop();
+
+            var action = _redoStack.Peek();
             action.Redo();
+            _redoStack.Pop();
             _undoStack.Push(action);
             return true;
         }

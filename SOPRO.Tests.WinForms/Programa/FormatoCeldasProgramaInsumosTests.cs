@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SOPRO.Tests.WinForms.TestInfrastructure;
 using SOPRO.Application.DTOs.Programacion.Insumos;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
@@ -169,7 +170,7 @@ public class FormatoCeldasProgramaInsumosTests
             new(new ReportCellAddress(Vista, ClaveFilaReporte.Insumo(2), "imp_502"), null, overlay),
         };
 
-        service.AplicarCeldas(proyectoId, Tipo, FormProgramaInsumos.ConstruirLoteCambios(cambios, aplicarAntes: false));
+        FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormProgramaInsumos.ConstruirLoteCambios(cambios, aplicarAntes: false));
 
         var recargado = new FormatoReporteService(ctx).CargarCeldas(proyectoId, Tipo);
 
@@ -196,8 +197,8 @@ public class FormatoCeldasProgramaInsumosTests
         var accion = new CompositeUndoableAction(
             "Formato de 8 celdas",
             cambios.Select(c => new UndoChange(c.Antes, c.Despues)).ToList(),
-            _ => service.AplicarCeldas(proyectoId, Tipo, FormProgramaInsumos.ConstruirLoteCambios(cambios, aplicarAntes: true)),
-            _ => service.AplicarCeldas(proyectoId, Tipo, FormProgramaInsumos.ConstruirLoteCambios(cambios, aplicarAntes: false)));
+            _ => FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormProgramaInsumos.ConstruirLoteCambios(cambios, aplicarAntes: true)),
+            _ => FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormProgramaInsumos.ConstruirLoteCambios(cambios, aplicarAntes: false)));
 
         Assert.IsTrue(manager.Execute(accion));
         Assert.AreEqual(1, manager.UndoCount);
@@ -226,9 +227,14 @@ public class FormatoCeldasProgramaInsumosTests
 
         // 1) Programación inicial: guarda formato sobre el período 501.
         var direccion = new ReportCellAddress(Vista, ClaveFilaReporte.Insumo(7), "per_501");
-        service.AplicarCeldas(proyectoId, Tipo, new[]
+        FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, new[]
         {
-            new CambioFormatoCelda(Vista, "INS:7", "per_501", new ReportStyleOverlay(ColorFondo: "#ABCDEF")),
+            new CambioFormatoCeldaCommand(
+                Vista,
+                "INS:7",
+                "per_501",
+                ExpectedOverlay: null,
+                ProposedOverlay: new ReportStyleOverlay(ColorFondo: "#ABCDEF")),
         });
 
         // 2) Se regeneran los períodos: el grid se reconstruye con otro orden/columnas.
@@ -260,9 +266,9 @@ public class FormatoCeldasProgramaInsumosTests
 
         var cambios = new[]
         {
-            new CambioFormatoSeleccion(new ReportCellAddress(Vista, "INS:1", "per_501"), null, new ReportStyleOverlay()),
+            new CambioFormatoSeleccion(new ReportCellAddress(Vista, "INS:1", "per_501"), new ReportStyleOverlay(ColorFondo: "#123456"), new ReportStyleOverlay()),
         };
-        service.AplicarCeldas(proyectoId, Tipo, FormProgramaInsumos.ConstruirLoteCambios(cambios, aplicarAntes: false));
+        FormatoTestWriter.Aplicar(ctx, proyectoId, Tipo, FormProgramaInsumos.ConstruirLoteCambios(cambios, aplicarAntes: false));
         ctx.ChangeTracker.Clear();
 
         Assert.AreEqual(0, ctx.FormatosCeldaReporte.Count(), "Un overlay vacío elimina la fila de formato.");

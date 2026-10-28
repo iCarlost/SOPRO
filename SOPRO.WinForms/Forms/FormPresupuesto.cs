@@ -378,6 +378,10 @@ namespace SOPRO.WinForms.Forms
         {
             if (direccion is null || overlay is null) return;
 
+            // Tras un resultado incierto no se acumulan más cambios de formato
+            // sobre una caché que ya no se sabe si coincide con la base.
+            if (_undoManager.RequiresReconciliation) return;
+
             var antes = _overlaysFormato.TryGetValue(direccion, out var previo) ? previo : null;
             _overlaysFormato[direccion] = overlay;
             _pendientesFormato.Add(new CambioFormatoSeleccion(direccion, antes, overlay));

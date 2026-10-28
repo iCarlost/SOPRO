@@ -196,7 +196,7 @@ namespace SOPRO.WinForms.Forms
             DataGridView grid, IEnumerable<DataGridViewCell> celdas)
             => CatalogoFormatoCeldas.ConstruirDirecciones(grid, celdas, FormatoVista);
 
-        internal static IReadOnlyList<CambioFormatoCelda> ConstruirLoteCambios(
+        internal static IReadOnlyList<CambioFormatoCeldaCommand> ConstruirLoteCambios(
             IEnumerable<CambioFormatoSeleccion> cambios, bool aplicarAntes)
             => CatalogoFormatoCeldas.ConstruirLote(cambios, aplicarAntes, FormatoVista);
 

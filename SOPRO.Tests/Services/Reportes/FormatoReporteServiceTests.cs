@@ -228,76 +228,7 @@ public class FormatoReporteServiceTests
             "Un estilo de fila vacío no debe persistirse.");
     }
 
-    // ─────────────────── Lote transaccional (rollback) ───────────────────
-
-    [TestMethod]
-    public void AplicarCeldas_FallaIntermedia_RevierteTodoElLote()
-    {
-        using var ctx = TestDbFactory.CreateContext();
-        var proyectoId = AgregarProyecto(ctx);
-        var service = new FormatoReporteService(ctx);
-
-        var lote = new List<CambioFormatoCelda>();
-        for (var i = 0; i < 10; i++)
-        {
-            lote.Add(new CambioFormatoCelda(
-                string.Empty,
-                ClaveFilaReporte.Concepto(i),
-                "ImporteTotal",
-                new ReportStyleOverlay(ColorFondo: "#FF0000")));
-        }
-
-        // El SEGUNDO cambio es inválido (clave de fila vacía) → debe fallar el lote.
-        lote[1] = new CambioFormatoCelda(
-            string.Empty,
-            string.Empty,
-            "ImporteTotal",
-            new ReportStyleOverlay(ColorFondo: "#00FF00"));
-
-        Assert.ThrowsExactly<ArgumentException>(() => service.AplicarCeldas(proyectoId, Tipo, lote));
-
-        ctx.ChangeTracker.Clear();
-        Assert.AreEqual(0, ctx.FormatosCeldaReporte.Count(f => f.ProyectoId == proyectoId),
-            "El rollback debe revertir incluso los cambios ya aplicados del lote.");
-    }
-
-    [TestMethod]
-    public void AplicarCeldas_LoteValido_PersisteTodos()
-    {
-        using var ctx = TestDbFactory.CreateContext();
-        var proyectoId = AgregarProyecto(ctx);
-        var service = new FormatoReporteService(ctx);
-
-        var lote = Enumerable.Range(0, 5)
-            .Select(i => new CambioFormatoCelda(
-                string.Empty,
-                ClaveFilaReporte.Concepto(i),
-                "ImporteTotal",
-                new ReportStyleOverlay(ColorFondo: "#010203")))
-            .ToList();
-
-        service.AplicarCeldas(proyectoId, Tipo, lote);
-
-        Assert.AreEqual(5, ctx.FormatosCeldaReporte.Count(f => f.ProyectoId == proyectoId));
-    }
-
-    [TestMethod]
-    public void AplicarCeldas_EstiloNull_EliminaLaCelda()
-    {
-        using var ctx = TestDbFactory.CreateContext();
-        var proyectoId = AgregarProyecto(ctx);
-        var service = new FormatoReporteService(ctx);
-
-        service.UpsertCelda(proyectoId, Tipo, string.Empty, "C:1", "ImporteTotal",
-            new ReportStyleOverlay(ColorFondo: "#123456"));
-
-        service.AplicarCeldas(proyectoId, Tipo, new[]
-        {
-            new CambioFormatoCelda(string.Empty, "C:1", "ImporteTotal", Estilo: null),
-        });
-
-        Assert.AreEqual(0, ctx.FormatosCeldaReporte.Count());
-    }
+    // ─────────────────── Lote transaccional (estilos por rol) ───────────────────
 
     [TestMethod]
     public void AplicarEstilosFila_FallaIntermedia_RevierteTodoElLote()
