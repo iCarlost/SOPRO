@@ -31,26 +31,54 @@ namespace SOPRO.Application.Services
 
         public static void PropagarEliminacion(SOPROContext ctx, List<int> matrizIdsAfectadas, int? proyectoId = null)
         {
-            if (!matrizIdsAfectadas.Any()) return;
+            var matrices = RecalcularCierreAuxiliarSinGuardar(ctx, matrizIdsAfectadas, proyectoId);
+            if (matrices.Count == 0) return;
 
-            LanzarSiHayCicloAscendente(ctx, matrizIdsAfectadas, proyectoId);
+            ctx.SaveChanges();
+        }
 
-            var matrices = CargarMatricesConNavegaciones(ctx, matrizIdsAfectadas);
+        /// <summary>
+        /// Recalcula SIN GUARDAR el cierre afectado por un cambio local en matrices:
+        /// las matrices origen y todas sus ascendientes auxiliares en orden topológico
+        /// (orígenes incluidos), las hojas del presupuesto que referencian cualquiera
+        /// de ellas y los agrupadores de sus proyectos. Usa los mismos bloques
+        /// canónicos que <see cref="Propagar"/> y <see cref="PropagarEliminacion"/>,
+        /// pero no llama a SaveChanges para que un comando confirme con UNA sola
+        /// escritura. Un ciclo alcanzable lanza <see cref="InvalidOperationException"/>
+        /// antes de mutar nada.
+        /// Devuelve las matrices recalculadas del cierre (matrices origen incluidas),
+        /// en el orden en que quedaron cargadas.
+        /// </summary>
+        internal static List<Matriz> RecalcularCierreAuxiliarSinGuardar(
+            SOPROContext ctx,
+            IReadOnlyCollection<int> matrizIdsOrigen,
+            int? proyectoId = null)
+        {
+            ArgumentNullException.ThrowIfNull(ctx);
+            ArgumentNullException.ThrowIfNull(matrizIdsOrigen);
+
+            var origen = matrizIdsOrigen.Where(id => id > 0).Distinct().ToList();
+            if (origen.Count == 0) return new List<Matriz>();
+
+            LanzarSiHayCicloAscendente(ctx, origen, proyectoId);
+
+            var matrices = CargarMatricesConNavegaciones(ctx, origen);
 
             // La propagación nunca cruza proyectos: una matriz de otro proyecto
             // no debe recalcularse por un Id numérico compartido.
             if (proyectoId.HasValue)
                 matrices = matrices.Where(m => m.ProyectoId == proyectoId.Value).ToList();
-            if (!matrices.Any()) return;
+            if (matrices.Count == 0) return new List<Matriz>();
 
             // El recálculo del cierre completo (orígenes incluidos) se hace en orden
             // topológico dentro de PropagarAuxiliares; hacerlo aquí en el orden de
             // carga dejaría obsoletos a los orígenes que dependen entre sí.
-            PropagarAuxiliares(ctx, matrizIdsAfectadas, matrices, proyectoId);
+            PropagarAuxiliares(ctx, origen, matrices, proyectoId);
 
             var todasIds = matrices.Select(m => m.Id).ToList();
             ActualizarConceptos(ctx, matrices, todasIds);
-            ctx.SaveChanges();
+
+            return matrices;
         }
 
         private static void Propagar(SOPROContext ctx, TipoComponenteMatriz tipo, int insumoId, int? proyectoId = null)
@@ -164,14 +192,14 @@ namespace SOPRO.Application.Services
                 concepto.CostoDirectoUnitario = engine.RoundAmount(mat.CostoDirecto);
                 concepto.CostoDirectoTotal    = engine.Multiply(concepto.Cantidad, concepto.CostoDirectoUnitario);
 
-                // Paridad con el recálculo de pantalla (FormPresupuesto.RefrescarPreciosDesdeDB):
+                // Paridad con el refresco de pantalla (FormPresupuesto.RefreshBudgetPrices):
                 // el Precio Unitario y el Importe Total también deben quedar al día en la
                 // propagación headless, sin depender de que el presupuesto esté abierto.
                 concepto.PrecioUnitario = BudgetPricingService.CalculateUnitPrice(proyecto, concepto.CostoDirectoUnitario);
                 concepto.ImporteTotal   = engine.Multiply(concepto.Cantidad, concepto.PrecioUnitario);
             }
 
-            // Paridad con RefrescarPreciosDesdeDB → RecalcularTodosLosTotales:
+            // Paridad con RefreshBudgetPrices → ActualizarAgrupadores:
             // los agrupadores padre se recalculan bottom-up con la política única
             // de ActualizarAgrupadores (misma que usa RecalculoGlobalService).
             _ = ActualizarAgrupadores(ctx, proyectos.Values.ToList());
@@ -196,46 +224,87 @@ namespace SOPRO.Application.Services
         ///   3) Un agrupador sin hojas queda en cero. Redondeo con el motor del
         ///      proyecto.
         /// </summary>
-        internal static int ActualizarAgrupadores(SOPROContext ctx, List<Proyecto> proyectos)
+        internal static int ActualizarAgrupadores(
+            SOPROContext ctx,
+            List<Proyecto> proyectos,
+            IReadOnlyCollection<int>? idsExcluidos = null)
         {
             int actualizados = 0;
+            var excluidos = idsExcluidos?.ToList() ?? new List<int>();
 
             foreach (var proyecto in proyectos)
             {
-                var todos = ctx.ConceptosPresupuesto
-                    .Where(c => c.ProyectoId == proyecto.Id)
+                var consulta = ctx.ConceptosPresupuesto
+                    .Where(c => c.ProyectoId == proyecto.Id);
+
+                // Una eliminación en curso excluye las filas que aún no llegaron al
+                // SaveChanges: el recálculo debe reflejar solo lo que quedará en la base.
+                if (excluidos.Count > 0)
+                    consulta = consulta.Where(c => !excluidos.Contains(c.Id));
+
+                var todos = consulta
                     .OrderBy(c => c.Orden)
                     .ThenBy(c => c.Id)
                     .ToList();
 
-                var agrupadores = todos.Where(c => c.EsAgrupador).ToList();
-                if (agrupadores.Count == 0) continue;
+                actualizados += ActualizarAgrupadores(proyecto, todos);
+            }
 
-                var engine = CalculationEngineFactory.FromProyecto(proyecto);
+            return actualizados;
+        }
 
-                foreach (var agrupador in agrupadores)
+        /// <summary>
+        /// Variante para comandos que cambian el Orden antes del único SaveChanges: la
+        /// consulta a la base todavía devolvería el orden anterior, así que el llamador
+        /// entrega la lista YA ordenada según el Orden propuesto. La política de cálculo
+        /// es idéntica a la de <see cref="ActualizarAgrupadores(SOPROContext, List{Proyecto}, IReadOnlyCollection{int}?)"/>.
+        /// </summary>
+        internal static int ActualizarAgrupadores(
+            Proyecto proyecto,
+            IReadOnlyList<ConceptoPresupuesto> conceptosEnOrden)
+        {
+            ArgumentNullException.ThrowIfNull(proyecto);
+            ArgumentNullException.ThrowIfNull(conceptosEnOrden);
+
+            var agrupadores = conceptosEnOrden.Where(c => c.EsAgrupador).ToList();
+            if (agrupadores.Count == 0) return 0;
+
+            var engine = CalculationEngineFactory.FromProyecto(proyecto);
+            int actualizados = 0;
+
+            foreach (var agrupador in agrupadores)
+            {
+                int idx = -1;
+                for (int i = 0; i < conceptosEnOrden.Count; i++)
                 {
-                    int idx = todos.FindIndex(c => c.Id == agrupador.Id);
-                    var importes = new List<decimal>();
-
-                    for (int j = idx + 1; j < todos.Count; j++)
+                    if (ReferenceEquals(conceptosEnOrden[i], agrupador))
                     {
-                        var fila = todos[j];
-
-                        // Toda fila no agrupadora es un concepto de nivel 5.
-                        int nivelFila = fila.EsAgrupador ? fila.Nivel : 5;
-                        if (nivelFila <= agrupador.Nivel) break;
-                        if (fila.EsAgrupador) continue;
-
-                        importes.Add(fila.ImporteTotal);
+                        idx = i;
+                        break;
                     }
-
-                    decimal total = engine.SumAmounts(importes);
-                    agrupador.CostoDirectoTotal = total;
-                    agrupador.ImporteTotal       = total;
-                    agrupador.FechaModificacion  = DateTime.Now;
-                    actualizados++;
                 }
+
+                if (idx < 0) continue;
+
+                var importes = new List<decimal>();
+
+                for (int j = idx + 1; j < conceptosEnOrden.Count; j++)
+                {
+                    var fila = conceptosEnOrden[j];
+
+                    // Toda fila no agrupadora es un concepto de nivel 5.
+                    int nivelFila = fila.EsAgrupador ? fila.Nivel : 5;
+                    if (nivelFila <= agrupador.Nivel) break;
+                    if (fila.EsAgrupador) continue;
+
+                    importes.Add(fila.ImporteTotal);
+                }
+
+                decimal total = engine.SumAmounts(importes);
+                agrupador.CostoDirectoTotal = total;
+                agrupador.ImporteTotal       = total;
+                agrupador.FechaModificacion  = DateTime.Now;
+                actualizados++;
             }
 
             return actualizados;
@@ -309,6 +378,38 @@ namespace SOPRO.Application.Services
         }
 
         /// <summary>
+        /// Descubrimiento ÚNICO del cierre ascendente por aristas auxiliares: los
+        /// orígenes más todas las matrices del proyecto que dependen transitivamente de
+        /// ellos. No recarga ni muta matrices; lo comparten el recálculo y la validación
+        /// previa de comandos que necesitan rechazar un cierre con bases obsoletas antes
+        /// de ajustar nada.
+        /// </summary>
+        internal static HashSet<int> CalcularCierreAscendente(
+            SOPROContext ctx,
+            IEnumerable<int> matrizIdsOrigen,
+            int? proyectoId = null)
+        {
+            ArgumentNullException.ThrowIfNull(ctx);
+            ArgumentNullException.ThrowIfNull(matrizIdsOrigen);
+
+            var origen = matrizIdsOrigen.Where(id => id > 0).Distinct().ToHashSet();
+            var closure = new HashSet<int>(origen);
+            if (origen.Count == 0) return closure;
+
+            var padresPorAuxiliar = CargarAristasAuxiliar(ctx, proyectoId);
+            var frente = new Queue<int>(origen);
+            while (frente.Count > 0)
+            {
+                if (!padresPorAuxiliar.TryGetValue(frente.Dequeue(), out var padres)) continue;
+                foreach (var padre in padres)
+                    if (closure.Add(padre))
+                        frente.Enqueue(padre);
+            }
+
+            return closure;
+        }
+
+        /// <summary>
         /// Cierre ascendente (todas las matrices que dependen transitivamente de los
         /// orígenes, solo dentro del proyecto de la sesión) recalculado en orden
         /// topológico, ORÍGENES INCLUIDOS: dos matrices que contienen ambas el insumo
@@ -322,17 +423,11 @@ namespace SOPRO.Application.Services
             if (origen.Count == 0) return;
 
             var cargados = todasMatrices.Select(m => m.Id).ToHashSet();
-            var padresPorAuxiliar = CargarAristasAuxiliar(ctx, proyectoId);
 
-            var closure = new HashSet<int>(origen);
-            var frente = new Queue<int>(origen);
-            while (frente.Count > 0)
-            {
-                if (!padresPorAuxiliar.TryGetValue(frente.Dequeue(), out var padres)) continue;
-                foreach (var padre in padres)
-                    if (closure.Add(padre))
-                        frente.Enqueue(padre);
-            }
+            // Mismo descubrimiento que la validación previa de comandos: una sola
+            // definición de cierre ascendente evita que validación y recálculo
+            // discrepen sobre qué matrices participan.
+            var closure = CalcularCierreAscendente(ctx, origen, proyectoId);
 
             // Los padres descubiertos son siempre del proyecto de la sesión (aristas
             // filtradas); un origen de otro proyecto no se recalcula nunca (hoja
@@ -354,7 +449,13 @@ namespace SOPRO.Application.Services
             todasMatrices.AddRange(matrices.Where(m => !existentes.Contains(m.Id)));
         }
 
-        private static List<Matriz> CargarMatricesConNavegaciones(SOPROContext ctx, List<int> ids)
+        /// <summary>
+        /// Carga las matrices indicadas con TODAS sus navegaciones de componente. Es el
+        /// punto único de carga del recálculo: los comandos que necesitan validar una
+        /// matriz antes de propagarla reutilizan esta consulta para que las entidades
+        /// rastreadas sean las mismas que verá el cierre.
+        /// </summary>
+        internal static List<Matriz> CargarMatricesConNavegaciones(SOPROContext ctx, List<int> ids)
         {
             return ctx.Matrices
                 .Include(m => m.Componentes).ThenInclude(c => c.Material)

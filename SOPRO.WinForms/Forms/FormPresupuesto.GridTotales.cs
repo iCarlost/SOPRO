@@ -385,74 +385,36 @@ namespace SOPRO.WinForms.Forms
 
         private void DgvPresupuesto_CellValueChanged(object sender, DataGridViewCellEventArgs e)
         {
-            if (_cargando || _asignandoMatriz || e.RowIndex < 0) return;
+            if (_cargando || _asignandoMatriz || _actualizandoDesdeComando || e.RowIndex < 0) return;
 
             var colActual = dgvPresupuesto.Columns[e.ColumnIndex];
             if (!(colActual.Tag is ColumnaPersonalizada colDef)) return;
 
-            // Si cambió el tipo → CREAR/ACTUALIZAR CONCEPTO INMEDIATAMENTE
+            // Si cambió el tipo → comando de cambio de tipo sobre contexto propio
+            // (ADR-0001). La rama termina aquí para no ejecutar el autoguardado
+            // heredado, tanto si se confirma como si falla o entra en conflicto.
             if (colDef.NombreInterno == "Tipo")
             {
                 var tipoCell = ObtenerCeldaPorNombreInterno(e.RowIndex, "Tipo");
                 if (tipoCell?.Value == null) return;
 
-                string tipo = tipoCell.Value.ToString()?.Trim() ?? string.Empty;
-                var row = dgvPresupuesto.Rows[e.RowIndex];
-
-                var typeResult = BudgetRowEditFlowService.HandleTypeCellChange(
-                    _context,
-                    _proyecto,
-                    new SOPRO.Application.Models.Presupuesto.BudgetRowTypeChangeInput
-                    {
-                        RowIndex = e.RowIndex,
-                        Tipo = tipo,
-                        Descripcion = ObtenerCeldaPorNombreInterno(e.RowIndex, "Descripcion")?.Value?.ToString() ?? string.Empty,
-                        Clave = ObtenerCeldaPorNombreInterno(e.RowIndex, "Clave")?.Value?.ToString() ?? string.Empty,
-                        Unidad = ObtenerCeldaPorNombreInterno(e.RowIndex, "Unidad")?.Value?.ToString() ?? string.Empty,
-                        ExistingConcept = row.Tag as ConceptoPresupuesto
-                    });
-
-                if (typeResult.Handled)
-                {
-                    row.Tag = typeResult.Concept;
-
-                    var unidadCell = ObtenerCeldaPorNombreInterno(e.RowIndex, "Unidad");
-                    var cantidadCell = ObtenerCeldaPorNombreInterno(e.RowIndex, "Cantidad");
-                    var puCell = ObtenerCeldaPorNombreInterno(e.RowIndex, "PrecioUnitario");
-                    var importeCell = ObtenerCeldaPorNombreInterno(e.RowIndex, "Importe");
-
-                    if (unidadCell != null)
-                    {
-                        unidadCell.ReadOnly = typeResult.UnitReadOnly;
-                        if (typeResult.IsAggregator) unidadCell.Value = typeResult.UnitValue;
-                    }
-
-                    if (cantidadCell != null)
-                    {
-                        cantidadCell.ReadOnly = typeResult.QuantityReadOnly;
-                        if (typeResult.IsAggregator) cantidadCell.Value = typeResult.QuantityValue;
-                    }
-
-                    if (typeResult.ClearCalculatedCells)
-                    {
-                        if (puCell != null) puCell.Value = typeResult.UnitPriceValue;
-                        if (importeCell != null) importeCell.Value = typeResult.AmountValue;
-                    }
-
-                    if (typeResult.RequiresRowInvalidate)
-                        dgvPresupuesto.InvalidateRow(e.RowIndex);
-
-                    if (typeResult.RequiresReassignSequence)
-                        ReasignarNumerosConceptos();
-
-                    if (typeResult.IgnoredBecauseStateIsAlreadyCorrect)
-                        return;
-                }
+                ProcesarCambioTipoConComando(e.RowIndex);
+                return;
             }
 
             // Si cambió cantidad en un concepto
             if (colDef.NombreInterno == "Cantidad")
             {
+                // Ruta vigente (ADR-0001): comando inmutable sobre contexto propio.
+                // La rama termina aquí para no ejecutar el autoguardado heredado.
+                if (ProcesarEdicionCantidadConComando(e.RowIndex))
+                {
+                    ActualizarEstadisticas();
+                    return;
+                }
+
+                // Ruta heredada: sólo filas de concepto aún no persistidas (Id = 0),
+                // que el comando no puede representar todavía.
                 var row = dgvPresupuesto.Rows[e.RowIndex];
                 var quantityResult = BudgetRowEditFlowService.HandleQuantityCellChange(
                     _proyecto,
@@ -490,11 +452,50 @@ namespace SOPRO.WinForms.Forms
 
             if (colDef.NombreInterno == "Clave")
             {
+                // La asignación ya resolvió su escritura (comando sobre contexto nuevo
+                // o ruta heredada, que guarda dentro de ApplyDraft). No debe caer en el
+                // autoguardado genérico de esta celda.
                 if (!TryApplyBudgetConceptAssignmentByKey(e.RowIndex))
+                    return;
+
+                ActualizarEstadisticas();
+                return;
+            }
+
+            // Descripción/Unidad/Observaciones de una fila persistida: comando
+            // inmutable sobre un contexto propio. La rama termina aquí para no
+            // ejecutar el autoguardado heredado; solo las filas aún no persistidas
+            // de Descripción/Unidad siguen por esa ruta.
+            if (colDef.NombreInterno == "Descripcion"
+                || colDef.NombreInterno == "Unidad"
+                || colDef.NombreInterno == "Observaciones")
+            {
+                if (ProcesarEdicionTextoConComando(e.RowIndex, colDef.NombreInterno))
+                {
+                    if (colDef.NombreInterno == "Descripcion")
+                        ActualizarEstadisticas();
+                    return;
+                }
+
+                // Observaciones no tiene ruta heredada: sin comando disponible la
+                // edición queda como borrador visible y NUNCA cae al autoguardado
+                // genérico (que reescribiría todas las filas sin mapear el campo).
+                if (colDef.NombreInterno == "Observaciones")
                     return;
             }
 
-            GuardarCambios();
+            // Solo las columnas con semántica de fila reconocida llegan aquí. Las
+            // filas sin Id permanecen como borrador hasta que un comando explícito
+            // las cree; el antiguo ApplyAutoSaveChanges no las insertaba y su
+            // SaveChanges compartido podía confirmar trabajo ajeno.
+            if (colDef.NombreInterno != "Tipo"
+                && colDef.NombreInterno != "Clave"
+                && colDef.NombreInterno != "Descripcion"
+                && colDef.NombreInterno != "Unidad"
+                && colDef.NombreInterno != "Cantidad")
+            {
+                return;
+            }
 
             // Actualizar estadísticas solo si cambió algo relevante
             if (colDef.NombreInterno == "Tipo" ||
@@ -555,7 +556,7 @@ namespace SOPRO.WinForms.Forms
             return BudgetHierarchyService.FindParentIndex(BuildHierarchyRowsSnapshot(), fila);
         }
 
-        private void RecalcularTodosLosTotales()
+        private void RecalcularTodosLosTotales(bool sincronizarEntidades = true)
         {
             var snapshot = BuildHierarchyRowsSnapshot();
             var totals = BudgetHierarchyService.CalculateAggregatorTotals(snapshot);
@@ -568,7 +569,13 @@ namespace SOPRO.WinForms.Forms
                     importeCell.Value = pair.Value.ToStringImporte();
                 }
 
-                // CRÍTICO: sincronizar la entidad en memoria para que auto-guardado persista el total
+                // En una EDICIÓN, sincronizar la entidad en memoria es lo que permite al
+                // auto-guardado heredado persistir el total. En una RECARGA solo se
+                // muestra el total calculado: tocar la entidad tracked la dejaría
+                // Modified sin escritura y contaminaría el contexto compartido.
+                if (!sincronizarEntidades)
+                    continue;
+
                 var concepto = dgvPresupuesto.Rows[pair.Key].Tag as ConceptoPresupuesto;
                 if (concepto != null)
                 {

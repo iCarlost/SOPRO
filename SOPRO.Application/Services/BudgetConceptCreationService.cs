@@ -6,55 +6,69 @@ namespace SOPRO.Application.Services
 {
     public static class BudgetConceptCreationService
     {
-        public static ConceptoPresupuesto CreateNewForTypeChange(SOPROContext context, int proyectoId, BudgetRowTypeChangeInput input, bool isAggregator, int level)
+        /// <summary>
+        /// Prepara EN MEMORIA el concepto que representa una fila nueva cambiada de
+        /// tipo, sin agregarlo al contexto ni guardar: la escritura pertenece al
+        /// ejecutor de comando (un solo SaveChanges). El Id se genera en ese contexto
+        /// nuevo, nunca en el llamador. Se conserva la semántica histórica de orden:
+        /// el concepto nuevo recibe max(Orden) + 1.
+        /// </summary>
+        public static ConceptoPresupuesto PrepareNewForTypeChange(
+            SOPROContext context,
+            int proyectoId,
+            BudgetTypeChangeCommand command,
+            bool isAggregator,
+            int level)
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
-            if (input == null) throw new ArgumentNullException(nameof(input));
+            if (command == null) throw new ArgumentNullException(nameof(command));
 
             int maxOrden = context.ConceptosPresupuesto
                 .Where(c => c.ProyectoId == proyectoId)
                 .Max(c => (int?)c.Orden) ?? -1;
 
-            var concepto = new ConceptoPresupuesto
+            return new ConceptoPresupuesto
             {
                 ProyectoId = proyectoId,
-                Descripcion = input.Descripcion ?? string.Empty,
-                Clave = input.Clave ?? string.Empty,
-                Unidad = input.Unidad ?? string.Empty,
+                Descripcion = command.Descripcion,
+                Clave = command.Clave,
+                Unidad = isAggregator ? string.Empty : command.Unidad,
                 EsAgrupador = isAggregator,
                 Nivel = level,
                 Orden = maxOrden + 1,
                 Cantidad = 0m,
                 CostoDirectoUnitario = 0m,
                 CostoDirectoTotal = 0m,
+                PrecioUnitario = 0m,
+                ImporteTotal = 0m,
                 ColumnasPersonalizadasJSON = string.Empty,
                 Notas = string.Empty
             };
-
-            context.ConceptosPresupuesto.Add(concepto);
-            context.SaveChanges();
-            return concepto;
         }
 
-        public static void UpdateExistingTypeState(SOPROContext context, ConceptoPresupuesto concepto, bool isAggregator, int level)
+        /// <summary>
+        /// Aplica en memoria el nuevo estado jerárquico de un concepto existente, sin
+        /// buscar otra instancia ni guardar. Al convertirse en agrupador se limpian
+        /// los valores que la UI deja vacíos (unidad, cantidad, precio unitario e
+        /// importe); los totales los recalcula después el servicio de propagación.
+        /// </summary>
+        public static void ApplyExistingTypeState(
+            ConceptoPresupuesto concepto,
+            bool isAggregator,
+            int level)
         {
-            if (context == null) throw new ArgumentNullException(nameof(context));
             if (concepto == null) throw new ArgumentNullException(nameof(concepto));
 
             concepto.EsAgrupador = isAggregator;
             concepto.Nivel = level;
+            concepto.FechaModificacion = DateTime.Now;
 
-            if (concepto.Id > 0)
-            {
-                var tracked = context.ConceptosPresupuesto.Find(concepto.Id);
-                if (tracked != null && !ReferenceEquals(tracked, concepto))
-                {
-                    tracked.EsAgrupador = isAggregator;
-                    tracked.Nivel = level;
-                }
+            if (!isAggregator) return;
 
-                context.SaveChanges();
-            }
+            concepto.Unidad = string.Empty;
+            concepto.Cantidad = 0m;
+            concepto.PrecioUnitario = 0m;
+            concepto.ImporteTotal = 0m;
         }
     }
 }

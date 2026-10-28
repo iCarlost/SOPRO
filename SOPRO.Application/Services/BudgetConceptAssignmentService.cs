@@ -124,37 +124,15 @@ namespace SOPRO.Application.Services
             return draft;
         }
 
-        public static ConceptoPresupuesto ApplyDraft(
-            SOPROContext context,
-            int proyectoId,
-            int order,
-            ConceptoPresupuesto? existingConcept,
-            BudgetConceptAssignmentDraft draft)
+        /// <summary>
+        /// Vuelca en el concepto los valores del borrador sin guardar. Es la aritmética
+        /// canónica compartida por los comandos que aplican sobre un contexto nuevo.
+        /// </summary>
+        internal static void ApplyDraftValues(ConceptoPresupuesto concept, BudgetConceptAssignmentDraft draft)
         {
-            if (context == null) throw new ArgumentNullException(nameof(context));
+            if (concept == null) throw new ArgumentNullException(nameof(concept));
             if (draft == null)   throw new ArgumentNullException(nameof(draft));
 
-            ConceptoPresupuesto concept;
-            if (existingConcept != null && existingConcept.Id > 0)
-            {
-                concept = existingConcept;
-            }
-            else
-            {
-                concept = new ConceptoPresupuesto
-                {
-                    ProyectoId                = proyectoId,
-                    EsAgrupador               = false,
-                    Nivel                     = 5,
-                    ColumnasPersonalizadasJSON = string.Empty,
-                    Notas                     = string.Empty
-                };
-                context.ConceptosPresupuesto.Add(concept);
-            }
-
-            concept.Orden                = order;
-            concept.EsAgrupador          = false;
-            concept.Nivel                = 5;
             concept.Clave                = draft.Clave        ?? string.Empty;
             concept.Descripcion          = draft.Descripcion  ?? string.Empty;
             concept.Unidad               = draft.Unidad       ?? string.Empty;
@@ -164,18 +142,23 @@ namespace SOPRO.Application.Services
             concept.PrecioUnitario       = draft.PrecioUnitario;
             concept.ImporteTotal         = draft.ImporteTotal;
             concept.MatrizId             = draft.MatrizId;
-            concept.Matriz               = draft.Matriz;
+            // Solo se fija la navegación cuando el borrador trae la instancia: asignar
+            // null después del FK podría hacer que EF sincronice el FK a null.
+            if (draft.Matriz != null)
+                concept.Matriz = draft.Matriz;
             concept.FechaModificacion    = DateTime.Now;
-
-            context.SaveChanges();
-            return concept;
         }
 
         // ════════════════════════════════════════════════════════════════════════
         // MÉTODOS BUILD PRIVADOS
         // ════════════════════════════════════════════════════════════════════════
 
-        private static BudgetConceptAssignmentDraft BuildDraftFromConcept(
+        /// <summary>
+        /// Constructor puro del borrador de copia desde otro concepto del mismo
+        /// presupuesto. Lo comparte la resolución de pantalla y el comando atómico de
+        /// pegado, de modo que la aritmética siga siendo única.
+        /// </summary>
+        internal static BudgetConceptAssignmentDraft BuildDraftFromConcept(
             Proyecto proyecto, string key, ConceptoPresupuesto sourceConcept)
         {
             var engine         = CalculationEngineFactory.FromProyecto(proyecto);

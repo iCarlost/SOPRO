@@ -318,11 +318,10 @@ namespace SOPRO.WinForms.Forms
             // LIMPIAR solo filas vacías que están ENTRE contenido (gaps)
             RemoveIntermediateEmptyRows();
 
-            // Ahora SÍ guardar el nuevo orden en BD
-            ReasignarNumerosConceptos();
-            GuardarOrdenConceptos();
-            RecalcularTodosLosTotales();
-            GuardarCambios();       // Persistir totales de agrupadores en BD
+            // Persistir el nuevo orden como comando de una sola escritura sobre un
+            // contexto nuevo. Los Tags no se tocan antes de conocer el resultado; si
+            // hay conflicto el borrador visual se conserva y no se guarda nada.
+            EjecutarReordenPersistido();
             dgvPresupuesto.Refresh();
         }
 
@@ -442,35 +441,6 @@ namespace SOPRO.WinForms.Forms
             // Dejar que el helper pinte; aquí no hacemos nada para celdas de datos.
         }
 
-        /// <summary>
-        /// Guarda el campo Orden de todos los ConceptoPresupuesto según su posición actual en el grid.
-        /// </summary>
-        private void GuardarOrdenConceptos()
-        {
-            try
-            {
-                int orden = 0;
-                for (int i = 0; i < dgvPresupuesto.Rows.Count; i++)
-                {
-                    if (dgvPresupuesto.Rows[i].Tag is ConceptoPresupuesto c && c.Id > 0)
-                    {
-                        var enBD = _context.ConceptosPresupuesto.Find(c.Id);
-                        if (enBD != null)
-                        {
-                            enBD.Orden = orden;
-                            c.Orden = orden;
-                        }
-                        orden++;
-                    }
-                }
-                _context.SaveChanges();
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error guardando orden: {ex.Message}");
-            }
-        }
-
         private void DgvPresupuesto_ColumnWidthChanged(object sender, DataGridViewColumnEventArgs e)
         {
             OcultarAutocompleteApu(false);
@@ -556,19 +526,6 @@ namespace SOPRO.WinForms.Forms
             return rows;
         }
 
-        private int CountConceptRowsBefore(int rowIndex)
-        {
-            int conceptosAntes = 0;
-            for (int i = 0; i < rowIndex; i++)
-            {
-                if (dgvPresupuesto.Rows[i].Tag != null)
-                {
-                    conceptosAntes++;
-                }
-            }
-            return conceptosAntes;
-        }
-
         private void ApplyAssignmentDraftToGrid(int rowIndex, SOPRO.Application.Models.Presupuesto.BudgetConceptAssignmentDraft draft)
         {
             var claveCell = ObtenerCeldaPorNombreInterno(rowIndex, "Clave");
@@ -578,12 +535,24 @@ namespace SOPRO.WinForms.Forms
             var puCell = ObtenerCeldaPorNombreInterno(rowIndex, "PrecioUnitario");
             var importeCell = ObtenerCeldaPorNombreInterno(rowIndex, "Importe");
 
-            if (claveCell != null) claveCell.Value = draft.Clave;
-            if (descCell != null) descCell.Value = draft.Descripcion;
-            if (unidadCell != null) unidadCell.Value = draft.Unidad;
-            if (cantidadCell != null) cantidadCell.Value = draft.Cantidad;
-            if (puCell != null) puCell.Value = draft.PrecioUnitario.ToStringImporte();
-            if (importeCell != null) importeCell.Value = draft.ImporteTotal.ToStringImporte();
+            // Estas asignaciones son el borrador del propio asignador de matriz: no
+            // deben disparar los comandos por celda (cantidad/texto) antes de que el
+            // servicio de asignación aplique el draft completo.
+            bool asignandoPrevio = _asignandoMatriz;
+            _asignandoMatriz = true;
+            try
+            {
+                if (claveCell != null) claveCell.Value = draft.Clave;
+                if (descCell != null) descCell.Value = draft.Descripcion;
+                if (unidadCell != null) unidadCell.Value = draft.Unidad;
+                if (cantidadCell != null) cantidadCell.Value = draft.Cantidad;
+                if (puCell != null) puCell.Value = draft.PrecioUnitario.ToStringImporte();
+                if (importeCell != null) importeCell.Value = draft.ImporteTotal.ToStringImporte();
+            }
+            finally
+            {
+                _asignandoMatriz = asignandoPrevio;
+            }
         }
 
         private void FinalizeBudgetConceptAssignment(int rowIndex)

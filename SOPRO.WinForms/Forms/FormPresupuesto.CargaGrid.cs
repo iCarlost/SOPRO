@@ -140,8 +140,30 @@ namespace SOPRO.WinForms.Forms
             CargarPresupuesto(state);
         }
 
+        /// <summary>Mensaje del último fallo de <see cref="CargarPresupuestoCore"/>.</summary>
+        private string? _ultimoErrorDeCarga;
+
         private void CargarPresupuesto(DataGridViewStateSnapshot? stateToRestore = null)
         {
+            if (!CargarPresupuestoCore(stateToRestore))
+            {
+                MessageBox.Show(
+                    $"Error al cargar presupuesto:\n{_ultimoErrorDeCarga ?? "error desconocido"}",
+                    "Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// Reconstrucción del grid SIN diálogos: devuelve <c>true</c> solo si la carga
+        /// completa terminó con éxito; en fallo expone el mensaje en
+        /// <see cref="_ultimoErrorDeCarga"/> y devuelve <c>false</c> sin afirmar éxito.
+        /// Así <c>IntentarRecargaSeguraDesdeBase</c> puede propagar el resultado real.
+        /// </summary>
+        private bool CargarPresupuestoCore(DataGridViewStateSnapshot? stateToRestore = null)
+        {
+            _ultimoErrorDeCarga = null;
             try
             {
                 _cargando = true;
@@ -161,22 +183,29 @@ namespace SOPRO.WinForms.Forms
                     dgvPresupuesto.Rows.Add();
                 }
 
-                RecalcularTodosLosTotales();
-                GuardarCambios();       // Persistir totales de agrupadores recalculados en BD
+                // La recarga SOLO muestra los totales recalculados: no escribe agregadores
+                // en la base ni deja entidades compartidas Modified. La persistencia de
+                // agrupadores corresponde a los comandos de edición, no a la carga.
+                RecalcularTodosLosTotales(sincronizarEntidades: false);
                 ReasignarNumerosConceptos();
                 CargarOverlaysFormato(); // Formato de celdas persistido (UNA consulta)
                 ActualizarEstadisticas();
+                _asignacionNuevaFilaPendienteReconciliacion = false;
 
                 if (stateToRestore != null && dgvPresupuesto.Rows.Count > 0)
                 {
                     DataGridViewStateHelper.Restore(dgvPresupuesto, stateToRestore);
                 }
 
-                _cargando = false;
+                return true;
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al cargar presupuesto:\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                _ultimoErrorDeCarga = ex.Message;
+                return false;
+            }
+            finally
+            {
                 _cargando = false;
             }
         }

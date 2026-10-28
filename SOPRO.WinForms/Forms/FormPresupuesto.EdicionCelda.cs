@@ -28,93 +28,6 @@ namespace SOPRO.WinForms.Forms
     public partial class FormPresupuesto
     {
 
-        private void HandleClipboardPaste()
-        {
-            if (dgvPresupuesto.CurrentCell == null) return;
-
-            var currentColumn = dgvPresupuesto.Columns[dgvPresupuesto.CurrentCell.ColumnIndex];
-            string? startInternalName = (currentColumn.Tag as ColumnaPersonalizada)?.NombreInterno;
-            var plan = BudgetClipboardPasteService.BuildPlan(startInternalName, Clipboard.GetText());
-
-            if (!plan.IsValid)
-            {
-                MessageBox.Show(plan.ErrorMessage, "Pegado no permitido", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            int startRowIndex = dgvPresupuesto.CurrentCell.RowIndex;
-            int skippedCells = 0;
-            bool hadChanges = false;
-
-            dgvPresupuesto.SuspendLayout();
-            try
-            {
-                foreach (var pasteRow in plan.Rows.OrderBy(r => r.RowOffset))
-                {
-                    int rowIndex = startRowIndex + pasteRow.RowOffset;
-                    while (rowIndex >= dgvPresupuesto.Rows.Count)
-                    {
-                        dgvPresupuesto.Rows.Add();
-                    }
-
-                    string tipo = ObtenerCeldaTexto(rowIndex, "Tipo");
-                    bool hasKey = !string.IsNullOrWhiteSpace(ObtenerCeldaTexto(rowIndex, "Clave"));
-                    bool rowWillHaveKeyAfterPaste = hasKey || pasteRow.ValuesByColumn.ContainsKey("Clave");
-
-                    foreach (var columnName in BudgetClipboardPasteService.GetColumnOrder())
-                    {
-                        if (!pasteRow.ValuesByColumn.TryGetValue(columnName, out var rawValue))
-                            continue;
-
-                        if (!BudgetClipboardPasteService.CanPasteIntoColumn(tipo, columnName, hasKey, rowWillHaveKeyAfterPaste))
-                        {
-                            skippedCells++;
-                            continue;
-                        }
-
-                        if (!BudgetClipboardPasteService.TryNormalizeValue(columnName, rawValue, out var normalizedValue))
-                        {
-                            skippedCells++;
-                            continue;
-                        }
-
-                        var cell = ObtenerCeldaPorNombreInterno(rowIndex, columnName);
-                        if (cell == null)
-                        {
-                            skippedCells++;
-                            continue;
-                        }
-
-                        cell.Value = normalizedValue;
-                        hadChanges = true;
-
-                        if (string.Equals(columnName, "Clave", StringComparison.OrdinalIgnoreCase))
-                        {
-                            hasKey = !string.IsNullOrWhiteSpace(normalizedValue);
-                            rowWillHaveKeyAfterPaste = hasKey;
-                            TryApplyBudgetConceptAssignmentByKey(rowIndex);
-                        }
-                    }
-                }
-            }
-            finally
-            {
-                dgvPresupuesto.ResumeLayout();
-            }
-
-            if (hadChanges)
-            {
-                GuardarCambios();
-                ActualizarEstadisticas();
-                dgvPresupuesto.Refresh();
-            }
-
-            if (skippedCells > 0)
-            {
-                MessageBox.Show($"Se omitieron {skippedCells} celdas por restricciones de edición o valores inválidos.", "Pegado parcial", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-        }
-
         private void DgvPresupuesto_CellValidating(object sender, DataGridViewCellValidatingEventArgs e)
         {
             if (e.RowIndex < 0 || e.ColumnIndex < 0)
@@ -290,6 +203,12 @@ namespace SOPRO.WinForms.Forms
                 || string.Equals(nombreInterno, "Cantidad", StringComparison.OrdinalIgnoreCase);
         }
 
+        private static bool EsColumnaTextoPresupuesto(string? nombreInterno)
+        {
+            return string.Equals(nombreInterno, "Descripcion", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(nombreInterno, "Unidad", StringComparison.OrdinalIgnoreCase);
+        }
+
         private bool TryUndoBudgetEdit()
         {
             if (!_undoManager.CanUndo)
@@ -333,17 +252,25 @@ namespace SOPRO.WinForms.Forms
             dgvPresupuesto.CurrentCell = cell;
             cell.Value = value;
 
-            if (dgvPresupuesto.Columns[columnIndex].Tag is ColumnaPersonalizada colDef
-                && string.Equals(colDef.NombreInterno, "Cantidad", StringComparison.OrdinalIgnoreCase))
+            var colDefUndo = dgvPresupuesto.Columns[columnIndex].Tag as ColumnaPersonalizada;
+            if (string.Equals(colDefUndo?.NombreInterno, "Cantidad", StringComparison.OrdinalIgnoreCase))
             {
                 DgvPresupuesto_CellValueChanged(dgvPresupuesto, new DataGridViewCellEventArgs(columnIndex, rowIndex));
             }
-            else
+            else if (EsColumnaTextoPresupuesto(colDefUndo?.NombreInterno))
             {
-                GuardarCambios();
+                // Asignar cell.Value ya disparó CellValueChanged, que consume la
+                // edición con el comando por operación; no se vuelve a guardar la
+                // misma fila por la ruta heredada.
                 ActualizarEstadisticas();
                 dgvPresupuesto.Refresh();
             }
+            // Sin rama heredada: las únicas acciones apiladas a este apuntador
+            // provienen de columnas con autoguardado propio (Descripción/Unidad/
+            // Cantidad, véase EsColumnaUndoPresupuesto y CellEndEdit), y la reedición
+            // de Cantidad/disparo del evento arriba y la de texto ya consumió el
+            // comando en CellValueChanged. Llegar aquí con otro campo sería una
+            // columna sin persistencia por fila, que no debe reescribir el resto.
         }
 
         private void DgvPresupuesto_CellEndEdit(object sender, DataGridViewCellEventArgs e)
@@ -451,6 +378,15 @@ namespace SOPRO.WinForms.Forms
             if (!(colActual.Tag is ColumnaPersonalizada colDef)) return;
 
             string nombreInterno = colDef.NombreInterno;
+
+            // Campos sin persistencia por fila (porcentajes derivados del proyecto,
+            // CargosAdicionales): solo lectura. Editarlos terminaría en el
+            // autoguardado genérico, que no mapea el campo reelaborándolo.
+            if (ColumnasPresupuestoHelper.EsColumnaSinPersistenciaPorFila(nombreInterno))
+            {
+                e.Cancel = true;
+                return;
+            }
 
             // Si NO hay Tipo seleccionado, solo permitir editar Tipo
             if (tipoCell?.Value == null || string.IsNullOrWhiteSpace(tipoCell.Value.ToString()))

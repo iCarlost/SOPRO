@@ -213,7 +213,7 @@ public class BudgetLoadServiceParityTests
             values["PorcentajeFinanciamiento"] = string.Empty;
             values["PorcentajeUtilidad"]       = string.Empty;
             values["CargosAdicionales"]        = string.Empty;
-            values["Observaciones"]            = string.Empty;
+            values["Observaciones"]            = concepto.Notas ?? string.Empty;
             values["Indirectos"]               = string.Empty;
             values["Financiamiento"]           = string.Empty;
             values["Utilidad"]                 = string.Empty;
@@ -253,7 +253,7 @@ public class BudgetLoadServiceParityTests
             values["PorcentajeFinanciamiento"] = motor.FormatPorcentaje(proyecto.PorcentajeFinanciamiento) + "%";
             values["PorcentajeUtilidad"]       = motor.FormatPorcentaje(proyecto.PorcentajeUtilidad) + "%";
             values["CargosAdicionales"]        = string.Empty;
-            values["Observaciones"]            = string.Empty;
+            values["Observaciones"]            = concepto.Notas ?? string.Empty;
 
             values["Indirectos"]          = motor.FormatImporte(desglose.Indirectos);
             values["Financiamiento"]      = motor.FormatImporte(desglose.Financiamiento);

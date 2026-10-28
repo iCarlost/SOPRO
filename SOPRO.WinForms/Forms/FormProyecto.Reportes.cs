@@ -98,7 +98,7 @@ namespace SOPRO.WinForms.Forms
                             fm.RecargarMatrices();
                             break;
                         case FormPresupuesto fp:
-                            fp.RefrescarPreciosDesdeDB();
+                            fp.RecargarPreciosDesdeBase();
                             break;
                         case FormCatalogoMateriales fmat:
                             fmat.RecargarCatalogo();

@@ -9,7 +9,7 @@ namespace SOPRO.WinForms.Helpers
             foreach (Form form in System.Windows.Forms.Application.OpenForms)
             {
                 if (form is Forms.FormPresupuesto presupuesto)
-                    presupuesto.RefrescarPreciosDesdeDB();
+                    presupuesto.RecargarPreciosDesdeBase();
             }
         }
 
