@@ -65,7 +65,7 @@ namespace SOPRO.WinForms.Controls
             this.btnNuevaMatriz.AccessibleName = "Nueva Matriz";
             this.btnNuevaMatriz.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
             this.btnNuevaMatriz.Name = "btnNuevaMatriz";
-            this.btnNuevaMatriz.Overflow = System.Windows.Forms.ToolStripItemOverflow.Always;
+            this.btnNuevaMatriz.Overflow = System.Windows.Forms.ToolStripItemOverflow.Never;
             this.btnNuevaMatriz.Size = new System.Drawing.Size(110,28);
             this.btnNuevaMatriz.Text = "Nueva Matriz";
             this.btnNuevaMatriz.ToolTipText = "Crear una nueva matriz de APU";
@@ -74,7 +74,7 @@ namespace SOPRO.WinForms.Controls
             this.btnEditar.AccessibleName = "Editar";
             this.btnEditar.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
             this.btnEditar.Name = "btnEditar";
-            this.btnEditar.Overflow = System.Windows.Forms.ToolStripItemOverflow.Always;
+            this.btnEditar.Overflow = System.Windows.Forms.ToolStripItemOverflow.Never;
             this.btnEditar.Size = new System.Drawing.Size(110,28);
             this.btnEditar.Text = "Editar";
             this.btnEditar.ToolTipText = "Editar la matriz de APU seleccionada";
@@ -83,7 +83,7 @@ namespace SOPRO.WinForms.Controls
             this.btnVolver.AccessibleName = "Volver";
             this.btnVolver.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
             this.btnVolver.Name = "btnVolver";
-            this.btnVolver.Overflow = System.Windows.Forms.ToolStripItemOverflow.Always;
+            this.btnVolver.Overflow = System.Windows.Forms.ToolStripItemOverflow.Never;
             this.btnVolver.Size = new System.Drawing.Size(90,28);
             this.btnVolver.Text = "Volver";
             this.btnVolver.ToolTipText = "Volver al presupuesto sin asignar";

@@ -203,6 +203,7 @@ namespace SOPRO.WinForms.Forms
         private Application.Models.Reporting.ReportColumns.ReportColumnSnapshot ConstruirSnapshotPresupuesto()
         {
             var columnas = _context.ColumnasPersonalizadas
+                .AsNoTracking()
                 .Where(c => c.ProyectoId == _proyecto.Id)
                 .OrderBy(c => c.Orden)
                 .ToList();
@@ -325,36 +326,93 @@ namespace SOPRO.WinForms.Forms
 
         private void btnColumnas_Click(object sender, EventArgs e)
         {
+            if (!PuedeMutarColumnas(out string? motivoBloqueo))
+            {
+                MostrarMensajeColumnas(motivoBloqueo!);
+                return;
+            }
+
+            // El orden visual pendiente se persiste ANTES de abrir el diálogo, con los
+            // IDs actuales del grid. Si no se confirma, la vista no cambia y no se abre.
+            if (!GuardarOrdenPrevioADialogoColumnas())
+                return;
+
             // Guardar la columna actual para insertar nuevas columnas a su derecha
             int columnaActualIndex = dgvPresupuesto.CurrentCell?.ColumnIndex ?? -1;
 
-            using var form = new FormColumnasPersonalizadas(_context, _proyecto.Id, columnaActualIndex);
-            if (form.ShowDialog() == DialogResult.OK || form.CambiosRealizados)
-            {
-                try
-                {
-                    // Solo guardar el orden visual actual de columnas
-                    foreach (DataGridViewColumn col in dgvPresupuesto.Columns)
-                    {
-                        if (col.Tag is ColumnaPersonalizada colDef)
-                        {
-                            var columnaDB = _context.ColumnasPersonalizadas.Find(colDef.Id);
-                            if (columnaDB != null)
-                                columnaDB.Orden = col.DisplayIndex;
-                        }
-                    }
-                    _context.SaveChanges();
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Error al guardar orden de columnas:\n{ex.Message}",
-                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
+            using var form = new FormColumnasPersonalizadas(
+                _factory,
+                _context.DatabasePath,
+                _proyecto.Id,
+                ColumnasPresupuestoHelper.CrearDefinicionesPredeterminadas(),
+                columnaActualIndex);
 
-                // Recargar presupuesto con nuevas columnas, preservando fila/scroll/celda cuando sea posible
-                RecargarPresupuestoPreservandoEstado();
-            }
+            var resultadoDialogo = form.ShowDialog();
+            AplicarResultadoDialogoColumnas(form, resultadoDialogo);
         }
+
+        /// <summary>
+        /// Reconciliación al cerrar el diálogo de columnas. Un commit incierto puede
+        /// haber cambiado los Ids: si el diálogo pudo releer la lista se recarga la
+        /// configuración del padre aunque el usuario cancele (nunca se sigue con Ids
+        /// viejos), y si no pudo releerla se bloquean las mutaciones de columnas hasta
+        /// una recarga segura. Devuelve <c>true</c> sólo si la vista quedó consistente.
+        /// </summary>
+        internal bool AplicarResultadoDialogoColumnas(
+            FormColumnasPersonalizadas dialogo,
+            DialogResult resultado)
+        {
+            ArgumentNullException.ThrowIfNull(dialogo);
+
+            bool debeRecargar = resultado == DialogResult.OK
+                || dialogo.CambiosRealizados
+                || dialogo.RequiereRecargaAlCerrar
+                || dialogo.RequiereBloqueoParent;
+
+            bool recargaConfirmada = true;
+            if (debeRecargar)
+                recargaConfirmada = IntentarRecargarPresupuestoPreservandoEstado();
+
+            if (!recargaConfirmada)
+            {
+                MarcarColumnasBloqueadasPorResultadoIncierto();
+                MostrarMensajeColumnas(
+                    dialogo.RequiereBloqueoParent
+                        ? "No se pudo confirmar si los cambios de columnas se guardaron ni recargar " +
+                          "la vista. Recargue el presupuesto (o vuelva a abrirlo) antes de seguir " +
+                          "editando columnas."
+                        : "No se pudo recargar la vista del presupuesto. Recargue el proyecto antes " +
+                          "de seguir editando columnas.");
+            }
+
+            return recargaConfirmada;
+        }
+
+        /// <summary>
+        /// Recarga completa de la vista (columnas y filas) preservando el estado del
+        /// grid. Sólo una recarga confirmada libera el bloqueo de columnas.
+        /// </summary>
+        private bool IntentarRecargarPresupuestoPreservandoEstado()
+        {
+            var state = DataGridViewStateHelper.Capture(dgvPresupuesto);
+            bool confirmada = CargarPresupuestoCore(state);
+
+            if (confirmada)
+                _columnasBloqueadasPorResultadoIncierto = false;
+
+            return confirmada;
+        }
+
+        /// <summary>
+        /// Seam de la secuencia de columnas: persiste el orden visual pendiente con los
+        /// IDs actuales antes de mostrar el diálogo. Devuelve false (y no se abre el
+        /// diálogo) si el lote no se confirmó.
+        /// </summary>
+        internal bool GuardarOrdenPrevioADialogoColumnas()
+            => PersistirOrdenColumnas(mostrarError: true);
+
+        /// <summary>Seam de la secuencia de columnas: recarga la vista tras confirmar el diálogo.</summary>
+        internal void RecargarTrasDialogoColumnas()
+            => IntentarRecargarPresupuestoPreservandoEstado();
     }
 }

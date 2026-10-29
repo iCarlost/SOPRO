@@ -26,6 +26,8 @@ namespace SOPRO.Tests.WinForms.Presupuesto;
 /// componentes rastreados y los deja <c>Unchanged</c>, sin un segundo
 /// <c>SaveChanges</c> compartido ni un refresco de precios;</item>
 /// <item>las hojas que comparten matriz se actualizan juntas con su agrupador;</item>
+/// <item>el reajuste de un agrupador usa el comando grupal, captura sus bases antes
+/// del diálogo y aplica la instantánea sin un segundo guardado;</item>
 /// <item>trabajo pendiente, un fallo revertido y un resultado incierto bloquean el
 /// reajuste sin descartar ni confirmar nada.</item>
 /// </list>
@@ -974,6 +976,684 @@ public class FormPresupuestoReajusteCostoComandoTests
             Assert.AreEqual(120m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id));
             Assert.AreEqual(0, ctx.SaveChangesCount);
             Assert.IsNull(form.UltimoEstadoRefrescoPrecios);
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void ReajusteCostoGrupal_GuardAntesDeRamificar_NoCapturaNiDespacha()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_reajuste_grupal_guard_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+
+        CountingContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new CountingContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx, hojas: 1);
+            form = CrearFormulario(ctx, escenario, root);
+
+            int filaAgrupador = BuscarFilaPorConcepto(form.GridPrincipal, escenario.Agrupador.Id);
+            Assert.IsTrue(filaAgrupador >= 0, "El agrupador debe estar en el grid cargado.");
+            SeleccionarFila(form.GridPrincipal, filaAgrupador);
+
+            bool capturo = false;
+            void EntreCapturaYComando() => capturo = true;
+
+            ctx.ResetSaveChangesCount();
+
+            // Guard 1: trabajo ajeno pendiente en el contexto compartido.
+            escenario.Proyecto.Descripcion = "borrador ajeno sin guardar";
+            Assert.IsTrue(ctx.ChangeTracker.HasChanges());
+
+            var bloqueadoPorTrabajo = form.EjecutarReajusteCostoGrupalDesdeFila(
+                filaAgrupador, 600m, MatrixAdjustmentScopes.Materiales, EntreCapturaYComando);
+
+            Assert.IsNull(bloqueadoPorTrabajo,
+                "Con trabajo pendiente no se captura ni se despacha el comando grupal.");
+            Assert.IsFalse(capturo,
+                "El guard debe rechazar antes de capturar y ramificar al agrupador.");
+            Assert.IsNull(form.UltimoEstadoReajusteCosto);
+            Assert.AreEqual("borrador ajeno sin guardar", escenario.Proyecto.Descripcion,
+                "El guard no descarta el trabajo del usuario.");
+            Assert.AreEqual(0, ctx.SaveChangesCount);
+            Assert.AreEqual(100m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id),
+                "El guard no escribe en la base.");
+
+            ctx.Entry(escenario.Proyecto).OriginalValues.SetValues(
+                ctx.Entry(escenario.Proyecto).CurrentValues);
+            ctx.Entry(escenario.Proyecto).State = EntityState.Unchanged;
+            Assert.IsFalse(ctx.ChangeTracker.HasChanges());
+
+            // Guard 2: resultado incierto previo (el comando grupal no se reintenta).
+            EstablecerBloqueoReajusteIncierto(form, bloqueado: true);
+            capturo = false;
+
+            var bloqueadoPorIncierto = form.EjecutarReajusteCostoGrupalDesdeFila(
+                filaAgrupador, 600m, MatrixAdjustmentScopes.Materiales, EntreCapturaYComando);
+
+            Assert.IsNull(bloqueadoPorIncierto,
+                "Un resultado incierto bloquea también el reajuste de agrupadores.");
+            Assert.IsFalse(capturo);
+            Assert.IsNull(form.UltimoEstadoReajusteCosto);
+            Assert.AreEqual(0, ctx.SaveChangesCount);
+            Assert.AreEqual(100m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id));
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void ReajusteCostoGrupal_ExitoAplicaSnapshotSinSegundoGuardado()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_reajuste_grupal_ok_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+
+        CountingContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new CountingContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx, hojas: 2);
+            form = CrearFormulario(ctx, escenario, root);
+
+            var matrizRastreada = ctx.Matrices
+                .Include(m => m.Componentes)
+                .Single(m => m.Id == escenario.Matriz.Id);
+            var componenteRastreado = matrizRastreada.Componentes.Single();
+
+            int filaAgrupador = BuscarFilaPorConcepto(form.GridPrincipal, escenario.Agrupador.Id);
+            Assert.IsTrue(filaAgrupador >= 0);
+            SeleccionarFila(form.GridPrincipal, filaAgrupador);
+            ctx.ResetSaveChangesCount();
+
+            bool capturo = false;
+            var resultado = form.EjecutarReajusteCostoGrupalDesdeFila(
+                filaAgrupador,
+                840m,
+                MatrixAdjustmentScopes.Materiales,
+                () => capturo = true);
+
+            Assert.IsTrue(capturo, "La captura PRE-diálogo debe ocurrir antes del comando.");
+            Assert.IsNotNull(resultado);
+            Assert.AreEqual(BudgetOperationStatus.Committed, resultado!.Status, resultado.Message);
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoReajusteCosto);
+            Assert.IsNull(form.UltimoDiagnosticoReajusteCosto);
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorSincronizacionPendiente);
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorResultadoIncierto);
+
+            var snapshot = resultado.Confirmed;
+            Assert.IsNotNull(snapshot);
+            Assert.AreEqual(escenario.Proyecto.Id, snapshot!.ProjectId);
+            Assert.AreEqual(escenario.Agrupador.Id, snapshot.Group.ConceptId);
+            Assert.AreEqual(700m, snapshot.CurrentAmount);
+            Assert.AreEqual(840m, snapshot.RequestedTargetAmount);
+            Assert.AreEqual(840m, snapshot.AchievedAmount, 0.01m);
+            Assert.AreEqual(1.2m, snapshot.FactorApplied, 0.001m);
+            Assert.AreEqual(2, snapshot.AffectedLeaves.Count,
+                "La instantánea incluye ambas hojas que comparten la matriz.");
+            Assert.AreEqual(1, snapshot.AffectedMatrices.Count);
+            Assert.AreEqual(1, snapshot.AffectedComponents.Count);
+
+            // El comando se confirmó en un contexto NUEVO; el contexto compartido no
+            // guardó nada y la instantánea lo dejó limpio.
+            Assert.AreEqual(0, ctx.SaveChangesCount,
+                "La ruta grupal no debe guardar desde el contexto compartido.");
+            Assert.IsNull(form.UltimoEstadoRefrescoPrecios,
+                "La ruta grupal no debe emitir un refresco de precios heredado.");
+            Assert.IsFalse(ctx.ChangeTracker.HasChanges(),
+                "La instantánea aplicada no deja trabajo pendiente.");
+
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                var matriz = verificacion.Matrices.AsNoTracking()
+                    .Single(m => m.Id == escenario.Matriz.Id);
+                Assert.AreEqual(120m, matriz.CostoDirecto, 0.01m);
+
+                var componente = verificacion.ComponentesMatriz.AsNoTracking()
+                    .Single(c => c.Id == componenteRastreado.Id);
+                Assert.AreEqual(12m, componente.Cantidad, 0.01m);
+                Assert.AreEqual(120m, componente.Importe, 0.01m);
+
+                var primera = verificacion.ConceptosPresupuesto.AsNoTracking()
+                    .Single(c => c.Id == escenario.Hoja.Id);
+                var segunda = verificacion.ConceptosPresupuesto.AsNoTracking()
+                    .Single(c => c.Id == escenario.SegundaHoja!.Id);
+                var agrupador = verificacion.ConceptosPresupuesto.AsNoTracking()
+                    .Single(c => c.Id == escenario.Agrupador.Id);
+
+                Assert.AreEqual(120m, primera.PrecioUnitario, 0.01m);
+                Assert.AreEqual(600m, primera.ImporteTotal, 0.01m);
+                Assert.AreEqual(120m, segunda.PrecioUnitario, 0.01m);
+                Assert.AreEqual(240m, segunda.ImporteTotal, 0.01m);
+                Assert.AreEqual(840m, agrupador.ImporteTotal, 0.01m);
+            }
+
+            // Matriz y componente rastreados sincronizados y marcados Unchanged.
+            Assert.AreEqual(120m, matrizRastreada.CostoDirecto, 0.01m);
+            Assert.AreEqual(12m, componenteRastreado.Cantidad, 0.01m);
+            Assert.AreEqual(120m, componenteRastreado.Importe, 0.01m);
+            Assert.AreEqual(EntityState.Unchanged, ctx.Entry(matrizRastreada).State);
+            Assert.AreEqual(EntityState.Unchanged, ctx.Entry(componenteRastreado).State);
+
+            foreach (var hoja in new[] { escenario.Hoja, escenario.SegundaHoja! })
+            {
+                int fila = BuscarFilaPorConcepto(form.GridPrincipal, hoja.Id);
+                Assert.IsTrue(fila >= 0);
+                Assert.AreEqual(120m, hoja.PrecioUnitario, 0.01m);
+                Assert.AreEqual(120m * hoja.Cantidad, hoja.ImporteTotal, 0.01m);
+                Assert.AreEqual(EntityState.Unchanged, ctx.Entry(hoja).State);
+                Assert.AreEqual(120m.ToStringImporte(),
+                    BuscarCelda(form.GridPrincipal, fila, "PrecioUnitario")!.Value?.ToString());
+            }
+
+            Assert.AreEqual(840m, escenario.Agrupador.ImporteTotal, 0.01m);
+            Assert.AreEqual(840m.ToStringImporte(),
+                BuscarCelda(form.GridPrincipal, filaAgrupador, "Importe")!.Value?.ToString());
+            Assert.AreEqual(EntityState.Unchanged, ctx.Entry(escenario.Agrupador).State);
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void ReajusteCostoGrupal_FalloPostcommitDeSincronizacion_BloqueaHastaRecargaSegura()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_reajuste_grupal_sync_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+
+        CountingContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new CountingContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx, hojas: 1);
+            form = CrearFormulario(ctx, escenario, root);
+
+            int filaAgrupador = BuscarFilaPorConcepto(form.GridPrincipal, escenario.Agrupador.Id);
+            Assert.IsTrue(filaAgrupador >= 0);
+            SeleccionarFila(form.GridPrincipal, filaAgrupador);
+            ctx.ResetSaveChangesCount();
+
+            // El comando se confirma en otro contexto y, justo antes de volcar su
+            // instantánea, aparece trabajo ajeno en la vista: el volcado se rechaza.
+            form.AntesDeAplicarReajusteCostoGrupalConfirmadoParaPrueba = () =>
+            {
+                form.AntesDeAplicarReajusteCostoGrupalConfirmadoParaPrueba = null;
+                escenario.Proyecto.Descripcion = "cambio posterior al commit";
+            };
+
+            var resultado = form.EjecutarReajusteCostoGrupalDesdeFila(
+                filaAgrupador,
+                600m,
+                MatrixAdjustmentScopes.Materiales);
+
+            // Un commit confirmado se reporta como commit: nunca como fallo ni como
+            // reintento automático.
+            Assert.IsNotNull(resultado);
+            Assert.AreEqual(BudgetOperationStatus.Committed, resultado!.Status, resultado.Message);
+            Assert.IsTrue(resultado.IsCommitted);
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoReajusteCosto);
+            Assert.IsTrue(form.ReajusteCostoBloqueadoPorSincronizacionPendiente,
+                "Un fallo postcommit de sincronización bloquea el siguiente reajuste.");
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorResultadoIncierto,
+                "El commit es cierto: el bloqueo no es por resultado incierto.");
+            Assert.AreEqual(0, ctx.SaveChangesCount);
+            Assert.IsNull(form.UltimoEstadoRefrescoPrecios);
+            Assert.IsTrue(ctx.ChangeTracker.HasChanges(),
+                "El trabajo ajeno que impidió sincronizar se conserva.");
+            Assert.AreEqual(120m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id), 0.01m,
+                "El comando sí se confirmó en la base.");
+            Assert.AreEqual(100m, escenario.Hoja.PrecioUnitario,
+                "La vista no se pisó porque el volcado se rechazó completo.");
+
+            // Mientras dure el bloqueo no se despacha otro comando: un objetivo
+            // distinto no debe llegar a la base.
+            var bloqueado = form.EjecutarReajusteCostoGrupalDesdeFila(
+                filaAgrupador, 700m, MatrixAdjustmentScopes.Materiales);
+            Assert.IsNull(bloqueado);
+            Assert.IsTrue(form.ReajusteCostoBloqueadoPorSincronizacionPendiente);
+            Assert.AreEqual(120m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id), 0.01m,
+                "El bloqueo impide reenviar el reajuste sobre una vista desfasada.");
+            Assert.AreEqual(0, ctx.SaveChangesCount);
+
+            // Reconciliación segura: se descarta el borrador ajeno y se selecciona una
+            // hoja para que el panel pueda recargar su matriz desde la base.
+            ctx.Entry(escenario.Proyecto).OriginalValues.SetValues(
+                ctx.Entry(escenario.Proyecto).CurrentValues);
+            ctx.Entry(escenario.Proyecto).State = EntityState.Unchanged;
+            Assert.IsFalse(ctx.ChangeTracker.HasChanges());
+
+            int filaHoja = BuscarFilaPorConcepto(form.GridPrincipal, escenario.Hoja.Id);
+            Assert.IsTrue(filaHoja >= 0);
+            SeleccionarFila(form.GridPrincipal, filaHoja);
+            Assert.AreEqual(escenario.Matriz.Id,
+                form.PanelMatricesInterno?.MatrizVisibleEnPanel?.Id,
+                "La recarga segura exige una matriz persistida visible en el panel.");
+
+            Assert.IsTrue(form.NotificarRecargaSeguraReajusteCosto(),
+                "La recarga aplicada libera el bloqueo postcommit.");
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorSincronizacionPendiente);
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorResultadoIncierto);
+            Assert.IsNull(form.UltimoEstadoRefrescoPrecios);
+            Assert.AreEqual(120m,
+                ((ConceptoPresupuesto)form.GridPrincipal.Rows[filaHoja].Tag!).PrecioUnitario,
+                0.01m,
+                "La recarga aplicó la instantánea confirmada antes de liberar el bloqueo.");
+
+            var reintento = form.EjecutarReajusteCostoGrupalDesdeFila(
+                filaAgrupador, 700m, MatrixAdjustmentScopes.Materiales);
+            Assert.IsNotNull(reintento);
+            Assert.AreEqual(BudgetOperationStatus.Committed, reintento!.Status, reintento.Message);
+            Assert.AreEqual(140m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id), 0.01m,
+                "Tras la recarga segura el reajuste grupal vuelve a estar disponible.");
+            Assert.AreEqual(0, ctx.SaveChangesCount);
+            Assert.IsFalse(ctx.ChangeTracker.HasChanges());
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorSincronizacionPendiente);
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void ReajusteCostoGrupal_ExcepcionPostcommit_BloqueaSinPresentarFallo()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_reajuste_grupal_sync_ex_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+
+        CountingContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new CountingContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx, hojas: 1);
+            form = CrearFormulario(ctx, escenario, root);
+
+            int filaAgrupador = BuscarFilaPorConcepto(form.GridPrincipal, escenario.Agrupador.Id);
+            Assert.IsTrue(filaAgrupador >= 0);
+            SeleccionarFila(form.GridPrincipal, filaAgrupador);
+            ctx.ResetSaveChangesCount();
+
+            form.AntesDeAplicarReajusteCostoGrupalConfirmadoParaPrueba = () =>
+            {
+                form.AntesDeAplicarReajusteCostoGrupalConfirmadoParaPrueba = null;
+                throw new InvalidOperationException("fallo_simulado_sync_grupal");
+            };
+
+            var resultado = form.EjecutarReajusteCostoGrupalDesdeFila(
+                filaAgrupador, 600m, MatrixAdjustmentScopes.Materiales);
+
+            // La excepción de sincronización no convierte el commit en fallo: la
+            // operación sigue siendo Committed y se informa la recarga requerida.
+            Assert.IsNotNull(resultado);
+            Assert.AreEqual(BudgetOperationStatus.Committed, resultado!.Status, resultado.Message);
+            Assert.IsTrue(resultado.IsCommitted);
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoReajusteCosto,
+                "Una excepción postcommit no puede presentar la operación como fallo.");
+            StringAssert.Contains(form.UltimoDiagnosticoReajusteCosto,
+                "fallo_simulado_sync_grupal");
+            Assert.IsNotNull(form.UltimoMensajeReajusteCosto);
+            StringAssert.Contains(form.UltimoMensajeReajusteCosto, "se guardó");
+            StringAssert.Contains(form.UltimoMensajeReajusteCosto, "Recargue");
+            Assert.IsTrue(form.ReajusteCostoBloqueadoPorSincronizacionPendiente,
+                "La excepción postcommit debe marcar sincronización pendiente.");
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorResultadoIncierto);
+            Assert.AreEqual(0, ctx.SaveChangesCount);
+            Assert.IsNull(form.UltimoEstadoRefrescoPrecios);
+            Assert.AreEqual(120m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id), 0.01m,
+                "El comando ya se confirmó en la base.");
+            Assert.AreEqual(100m, escenario.Hoja.PrecioUnitario,
+                "La vista no se pisó: el volcado se rechazó antes de tocar las filas.");
+
+            // El bloqueo impide reenviar aunque el usuario pulse de nuevo.
+            var bloqueado = form.EjecutarReajusteCostoGrupalDesdeFila(
+                filaAgrupador, 700m, MatrixAdjustmentScopes.Materiales);
+            Assert.IsNull(bloqueado);
+            Assert.IsTrue(form.ReajusteCostoBloqueadoPorSincronizacionPendiente);
+            Assert.AreEqual(120m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id), 0.01m);
+            Assert.AreEqual(0, ctx.SaveChangesCount);
+
+            // Recarga segura: libera el bloqueo y reconcilia la vista con la base.
+            int filaHoja = BuscarFilaPorConcepto(form.GridPrincipal, escenario.Hoja.Id);
+            Assert.IsTrue(filaHoja >= 0);
+            SeleccionarFila(form.GridPrincipal, filaHoja);
+            Assert.AreEqual(escenario.Matriz.Id,
+                form.PanelMatricesInterno?.MatrizVisibleEnPanel?.Id);
+            Assert.IsTrue(form.NotificarRecargaSeguraReajusteCosto());
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorSincronizacionPendiente);
+            Assert.AreEqual(120m,
+                ((ConceptoPresupuesto)form.GridPrincipal.Rows[filaHoja].Tag!).PrecioUnitario,
+                0.01m);
+
+            var reintento = form.EjecutarReajusteCostoGrupalDesdeFila(
+                filaAgrupador, 700m, MatrixAdjustmentScopes.Materiales);
+            Assert.IsNotNull(reintento);
+            Assert.AreEqual(BudgetOperationStatus.Committed, reintento!.Status, reintento.Message);
+            Assert.AreEqual(140m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id), 0.01m);
+            Assert.AreEqual(0, ctx.SaveChangesCount);
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void ReajusteCostoComando_ExcepcionPostcommit_BloqueaSinPresentarFallo()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_reajuste_sync_ex_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+
+        CountingContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new CountingContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx, hojas: 1);
+            form = CrearFormulario(ctx, escenario, root);
+
+            int filaHoja = BuscarFilaPorConcepto(form.GridPrincipal, escenario.Hoja.Id);
+            Assert.IsTrue(filaHoja >= 0);
+            SeleccionarFila(form.GridPrincipal, filaHoja);
+            Assert.AreEqual(escenario.Matriz.Id,
+                form.PanelMatricesInterno?.MatrizVisibleEnPanel?.Id);
+            ctx.ResetSaveChangesCount();
+
+            form.AntesDeAplicarReajusteCostoConfirmadoParaPrueba = () =>
+            {
+                form.AntesDeAplicarReajusteCostoConfirmadoParaPrueba = null;
+                throw new InvalidOperationException("fallo_simulado_sync_individual");
+            };
+
+            var resultado = form.EjecutarReajusteCostoDesdeFila(
+                filaHoja,
+                BudgetMatrixCostAdjustmentTargetKind.PrecioUnitario,
+                120m,
+                MatrixAdjustmentScopes.Materiales);
+
+            Assert.IsNotNull(resultado);
+            Assert.AreEqual(BudgetOperationStatus.Committed, resultado!.Status, resultado.Message);
+            Assert.IsTrue(resultado.IsCommitted);
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoReajusteCosto,
+                "Una excepción postcommit no puede presentar la operación como fallo.");
+            StringAssert.Contains(form.UltimoDiagnosticoReajusteCosto,
+                "fallo_simulado_sync_individual");
+            Assert.IsNotNull(form.UltimoMensajeReajusteCosto);
+            StringAssert.Contains(form.UltimoMensajeReajusteCosto, "se guardó");
+            StringAssert.Contains(form.UltimoMensajeReajusteCosto, "Recargue");
+            Assert.IsTrue(form.ReajusteCostoBloqueadoPorSincronizacionPendiente);
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorResultadoIncierto);
+            Assert.AreEqual(0, ctx.SaveChangesCount);
+            Assert.IsNull(form.UltimoEstadoRefrescoPrecios);
+            Assert.AreEqual(120m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id), 0.01m);
+            Assert.AreEqual(100m, escenario.Hoja.PrecioUnitario,
+                "La vista no se pisó: el volcado se rechazó antes de tocar las filas.");
+
+            var bloqueado = form.EjecutarReajusteCostoDesdeFila(
+                filaHoja,
+                BudgetMatrixCostAdjustmentTargetKind.PrecioUnitario,
+                150m,
+                MatrixAdjustmentScopes.Materiales);
+            Assert.IsNull(bloqueado);
+            Assert.IsTrue(form.ReajusteCostoBloqueadoPorSincronizacionPendiente);
+            Assert.AreEqual(120m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id), 0.01m);
+            Assert.AreEqual(0, ctx.SaveChangesCount);
+
+            Assert.IsTrue(form.NotificarRecargaSeguraReajusteCosto());
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorSincronizacionPendiente);
+            Assert.AreEqual(120m,
+                ((ConceptoPresupuesto)form.GridPrincipal.Rows[filaHoja].Tag!).PrecioUnitario,
+                0.01m);
+
+            var reintento = form.EjecutarReajusteCostoDesdeFila(
+                filaHoja,
+                BudgetMatrixCostAdjustmentTargetKind.PrecioUnitario,
+                150m,
+                MatrixAdjustmentScopes.Materiales);
+            Assert.IsNotNull(reintento);
+            Assert.AreEqual(BudgetOperationStatus.Committed, reintento!.Status, reintento.Message);
+            Assert.AreEqual(150m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id), 0.01m);
+            Assert.AreEqual(0, ctx.SaveChangesCount);
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void ReajusteCostoComando_RecargaDelPanelNoAplicada_BloqueaPorSincronizacionPendiente()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_reajuste_sync_panel_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+
+        CountingContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new CountingContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx, hojas: 1);
+            form = CrearFormulario(ctx, escenario, root);
+
+            int filaHoja = BuscarFilaPorConcepto(form.GridPrincipal, escenario.Hoja.Id);
+            Assert.IsTrue(filaHoja >= 0);
+            SeleccionarFila(form.GridPrincipal, filaHoja);
+            Assert.AreEqual(escenario.Matriz.Id,
+                form.PanelMatricesInterno?.MatrizVisibleEnPanel?.Id,
+                "El panel debe mostrar la matriz afectada por el reajuste.");
+            ctx.ResetSaveChangesCount();
+
+            // La matriz visible pertenece al cierre afectado y su recarga no se aplica.
+            int? matrizVistaEnRecarga = null;
+            form.IntentarRecargarMatrizVisibleDesdeBdParaPrueba = () =>
+            {
+                matrizVistaEnRecarga = form.PanelMatricesInterno?.MatrizVisibleEnPanel?.Id;
+                return false;
+            };
+
+            var resultado = form.EjecutarReajusteCostoDesdeFila(
+                filaHoja,
+                BudgetMatrixCostAdjustmentTargetKind.PrecioUnitario,
+                120m,
+                MatrixAdjustmentScopes.Materiales);
+
+            Assert.AreEqual(escenario.Matriz.Id, matrizVistaEnRecarga,
+                "La recarga sólo se exige sobre la matriz visible afectada.");
+            Assert.IsNotNull(resultado);
+            Assert.AreEqual(BudgetOperationStatus.Committed, resultado!.Status, resultado.Message,
+                "El commit ya ocurrió: una recarga del panel no aplicada no es un fallo de operación.");
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoReajusteCosto);
+            Assert.IsNull(form.UltimoDiagnosticoReajusteCosto,
+                "La recarga no aplicada no es una excepción técnica.");
+            Assert.IsNotNull(form.UltimoMensajeReajusteCosto);
+            StringAssert.Contains(form.UltimoMensajeReajusteCosto, "se guardó");
+            StringAssert.Contains(form.UltimoMensajeReajusteCosto, "Recargue");
+            Assert.IsTrue(form.ReajusteCostoBloqueadoPorSincronizacionPendiente,
+                "Una matriz visible afectada sin reconciliar bloquea el siguiente reajuste.");
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorResultadoIncierto,
+                "El commit es cierto: no es un resultado incierto.");
+            Assert.AreEqual(120m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id), 0.01m,
+                "El comando sí se confirmó en la base.");
+            Assert.AreEqual(0, ctx.SaveChangesCount);
+            Assert.IsNull(form.UltimoEstadoRefrescoPrecios);
+
+            var bloqueado = form.EjecutarReajusteCostoDesdeFila(
+                filaHoja,
+                BudgetMatrixCostAdjustmentTargetKind.PrecioUnitario,
+                150m,
+                MatrixAdjustmentScopes.Materiales);
+            Assert.IsNull(bloqueado,
+                "El bloqueo por sincronización pendiente impide reenviar el reajuste.");
+            Assert.AreEqual(120m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id), 0.01m);
+            Assert.AreEqual(0, ctx.SaveChangesCount);
+
+            // Recarga segura con el panel operativo: libera el bloqueo y reconcilia.
+            form.IntentarRecargarMatrizVisibleDesdeBdParaPrueba = null;
+            Assert.IsTrue(form.NotificarRecargaSeguraReajusteCosto(),
+                "La recarga segura debe desbloquear la sincronización pendiente.");
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorSincronizacionPendiente);
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorResultadoIncierto);
+            Assert.AreEqual(120m,
+                ((ConceptoPresupuesto)form.GridPrincipal.Rows[filaHoja].Tag!).PrecioUnitario,
+                0.01m);
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void ReajusteCostoGrupal_RecargaDelPanelNoAplicada_BloqueaPorSincronizacionPendiente()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_reajuste_grupal_panel_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+
+        CountingContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new CountingContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx, hojas: 1);
+            form = CrearFormulario(ctx, escenario, root);
+
+            // La hoja queda seleccionada para que el panel muestre la matriz afectada;
+            // el comando grupal se despacha por la fila del agrupador.
+            int filaHoja = BuscarFilaPorConcepto(form.GridPrincipal, escenario.Hoja.Id);
+            Assert.IsTrue(filaHoja >= 0);
+            SeleccionarFila(form.GridPrincipal, filaHoja);
+            Assert.AreEqual(escenario.Matriz.Id,
+                form.PanelMatricesInterno?.MatrizVisibleEnPanel?.Id);
+
+            int filaAgrupador = BuscarFilaPorConcepto(form.GridPrincipal, escenario.Agrupador.Id);
+            Assert.IsTrue(filaAgrupador >= 0);
+            ctx.ResetSaveChangesCount();
+
+            int? matrizVistaEnRecarga = null;
+            form.IntentarRecargarMatrizVisibleDesdeBdParaPrueba = () =>
+            {
+                matrizVistaEnRecarga = form.PanelMatricesInterno?.MatrizVisibleEnPanel?.Id;
+                return false;
+            };
+
+            var resultado = form.EjecutarReajusteCostoGrupalDesdeFila(
+                filaAgrupador, 600m, MatrixAdjustmentScopes.Materiales);
+
+            Assert.AreEqual(escenario.Matriz.Id, matrizVistaEnRecarga,
+                "La recarga sólo se exige sobre la matriz visible afectada.");
+            Assert.IsNotNull(resultado);
+            Assert.AreEqual(BudgetOperationStatus.Committed, resultado!.Status, resultado.Message,
+                "El commit ya ocurrió: una recarga del panel no aplicada no es un fallo de operación.");
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoReajusteCosto);
+            Assert.IsNull(form.UltimoDiagnosticoReajusteCosto,
+                "La recarga no aplicada no es una excepción técnica.");
+            Assert.IsNotNull(form.UltimoMensajeReajusteCosto);
+            StringAssert.Contains(form.UltimoMensajeReajusteCosto, "se guardó");
+            StringAssert.Contains(form.UltimoMensajeReajusteCosto, "Recargue");
+            Assert.IsTrue(form.ReajusteCostoBloqueadoPorSincronizacionPendiente,
+                "Una matriz visible afectada sin reconciliar bloquea el siguiente reajuste.");
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorResultadoIncierto,
+                "El commit es cierto: no es un resultado incierto.");
+            Assert.AreEqual(120m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id), 0.01m,
+                "El comando sí se confirmó en la base.");
+            Assert.AreEqual(0, ctx.SaveChangesCount);
+            Assert.IsNull(form.UltimoEstadoRefrescoPrecios);
+
+            var bloqueado = form.EjecutarReajusteCostoGrupalDesdeFila(
+                filaAgrupador, 700m, MatrixAdjustmentScopes.Materiales);
+            Assert.IsNull(bloqueado,
+                "El bloqueo por sincronización pendiente impide reenviar el reajuste grupal.");
+            Assert.AreEqual(120m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id), 0.01m);
+            Assert.AreEqual(0, ctx.SaveChangesCount);
+
+            form.IntentarRecargarMatrizVisibleDesdeBdParaPrueba = null;
+            Assert.IsTrue(form.NotificarRecargaSeguraReajusteCosto(),
+                "La recarga segura debe desbloquear la sincronización pendiente.");
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorSincronizacionPendiente);
+            Assert.IsFalse(form.ReajusteCostoBloqueadoPorResultadoIncierto);
+            Assert.AreEqual(120m,
+                ((ConceptoPresupuesto)form.GridPrincipal.Rows[filaHoja].Tag!).PrecioUnitario,
+                0.01m);
+
+            var reintento = form.EjecutarReajusteCostoGrupalDesdeFila(
+                filaAgrupador, 700m, MatrixAdjustmentScopes.Materiales);
+            Assert.IsNotNull(reintento);
+            Assert.AreEqual(BudgetOperationStatus.Committed, reintento!.Status, reintento.Message);
+            Assert.AreEqual(140m, LeerCostoDirectoEnBase(dbPath, escenario.Matriz.Id), 0.01m);
+            Assert.AreEqual(0, ctx.SaveChangesCount);
         }
         finally
         {

@@ -29,6 +29,8 @@ namespace SOPRO.WinForms.Forms
         private const int AltoMinimoFuncionalApu = 250;    // toolbar (31) + host operativo fuera del modo compacto
         private const int AltoMinimoDegradadoApu = 150;    // piso duro en ventanas pequeñas (modo compacto)
         private const double FactorAlturaWorkspace = 0.42; // crecimiento proporcional sobre el alto del split
+        private const decimal CantidadMinimaSelector = 0.01m;
+        private const decimal CantidadPorDefectoPanel = 1m;
         private bool _politicaAltoWorkspaceInicializada;
         private bool _ajustandoAltoWorkspace;
 
@@ -280,9 +282,27 @@ namespace SOPRO.WinForms.Forms
             return texto.Trim().ToUpperInvariant();
         }
 
+        /// <summary>
+        /// Lee la cantidad visible de la fila conservando un fallback positivo: un valor
+        /// vacío, no parseable o &lt;= 0 nunca debe sobrescribir el fallback con cero.
+        /// </summary>
+        private decimal LeerCantidadPositivaDeFila(int rowIndex, decimal fallback)
+        {
+            var cantidadCell = ObtenerCeldaPorNombreInterno(rowIndex, "Cantidad");
+            if (cantidadCell?.Value is null)
+                return fallback;
+
+            return decimal.TryParse(cantidadCell.Value.ToString(), out decimal cantidad) && cantidad > 0m
+                ? cantidad
+                : fallback;
+        }
+
         private void MostrarSelectorApuEmbebido(int rowIndex, decimal cantidadActual, int? matrizIdActual, string? filtroInicial)
         {
             EnsureWorkspaceExpanded();
+
+            if (cantidadActual <= 0m)
+                cantidadActual = CantidadMinimaSelector;
 
             if (_panelMatricesEmbebido != null)
                 _panelMatricesEmbebido.Visible = false;
@@ -301,7 +321,7 @@ namespace SOPRO.WinForms.Forms
             _selectorApuEmbebidoRowIndex = rowIndex;
             var targetRowIndex = rowIndex;
             var selector = new SelectorApuEmbebidoControl();
-            selector.InitializeSelector(_context, _proyecto.Id, cantidadActual, matrizIdActual, filtroInicial);
+            selector.InitializeSelector(_context, _proyecto.Id, cantidadActual, matrizIdActual, filtroInicial, _workspaceService);
             selector.Accepted += (_, __) =>
             {
                 try
@@ -340,14 +360,19 @@ namespace SOPRO.WinForms.Forms
             };
             selector.RequestNewMatrix += (_, __) =>
             {
+                // El selector se dispone al mostrar el panel: la cantidad y el tipo
+                // elegidos por el usuario deben capturarse AHORA (la cantidad leída al
+                // abrir la fila puede ser cero/obsoleta).
+                decimal cantidadNuevaMatriz = selector.CantidadParaNuevaMatriz;
+                TipoMatriz tipoNuevaMatriz = selector.SelectedTipo;
                 MostrarPanelMatrizEmbebido(false);
-                _panelMatricesEmbebido?.BeginCreateMatrix(selector.SelectedTipo,
+                _panelMatricesEmbebido?.BeginCreateMatrix(tipoNuevaMatriz,
                     onSaved: matrizCreada =>
                     {
                         try
                         {
                             if (targetRowIndex >= 0)
-                                AsignarMatrizAPresupuesto(targetRowIndex, matrizCreada, cantidadActual, preserveCurrentTexts: true);
+                                AsignarMatrizAPresupuesto(targetRowIndex, matrizCreada, cantidadNuevaMatriz, preserveCurrentTexts: true);
                         }
                         catch (Exception ex)
                         {
@@ -366,10 +391,11 @@ namespace SOPRO.WinForms.Forms
                             }
                         }
                     },
-                    onCancelled: () => MostrarSelectorApuEmbebido(targetRowIndex, cantidadActual, matrizIdActual, filtroInicial));
+                    onCancelled: () => MostrarSelectorApuEmbebido(targetRowIndex, cantidadNuevaMatriz, matrizIdActual, filtroInicial));
             };
             selector.RequestEditMatrix += (_, __) =>
             {
+                decimal cantidadVisible = selector.CantidadParaNuevaMatriz;
                 var selectedMatrixId = selector.SelectedMatrixId;
                 if (!selectedMatrixId.HasValue)
                 {
@@ -380,7 +406,7 @@ namespace SOPRO.WinForms.Forms
                 MostrarPanelMatrizEmbebido(false);
                 _panelMatricesEmbebido?.BeginEditMatrix(selectedMatrixId.Value,
                     onSaved: null,
-                    onCancelled: () => MostrarSelectorApuEmbebido(targetRowIndex, cantidadActual, selectedMatrixId, filtroInicial));
+                    onCancelled: () => MostrarSelectorApuEmbebido(targetRowIndex, cantidadVisible, selectedMatrixId, filtroInicial));
             };
 
             _selectorApuEmbebido = selector;
@@ -395,6 +421,75 @@ namespace SOPRO.WinForms.Forms
         private void btnWorkspaceMatriz_Click(object sender, EventArgs e)
         {
             MostrarPanelMatrizEmbebido(true);
+        }
+
+        /// <summary>
+        /// Abre la captura de una matriz nueva desde el panel embebido (concepto sin APU
+        /// asignada). Reutiliza <see cref="PanelMatricesEmbebido.BeginCreateMatrix"/> y la
+        /// ruta de asignación existente: al confirmar guarda, la matriz se asigna a la
+        /// fila y al cancelar el panel repone el mensaje "Concepto sin APU asignada".
+        /// </summary>
+        private void IniciarCreacionMatrizDesdePanel()
+        {
+            if (_panelMatricesEmbebido == null)
+                return;
+
+            int rowIndex = _panelMatricesEmbebido.FilaConceptoActual;
+            if (rowIndex < 0 || rowIndex >= dgvPresupuesto.Rows.Count)
+                rowIndex = dgvPresupuesto.CurrentRow?.Index ?? -1;
+            if (rowIndex < 0 || rowIndex >= dgvPresupuesto.Rows.Count)
+                return;
+
+            var targetRowIndex = rowIndex;
+            var concepto = dgvPresupuesto.Rows[targetRowIndex].Tag as ConceptoPresupuesto;
+            if (concepto is { Id: > 0 } && concepto.MatrizId.HasValue)
+                return; // el concepto ya tiene matriz: nada que crear aquí
+
+            decimal cantidadActual = LeerCantidadPositivaDeFila(targetRowIndex, CantidadPorDefectoPanel);
+
+            _panelMatricesEmbebido.BeginCreateMatrix(TipoMatriz.APU, soloApu: true,
+                onSaved: matrizCreada =>
+                {
+                    // El comando de asignación solo admite APU: una matriz de otro tipo
+                    // no debe llegar a la asignación ni aparentar éxito.
+                    if (matrizCreada.Tipo != TipoMatriz.APU)
+                    {
+                        MostrarAvisoAsignacionMatriz(
+                            "Asignación de matriz",
+                            "Solo se puede asignar una matriz de tipo APU al presupuesto. " +
+                            "La matriz creada no se asignó a la fila.",
+                            MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    try
+                    {
+                        AsignarMatrizAPresupuesto(targetRowIndex, matrizCreada, cantidadActual, preserveCurrentTexts: true);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error al asignar la matriz creada: {ex.Message}", "Presupuesto", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                    finally
+                    {
+                        if (targetRowIndex >= 0 && targetRowIndex < dgvPresupuesto.Rows.Count)
+                        {
+                            var cell = ObtenerCeldaPorNombreInterno(targetRowIndex, "Descripcion")
+                                       ?? ObtenerCeldaPorNombreInterno(targetRowIndex, "PrecioUnitario");
+                            if (cell != null)
+                                dgvPresupuesto.CurrentCell = cell;
+                            dgvPresupuesto.Focus();
+                        }
+                    }
+                },
+                onCancelled: () =>
+                {
+                    // El botón Cancelar del panel ya restauró la superficie; la fila del
+                    // concepto sigue activa, así que esto repone el mensaje
+                    // "Concepto sin APU asignada" con el acceso de creación visible.
+                    if (targetRowIndex >= 0 && targetRowIndex < dgvPresupuesto.Rows.Count)
+                        _panelMatricesEmbebido.NotificarFilaCambiada(targetRowIndex);
+                });
         }
 
         private void btnWorkspaceCerrar_Click(object sender, EventArgs e)
@@ -576,10 +671,7 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            decimal cantidadActual = 1m;
-            var cantidadCell = ObtenerCeldaPorNombreInterno(rowIndex, "Cantidad");
-            if (cantidadCell?.Value != null)
-                decimal.TryParse(cantidadCell.Value.ToString(), out cantidadActual);
+            decimal cantidadActual = LeerCantidadPositivaDeFila(rowIndex, CantidadMinimaSelector);
 
             int? matrizIdActual = (dgvPresupuesto.Rows[rowIndex].Tag as ConceptoPresupuesto)?.MatrizId;
             var descripcionFiltro = ObtenerCeldaPorNombreInterno(rowIndex, "Descripcion")?.Value?.ToString()?.Trim();
@@ -596,10 +688,7 @@ namespace SOPRO.WinForms.Forms
             var tipoCell = ObtenerCeldaPorNombreInterno(rowIndex, "Tipo");
             if (tipoCell?.Value?.ToString() != "Concepto") return;
 
-            decimal cantidadActual = 1m;
-            var cantidadCell = ObtenerCeldaPorNombreInterno(rowIndex, "Cantidad");
-            if (cantidadCell?.Value != null)
-                decimal.TryParse(cantidadCell.Value.ToString(), out cantidadActual);
+            decimal cantidadActual = LeerCantidadPositivaDeFila(rowIndex, CantidadMinimaSelector);
 
             int? matrizIdActual = (row.Tag as ConceptoPresupuesto)?.MatrizId;
             var descripcionFiltro = ObtenerCeldaPorNombreInterno(rowIndex, "Descripcion")?.Value?.ToString()?.Trim();
@@ -722,10 +811,12 @@ namespace SOPRO.WinForms.Forms
                 draft);
 
             if (despachoNuevaFila == MatrixAssignmentDispatch.NotSentPendingChanges
-                || UltimoEstadoAsignacionMatriz != BudgetOperationStatus.Committed)
+                || (despachoNuevaFila != MatrixAssignmentDispatch.NotSentCommandFailure
+                    && UltimoEstadoAsignacionMatriz != BudgetOperationStatus.Committed))
             {
                 // El alta no se confirmó (conflicto, fallo o trabajo ajeno pendiente):
-                // el borrador queda visible y la fila conserva su Id 0/Tag null.
+                // el borrador queda visible y la fila conserva su Id 0/Tag null. Un fallo
+                // local al construir/enviar el comando no debe volcar un borrador ficticio.
                 ApplyAssignmentDraftToGrid(rowIndex, draft);
             }
 
@@ -788,9 +879,22 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         internal BudgetOperationStatus? UltimoEstadoAsignacionMatriz { get; private set; }
 
+        /// <summary>Diagnóstico técnico del último intento no confirmado; nunca se muestra tal cual.</summary>
+        internal string? UltimoDiagnosticoAsignacionMatriz { get; private set; }
+
+        /// <summary>
+        /// Punto de aislamiento de avisos para las pruebas: la ruta de comando no debe
+        /// fallar en silencio ni dejar un borrador ficticio cuando la excepción impide
+        /// siquiera construir/enviar el comando.
+        /// </summary>
+        internal static Action<string, string, MessageBoxIcon> MostrarAvisoAsignacionMatriz { get; set; }
+            = (titulo, mensaje, icono) => MessageBox.Show(mensaje, titulo, MessageBoxButtons.OK, icono);
+
         private enum MatrixAssignmentDispatch
         {
             NotSentPendingChanges,
+            NotSentCommandFailure,
+            NotSentReconciliationPending,
             Sent
         }
 
@@ -810,6 +914,7 @@ namespace SOPRO.WinForms.Forms
             string? unitOverride = null)
         {
             UltimoEstadoAsignacionMatriz = null;
+            UltimoDiagnosticoAsignacionMatriz = null;
 
             // Conservador: si el contexto compartido arrastra trabajo pendiente de
             // otras rutas, no se envía el comando ni se guarda nada aquí. El llamador
@@ -824,10 +929,17 @@ namespace SOPRO.WinForms.Forms
             // insertado la fila y solo se sabe reconciliando con la base.
             if (esNuevaFila && _asignacionNuevaFilaPendienteReconciliacion)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    "Alta de fila bloqueada: la asignación anterior quedó en estado incierto; " +
-                    "reconcilie con la base antes de reintentar.");
-                return MatrixAssignmentDispatch.NotSentPendingChanges;
+                // La causa es la INCERTIDUMBRE de la alta anterior, no trabajo pendiente
+                // en el contexto compartido. Se fija el estado y el diagnóstico reales
+                // (no se borran) para que el llamador no anuncie "cambios pendientes" ni
+                // reintente a ciegas.
+                UltimoEstadoAsignacionMatriz = BudgetOperationStatus.OutcomeUnknown;
+                UltimoDiagnosticoAsignacionMatriz =
+                    "Alta de fila bloqueada: la asignación anterior quedó con resultado incierto " +
+                    "(no se sabe si la fila se insertó). Reconcilie con la base —recargue el " +
+                    "presupuesto— antes de reintentar.";
+                System.Diagnostics.Debug.WriteLine(UltimoDiagnosticoAsignacionMatriz);
+                return MatrixAssignmentDispatch.NotSentReconciliationPending;
             }
 
             BudgetAssignmentRowset? rowset = null;
@@ -870,8 +982,20 @@ namespace SOPRO.WinForms.Forms
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Asignación de matriz: {ex.Message}");
-                return MatrixAssignmentDispatch.Sent;
+                // Falló la construcción/envío del comando: no hubo confirmación y no
+                // puede presentarse un borrador como si la asignación se hubiera
+                // guardado. Se clasifica el intento, se registra el diagnóstico y se
+                // avisa de forma inequívoca; la fila/Tag/celdas quedan intactos.
+                UltimoEstadoAsignacionMatriz = BudgetOperationStatus.Failed;
+                UltimoDiagnosticoAsignacionMatriz = ex.ToString();
+                System.Diagnostics.Debug.WriteLine($"Asignación de matriz no enviada: {ex}");
+                MostrarAvisoAsignacionMatriz(
+                    "Asignación de matriz",
+                    "No se pudo asignar la matriz: no se guardó ningún cambio en la fila. " +
+                    "Revise la cantidad y los datos de la matriz e intente de nuevo." +
+                    $"\n\nDetalle: {ex.Message}",
+                    MessageBoxIcon.Warning);
+                return MatrixAssignmentDispatch.NotSentCommandFailure;
             }
 
             UltimoEstadoAsignacionMatriz = resultado.Status;
@@ -884,6 +1008,7 @@ namespace SOPRO.WinForms.Forms
                 // Conflicto, fallo o resultado incierto: el borrador de la clave queda
                 // visible y el tracker compartido intacto. No se invoca el guardado
                 // heredado para este evento.
+                UltimoDiagnosticoAsignacionMatriz = resultado.Diagnostic;
                 System.Diagnostics.Debug.WriteLine(
                     $"Asignación de matriz no confirmada ({resultado.Status}): {resultado.Diagnostic}");
                 return MatrixAssignmentDispatch.Sent;

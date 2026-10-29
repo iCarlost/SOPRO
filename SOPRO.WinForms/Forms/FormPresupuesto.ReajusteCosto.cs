@@ -17,15 +17,16 @@ using System.Windows.Forms;
 namespace SOPRO.WinForms.Forms
 {
     /// <summary>
-    /// Reajuste de costos de UNA matriz desde un concepto hoja (ADR-0001): la base
-    /// esperada (proyecto, matriz, fingerprint de componentes, fuentes, rowset y
-    /// hoja) se captura del ESTADO CARGADO POR LA VISTA antes del diálogo y viaja
-    /// como comando inmutable a
-    /// <see cref="BudgetPersistenceService.ExecuteMatrixCostAdjustmentCommand"/>
-    /// sobre un contexto NUEVO. La ruta confirmada aplica la instantánea sin un
-    /// segundo <c>SaveChanges</c> compartido ni <see cref="RefreshBudgetPrices"/>.
-    /// El reajuste de agrupadores permanece por la ruta heredada, explícitamente
-    /// diferida.
+    /// Reajuste de costos (ADR-0001): la base esperada (proyecto, matrices,
+    /// fingerprint de componentes, fuentes, rowset y hojas) se captura del ESTADO
+    /// CARGADO POR LA VISTA antes del diálogo y viaja como comando inmutable sobre un
+    /// contexto NUEVO, tanto para UNA matriz de un concepto hoja
+    /// (<see cref="BudgetPersistenceService.ExecuteMatrixCostAdjustmentCommand"/>)
+    /// como para el comando grupal de un agrupador (punto de adaptación en
+    /// <c>FormPresupuesto.ReajusteCostoAgrupador.cs</c>). La ruta confirmada aplica
+    /// la instantánea sin un segundo <c>SaveChanges</c> compartido ni
+    /// <see cref="RefreshBudgetPrices"/>. Ninguna ruta heredada escribe ya matrices
+    /// ni precios desde el contexto compartido.
     /// </summary>
     public partial class FormPresupuesto
     {
@@ -36,13 +37,46 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         private bool _reajusteCostoBloqueadoPorResultadoIncierto;
 
+        /// <summary>
+        /// Un commit confirmado cuyo volcado sobre la vista falló no es un fallo: la
+        /// base ya quedó escrita. Se bloquea el siguiente reajuste hasta una recarga
+        /// segura para que la intención no se reenvíe sobre una vista desfasada.
+        /// </summary>
+        private bool _reajusteCostoBloqueadoPorSincronizacionPendiente;
+
         /// <summary>Clasificación del último reajuste ejecutado como comando, o null si no llegó a enviarse.</summary>
         internal BudgetOperationStatus? UltimoEstadoReajusteCosto { get; private set; }
 
-        /// <summary>Detalle técnico del último reajuste no confirmado; nunca se muestra.</summary>
+        /// <summary>Detalle técnico del último reajuste no confirmado o de una sincronización postcommit fallida; nunca se muestra.</summary>
         internal string? UltimoDiagnosticoReajusteCosto { get; private set; }
 
+        /// <summary>
+        /// Mensaje que la vista muestra para el último reajuste enviado. En un commit
+        /// confirmado cuya sincronización falló contiene la recarga requerida, nunca un
+        /// error de operación.
+        /// </summary>
+        internal string? UltimoMensajeReajusteCosto { get; private set; }
+
+        /// <summary>
+        /// Seam de prueba: se ejecuta después de confirmar el comando y antes de volcar
+        /// la instantánea del concepto hoja, para simular un fallo postcommit.
+        /// </summary>
+        internal Action? AntesDeAplicarReajusteCostoConfirmadoParaPrueba { get; set; }
+
+        /// <summary>
+        /// Seam de prueba (por instancia, nunca estático): sustituye el resultado de la
+        /// lectura del panel visible al reconciliar una matriz afectada por un commit
+        /// confirmado. Permite simular que la recarga no pudo aplicarse.
+        /// </summary>
+        internal Func<bool>? IntentarRecargarMatrizVisibleDesdeBdParaPrueba { get; set; }
+
         internal bool ReajusteCostoBloqueadoPorResultadoIncierto => _reajusteCostoBloqueadoPorResultadoIncierto;
+
+        internal bool ReajusteCostoBloqueadoPorSincronizacionPendiente => _reajusteCostoBloqueadoPorSincronizacionPendiente;
+
+        private bool ReajusteCostoBloqueado =>
+            _reajusteCostoBloqueadoPorResultadoIncierto || _reajusteCostoBloqueadoPorSincronizacionPendiente;
+
 
         private void InicializarBotonReajustarCosto()
         {
@@ -92,8 +126,18 @@ namespace SOPRO.WinForms.Forms
                     return;
                 }
 
-                // Ruta heredada del agrupador: diferida de forma explícita. No se
-                // convierte en un bucle de comandos ni se cambia su semántica.
+                // El guard se evalúa ANTES de ramificar: un agrupador no puede
+                // saltarse el trabajo pendiente, la edición activa ni un bloqueo
+                // heredado por resultado incierto o sincronización pendiente.
+                if (!PuedeReajustarCosto(out string? motivo))
+                {
+                    MostrarMensajeReajusteCosto(motivo, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // Ruta del agrupador: comando grupal sobre contexto nuevo. La base
+                // se captura antes del diálogo y la ruta heredada ya no guarda ni
+                // refresca precios desde el contexto compartido.
                 if (concepto.EsAgrupador || !string.Equals(tipo, "Concepto", StringComparison.OrdinalIgnoreCase))
                 {
                     if (!ajustarPorImporte)
@@ -109,12 +153,6 @@ namespace SOPRO.WinForms.Forms
                 if (!concepto.MatrizId.HasValue)
                 {
                     MessageBox.Show("Por ahora el reajuste solo está disponible para conceptos con matriz asignada.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
-                }
-
-                if (!PuedeReajustarCosto(out string? motivo))
-                {
-                    MostrarMensajeReajusteCosto(motivo, MessageBoxIcon.Warning);
                     return;
                 }
 
@@ -389,6 +427,7 @@ namespace SOPRO.WinForms.Forms
 
             UltimoEstadoReajusteCosto = null;
             UltimoDiagnosticoReajusteCosto = null;
+            UltimoMensajeReajusteCosto = null;
 
             BudgetMatrixCostAdjustmentResult resultado;
             try
@@ -419,13 +458,15 @@ namespace SOPRO.WinForms.Forms
 
             if (resultado.IsCommitted && resultado.Confirmed is not null)
             {
-                if (!AplicarReajusteCostoConfirmado(resultado.Confirmed))
+                if (!IntentarAplicarReajusteCostoConfirmado(resultado.Confirmed))
                 {
+                    _reajusteCostoBloqueadoPorSincronizacionPendiente = true;
                     mensaje =
-                        "El reajuste se guardó, pero la vista conservó cambios pendientes y no se " +
-                        "sincronizó. Recargue el presupuesto antes de continuar.";
+                        "El reajuste se guardó, pero la vista no se sincronizó. " +
+                        "Recargue el presupuesto antes de continuar.";
                 }
 
+                UltimoMensajeReajusteCosto = mensaje;
                 return resultado;
             }
 
@@ -435,12 +476,33 @@ namespace SOPRO.WinForms.Forms
                 mensaje =
                     "El resultado del reajuste es incierto: no se puede afirmar si la base quedó " +
                     "modificada. Recargue el presupuesto antes de volver a reajustar costos.";
+                UltimoMensajeReajusteCosto = mensaje;
                 return resultado;
             }
 
             mensaje = resultado.Message
                 ?? "No se pudo reajustar la matriz; no se guardó nada.";
+            UltimoMensajeReajusteCosto = mensaje;
             return resultado;
+        }
+
+        /// <summary>
+        /// Aplica la instantánea confirmada sin dejar que una excepción posterior al
+        /// commit escape al llamador: la base ya quedó escrita, así que se clasifica como
+        /// sincronización pendiente (no como fallo) y el bloqueo impide reenviar.
+        /// </summary>
+        private bool IntentarAplicarReajusteCostoConfirmado(
+            BudgetMatrixCostAdjustmentSnapshot snapshot)
+        {
+            try
+            {
+                return AplicarReajusteCostoConfirmado(snapshot);
+            }
+            catch (Exception ex)
+            {
+                UltimoDiagnosticoReajusteCosto = ex.ToString();
+                return false;
+            }
         }
 
         /// <summary>
@@ -454,6 +516,8 @@ namespace SOPRO.WinForms.Forms
         {
             if (snapshot.ProjectId != _proyecto.Id)
                 return false;
+
+            AntesDeAplicarReajusteCostoConfirmadoParaPrueba?.Invoke();
 
             _context.ChangeTracker.DetectChanges();
             if (_context.ChangeTracker.HasChanges())
@@ -474,14 +538,39 @@ namespace SOPRO.WinForms.Forms
 
             ActualizarTitulo();
 
-            // No reemplazar la matriz visible si el panel tiene un borrador de
-            // cabecera: la sincronización de filas ya ocurrió y el usuario conserva
-            // su trabajo. La recarga se hará cuando lo resuelva.
-            if (_panelMatricesEmbebido?.TieneCambiosPendientesCabeceraEnPanel != true)
-                _panelMatricesEmbebido?.RecargarMatrizVisibleDesdeBd();
+            // Si el panel muestra una matriz del cierre afectado, la recarga debe
+            // confirmarse: una matriz visible desfasada es vista no sincronizada.
+            if (!IntentarRecargarMatrizAfectadaDesdeBd(
+                    snapshot.AffectedMatrices.Select(m => m.MatrixId)))
+                return false;
 
             dgvPresupuesto.Refresh();
             return true;
+        }
+
+        /// <summary>
+        /// Reconciliación del panel tras un commit confirmado. Sólo exige y comprueba
+        /// la recarga cuando la matriz VISIBLE pertenece al cierre afectado: sin panel,
+        /// sin matriz visible o con una matriz ajena no hay nada que reconciliar y no se
+        /// bloquea. Un borrador de cabecera se respeta (no se pisa la UI) y no cuenta
+        /// como fallo de sincronización: el reajuste ya está bloqueado por ese borrador.
+        /// Devuelve <c>false</c> únicamente si la matriz visible afectada no pudo
+        /// recargarse desde la base.
+        /// </summary>
+        private bool IntentarRecargarMatrizAfectadaDesdeBd(IEnumerable<int> matrizIds)
+        {
+            if (_panelMatricesEmbebido is null)
+                return true;
+
+            if (_panelMatricesEmbebido.TieneCambiosPendientesCabeceraEnPanel)
+                return true;
+
+            var visible = _panelMatricesEmbebido.MatrizVisibleEnPanel;
+            if (visible is null || !matrizIds.Contains(visible.Id))
+                return true;
+
+            return IntentarRecargarMatrizVisibleDesdeBdParaPrueba?.Invoke()
+                ?? _panelMatricesEmbebido.IntentarRecargarMatrizVisibleDesdeBd();
         }
 
         private void SincronizarMatricesYComponentesConfirmados(
@@ -523,8 +612,10 @@ namespace SOPRO.WinForms.Forms
 
         /// <summary>
         /// Guards previos al reajuste: sin edición activa, sin trabajo pendiente en el
-        /// contexto compartido y sin un resultado incierto por resolver. No descarta
-        /// nada del usuario: sólo rechaza el envío y explica el motivo.
+        /// contexto compartido y sin un resultado incierto o una sincronización
+        /// pendiente por resolver. No descarta nada del usuario: sólo rechaza el envío
+        /// y explica el motivo. Se evalúa ANTES de ramificar entre concepto hoja y
+        /// agrupador.
         /// </summary>
         private bool PuedeReajustarCosto(out string? motivo)
         {
@@ -538,6 +629,14 @@ namespace SOPRO.WinForms.Forms
                 motivo =
                     "El reajuste anterior terminó con un estado incierto. Recargue el " +
                     "presupuesto (o vuelva a abrirlo) antes de reajustar costos de nuevo.";
+                return false;
+            }
+
+            if (_reajusteCostoBloqueadoPorSincronizacionPendiente)
+            {
+                motivo =
+                    "El reajuste anterior se guardó, pero la vista no se pudo sincronizar. " +
+                    "Recargue el presupuesto (o vuelva a abrirlo) antes de reajustar costos de nuevo.";
                 return false;
             }
 
@@ -580,7 +679,7 @@ namespace SOPRO.WinForms.Forms
 
         private void ProgramarDesbloqueoReajusteCostoTrasRecargaSegura()
         {
-            if (!_reajusteCostoBloqueadoPorResultadoIncierto || IsDisposed || !IsHandleCreated)
+            if (!ReajusteCostoBloqueado || IsDisposed || !IsHandleCreated)
                 return;
 
             try
@@ -594,18 +693,19 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Reconciliación explícita tras un resultado incierto. Sólo libera el
-        /// bloqueo cuando <see cref="RecargarPreciosDesdeBase"/> terminó la recarga
-        /// de sólo lectura y aplicó su instantánea. Un error, trabajo pendiente, una
-        /// edición activa (en el presupuesto o en el panel), un borrador de cabecera
-        /// o un proyecto no encontrado devuelven <c>false</c> y conservan el bloqueo.
-        /// Que el tracker esté limpio no basta por sí solo.
+        /// Reconciliación explícita tras un resultado incierto o un commit cuya
+        /// sincronización quedó pendiente. Sólo libera el bloqueo cuando
+        /// <see cref="RecargarPreciosDesdeBase"/> terminó la recarga de sólo lectura y
+        /// aplicó su instantánea. Un error, trabajo pendiente, una edición activa (en
+        /// el presupuesto o en el panel), un borrador de cabecera o un proyecto no
+        /// encontrado devuelven <c>false</c> y conservan el bloqueo. Que el tracker
+        /// esté limpio no basta por sí solo.
         /// Expuesto a las pruebas del ensamblado; devuelve <c>true</c> sólo si el
         /// bloqueo quedó liberado.
         /// </summary>
         internal bool NotificarRecargaSeguraReajusteCosto()
         {
-            if (!_reajusteCostoBloqueadoPorResultadoIncierto || IsDisposed)
+            if (!ReajusteCostoBloqueado || IsDisposed)
                 return false;
 
             if (_cargando || dgvPresupuesto.IsCurrentCellInEditMode)
@@ -634,177 +734,56 @@ namespace SOPRO.WinForms.Forms
                 return false;
 
             _reajusteCostoBloqueadoPorResultadoIncierto = false;
+            _reajusteCostoBloqueadoPorSincronizacionPendiente = false;
             return true;
         }
 
         private void AjustarAgrupadorSeleccionado(int rowIndex, ConceptoPresupuesto agrupador)
         {
-            decimal currentImporte = ObtenerCeldaDecimal(rowIndex, "Importe");
+            // Las bases se capturan ANTES del diálogo: filas, agrupador, hojas y
+            // cierres esperados son los que la VISTA tiene cargados, no una lectura
+            // posterior al monto que el usuario capture.
+            var bases = CapturarBasesReajusteCostoGrupal(agrupador.Id);
+            if (bases == null)
+            {
+                MessageBox.Show(
+                    "El agrupador seleccionado no contiene conceptos hoja con matriz cargada en la vista.",
+                    "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            decimal importeMostrado = ObtenerCeldaDecimal(rowIndex, "Importe");
             string contexto = $"Agrupador: {agrupador.Descripcion} \n"+
 "Se reajustarán recursivamente los conceptos descendientes por rendimiento/cantidad dentro de sus matrices. La cantidad de los conceptos en presupuesto no se modificará.";
-            using var frm = new FormReajustarCosto("Reajustar costo de agrupador", currentImporte, contexto);
+            using var frm = new FormReajustarCosto("Reajustar costo de agrupador", importeMostrado, contexto);
             if (frm.ShowDialog(this) != DialogResult.OK)
                 return;
 
-            decimal factorPu = CalcularFactorPU();
-            if (factorPu <= 0m)
+            var resultado = EjecutarReajusteCostoGrupalCapturado(
+                bases, frm.SelectedScopes, frm.TargetAmount, out string? mensaje);
+
+            if (resultado is null)
             {
-                MessageBox.Show("No se pudo calcular el factor del precio unitario del proyecto.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MostrarMensajeReajusteCosto(mensaje, MessageBoxIcon.Warning);
                 return;
             }
 
-            var descendientes = ObtenerConceptosDescendientesHoja(rowIndex, agrupador);
-            if (descendientes.Count == 0)
+            if (resultado.IsCommitted && resultado.Confirmed is not null)
             {
-                MessageBox.Show("El agrupador seleccionado no contiene conceptos hoja con matriz asignada.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            var matrixIds = descendientes.Where(c => c.MatrizId.HasValue).Select(c => c.MatrizId!.Value).Distinct().ToList();
-            var matrices = _context.Matrices
-                .Include(m => m.Componentes).ThenInclude(c => c.Material)
-                .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
-                .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
-                .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
-                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
-                .Where(m => matrixIds.Contains(m.Id))
-                .ToDictionary(m => m.Id);
-
-            var candidatos = new List<(ConceptoPresupuesto Concepto, MatrixAdjustmentBasis Basis)>();
-            int omitidos = 0;
-            foreach (var conceptoHijo in descendientes)
-            {
-                if (!conceptoHijo.MatrizId.HasValue || !matrices.TryGetValue(conceptoHijo.MatrizId.Value, out var matriz))
-                {
-                    omitidos++;
-                    continue;
-                }
-
-                var basis = MatrixCostAdjustmentService.GetAdjustmentBasis(matriz, _proyecto, frm.SelectedScopes);
-                if (basis == null || !basis.HasAdjustableScope)
-                {
-                    omitidos++;
-                    continue;
-                }
-
-                candidatos.Add((conceptoHijo, basis));
-            }
-
-            if (candidatos.Count == 0)
-            {
-                MessageBox.Show("No se encontraron conceptos ajustables con los rubros seleccionados dentro del agrupador.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            decimal targetCdTotal = frm.TargetAmount / factorPu;
-            decimal fixedTotal = candidatos.Sum(x => x.Concepto.Cantidad * x.Basis.FixedCost);
-            decimal adjustableTotal = candidatos.Sum(x => x.Concepto.Cantidad * x.Basis.AdjustableCost);
-            decimal minTotal = candidatos.Sum(x => x.Concepto.Cantidad * x.Basis.MinCost);
-            decimal currentTotal = candidatos.Sum(x => x.Concepto.Cantidad * x.Basis.CurrentCost);
-
-            if (adjustableTotal <= 0m)
-            {
-                MessageBox.Show("Los rubros seleccionados no tienen importe ajustable dentro del agrupador.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (targetCdTotal < minTotal - 0.01m)
-            {
-                MessageBox.Show($"No es posible bajar el agrupador al monto solicitado con los rubros seleccionados. El mínimo alcanzable es {(minTotal * factorPu):C2}.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            decimal factor = (targetCdTotal - fixedTotal) / adjustableTotal;
-            if (factor < 0m)
-            {
-                MessageBox.Show("Con los rubros seleccionados no es posible alcanzar el monto solicitado.", "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            var matricesAjustables = candidatos
-                .Select(x => x.Concepto.MatrizId!.Value)
-                .Distinct()
-                .Select(id => matrices[id])
-                .ToList();
-
-            foreach (var matriz in matricesAjustables)
-            {
-                var result = MatrixCostAdjustmentService.AdjustMatrixByFactor(matriz, _proyecto, frm.SelectedScopes, factor);
-                if (!result.Success)
-                {
-                    MessageBox.Show(result.Message, "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
-                }
-            }
-
-            _context.SaveChanges();
-            RefreshBudgetPrices();
-
-            if (UltimoEstadoRefrescoPrecios != BudgetOperationStatus.Committed)
-            {
+                // Un commit confirmado nunca se presenta como fallo ni se reintenta
+                // automáticamente; si el volcado postcommit falló, se indica recargar.
+                var confirmado = resultado.Confirmed;
                 MessageBox.Show(
-                    "El ajuste de las matrices se guardó, pero los precios del presupuesto no pudieron " +
-                    "refrescarse. Recargue el presupuesto antes de continuar.",
-                    "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    $"Monto actual: {confirmado.CurrentAmount:C2}\n" +
+                    $"Objetivo: {confirmado.RequestedTargetAmount:C2}\n" +
+                    $"Resultado: {confirmado.AchievedAmount:C2}\n" +
+                    $"Factor global aplicado sobre rendimientos/cantidades: {confirmado.FactorApplied:N4}" +
+                    (mensaje is null ? string.Empty : "\n" + mensaje),
+                    "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            decimal logrado = ObtenerCeldaDecimal(rowIndex, "Importe");
-            var conceptosIds = descendientes.Select(x => x.Id).ToHashSet();
-            int compartidasFuera = _context.ConceptosPresupuesto.Count(c => c.ProyectoId == _proyecto.Id && !c.EsAgrupador && c.MatrizId.HasValue && matrixIds.Contains(c.MatrizId.Value) && !conceptosIds.Contains(c.Id));
-            string notaCompartidas = compartidasFuera > 0
-                ? $"Nota: {compartidasFuera} concepto(s) fuera del agrupador comparten alguna matriz reajustada."
-                : string.Empty;
-
-            MessageBox.Show(
-                $"Monto actual: {currentImporte:C2}\n" +
-                $"Objetivo: {frm.TargetAmount:C2}\n" +
-                $"Resultado: {logrado:C2}\n" +
-                $"Conceptos hoja encontrados: {descendientes.Count}\n" +
-                $"Conceptos ajustados: {candidatos.Count}\n" +
-                $"Conceptos omitidos: {omitidos}\n" +
-                $"Factor global aplicado sobre rendimientos/cantidades: {factor:N4}" +
-                notaCompartidas,
-                "Reajustar costo", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-
-        private List<ConceptoPresupuesto> ObtenerConceptosDescendientesHoja(int rowIndex, ConceptoPresupuesto agrupador)
-        {
-            var result = new List<ConceptoPresupuesto>();
-            int nivelPadre = agrupador.Nivel;
-            for (int i = rowIndex + 1; i < dgvPresupuesto.Rows.Count; i++)
-            {
-                var row = dgvPresupuesto.Rows[i];
-                var concepto = row.Tag as ConceptoPresupuesto;
-                string tipo = ObtenerCeldaTexto(i, "Tipo");
-                string descripcion = ObtenerCeldaTexto(i, "Descripcion");
-                string clave = ObtenerCeldaTexto(i, "Clave");
-                bool hasContent = concepto != null || !string.IsNullOrWhiteSpace(tipo) || !string.IsNullOrWhiteSpace(descripcion) || !string.IsNullOrWhiteSpace(clave);
-                if (!hasContent)
-                    continue;
-
-                int nivel = concepto?.Nivel ?? ObtenerNivelDesdeTipoPresupuesto(tipo);
-                if (nivel <= nivelPadre)
-                    break;
-
-                if (concepto != null && !concepto.EsAgrupador && concepto.MatrizId.HasValue)
-                    result.Add(concepto);
-            }
-
-            return result;
-        }
-
-        private int ObtenerNivelDesdeTipoPresupuesto(string? tipo)
-        {
-            return tipo switch
-            {
-                "Capitulo" => 0,
-                "Subcapitulo" => 1,
-                "Nivel 1" => 2,
-                "Nivel 2" => 3,
-                "Nivel 3" => 4,
-                _ => 5
-            };
+            MostrarMensajeReajusteCosto(mensaje, MessageBoxIcon.Warning);
         }
     }
 }
