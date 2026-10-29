@@ -61,6 +61,17 @@ namespace SOPRO.WinForms.Forms
         public Matriz MatrizSeleccionada { get; private set; }
         public decimal Cantidad { get; private set; }
         public bool EmbeddedMode { get; private set; }
+
+        /// <summary>
+        /// Cantidad ACTUALMENTE visible en el control, no la capturada al aceptar. El
+        /// host del workspace la lee antes de disponer el selector para arrastrarla a
+        /// la creación de una matriz nueva.
+        /// </summary>
+        internal decimal CantidadActualVisible => nudCantidad.Value;
+
+        /// <summary>Mínimo positivo que admite el control de cantidad del selector.</summary>
+        internal decimal CantidadMinimaVisible => nudCantidad.Minimum;
+
         public bool WorkspaceChromeHidden { get; private set; }
         public event EventHandler? EmbeddedAccepted;
         public event EventHandler? EmbeddedCancelled;
@@ -87,7 +98,8 @@ namespace SOPRO.WinForms.Forms
             decimal cantidadInicial = 1,
             bool includeAuxiliaries = false,
             int? matrizIdPreseleccionada = null,
-            string? filtroInicial = null)
+            string? filtroInicial = null,
+            ProjectWorkspaceService? workspaceService = null)
         {
             _context                 = context ?? throw new ArgumentNullException(nameof(context));
             _proyectoId              = proyectoId;
@@ -95,10 +107,10 @@ namespace SOPRO.WinForms.Forms
             _matrizIdPreseleccionada = matrizIdPreseleccionada;
             _filtroInicial           = filtroInicial;
 
-            var workspaceService    = new ProjectWorkspaceService();
-            _projectIndexService    = new ProjectIndexService(workspaceService);
-            _selectorContextService = new SelectorContextService(workspaceService);
-            _projectUsageService    = new ProjectUsageService(workspaceService);
+            var workspace            = workspaceService ?? new ProjectWorkspaceService();
+            _projectIndexService    = new ProjectIndexService(workspace);
+            _selectorContextService = new SelectorContextService(workspace);
+            _projectUsageService    = new ProjectUsageService(workspace);
             _catalogSearchService   = new CatalogSearchService(_projectIndexService, _projectUsageService, new ProjectDbContextFactory());
             _projectIndexService.RefreshKnownProjects(_context.DatabasePath, force: true);
             _projectNameActual      = _context.Proyectos.Find(_proyectoId)?.Nombre

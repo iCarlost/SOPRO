@@ -162,11 +162,18 @@ namespace SOPRO.Application.Models.Presupuesto
     {
         public BudgetMatrixCostAdjustmentClosureBase(
             IEnumerable<BudgetMatrixCostAdjustmentClosureEntry> entries)
+            : this(entries, exigirAlMenosUna: true)
+        {
+        }
+
+        private BudgetMatrixCostAdjustmentClosureBase(
+            IEnumerable<BudgetMatrixCostAdjustmentClosureEntry> entries,
+            bool exigirAlMenosUna)
         {
             ArgumentNullException.ThrowIfNull(entries);
 
             var copia = entries.ToArray();
-            if (copia.Length == 0)
+            if (exigirAlMenosUna && copia.Length == 0)
                 throw new ArgumentException(
                     "La base del cierre debe incluir al menos la matriz seleccionada.", nameof(entries));
             if (copia.Any(e => e is null))
@@ -185,6 +192,15 @@ namespace SOPRO.Application.Models.Presupuesto
                 .OrderBy(e => e.Matrix.MatrixId)
                 .ToArray());
         }
+
+        /// <summary>
+        /// Cierre sin matrices. Solo lo usa la captura de un agrupador cuyas hojas
+        /// visibles no tienen matriz asignada: el comando clasifica la operación como
+        /// fallo sin escribir, pero la vista puede construir el comando y mostrar el
+        /// mensaje correspondiente.
+        /// </summary>
+        internal static BudgetMatrixCostAdjustmentClosureBase Vacio { get; } =
+            new(Array.Empty<BudgetMatrixCostAdjustmentClosureEntry>(), exigirAlMenosUna: false);
 
         /// <summary>Entradas del cierre ordenadas por Id de matriz, en colección inmutable.</summary>
         public IReadOnlyList<BudgetMatrixCostAdjustmentClosureEntry> Entries { get; }

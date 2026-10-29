@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.Application.DTOs.Presupuesto;
@@ -25,6 +25,10 @@ namespace SOPRO.WinForms.Forms
     /// </summary>
     public partial class FormPresupuesto
     {
+        private BudgetGridInteractionService.RowDragBlock _dragBloqueArrastre =
+            BudgetGridInteractionService.RowDragBlock.Empty;
+        private List<int> _dragFilasSeleccionadasMouseDown = new();
+        private bool _dragSeleccionMultiple;
 
         private void DgvPresupuesto_CellEnter(object sender, DataGridViewCellEventArgs e)
         {
@@ -66,27 +70,21 @@ namespace SOPRO.WinForms.Forms
         {
             if (e.Button != MouseButtons.Left)
             {
-                _dragFilaMouseDown = -1;
-                _dragMouseDownLocation = Point.Empty;
-                _dragStartRect = Rectangle.Empty;
+                LimpiarEstadoArrastre();
                 return;
             }
 
             var hit = dgvPresupuesto.HitTest(e.X, e.Y);
             if (hit.RowIndex < 0)
             {
-                _dragFilaMouseDown = -1;
-                _dragMouseDownLocation = Point.Empty;
-                _dragStartRect = Rectangle.Empty;
+                LimpiarEstadoArrastre();
                 return;
             }
 
             var tipoCell = ObtenerCeldaPorNombreInterno(hit.RowIndex, "Tipo");
             if (tipoCell?.Value == null || string.IsNullOrWhiteSpace(tipoCell.Value.ToString()))
             {
-                _dragFilaMouseDown = -1;
-                _dragMouseDownLocation = Point.Empty;
-                _dragStartRect = Rectangle.Empty;
+                LimpiarEstadoArrastre();
                 return;
             }
 
@@ -98,6 +96,102 @@ namespace SOPRO.WinForms.Forms
                 e.Y - dragSize.Height / 2,
                 dragSize.Width,
                 dragSize.Height);
+
+            // WinForms colapsa la selección justo después de MouseDown: aquí todavía
+            // se puede capturar la multi-selección completa de filas.
+            _dragFilasSeleccionadasMouseDown = ObtenerFilasCompletamenteSeleccionadas();
+            _dragBloqueArrastre = BudgetGridInteractionService.RowDragBlock.Empty;
+            _dragSeleccionMultiple = false;
+        }
+
+        /// <summary>
+        /// Captura la selección de filas completas vigente antes de que WinForms la
+        /// colapse y resuelve el bloque de arrastre con la jerarquía actual. La usa
+        /// MouseMove (y las pruebas) una vez conocido el origen real del arrastre.
+        /// </summary>
+        internal BudgetGridInteractionService.RowDragBlock CapturarBloqueArrastre(int originRow)
+        {
+            _dragFilasSeleccionadasMouseDown = ObtenerFilasCompletamenteSeleccionadas();
+            return ConstruirBloqueArrastre(originRow, _dragFilasSeleccionadasMouseDown);
+        }
+
+        private BudgetGridInteractionService.RowDragBlock ConstruirBloqueArrastre(
+            int originRow,
+            IReadOnlyList<int> filasSeleccionadas)
+        {
+            var bloque = BudgetGridInteractionService.BuildRowDragBlock(
+                originRow,
+                filasSeleccionadas,
+                BuildHierarchyRowsSnapshot());
+
+            _dragBloqueArrastre = bloque;
+            _dragSeleccionMultiple = bloque.IsMultiSelection;
+            return bloque;
+        }
+
+        private List<int> ObtenerFilasCompletamenteSeleccionadas()
+        {
+            var filasSeleccionadas = new List<int>();
+            var incluidas = new HashSet<int>();
+            foreach (DataGridViewRow fila in dgvPresupuesto.SelectedRows)
+            {
+                if (fila.Index >= 0 && incluidas.Add(fila.Index))
+                    filasSeleccionadas.Add(fila.Index);
+            }
+
+            // Bajo CellSelect una fila completa seleccionada por encabezado no
+            // siempre aparece en SelectedRows; se reconoce por tener todas sus
+            // celdas visibles seleccionadas. Un rango parcial no cuenta como fila
+            // completa. Solo se revisan las filas con alguna celda seleccionada.
+            var filasConCeldas = new HashSet<int>();
+            foreach (DataGridViewCell celda in dgvPresupuesto.SelectedCells)
+            {
+                if (celda.RowIndex >= 0)
+                    filasConCeldas.Add(celda.RowIndex);
+            }
+
+            foreach (int indice in filasConCeldas)
+            {
+                if (incluidas.Contains(indice)) continue;
+
+                var fila = dgvPresupuesto.Rows[indice];
+                bool completa = true;
+                int celdasVisibles = 0;
+                foreach (DataGridViewColumn columna in dgvPresupuesto.Columns)
+                {
+                    if (!columna.Visible) continue;
+
+                    celdasVisibles++;
+                    if (!fila.Cells[columna.Index].Selected)
+                    {
+                        completa = false;
+                        break;
+                    }
+                }
+
+                if (completa && celdasVisibles > 0 && incluidas.Add(indice))
+                    filasSeleccionadas.Add(indice);
+            }
+
+            filasSeleccionadas.Sort();
+            return filasSeleccionadas;
+        }
+
+        private void LimpiarEstadoArrastre()
+        {
+            _dragFilaOrigen = -1;
+            _dragFilaMouseDown = -1;
+            _dragMouseDownLocation = Point.Empty;
+            _dragStartRect = Rectangle.Empty;
+            _dragBloqueArrastre = BudgetGridInteractionService.RowDragBlock.Empty;
+            _dragFilasSeleccionadasMouseDown = new List<int>();
+            _dragSeleccionMultiple = false;
+
+            if (_dragLineaInsercion != -1)
+            {
+                _dragLineaInsercion = -1;
+                dgvPresupuesto.Invalidate();
+            }
         }
 
         private void DgvPresupuesto_MouseUp(object sender, MouseEventArgs e)
@@ -107,6 +201,16 @@ namespace SOPRO.WinForms.Forms
                 _dragFilaMouseDown = -1;
                 _dragMouseDownLocation = Point.Empty;
                 _dragStartRect = Rectangle.Empty;
+
+                // Si no hubo arrastre, la captura de MouseDown ya no sirve. Durante
+                // un arrastre real el bloque se conserva hasta que DragDrop termina.
+                if (_dragFilaOrigen < 0)
+                {
+                    _dragBloqueArrastre = BudgetGridInteractionService.RowDragBlock.Empty;
+                    _dragFilasSeleccionadasMouseDown = new List<int>();
+                    _dragSeleccionMultiple = false;
+                }
+
                 if (_dragLineaInsercion != -1)
                 {
                     _dragLineaInsercion = -1;
@@ -124,6 +228,9 @@ namespace SOPRO.WinForms.Forms
             if (tipoCell?.Value == null || string.IsNullOrWhiteSpace(tipoCell.Value.ToString())) return;
 
             _dragFilaOrigen = _dragFilaMouseDown;
+            if (!_dragBloqueArrastre.IsValid || _dragBloqueArrastre.OriginRow != _dragFilaOrigen)
+                ConstruirBloqueArrastre(_dragFilaOrigen, _dragFilasSeleccionadasMouseDown);
+
             _dragFilaMouseDown = -1;
             _dragMouseDownLocation = Point.Empty;
             _dragStartRect = Rectangle.Empty;
@@ -133,49 +240,36 @@ namespace SOPRO.WinForms.Forms
             }
             finally
             {
-                if (_dragLineaInsercion != -1)
-                {
-                    _dragLineaInsercion = -1;
-                    dgvPresupuesto.Invalidate();
-                }
-                _dragFilaOrigen = -1;
+                LimpiarEstadoArrastre();
             }
         }
 
         private void DgvPresupuesto_DragOver(object sender, DragEventArgs e)
         {
-            e.Effect = DragDropEffects.Move;
-
-            // Calcular dónde caerá y dibujar línea indicadora
             var pt = dgvPresupuesto.PointToClient(new Point(e.X, e.Y));
             var hit = dgvPresupuesto.HitTest(pt.X, pt.Y);
 
-            if (hit.RowIndex >= 0)
+            int lineaDestino = -1;
+            if (hit.RowIndex >= 0 && _dragBloqueArrastre.IsValid)
             {
-                // Encontrar última fila con datos
-                int ultimaFilaConDatos = -1;
-                for (int i = dgvPresupuesto.Rows.Count - 1; i >= 0; i--)
-                {
-                    var tipoCell = ObtenerCeldaPorNombreInterno(i, "Tipo");
-                    if (tipoCell != null && tipoCell.Value != null && !string.IsNullOrWhiteSpace(tipoCell.Value.ToString()))
-                    {
-                        ultimaFilaConDatos = i;
-                        break;
-                    }
-                }
+                var ubicacion = BudgetGridInteractionService.ResolveRowDragPlacement(
+                    _dragBloqueArrastre.Rows,
+                    hit.RowIndex,
+                    ObtenerUltimaFilaConDatos(),
+                    dgvPresupuesto.Rows.Count);
 
-                // Limitar al rango válido
-                int lineaDestino = hit.RowIndex;
-                if (lineaDestino > ultimaFilaConDatos + 1)
-                {
-                    lineaDestino = ultimaFilaConDatos + 1;
-                }
+                if (ubicacion.IsValid && !ubicacion.IsNoOp)
+                    lineaDestino = ubicacion.IndicatorRow;
+            }
 
-                if (_dragLineaInsercion != lineaDestino)
-                {
-                    _dragLineaInsercion = lineaDestino;
-                    dgvPresupuesto.Invalidate(); // Redibujar para mostrar línea
-                }
+            // Soltar dentro del propio bloque es un no-op: no se muestra un
+            // indicador engañoso dentro de las filas que se arrastran.
+            e.Effect = lineaDestino >= 0 ? DragDropEffects.Move : DragDropEffects.None;
+
+            if (_dragLineaInsercion != lineaDestino)
+            {
+                _dragLineaInsercion = lineaDestino;
+                dgvPresupuesto.Invalidate(); // Redibujar para mostrar línea
             }
         }
 
@@ -193,171 +287,176 @@ namespace SOPRO.WinForms.Forms
         {
             if (_dragFilaOrigen < 0) return;
 
-            // Determinar fila destino
             var pt = dgvPresupuesto.PointToClient(new Point(e.X, e.Y));
             var hit = dgvPresupuesto.HitTest(pt.X, pt.Y);
-            int filaDestino = hit.RowIndex;
-
-            if (filaDestino < 0 || filaDestino == _dragFilaOrigen)
+            if (hit.RowIndex < 0)
             {
-                _dragFilaOrigen = -1;
-                _dragLineaInsercion = -1;
-                _dragFilaMouseDown = -1;
-                _dragMouseDownLocation = Point.Empty;
-                _dragStartRect = Rectangle.Empty;
-                dgvPresupuesto.Invalidate();
+                LimpiarEstadoArrastre();
                 return;
             }
 
-            // RESTRICCIÓN: No permitir crear huecos intermedios
-            // Buscar última fila con contenido
-            int ultimaFilaConDatos = -1;
-            for (int i = dgvPresupuesto.Rows.Count - 1; i >= 0; i--)
+            AplicarSoltarArrastre(hit.RowIndex);
+        }
+
+        /// <summary>
+        /// Aplica el soltar del bloque capturado en MouseDown: reordena la vista,
+        /// restaura la selección y persiste UNA sola vez vía
+        /// <see cref="EjecutarReordenPersistido"/>. Devuelve <c>false</c> cuando el
+        /// destino no produce movimiento (incluido soltar dentro del propio bloque).
+        /// </summary>
+        internal bool AplicarSoltarArrastre(int filaDestino)
+        {
+            if (!_dragBloqueArrastre.IsValid || filaDestino < 0)
             {
-                var tipoCell = ObtenerCeldaPorNombreInterno(i, "Tipo");
-                if (tipoCell != null && tipoCell.Value != null && !string.IsNullOrWhiteSpace(tipoCell.Value.ToString()))
-                {
-                    ultimaFilaConDatos = i;
-                    break;
-                }
+                LimpiarEstadoArrastre();
+                return false;
             }
 
-            // Solo permitir arrastrar dentro del bloque continuo de datos
-            // Verificar que NO hay hueco entre origen y destino
-            if (filaDestino > ultimaFilaConDatos + 1)
+            var ubicacion = BudgetGridInteractionService.ResolveRowDragPlacement(
+                _dragBloqueArrastre.Rows,
+                filaDestino,
+                ObtenerUltimaFilaConDatos(),
+                dgvPresupuesto.Rows.Count);
+
+            if (!ubicacion.IsValid || ubicacion.IsNoOp)
             {
-                filaDestino = ultimaFilaConDatos + 1;
+                LimpiarEstadoArrastre();
+                return false;
             }
 
-            // VALIDACIÓN ADICIONAL: Si el destino está ENTRE dos filas con contenido,
-            // verificar que NO haya hueco
-            if (filaDestino > 0 && filaDestino <= ultimaFilaConDatos)
+            var filasAMover = _dragBloqueArrastre.Rows
+                .Where(i => i >= 0 && i < dgvPresupuesto.Rows.Count)
+                .Distinct()
+                .OrderBy(i => i)
+                .ToList();
+            if (filasAMover.Count == 0)
             {
-                var filaAnterior = ObtenerCeldaPorNombreInterno(filaDestino - 1, "Tipo");
-                var filaDestTipo = ObtenerCeldaPorNombreInterno(filaDestino, "Tipo");
-
-                bool anteriorVacia = filaAnterior == null || filaAnterior.Value == null || string.IsNullOrWhiteSpace(filaAnterior.Value.ToString());
-                bool destinoVacio = filaDestTipo == null || filaDestTipo.Value == null || string.IsNullOrWhiteSpace(filaDestTipo.Value.ToString());
-
-                // Si ambas están vacías, no permitir (sería crear hueco)
-                if (anteriorVacia && destinoVacio)
-                {
-                    _dragFilaOrigen = -1;
-                    _dragLineaInsercion = -1;
-                    _dragFilaMouseDown = -1;
-                    _dragMouseDownLocation = Point.Empty;
-                    _dragStartRect = Rectangle.Empty;
-                    dgvPresupuesto.Invalidate();
-                    return;
-                }
+                LimpiarEstadoArrastre();
+                return false;
             }
 
-            // RECOLECTAR TODAS LAS FILAS A MOVER (jerárquico)
-            var filasAMover = BudgetHierarchyService.CollectHierarchicalBlock(BuildHierarchyRowsSnapshot(), _dragFilaOrigen);
+            bool seleccionMultiple = _dragSeleccionMultiple;
 
-            // MOVER filas en el grid (sin tocar BD aún)
-            // Estrategia: copiar DataGridViewRow completas (no solo valores)
-            var rowsAMover = new List<DataGridViewRow>();
+            // Estrategia: mover DataGridViewRow completas (no solo valores) para no
+            // perder Tags, estilos ni fórmulas de celda.
+            var rowsAMover = new List<DataGridViewRow>(filasAMover.Count);
             foreach (int idx in filasAMover)
-            {
                 rowsAMover.Add(dgvPresupuesto.Rows[idx]);
-            }
 
-            // Determinar posición de inserción
-            int insertEn = filaDestino > _dragFilaOrigen ? filaDestino + 1 : filaDestino;
-
-            // Remover filas de sus posiciones originales (de atrás hacia adelante)
             for (int i = filasAMover.Count - 1; i >= 0; i--)
-            {
                 dgvPresupuesto.Rows.RemoveAt(filasAMover[i]);
-            }
 
-            // Ajustar índice de inserción si movemos hacia abajo
-            if (filaDestino > _dragFilaOrigen)
-            {
-                insertEn -= filasAMover.Count;
-            }
-
-            // Insertar filas en nueva posición
-            int indiceInicioInsertado = insertEn;
+            int insertEn = Math.Clamp(ubicacion.InsertionIndex, 0, dgvPresupuesto.Rows.Count);
             foreach (var row in rowsAMover)
-            {
-                dgvPresupuesto.Rows.Insert(insertEn, row);
-                insertEn++;
-            }
+                dgvPresupuesto.Rows.Insert(insertEn++, row);
 
-            // Mantener el foco en la primera fila del bloque movido
-            if (indiceInicioInsertado >= 0 && indiceInicioInsertado < dgvPresupuesto.Rows.Count)
-            {
-                dgvPresupuesto.ClearSelection();
-                var columnaFoco = dgvPresupuesto.CurrentCell?.ColumnIndex ?? 0;
-                if (columnaFoco < 0 || columnaFoco >= dgvPresupuesto.Columns.Count)
-                    columnaFoco = 0;
-                if (dgvPresupuesto.Columns[columnaFoco].Visible == false)
-                {
-                    columnaFoco = dgvPresupuesto.Columns
-                        .Cast<DataGridViewColumn>()
-                        .Where(c => c.Visible)
-                        .Select(c => c.Index)
-                        .DefaultIfEmpty(0)
-                        .First();
-                }
-
-                var focusCell = dgvPresupuesto.Rows[indiceInicioInsertado].Cells[columnaFoco];
-                dgvPresupuesto.CurrentCell = focusCell;
-                dgvPresupuesto.Rows[indiceInicioInsertado].Selected = true;
-            }
-
-            _dragFilaOrigen = -1;
-            _dragLineaInsercion = -1; // Limpiar línea
-            _dragFilaMouseDown = -1;
-            _dragMouseDownLocation = Point.Empty;
-            _dragStartRect = Rectangle.Empty;
-            dgvPresupuesto.Invalidate();
+            LimpiarEstadoArrastre();
 
             // LIMPIAR solo filas vacías que están ENTRE contenido (gaps)
             RemoveIntermediateEmptyRows();
+
+            // Restaurar la selección sobre las filas realmente movidas. Un arrastre
+            // simple conserva el comportamiento histórico (solo la primera fila).
+            var indicesMovidos = rowsAMover
+                .Where(r => r.Index >= 0)
+                .Select(r => r.Index)
+                .Distinct()
+                .OrderBy(i => i)
+                .ToList();
+
+            if (indicesMovidos.Count > 0)
+            {
+                int primerIndice = indicesMovidos[0];
+                dgvPresupuesto.ClearSelection();
+                dgvPresupuesto.CurrentCell = dgvPresupuesto.Rows[primerIndice].Cells[ObtenerColumnaFoco()];
+
+                // Bajo CellSelect hay que marcar las celdas: asignar
+                // DataGridViewRow.Selected no puebla la selección de celdas.
+                var filasASeleccionar = seleccionMultiple
+                    ? indicesMovidos
+                    : new List<int> { primerIndice };
+
+                foreach (int indice in filasASeleccionar)
+                {
+                    foreach (DataGridViewColumn columna in dgvPresupuesto.Columns)
+                    {
+                        if (columna.Visible)
+                            dgvPresupuesto.Rows[indice].Cells[columna.Index].Selected = true;
+                    }
+                }
+            }
 
             // Persistir el nuevo orden como comando de una sola escritura sobre un
             // contexto nuevo. Los Tags no se tocan antes de conocer el resultado; si
             // hay conflicto el borrador visual se conserva y no se guarda nada.
             EjecutarReordenPersistido();
             dgvPresupuesto.Refresh();
+            return true;
+        }
+
+        private int ObtenerColumnaFoco()
+        {
+            int columnaFoco = dgvPresupuesto.CurrentCell?.ColumnIndex ?? 0;
+            if (columnaFoco < 0 || columnaFoco >= dgvPresupuesto.Columns.Count)
+                columnaFoco = 0;
+
+            if (columnaFoco < dgvPresupuesto.Columns.Count && !dgvPresupuesto.Columns[columnaFoco].Visible)
+            {
+                columnaFoco = dgvPresupuesto.Columns
+                    .Cast<DataGridViewColumn>()
+                    .Where(c => c.Visible)
+                    .Select(c => c.Index)
+                    .DefaultIfEmpty(0)
+                    .First();
+            }
+
+            return columnaFoco;
         }
 
         private void DgvPresupuesto_Paint(object sender, PaintEventArgs e)
         {
-            // Dibujar línea de inserción durante drag & drop
-            if (_dragLineaInsercion >= 0 && _dragLineaInsercion < dgvPresupuesto.Rows.Count)
+            // Dibujar línea de inserción durante drag & drop. Un indicador igual a
+            // Rows.Count representa insertar al final, debajo de la última fila.
+            if (_dragLineaInsercion >= 0 && dgvPresupuesto.Rows.Count > 0)
             {
                 try
                 {
-                    var rect = dgvPresupuesto.GetRowDisplayRectangle(_dragLineaInsercion, false);
-                    if (rect.Height > 0)
+                    int y;
+                    if (_dragLineaInsercion < dgvPresupuesto.Rows.Count)
                     {
-                        using (var pen = new Pen(Color.FromArgb(33, 150, 243), 3))
+                        var rect = dgvPresupuesto.GetRowDisplayRectangle(_dragLineaInsercion, false);
+                        if (rect.Height <= 0) return;
+                        y = rect.Top;
+                    }
+                    else
+                    {
+                        var rectUltima = dgvPresupuesto.GetRowDisplayRectangle(dgvPresupuesto.Rows.Count - 1, false);
+                        if (rectUltima.Height <= 0) return;
+                        y = rectUltima.Bottom;
+                    }
+
+                    using (var pen = new Pen(Color.FromArgb(33, 150, 243), 3))
+                    {
+                        // Línea horizontal gruesa en el borde de inserción
+                        e.Graphics.DrawLine(pen, 0, y, dgvPresupuesto.Width, y);
+
+                        // Triángulos en los extremos (estilo Excel)
+                        var triangleSize = 6;
+                        Point[] leftTriangle = {
+                            new Point(0, y - triangleSize),
+                            new Point(triangleSize, y),
+                            new Point(0, y + triangleSize)
+                        };
+                        Point[] rightTriangle = {
+                            new Point(dgvPresupuesto.Width, y - triangleSize),
+                            new Point(dgvPresupuesto.Width - triangleSize, y),
+                            new Point(dgvPresupuesto.Width, y + triangleSize)
+                        };
+
+                        using (var brush = new SolidBrush(Color.FromArgb(33, 150, 243)))
                         {
-                            // Línea horizontal gruesa en la parte superior de la fila
-                            e.Graphics.DrawLine(pen, 0, rect.Top, dgvPresupuesto.Width, rect.Top);
-
-                            // Triángulos en los extremos (estilo Excel)
-                            var triangleSize = 6;
-                            Point[] leftTriangle = {
-                                new Point(0, rect.Top - triangleSize),
-                                new Point(triangleSize, rect.Top),
-                                new Point(0, rect.Top + triangleSize)
-                            };
-                            Point[] rightTriangle = {
-                                new Point(dgvPresupuesto.Width, rect.Top - triangleSize),
-                                new Point(dgvPresupuesto.Width - triangleSize, rect.Top),
-                                new Point(dgvPresupuesto.Width, rect.Top + triangleSize)
-                            };
-
-                            using (var brush = new SolidBrush(Color.FromArgb(33, 150, 243)))
-                            {
-                                e.Graphics.FillPolygon(brush, leftTriangle);
-                                e.Graphics.FillPolygon(brush, rightTriangle);
-                            }
+                            e.Graphics.FillPolygon(brush, leftTriangle);
+                            e.Graphics.FillPolygon(brush, rightTriangle);
                         }
                     }
                 }
@@ -451,20 +550,28 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
+            // Tras un resultado incierto no reconciliado no se persiste nada con los
+            // Ids de columna que la vista conserva.
+            if (_columnasBloqueadasPorResultadoIncierto)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    "ColumnWidthChanged: ignorado por resultado incierto de columnas");
+                return;
+            }
+
             try
             {
-                if (e.Column.Tag is ColumnaPersonalizada colDef)
+                if (e.Column.Tag is ColumnaPersonalizada colDef && colDef.Id > 0)
                 {
-                    var columnaDB = _context.ColumnasPersonalizadas.Find(colDef.Id);
-                    if (columnaDB != null)
+                    // Escritura por servicio con contexto propio: no se toca el
+                    // contexto compartido mientras el usuario redimensiona.
+                    var resultado = BudgetColumnConfigurationService.UpdateWidth(
+                        _factory, _context.DatabasePath, _proyecto.Id, colDef.Id, e.Column.Width);
+
+                    if (!resultado.IsCommitted)
                     {
-                        System.Diagnostics.Debug.WriteLine($"ColumnWidthChanged: Guardando ancho {e.Column.Width} para columna '{colDef.Nombre}' (ID={colDef.Id})");
-                        columnaDB.AnchoColumna = e.Column.Width;
-                        _context.SaveChanges();
-                    }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine($"ColumnWidthChanged: No se encontró columna en BD con ID={colDef.Id}");
+                        System.Diagnostics.Debug.WriteLine(
+                            $"ColumnWidthChanged: no confirmado para '{colDef.Nombre}' (ID={colDef.Id}): {resultado.Status}");
                     }
                 }
                 else

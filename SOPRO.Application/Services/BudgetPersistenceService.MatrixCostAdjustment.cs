@@ -202,7 +202,11 @@ namespace SOPRO.Application.Services
             // económico de sus componentes, fuentes relevantes y rowset. Un cambio
             // coherente hecho fuera de la vista también invalida la intención.
             var errorCierre = ValidateExpectedClosure(
-                command, context, proyecto, matriz, command.ProjectId);
+                command.ExpectedClosure,
+                context,
+                proyecto,
+                new[] { matriz.Id },
+                command.ProjectId);
             if (errorCierre != null)
                 return BudgetWriteStep<BudgetMatrixCostAdjustmentSnapshot>.Abort(errorCierre);
 
@@ -305,33 +309,47 @@ namespace SOPRO.Application.Services
         /// internamente inconsistente que el usuario tampoco vio.
         /// </summary>
         private static BudgetOperationResult? ValidateExpectedClosure(
-            BudgetMatrixCostAdjustmentCommand command,
+            BudgetMatrixCostAdjustmentClosureBase expectedClosure,
             SOPROContext context,
             Proyecto proyecto,
-            Matriz origen,
+            IReadOnlyCollection<int> originMatrixIds,
             int projectId)
         {
-            var entradasEsperadas = command.ExpectedClosure.Entries;
+            ArgumentNullException.ThrowIfNull(expectedClosure);
+            ArgumentNullException.ThrowIfNull(originMatrixIds);
+
+            var entradasEsperadas = expectedClosure.Entries;
             var idsEsperados = entradasEsperadas
                 .Select(e => e.Matrix.MatrixId)
                 .ToHashSet();
 
             var idsFrescos = PricePropagationService.CalcularCierreAscendente(
-                context, new[] { origen.Id }, projectId);
+                context, originMatrixIds, projectId);
 
             if (!idsFrescos.SetEquals(idsEsperados))
+            {
+                var etiquetaOrigen = originMatrixIds.Count == 1
+                    ? $"de la matriz {originMatrixIds.First()}"
+                    : "de las matrices del reajuste";
+
                 return BudgetOperationResult.Conflict(
-                    $"El cierre auxiliar de la matriz {origen.Id} cambió en la base desde que se cargó; " +
+                    $"El cierre auxiliar {etiquetaOrigen} cambió en la base desde que se cargó; " +
                     "la vista debe recargarse.");
+            }
 
             var matricesFrescas = PricePropagationService
                 .CargarMatricesConNavegaciones(context, idsFrescos.ToList())
                 .Where(m => m.ProyectoId == projectId)
                 .ToDictionary(m => m.Id);
 
-            if (!matricesFrescas.ContainsKey(origen.Id))
+            var origenFaltante = originMatrixIds
+                .Where(id => !matricesFrescas.ContainsKey(id))
+                .OrderBy(id => id)
+                .FirstOrDefault();
+
+            if (origenFaltante != 0)
                 return BudgetOperationResult.Conflict(
-                    $"La matriz {origen.Id} ya no participa del cierre del proyecto {projectId}; " +
+                    $"La matriz {origenFaltante} ya no participa del cierre del proyecto {projectId}; " +
                     "la vista debe recargarse.");
 
             var engine = CalculationEngineFactory.FromProyecto(proyecto);

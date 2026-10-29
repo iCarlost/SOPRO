@@ -38,6 +38,12 @@ namespace SOPRO.WinForms.Forms
         private SelectorApuEmbebidoControl? _selectorApuEmbebido;
         private int _selectorApuEmbebidoRowIndex = -1;
         private bool _validacionAperturaMostrada = false;
+        /// <summary>
+        /// Tras un resultado incierto de columnas que no pudo reconciliarse con una
+        /// lectura fresca, la vista conserva Ids potencialmente obsoletos: ninguna
+        /// mutación de columnas se envía hasta una recarga segura.
+        /// </summary>
+        private bool _columnasBloqueadasPorResultadoIncierto;
         private readonly ExternalMatrixImportService _externalMatrixImportService = new(new ProjectDbContextFactory());
         private readonly IProjectDbContextFactory _factory = new ProjectDbContextFactory();
         private readonly ProjectWorkspaceService _workspaceService;
@@ -246,18 +252,31 @@ namespace SOPRO.WinForms.Forms
 
         public void AplicarFormato(ColumnaPersonalizada fmt)
         {
-            if (_columnaRibbon == null) return;
-            _columnaRibbon.NombreFuente = fmt.NombreFuente;
-            _columnaRibbon.TamanoFuente = fmt.TamanoFuente;
-            _columnaRibbon.Negrita = fmt.Negrita;
-            _columnaRibbon.Cursiva = fmt.Cursiva;
-            _columnaRibbon.Alineacion = fmt.Alineacion;
-            _columnaRibbon.ColorFondo = fmt.ColorFondo;
-            _columnaRibbon.ColorFuente = fmt.ColorFuente;
-            _columnaRibbon.WrapTexto = fmt.WrapTexto;
-            _columnaRibbon.AlineacionVertical = fmt.AlineacionVertical;
-            _columnaRibbon.FechaModificacion = DateTime.Now;
-            _context.SaveChanges();
+            if (!PuedeMutarColumnas(out string? motivoBloqueo))
+            {
+                MostrarMensajeColumnas(motivoBloqueo!);
+                return;
+            }
+
+            if (_columnaRibbon == null || _columnaRibbon.Id <= 0) return;
+
+            // La escritura va por el servicio de Application con contexto propio y un
+            // único SaveChanges: el contexto compartido (con posibles Conceptos
+            // pendientes) no se guarda ni se rastrea aquí. El grid solo se repinta
+            // cuando la operación quedó confirmada.
+            var resultado = BudgetColumnConfigurationService.ApplyColumnFormat(
+                _factory,
+                _context.DatabasePath,
+                _proyecto.Id,
+                _columnaRibbon.Id,
+                BudgetColumnFormatDto.FromColumn(fmt));
+
+            if (!resultado.IsCommitted) return;
+
+            var confirmada = resultado.ConfirmedColumns.FirstOrDefault(c => c.Id == _columnaRibbon.Id);
+            if (confirmada == null) return;
+
+            CopiarSnapshotAConfiguracion(_columnaRibbon, confirmada);
 
             foreach (DataGridViewColumn col in dgvPresupuesto.Columns)
             {
@@ -287,25 +306,137 @@ namespace SOPRO.WinForms.Forms
 
         public void AplicarFormatoGlobal(ColumnaPersonalizada fmt)
         {
-            foreach (var col in _context.ColumnasPersonalizadas
-                .Where(c => c.ProyectoId == _proyecto.Id))
+            if (!PuedeMutarColumnas(out string? motivoBloqueo))
             {
-                col.NombreFuente = fmt.NombreFuente;
-                col.TamanoFuente = fmt.TamanoFuente;
-                col.Negrita = fmt.Negrita;
-                col.Cursiva = fmt.Cursiva;
-                col.Alineacion = fmt.Alineacion;
-                col.ColorFuente = fmt.ColorFuente;
-                col.WrapTexto = fmt.WrapTexto;
-                col.AlineacionVertical = fmt.AlineacionVertical;
-                col.FechaModificacion = DateTime.Now;
-                // ColorFondo NO se aplica globalmente
+                MostrarMensajeColumnas(motivoBloqueo!);
+                return;
             }
-            _context.SaveChanges();
+
+            // Contexto propio por operación: no se guarda ni se limpia el contexto
+            // compartido. El repintado (y los snapshots de los Tags) solo cambian si
+            // la escritura se confirmó.
+            var resultado = BudgetColumnConfigurationService.ApplyGlobalColumnFormat(
+                _factory,
+                _context.DatabasePath,
+                _proyecto.Id,
+                BudgetColumnFormatDto.FromColumn(fmt),
+                BudgetGlobalColumnFormatScope.Full);
+
+            if (!resultado.IsCommitted) return;
+
+            var porId = resultado.ConfirmedColumns.ToDictionary(c => c.Id);
+            foreach (DataGridViewColumn col in dgvPresupuesto.Columns)
+            {
+                if (col.Tag is ColumnaPersonalizada cfg && porId.TryGetValue(cfg.Id, out var confirmada))
+                    CopiarSnapshotAConfiguracion(cfg, confirmada);
+            }
 
             FormatoHelper.AplicarWrapYAlineacionPersistidos(dgvPresupuesto);
             FormatoHelper.AjustarAutoAlturaFilas(dgvPresupuesto);
             dgvPresupuesto.Invalidate();
+        }
+
+        private static void CopiarSnapshotAConfiguracion(ColumnaPersonalizada destino, BudgetColumnSnapshot snapshot)
+        {
+            destino.Nombre = snapshot.Nombre;
+            destino.NombreInterno = snapshot.NombreInterno;
+            destino.TipoColumna = snapshot.TipoColumna;
+            destino.TipoDato = snapshot.TipoDato;
+            destino.Formula = snapshot.Formula;
+            destino.Visible = snapshot.Visible;
+            destino.Imprimible = snapshot.Imprimible;
+            destino.AnchoColumna = snapshot.AnchoColumna;
+            destino.Orden = snapshot.Orden;
+            destino.Totalizar = snapshot.Totalizar;
+            destino.CondicionTotalizacion = snapshot.CondicionTotalizacion;
+            destino.FormatoNumerico = snapshot.FormatoNumerico;
+            destino.FormatoFecha = snapshot.FormatoFecha;
+            destino.Alineacion = snapshot.Alineacion;
+            destino.NombreFuente = snapshot.NombreFuente;
+            destino.TamanoFuente = snapshot.TamanoFuente;
+            destino.ColorFuente = snapshot.ColorFuente;
+            destino.ColorFondo = snapshot.ColorFondo;
+            destino.Negrita = snapshot.Negrita;
+            destino.Cursiva = snapshot.Cursiva;
+            destino.WrapTexto = snapshot.WrapTexto;
+            destino.AlineacionVertical = snapshot.AlineacionVertical;
+            destino.FechaModificacion = snapshot.FechaModificacion;
+        }
+
+        /// <summary>
+        /// Persiste el orden visual de las columnas del presupuesto en UNA operación
+        /// batch del servicio (contexto propio). Devuelve false si no se confirmó.
+        /// </summary>
+        private bool PersistirOrdenColumnas(bool mostrarError)
+        {
+            if (!PuedeMutarColumnas(out string? motivoBloqueo))
+            {
+                if (mostrarError)
+                    MostrarMensajeColumnas(motivoBloqueo!);
+                return false;
+            }
+
+            var entries = new List<BudgetColumnOrderEntry>();
+
+            foreach (DataGridViewColumn col in dgvPresupuesto.Columns)
+            {
+                if (col.Tag is ColumnaPersonalizada cfg && cfg.Id > 0)
+                    entries.Add(new BudgetColumnOrderEntry(cfg.Id, col.DisplayIndex));
+            }
+
+            if (entries.Count == 0) return true;
+
+            var resultado = BudgetColumnConfigurationService.UpdateOrder(
+                _factory, _context.DatabasePath, _proyecto.Id, entries);
+
+            if (resultado.IsCommitted) return true;
+
+            if (mostrarError)
+            {
+                MessageBox.Show(
+                    resultado.Message ?? "No se pudo guardar el orden de las columnas.",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// La vista conserva Ids de columna potencialmente obsoletos tras un resultado
+        /// incierto que no pudo reconciliarse: se rechazan las mutaciones de columnas
+        /// (formato, ancho, orden y apertura del diálogo) hasta una recarga segura.
+        /// </summary>
+        internal bool ColumnasBloqueadasPorResultadoIncierto => _columnasBloqueadasPorResultadoIncierto;
+
+        internal void MarcarColumnasBloqueadasPorResultadoIncierto()
+            => _columnasBloqueadasPorResultadoIncierto = true;
+
+        /// <summary>Seam de prueba por instancia: sustituye los avisos modales de columnas.</summary>
+        internal Action<string>? MostrarMensajeColumnasParaPrueba { get; set; }
+
+        private bool PuedeMutarColumnas(out string? motivo)
+        {
+            motivo = null;
+
+            if (!_columnasBloqueadasPorResultadoIncierto)
+                return true;
+
+            motivo =
+                "El último cambio de columnas quedó con resultado incierto y no se pudo " +
+                "reconciliar. Recargue el presupuesto (o vuelva a abrirlo) antes de seguir " +
+                "editando columnas.";
+            return false;
+        }
+
+        private void MostrarMensajeColumnas(string mensaje)
+        {
+            if (MostrarMensajeColumnasParaPrueba is not null)
+            {
+                MostrarMensajeColumnasParaPrueba(mensaje);
+                return;
+            }
+
+            MessageBox.Show(mensaje, "Columnas", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         public void NotificarColumnaSeleccionada(int colIndex)
@@ -499,9 +630,21 @@ namespace SOPRO.WinForms.Forms
             ConfigurarEventos();
             InicializarFormMatricesEmbebido();
 
-            // Asegura que Presupuesto abra con el mismo set de columnas
-            // que genera el boton "Predeterminadas" del FormColumnasPersonalizadas.
-            ColumnasPresupuestoHelper.CrearColumnasPredeterminadas(_context, _proyecto.Id);
+            // Bootstrap explícito del set de columnas (17 legacy → 23) con el servicio
+            // de Application: contexto propio, una transacción y un SaveChanges. El
+            // contexto compartido del form no escribe ni rastrea columnas.
+            var definicionesPredeterminadas = ColumnasPresupuestoHelper.CrearDefinicionesPredeterminadas();
+            var asegurado = BudgetColumnConfigurationService.EnsureColumns(
+                _factory, _context.DatabasePath, _proyecto.Id, definicionesPredeterminadas);
+
+            if (!asegurado.IsCommitted)
+            {
+                // Nunca se anuncia éxito sin confirmación; en fallo/conflicto/incierto
+                // se informa y el grid carga lo que exista en la base.
+                MessageBox.Show(
+                    asegurado.Message ?? "No se pudieron asegurar las columnas del presupuesto; recargue el proyecto.",
+                    "Columnas del presupuesto", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
 
             CargarPresupuesto();
             RefrescarFuenteAutocompleteApu();
@@ -665,6 +808,18 @@ namespace SOPRO.WinForms.Forms
         {
             if (rowIndex < 0 || rowIndex >= dgvPresupuesto.Rows.Count) return false;
 
+            // El comando de asignación del presupuesto solo admite matrices APU: una
+            // matriz básica/cuadrilla no debe enviarse ni dejar la fila aparentando una
+            // asignación que la base rechaza.
+            if (matriz.Tipo != TipoMatriz.APU)
+            {
+                UltimoEstadoAsignacionMatriz = null;
+                UltimoDiagnosticoAsignacionMatriz =
+                    $"Asignación rechazada: la matriz {matriz.Id} es de tipo {matriz.Tipo} y solo se admite APU.";
+                System.Diagnostics.Debug.WriteLine(UltimoDiagnosticoAsignacionMatriz);
+                return false;
+            }
+
             // El selector embebido puede aceptar mientras la celda de Descripción
             // sigue en edición (el autocompletar ya hace su propio EndEdit). Se
             // confirma antes de leer para que el borrador use el texto visible.
@@ -720,20 +875,24 @@ namespace SOPRO.WinForms.Forms
                     draft.Descripcion,
                     draft.Unidad);
 
-                // Cualquier resultado que no confirme (incluido no enviar por cambios
-                // pendientes en el contexto compartido) conserva el borrador visible y
-                // termina aquí: nunca cae en ApplyDraft/GuardarCambios heredado.
-                if (despacho == MatrixAssignmentDispatch.NotSentPendingChanges
-                    || UltimoEstadoAsignacionMatriz != BudgetOperationStatus.Committed)
+                // Cualquier resultado que no confirme (no enviado por cambios pendientes,
+                // fallo al construir el comando, conflicto, fallo revertido o resultado
+                // incierto) conserva los valores visibles ORIGINALES de la fila: no se
+                // pinta un borrador ficticio ni se afirma éxito, y se registra el
+                // diagnóstico/clasificación real del intento.
+                if (despacho == MatrixAssignmentDispatch.Sent
+                    && UltimoEstadoAsignacionMatriz == BudgetOperationStatus.Committed)
                 {
-                    ApplyAssignmentDraftToGrid(rowIndex, draft);
+                    return true;
                 }
 
-                return true;
+                RegistrarAsignacionNoAplicada(despacho);
+                return false;
             }
 
             // Fila nueva genuina (Id 0/Tag null): alta atómica como comando. Si no se
-            // confirma, el borrador queda visible y la fila conserva su Id 0/Tag null.
+            // confirma, la fila conserva su Id 0/Tag null y los valores visibles que
+            // tenía: no se pinta un borrador ficticio ni se afirma éxito.
             var despachoNuevaFila = TryApplyMatrixAssignmentWithCommand(
                 rowIndex,
                 draft.Clave,
@@ -743,13 +902,55 @@ namespace SOPRO.WinForms.Forms
                 draft.Descripcion,
                 draft.Unidad);
 
-            if (despachoNuevaFila == MatrixAssignmentDispatch.NotSentPendingChanges
-                || UltimoEstadoAsignacionMatriz != BudgetOperationStatus.Committed)
+            if (despachoNuevaFila == MatrixAssignmentDispatch.Sent
+                && UltimoEstadoAsignacionMatriz == BudgetOperationStatus.Committed)
             {
-                ApplyAssignmentDraftToGrid(rowIndex, draft);
+                return true;
             }
 
-            return true;
+            RegistrarAsignacionNoAplicada(despachoNuevaFila);
+            return false;
+        }
+
+        /// <summary>
+        /// Registra la clasificación real de un intento de asignación que NO se confirmó.
+        /// No toca la grilla: los valores visibles de la fila se conservan tal cual.
+        /// Un comando que ni siquiera se envió no es un fallo de base (queda sin estado
+        /// de comando y con su diagnóstico); un fallo al construir/enviarlo ya fue
+        /// clasificado y avisado por la ruta de comando; una alta bloqueada por el
+        /// resultado incierto anterior conserva ese estado y diagnóstico (no es tracker
+        /// sucio); conflicto/fallo/incierto conservan el estado y el diagnóstico del
+        /// ejecutor.
+        /// </summary>
+        private void RegistrarAsignacionNoAplicada(MatrixAssignmentDispatch despacho)
+        {
+            if (despacho == MatrixAssignmentDispatch.NotSentPendingChanges)
+            {
+                UltimoDiagnosticoAsignacionMatriz =
+                    "Asignación no enviada: hay cambios pendientes en el contexto compartido.";
+                System.Diagnostics.Debug.WriteLine(UltimoDiagnosticoAsignacionMatriz);
+                return;
+            }
+
+            if (despacho == MatrixAssignmentDispatch.NotSentReconciliationPending)
+            {
+                // El diagnóstico de incertidumbre ya quedó fijado por la ruta de comando:
+                // NO se sobrescribe con el motivo de "cambios pendientes", porque la causa
+                // es otra (la alta anterior pudo haberse insertado y hay que reconciliar).
+                System.Diagnostics.Debug.WriteLine(
+                    $"Asignación no enviada (reconciliación pendiente): {UltimoDiagnosticoAsignacionMatriz}");
+                return;
+            }
+
+            if (despacho == MatrixAssignmentDispatch.NotSentCommandFailure)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Asignación no enviada (fallo al construir/enviar el comando): {UltimoDiagnosticoAsignacionMatriz}");
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine(
+                $"Asignación no confirmada ({UltimoEstadoAsignacionMatriz}): {UltimoDiagnosticoAsignacionMatriz}");
         }
 
         private void InicializarFormMatricesEmbebido()
@@ -776,6 +977,9 @@ namespace SOPRO.WinForms.Forms
                 if (!splitContainer.Panel2Collapsed)
                     btnWorkspaceCerrar_Click(btnWorkspaceCerrar, EventArgs.Empty);
             };
+            // Acceso "Nueva matriz" visible en el header del panel (conceptos sin APU):
+            // misma ruta de creación que el selector, sin lógica de negocio extra.
+            _panelMatricesEmbebido.SolicitudNuevaMatriz += (sender, e) => IniciarCreacionMatrizDesdePanel();
 
             ActualizarEstadoWorkspace(false);
         }
@@ -993,21 +1197,12 @@ namespace SOPRO.WinForms.Forms
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            // Guardar orden visual de columnas antes de cerrar
+            // Persistir el orden visual por servicio (contexto propio, un lote y un
+            // SaveChanges). No se usa el contexto compartido: cerrar el form no debe
+            // vaciar cambios pendientes de otras operaciones (p. ej. un Concepto).
             try
             {
-                foreach (DataGridViewColumn col in dgvPresupuesto.Columns)
-                {
-                    if (col.Tag is ColumnaPersonalizada colDef)
-                    {
-                        var columnaDB = _context.ColumnasPersonalizadas.Find(colDef.Id);
-                        if (columnaDB != null)
-                        {
-                            columnaDB.Orden = col.DisplayIndex;
-                        }
-                    }
-                }
-                _context.SaveChanges();
+                PersistirOrdenColumnas(mostrarError: false);
             }
             catch
             {

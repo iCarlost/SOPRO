@@ -172,6 +172,33 @@ namespace SOPRO.WinForms.Controls
             botonesNav.Controls.Add(_btnAnterior);
             botonesNav.Controls.Add(_btnSiguiente);
 
+            // Acción primaria de la vista de matrices: crear una matriz cuando el
+            // contexto no la tiene. Visible solo para conceptos sin APU y ocultada en
+            // cualquier estado de edición; queda a la izquierda de los controles de
+            // navegación (que son la acción terciaria) con separación propia.
+            _btnNuevaMatriz = new Button
+            {
+                Name = "BtnNuevaMatrizAcceso",
+                Text = "＋ Nueva matriz",
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                MinimumSize = new Size(SoproUiMetrics.ContentButtonMinWidth, SoproUiMetrics.CompactButtonHeight),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = ColorAcentoSuave,
+                ForeColor = ColorAcento,
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                UseVisualStyleBackColor = false,
+                Visible = false,
+                Anchor = AnchorStyles.Top,
+                Margin = new Padding(0, 0, SoproUiMetrics.StandardMargin, 0)
+            };
+            _btnNuevaMatriz.FlatAppearance.BorderSize = 0;
+            _btnNuevaMatriz.Click += BtnNuevaMatrizAcceso_Click;
+            botonesNav.Controls.Add(_btnNuevaMatriz);
+            botonesNav.Controls.SetChildIndex(_btnNuevaMatriz, 0);
+            botonesNav.Controls.SetChildIndex(_btnAnterior, 1);
+            botonesNav.Controls.SetChildIndex(_btnSiguiente, 2);
+
             header.Controls.Add(textos, 0, 0);
             header.Controls.Add(botonesNav, 1, 0);
             _panelHeader = header;

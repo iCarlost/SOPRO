@@ -65,7 +65,12 @@ namespace SOPRO.Application.Services
             if (proyecto == null) throw new ArgumentNullException(nameof(proyecto));
 
             var definitions  = new List<BudgetGridColumnDefinition>();
+            // Las definiciones de columna son snapshots de solo lectura para pintar y
+            // para el Tag del grid: no deben quedar rastreadas ni exponer mutaciones
+            // accidentales sobre el contexto compartido (las escrituras van por
+            // BudgetColumnConfigurationService, con contexto propio).
             var todasColumnas = context.ColumnasPersonalizadas
+                .AsNoTracking()
                 .Where(c => c.ProyectoId == proyecto.Id)
                 .OrderBy(c => c.Visible ? 0 : 1)
                 .ThenBy(c => c.Orden)

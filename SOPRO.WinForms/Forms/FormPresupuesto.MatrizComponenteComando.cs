@@ -22,6 +22,9 @@ namespace SOPRO.WinForms.Forms
         /// <summary>Instancia del panel embebido para las pruebas del ensamblado.</summary>
         internal Controls.PanelMatricesEmbebido? PanelMatricesInterno => _panelMatricesEmbebido;
 
+        /// <summary>Expande el área de trabajo (Panel2) para las pruebas del ensamblado.</summary>
+        internal void ExpandirWorkspaceParaPrueba() => EnsureWorkspaceExpanded();
+
         /// <summary>Suscribe las rutas de comando del panel a la sincronización por Id.</summary>
         private void ConectarComandoCantidadComponente()
         {

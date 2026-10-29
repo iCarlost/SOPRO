@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.DTOs.Matrices;
+using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -26,12 +27,14 @@ namespace SOPRO.WinForms.Controls
 
         public event EventHandler<int> MatrizActualizada;
         public event EventHandler SolicitudCerrarWorkspace;
+        public event EventHandler SolicitudNuevaMatriz;
 
         private Panel        _panelHeader;
         private Label        _lblTituloMatriz;
         private Label        _lblInfoMatriz;
         private Button       _btnAnterior;
         private Button       _btnSiguiente;
+        private Button       _btnNuevaMatriz;
         private Panel        _panelBotonesAgregar;
         private Button       _btnAgregarMaterial;
         private Button       _btnAgregarMO;
@@ -64,6 +67,7 @@ namespace SOPRO.WinForms.Controls
         private int? _matrizPadreIdSubedicion;
         private int? _filaPadreSubedicion;
         private bool _huboEdicionEnSubedicion;
+        private bool _subedicionCabeceraConfirmadaPorComando;
         private readonly UndoManager _undoManager = new();
         private bool _isUndoRedo;
         private int _undoPanelRowIndex = -1;
@@ -75,6 +79,10 @@ namespace SOPRO.WinForms.Controls
         private string _cabeceraBaseUnidad = string.Empty;
         private TipoMatriz _cabeceraBaseTipo = TipoMatriz.APU;
         private bool? _celdaComponenteEnEdicionForzada;
+        private bool _cabeceraEdicionBloqueadaPorResultadoIncierto;
+        private int? _cabeceraBloqueadaMatrizId;
+        private bool _restaurandoFilaPresupuesto;
+        private bool _restauracionFilaProgramada;
 
         public PanelMatricesEmbebido(SOPROContext context, int proyectoId)
         {
@@ -104,6 +112,13 @@ namespace SOPRO.WinForms.Controls
         /// </summary>
         internal Matriz? MatrizVisibleEnPanel => _matrizActual;
 
+        internal int FilaConceptoActual => _filaActual;
+        internal string TituloCabeceraParaPrueba => _lblTituloMatriz.Text;
+        internal bool CabeceraDatosVisiblesParaPrueba => _panelDatos.Visible;
+        internal bool AccesoNuevaMatrizVisible => _btnNuevaMatriz != null && _btnNuevaMatriz.Visible;
+        internal Button AccesoNuevaMatrizParaPrueba => _btnNuevaMatriz;
+        internal void CancelarCabeceraParaPrueba() => BtnCancelarMatriz_Click(this, EventArgs.Empty);
+
         /// <summary>
         /// Indica si la cabecera que el panel está editando tiene cambios sin guardar.
         /// Las rutas externas la usan para no reemplazar la matriz visible ni descartar
@@ -130,6 +145,74 @@ namespace SOPRO.WinForms.Controls
         {
             _filaActual = -1;
             MostrarSinSeleccion();
+        }
+
+        /// <summary>Punto de aislamiento de avisos de la ruta de cabecera para las pruebas.</summary>
+        internal static Action<string, string, MessageBoxIcon> MostrarAvisoCabeceraMatriz { get; set; }
+            = (titulo, mensaje, icono) => MessageBox.Show(mensaje, titulo, MessageBoxButtons.OK, icono);
+
+        /// <summary>
+        /// Punto de aislamiento del diálogo de cambio de concepto para las pruebas;
+        /// en producción conserva el mismo <see cref="MessageBox.Show(string,string,MessageBoxButtons,MessageBoxIcon)"/>.
+        /// </summary>
+        internal static Func<string, string, MessageBoxButtons, MessageBoxIcon, DialogResult> ConfirmarCambioContextoParaPrueba
+        { get; set; } = (mensaje, titulo, botones, icono) => MessageBox.Show(mensaje, titulo, botones, icono);
+
+        /// <summary>Clasificación de la última edición de cabecera ejecutada como comando.</summary>
+        internal BudgetOperationStatus? UltimoEstadoEdicionCabecera { get; private set; }
+
+        /// <summary>Detalle de la última edición de cabecera no despachada; nunca se muestra.</summary>
+        internal string? UltimaRazonSinDespacharCabecera { get; private set; }
+
+        /// <summary>Indicador interno para las pruebas del bloqueo por resultado incierto.</summary>
+        internal bool BloqueoCabeceraActivo => _cabeceraEdicionBloqueadaPorResultadoIncierto;
+
+        /// <summary>Fija los campos de cabecera como lo haría el usuario, para las pruebas.</summary>
+        internal void EstablecerCabeceraParaPrueba(string? clave, string? descripcion, string? unidad, TipoMatriz tipo)
+        {
+            _txtClaveMatriz.Text = clave ?? string.Empty;
+            _txtDescripcionMatriz.Text = descripcion ?? string.Empty;
+            _txtUnidadMatriz.Text = unidad ?? string.Empty;
+            _rbTipoApu.Checked = tipo == TipoMatriz.APU;
+            _rbTipoBasico.Checked = tipo == TipoMatriz.Basico;
+            _rbTipoCuadrilla.Checked = tipo == TipoMatriz.Cuadrilla;
+        }
+
+        internal string ClaveCabeceraParaPrueba => _txtClaveMatriz.Text ?? string.Empty;
+
+        internal string DescripcionCabeceraParaPrueba => _txtDescripcionMatriz.Text ?? string.Empty;
+
+        internal string UnidadCabeceraParaPrueba => _txtUnidadMatriz.Text ?? string.Empty;
+
+        internal TipoMatriz TipoCabeceraParaPrueba => GetTipoCabeceraSeleccionado();
+
+        internal bool TieneCambiosPendientesCabeceraParaPrueba => TieneCambiosPendientesCabecera();
+
+        internal bool GuardarCabeceraParaPrueba() => GuardarCabeceraEdicionActual();
+
+        internal void GuardarCabeceraExplicitaParaPrueba() => BtnGuardarMatriz_Click(this, EventArgs.Empty);
+
+        /// <summary>Entrada reproducible a la carga normal de una fila para las pruebas.</summary>
+        internal bool CargarMatrizDeFilaParaPrueba(int fila, bool forceReload)
+            => IntentarCargarMatrizDeFila(fila, forceReload);
+
+        internal void SimularResultadoInciertoCabeceraParaPrueba(int? matrizId = null)
+        {
+            _cabeceraEdicionBloqueadaPorResultadoIncierto = true;
+            _cabeceraBloqueadaMatrizId = matrizId ?? _matrizEditandoId;
+        }
+
+        /// <summary>
+        /// Agrega un componente a la lista temporal del modo creación para las
+        /// pruebas, sin abrir el selector real.
+        /// </summary>
+        internal void AgregarComponenteTemporalParaPrueba(ComponenteMatriz componente)
+        {
+            if (!_modoCreacionMatriz || componente == null)
+                return;
+
+            _componentesTemp.Add(componente);
+            RefrescarVistaTemporal();
         }
 
 
@@ -249,6 +332,12 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _dgvPresupuesto = dgv;
             dgv.CurrentCellChanged += (s, e) =>
             {
+                // La restauración de la selección desde ConfirmarCambioDeContextoExterno
+                // cambia CurrentCell para cancelar la navegación; ese evento no debe
+                // volver a entrar en la carga (pisaría el borrador de cabecera).
+                if (_restaurandoFilaPresupuesto)
+                    return;
+
                 if (dgv.CurrentRow != null)
                     CargarMatrizDeFila(dgv.CurrentRow.Index, false);
                 else
@@ -258,9 +347,9 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
 
         private void CapturarEstadoBaseCabeceraDesdeUI()
         {
-            _cabeceraBaseClave = (_txtClaveMatriz.Text ?? string.Empty).Trim();
-            _cabeceraBaseDescripcion = (_txtDescripcionMatriz.Text ?? string.Empty).Trim();
-            _cabeceraBaseUnidad = (_txtUnidadMatriz.Text ?? string.Empty).Trim();
+            _cabeceraBaseClave = _txtClaveMatriz.Text ?? string.Empty;
+            _cabeceraBaseDescripcion = _txtDescripcionMatriz.Text ?? string.Empty;
+            _cabeceraBaseUnidad = _txtUnidadMatriz.Text ?? string.Empty;
             _cabeceraBaseTipo = GetTipoCabeceraSeleccionado();
         }
 
@@ -269,9 +358,10 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             if (matriz == null)
                 return;
 
-            _cabeceraBaseClave = (matriz.Clave ?? string.Empty).Trim();
-            _cabeceraBaseDescripcion = (matriz.Descripcion ?? string.Empty).Trim();
-            _cabeceraBaseUnidad = (matriz.Unidad ?? string.Empty).Trim();
+            // Valores EXACTOS de la base: la comparación de conflicto es ordinal.
+            _cabeceraBaseClave = matriz.Clave ?? string.Empty;
+            _cabeceraBaseDescripcion = matriz.Descripcion ?? string.Empty;
+            _cabeceraBaseUnidad = matriz.Unidad ?? string.Empty;
             _cabeceraBaseTipo = matriz.Tipo;
         }
 
@@ -291,56 +381,269 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             if (!_matrizEditandoId.HasValue)
                 return false;
 
-            return !string.Equals((_txtClaveMatriz.Text ?? string.Empty).Trim(), _cabeceraBaseClave, StringComparison.Ordinal)
-                || !string.Equals((_txtDescripcionMatriz.Text ?? string.Empty).Trim(), _cabeceraBaseDescripcion, StringComparison.Ordinal)
-                || !string.Equals((_txtUnidadMatriz.Text ?? string.Empty).Trim(), _cabeceraBaseUnidad, StringComparison.Ordinal)
+            return !string.Equals((_txtClaveMatriz.Text ?? string.Empty).Trim(), _cabeceraBaseClave.Trim(), StringComparison.Ordinal)
+                || !string.Equals((_txtDescripcionMatriz.Text ?? string.Empty).Trim(), _cabeceraBaseDescripcion.Trim(), StringComparison.Ordinal)
+                || !string.Equals((_txtUnidadMatriz.Text ?? string.Empty).Trim(), _cabeceraBaseUnidad.Trim(), StringComparison.Ordinal)
                 || GetTipoCabeceraSeleccionado() != _cabeceraBaseTipo;
         }
 
+        /// <summary>
+        /// Ruta ÚNICA de guardado de cabecera de una matriz YA persistida, compartida
+        /// por el botón Guardar y por el guardado implícito al cambiar de concepto.
+        /// Es SÍNCRONA a propósito: el llamador no debe navegar ni restaurar la vista
+        /// antes de conocer el resultado. Despacha un solo comando sobre contexto
+        /// nuevo y, solo tras el commit, sincroniza el tracker y la base esperada.
+        /// Un borrador, un contexto sucio, un conflicto o un fallo conservan los
+        /// inputs y no tocan el tracker; un resultado incierto bloquea el reintento
+        /// hasta una recarga fresca de la matriz.
+        /// </summary>
         private bool GuardarCabeceraEdicionActual()
         {
+            UltimoEstadoEdicionCabecera = null;
+            UltimaRazonSinDespacharCabecera = null;
+
+            if (_cabeceraEdicionBloqueadaPorResultadoIncierto)
+            {
+                UltimaRazonSinDespacharCabecera = "Edición bloqueada: resultado incierto pendiente de reconciliar";
+                MostrarAvisoCabeceraMatriz(
+                    "Matriz",
+                    "La cabecera no se guardó: hay una operación previa cuyo resultado no se sabe si quedó " +
+                    "en la base. Recargue la matriz para reconciliar la vista antes de reintentar.",
+                    MessageBoxIcon.Warning);
+                return false;
+            }
+
             if (_modoCreacionMatriz || !_matrizEditandoId.HasValue)
                 return false;
 
-            string clave = (_txtClaveMatriz.Text ?? string.Empty).Trim();
-            string descripcion = (_txtDescripcionMatriz.Text ?? string.Empty).Trim();
-            string unidad = (_txtUnidadMatriz.Text ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(clave) || string.IsNullOrWhiteSpace(descripcion) || string.IsNullOrWhiteSpace(unidad))
+            string claveCruda = _txtClaveMatriz.Text ?? string.Empty;
+            string descripcionCruda = _txtDescripcionMatriz.Text ?? string.Empty;
+            string unidadCruda = _txtUnidadMatriz.Text ?? string.Empty;
+            TipoMatriz tipoPropuesto = GetTipoCabeceraSeleccionado();
+
+            if (string.IsNullOrWhiteSpace(claveCruda)
+                || string.IsNullOrWhiteSpace(descripcionCruda)
+                || string.IsNullOrWhiteSpace(unidadCruda))
             {
-                MessageBox.Show("Clave, Descripción y Unidad son obligatorios.", "Matriz", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MostrarAvisoCabeceraMatriz(
+                    "Matriz",
+                    "Clave, Descripción y Unidad son obligatorios.",
+                    MessageBoxIcon.Information);
                 return false;
             }
 
-            var matrizEdit = _context.Matrices
-                .Include(m => m.Componentes).ThenInclude(c => c.Material)
-                .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
-                .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
-                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
-                .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
-                .FirstOrDefault(m => m.Id == _matrizEditandoId.Value);
-            if (matrizEdit == null)
-                return false;
-
-            bool claveDuplicada = _context.Matrices.Any(m => m.ProyectoId == _proyectoId
-                && m.Id != matrizEdit.Id
-                && m.Clave == clave);
-            if (claveDuplicada)
+            if (_matrizActual == null || _matrizActual.Id != _matrizEditandoId.Value)
             {
-                MessageBox.Show(MatrixSaveFlowService.GetDuplicateKeyMessage(), "Clave Duplicada", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                _txtClaveMatriz.Focus();
+                UltimaRazonSinDespacharCabecera = "Matriz visible no coincide con la matriz editada";
+                MostrarAvisoCabeceraMatriz(
+                    "Matriz",
+                    "La cabecera no se guardó: la matriz visible cambió en el panel; recargue y reintente.",
+                    MessageBoxIcon.Warning);
                 return false;
             }
 
-            matrizEdit.Clave = clave;
-            matrizEdit.Descripcion = descripcion;
-            matrizEdit.Unidad = unidad;
-            matrizEdit.Tipo = GetTipoCabeceraSeleccionado();
-            matrizEdit.FechaModificacion = DateTime.Now;
-            _context.SaveChanges();
+            // Guard conservador: un trabajo ajeno pendiente en el contexto compartido
+            // conserva el borrador y no se despacha. La ruta de comando jamás hace
+            // SaveChanges sobre el contexto compartido.
+            _context.ChangeTracker.DetectChanges();
+            if (_context.ChangeTracker.HasChanges())
+            {
+                UltimaRazonSinDespacharCabecera = "Contexto compartido sucio";
+                MostrarAvisoCabeceraMatriz(
+                    "Matriz",
+                    "La cabecera no se guardó: hay cambios pendientes en el contexto. Resuélvalos y " +
+                    "reintente, o recargue la vista.",
+                    MessageBoxIcon.Information);
+                return false;
+            }
 
-            _matrizActual = matrizEdit;
-            CapturarEstadoBaseCabeceraDesdeUI();
+            var expectedBase = new BudgetMatrixHeaderBase(
+                _matrizEditandoId.Value,
+                _matrizActual.ProyectoId,
+                _cabeceraBaseClave,
+                _cabeceraBaseDescripcion,
+                _cabeceraBaseUnidad,
+                _cabeceraBaseTipo);
+
+            BudgetMatrixHeaderEditResult resultado;
+            try
+            {
+                resultado = BudgetPersistenceService.ExecuteMatrixHeaderEditCommand(
+                    _factoryComando,
+                    _context.DatabasePath,
+                    new BudgetMatrixHeaderEditCommand(
+                        _proyectoId,
+                        expectedBase,
+                        claveCruda,
+                        descripcionCruda,
+                        unidadCruda,
+                        tipoPropuesto));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Edición de cabecera de matriz: {ex.Message}");
+                UltimaRazonSinDespacharCabecera = "Error inesperado al preparar el comando";
+                MostrarAvisoCabeceraMatriz(
+                    "Matriz",
+                    "La cabecera no se guardó por un problema inesperado; revise y reintente.",
+                    MessageBoxIcon.Warning);
+                return false;
+            }
+
+            UltimoEstadoEdicionCabecera = resultado.Status;
+
+            if (!resultado.IsCommitted || resultado.Confirmed is null)
+            {
+                if (resultado.Status == BudgetOperationStatus.OutcomeUnknown)
+                {
+                    ActivarBloqueoCabeceraPorResultadoIncierto();
+                    MostrarAvisoCabeceraMatriz(
+                        "Matriz",
+                        "No se sabe si la cabecera quedó guardada. Recargue la matriz o vuelva a abrir " +
+                        "el presupuesto para reconciliar la vista antes de reintentar.",
+                        MessageBoxIcon.Warning);
+                }
+                else
+                {
+                    MostrarAvisoCabeceraMatriz(
+                        "Matriz",
+                        resultado.Message ?? "La cabecera no se guardó.",
+                        MessageBoxIcon.Information);
+                }
+                return false;
+            }
+
+            // El commit ya ocurrió: primero se sincroniza el tracker compartido y la
+            // base esperada; solo después el llamador puede mostrar/refrescar o navegar.
+            if (_modoSubedicionComponente)
+                _subedicionCabeceraConfirmadaPorComando = true;
+
+            AplicarCabeceraConfirmada(resultado.Confirmed);
             return true;
+        }
+
+        /// <summary>
+        /// Copia SOLO la cabecera y <see cref="Matriz.FechaModificacion"/> confirmadas
+        /// sobre las instancias tracked de esa matriz, sincroniza OriginalValues y las
+        /// deja Unchanged sin limpiar el tracker; luego actualiza la vista y la base
+        /// esperada con los valores EXACTOS confirmados.
+        /// </summary>
+        private void AplicarCabeceraConfirmada(BudgetMatrixHeaderEditSnapshot confirmada)
+        {
+            foreach (var entrada in _context.ChangeTracker.Entries<Matriz>())
+            {
+                if (entrada.Entity.Id != confirmada.MatrixId)
+                    continue;
+
+                entrada.Entity.Clave = confirmada.Clave;
+                entrada.Entity.Descripcion = confirmada.Descripcion;
+                entrada.Entity.Unidad = confirmada.Unidad;
+                entrada.Entity.Tipo = confirmada.Tipo;
+                entrada.Entity.FechaModificacion = confirmada.FechaModificacion;
+                entrada.OriginalValues.SetValues(entrada.CurrentValues);
+                entrada.State = EntityState.Unchanged;
+            }
+
+            if (_matrizActual != null && _matrizActual.Id == confirmada.MatrixId)
+            {
+                _matrizActual.Clave = confirmada.Clave;
+                _matrizActual.Descripcion = confirmada.Descripcion;
+                _matrizActual.Unidad = confirmada.Unidad;
+                _matrizActual.Tipo = confirmada.Tipo;
+                _matrizActual.FechaModificacion = confirmada.FechaModificacion;
+            }
+
+            _txtClaveMatriz.Text = confirmada.Clave;
+            _txtDescripcionMatriz.Text = confirmada.Descripcion;
+            _txtUnidadMatriz.Text = confirmada.Unidad;
+            _rbTipoApu.Checked = confirmada.Tipo == TipoMatriz.APU;
+            _rbTipoBasico.Checked = confirmada.Tipo == TipoMatriz.Basico;
+            _rbTipoCuadrilla.Checked = confirmada.Tipo == TipoMatriz.Cuadrilla;
+
+            _cabeceraBaseClave = confirmada.Clave;
+            _cabeceraBaseDescripcion = confirmada.Descripcion;
+            _cabeceraBaseUnidad = confirmada.Unidad;
+            _cabeceraBaseTipo = confirmada.Tipo;
+        }
+
+        private void ActivarBloqueoCabeceraPorResultadoIncierto()
+        {
+            _cabeceraEdicionBloqueadaPorResultadoIncierto = true;
+            _cabeceraBloqueadaMatrizId = _matrizEditandoId;
+        }
+
+        /// <summary>
+        /// ÚNICO punto que libera el bloqueo por resultado incierto. Exige una lectura
+        /// NUEVA por factory con contexto nuevo y <c>AsNoTracking</c> de la matriz
+        /// bloqueada y/o candidata, verifica que exista en el proyecto, sincroniza la
+        /// cabecera sobre la instancia que se va a mostrar y sobre cualquier instancia
+        /// tracked, aplica la vista y SOLO ENTONCES limpia el bloqueo. Si la lectura
+        /// falla o no coincide, conserva el bloqueo y retira la edición stale.
+        /// </summary>
+        private bool IntentarReconciliarCabeceraBloqueada(
+            int matrizIdCandidata,
+            Matriz? candidata,
+            Action? aplicarVista)
+        {
+            if (!_cabeceraEdicionBloqueadaPorResultadoIncierto)
+            {
+                aplicarVista?.Invoke();
+                return true;
+            }
+
+            int idBloqueado = _cabeceraBloqueadaMatrizId ?? matrizIdCandidata;
+            var frescaBloqueada = LeerCabeceraFrescaParaReconciliar(idBloqueado);
+            if (frescaBloqueada == null)
+            {
+                BloquearCabeceraNoReconciliada(
+                    "No se pudo reconciliar la cabecera: la lectura fresca no está disponible o " +
+                    "la matriz bloqueada ya no pertenece al proyecto. Recargue el presupuesto antes de reintentar.");
+                return false;
+            }
+
+            SincronizarCabeceraTracked(idBloqueado, frescaBloqueada);
+
+            Matriz frescaCandidata = frescaBloqueada;
+            if (idBloqueado != matrizIdCandidata)
+            {
+                var leida = LeerCabeceraFrescaParaReconciliar(matrizIdCandidata);
+                if (leida == null)
+                {
+                    BloquearCabeceraNoReconciliada(
+                        "No se pudo reconciliar la cabecera: la matriz destino no está disponible o " +
+                        "no pertenece al proyecto. Recargue el presupuesto antes de reintentar.");
+                    return false;
+                }
+
+                frescaCandidata = leida;
+                SincronizarCabeceraTracked(matrizIdCandidata, frescaCandidata);
+            }
+
+            if (candidata == null
+                || candidata.Id != matrizIdCandidata
+                || candidata.Id != frescaCandidata.Id)
+            {
+                BloquearCabeceraNoReconciliada(
+                    "No se pudo reconciliar la cabecera: la matriz visible no coincide con la lectura fresca. " +
+                    "Recargue el presupuesto antes de reintentar.");
+                return false;
+            }
+
+            SincronizarCabeceraDesdeLecturaFresca(candidata, frescaCandidata);
+            aplicarVista?.Invoke();
+
+            _cabeceraEdicionBloqueadaPorResultadoIncierto = false;
+            _cabeceraBloqueadaMatrizId = null;
+            return true;
+        }
+
+        private void SincronizarCabeceraTracked(int matrizId, Matriz fresca)
+        {
+            foreach (var entrada in _context.ChangeTracker.Entries<Matriz>())
+            {
+                if (entrada.Entity.Id == matrizId)
+                    SincronizarCabeceraDesdeLecturaFresca(entrada.Entity, fresca);
+            }
         }
 
         private void LimpiarEstadoEdicionParaCambioExterno()
@@ -350,6 +653,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _filaPadreSubedicion = null;
             _huboEdicionEnSubedicion = false;
             _subedicionSoloCantidadConfirmada = false;
+            _subedicionCabeceraConfirmadaPorComando = false;
             _modoCreacionMatriz = false;
             _modoEdicionCabecera = false;
             _matrizEditandoId = null;
@@ -366,9 +670,45 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
 
         private void RestaurarFilaActualEnPresupuesto()
         {
+            RestaurarSeleccionFilaActualEnPresupuesto();
+            ProgramarRestauracionFilaActualEnPresupuesto();
+        }
+
+        /// <summary>
+        /// Reafirma la selección de la fila actual DESPUÉS de que el grid termine de
+        /// procesar el cambio de CurrentCell: un setter dentro del propio evento
+        /// CurrentCellChanged puede ser revertido por WinForms al finalizar el
+        /// evento. Sin esto, un guardado fallido dejaría el cursor en el concepto
+        /// destino aunque el panel no haya navegado.
+        /// </summary>
+        private void ProgramarRestauracionFilaActualEnPresupuesto()
+        {
+            if (_dgvPresupuesto == null || !_dgvPresupuesto.IsHandleCreated)
+                return;
+            if (_restauracionFilaProgramada)
+                return;
+
+            _restauracionFilaProgramada = true;
+            try
+            {
+                _dgvPresupuesto.BeginInvoke(new Action(() =>
+                {
+                    _restauracionFilaProgramada = false;
+                    RestaurarSeleccionFilaActualEnPresupuesto();
+                }));
+            }
+            catch
+            {
+                _restauracionFilaProgramada = false;
+            }
+        }
+
+        private void RestaurarSeleccionFilaActualEnPresupuesto()
+        {
             if (_dgvPresupuesto == null || _filaActual < 0 || _filaActual >= _dgvPresupuesto.Rows.Count)
                 return;
 
+            _restaurandoFilaPresupuesto = true;
             try
             {
                 var row = _dgvPresupuesto.Rows[_filaActual];
@@ -381,6 +721,10 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 }
             }
             catch { }
+            finally
+            {
+                _restaurandoFilaPresupuesto = false;
+            }
         }
 
         private bool ConfirmarCambioDeContextoExterno(int filaDestino)
@@ -397,7 +741,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
 
             if (_modoCreacionMatriz)
             {
-                var rCrear = MessageBox.Show(
+                var rCrear = ConfirmarCambioContextoParaPrueba(
                     "Hay una matriz nueva sin guardar en el panel. " + "\n" +
                     "Sí: descartar y cambiar de concepto. " + "\n" +
                     "No: permanecer en la matriz actual.",
@@ -419,7 +763,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 ? "Estás editando una matriz componente dentro del panel."
                 : "Hay cambios pendientes en la matriz mostrada en el panel.";
 
-            var r = MessageBox.Show(
+            var r = ConfirmarCambioContextoParaPrueba(
                 mensaje + "\n" +
                 "\n" +
                 "Sí: guardar cabecera y cambiar de concepto. " + "\n" +
@@ -517,14 +861,26 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 {
                     var hijo = CargarMatrizConComponentes(_matrizEditandoId.Value, asNoTracking: true);
                     if (hijo == null)
+                    {
+                        if (_cabeceraEdicionBloqueadaPorResultadoIncierto)
+                        {
+                            BloquearCabeceraNoReconciliada(
+                                "No se pudo reconciliar la cabecera del componente: la matriz hija ya no está " +
+                                "disponible. Recargue el presupuesto antes de reintentar.");
+                        }
+                        return false;
+                    }
+
+                    if (!IntentarReconciliarCabeceraBloqueada(
+                            _matrizEditandoId.Value,
+                            hijo,
+                            () => MostrarMatriz(hijo, null)))
                         return false;
 
-                    _matrizActual = hijo;
                     LiberarBloqueoEdicionCantidadComponente();
                     // Recarga fresca del hijo: el cierre atómico confirmado deja de
                     // ser vigente conservando el bookkeeping heredado de la subedición.
                     _subedicionSoloCantidadConfirmada = false;
-                    MostrarMatriz(hijo, null);
 
                     // La vista muestra el HIJO, no la matriz del concepto seleccionado:
                     // la selección no quedó reconciliada aunque el hijo se refrescara.
@@ -597,11 +953,23 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             // Reintento libre: la subedición arranca sin cierre atómico confirmado;
             // solo las ediciones por comando de cantidad lo activan.
             _subedicionSoloCantidadConfirmada = false;
+            _subedicionCabeceraConfirmadaPorComando = false;
 
-            BeginEditMatrix(
+            bool abierta = IntentarBeginEditMatrix(
                 comp.AuxiliarId.Value,
                 onSaved: _ => FinalizarSubedicionComponente(true),
                 onCancelled: () => FinalizarSubedicionComponente(false));
+
+            if (!abierta)
+            {
+                // La reconciliación de cabecera rechazó la reapertura: no dejar la
+                // subedición a medias ni habilitar edición sobre una vista stale.
+                _modoSubedicionComponente = false;
+                _matrizPadreIdSubedicion = null;
+                _filaPadreSubedicion = null;
+                _subedicionSoloCantidadConfirmada = false;
+                _subedicionCabeceraConfirmadaPorComando = false;
+            }
         }
 
         private void FinalizarSubedicionComponente(bool refrescarPadre)
@@ -613,36 +981,40 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             int? filaPadre = _filaPadreSubedicion;
             bool huboEdicion = _huboEdicionEnSubedicion;
             bool soloCantidadConfirmada = _subedicionSoloCantidadConfirmada;
+            bool soloCabeceraConfirmada = _subedicionCabeceraConfirmadaPorComando;
 
             _modoSubedicionComponente = false;
             _matrizPadreIdSubedicion = null;
             _filaPadreSubedicion = null;
             _huboEdicionEnSubedicion = false;
             _subedicionSoloCantidadConfirmada = false;
+            _subedicionCabeceraConfirmadaPorComando = false;
             _onMatrixHeaderSaved = null;
             _onMatrixHeaderCancelled = null;
             _modoEdicionCabecera = false;
 
-            // Salida por Guardar (refrescarPadre == true) recalcula siempre; salida por
-            // Cancelar solo propaga si hubo ediciones guardadas durante la subedición,
-            // para no dejar el P.U. padre y la fila del concepto obsoletos.
-            // EXCEPCIÓN (cierre atómico confirmado): si TODAS las ediciones guardadas
-            // fueron comandos de cantidad, su instantánea ya recalculó el cierre
-            // hijo → ascendientes → hojas/agrupadores; repetir el recálculo heredado
-            // añadiría SaveChanges/MatrizActualizada sin nada que aplicar, así que
-            // TAMBIÉN la salida por Guardar salta el recálculo heredado. El guardado
-            // de cabecera del botón Guardar es una escritura propia previa y separada,
-            // sin repropropagación de presupuesto en la salida.
-            // Un guardado heredado limpió el flag (GuardarYPropagar / edición
-            // heredada): el recálculo heredado de salida vuelve a exigirse.
-            bool recalcularPadre = !soloCantidadConfirmada && (refrescarPadre || huboEdicion);
+            // Salida por Guardar (refrescarPadre == true) recalcula siempre que haya
+            // trabajo de componentes; salida por Cancelar solo propaga si hubo
+            // ediciones guardadas durante la subedición, para no dejar el P.U. padre
+            // y la fila del concepto obsoletos.
+            // EXCEPCIÓN 1 (cierre atómico confirmado): si TODAS las ediciones
+            // guardadas fueron comandos de cantidad, su instantánea ya recalculó el
+            // cierre hijo → ascendientes → hojas/agrupadores; repetir el recálculo
+            // heredado añadiría SaveChanges/MatrizActualizada sin nada que aplicar.
+            // EXCEPCIÓN 2 (cabecera confirmada por comando): un guardado de cabecera
+            // del botón Guardar es una escritura propia y separada; si no hubo edición
+            // real de componentes, la salida NO debe recalcular el padre ni emitir un
+            // segundo SaveChanges. Si hubo edición de componentes, el recálculo sigue.
+            bool recalcularPadre = !soloCantidadConfirmada
+                && (huboEdicion || (refrescarPadre && !soloCabeceraConfirmada));
 
             if (recalcularPadre)
                 RecalcularMatrizYConceptos(matrizPadreId);
 
-            // Con el cierre atómico confirmado (y recálculo omitido), el padre se
-            // muestra AsNoTracking: la vista heredó los valores confirmados sin
-            // segunda escritura.
+            // Con un cierre omitido (cantidad confirmada o guardado solo de cabecera),
+            // el padre se muestra sin repetir el recálculo heredado. El cierre atómico
+            // de cantidad se muestra AsNoTracking; el resto conserva la carga tracked
+            // histórica para permitir seguir editando el padre.
             var matrizPadre = CargarMatrizConComponentes(matrizPadreId, soloCantidadConfirmada && !recalcularPadre);
             if (matrizPadre == null)
             {
@@ -762,7 +1134,8 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
 
             if (concepto.MatrizId == null)
             {
-                MostrarSinSeleccion("Concepto sin APU asignada", "Usa la columna P.U. o la búsqueda inteligente en Descripción para vincular una matriz.");
+                MostrarSinSeleccion("Concepto sin APU asignada", "Usa la columna P.U. o la búsqueda inteligente en Descripción para vincular una matriz. También puedes crear una matriz nueva desde aquí.");
+                MostrarAccesoNuevaMatriz(true);
                 return false;
             }
 
@@ -770,7 +1143,12 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             bool mismoConcepto = _ultimoConceptoId == concepto.Id;
             bool mismaMatriz = _ultimaMatrizId == concepto.MatrizId;
 
-            if (!forceReload && mismaFila && mismoConcepto && mismaMatriz && _matrizActual != null)
+            if (!forceReload
+                && !_cabeceraEdicionBloqueadaPorResultadoIncierto
+                && mismaFila
+                && mismoConcepto
+                && mismaMatriz
+                && _matrizActual != null)
             {
                 ActualizarInfoConcepto(concepto);
                 ActualizarNavegacion();
@@ -778,13 +1156,24 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             }
 
             // Cargar la matriz FRESCA desde BD solo cuando realmente cambia el concepto/matriz
-            _matrizActual = CargarMatrizConComponentes(concepto.MatrizId.Value, true);
+            var matriz = CargarMatrizConComponentes(concepto.MatrizId.Value, true);
 
-            if (_matrizActual == null)
+            if (matriz == null)
             {
                 MostrarSinSeleccion("No se pudo cargar la APU asociada", "La fila apunta a una matriz inexistente o no disponible.");
                 return false;
             }
+
+            _matrizActual = matriz;
+
+            // Con un resultado incierto pendiente, la carga normal del contexto
+            // compartido NO es prueba de reconciliación: el helper exige la lectura
+            // nueva por factory y sincroniza la cabecera antes de liberar.
+            if (!IntentarReconciliarCabeceraBloqueada(
+                    concepto.MatrizId.Value,
+                    matriz,
+                    () => MostrarMatriz(matriz, concepto)))
+                return false;
 
             // Recarga fresca desde la base: libera el bloqueo de la ruta de comando.
             LiberarBloqueoEdicionCantidadComponente();
@@ -793,7 +1182,6 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _ultimoConceptoId = concepto.Id;
             _ultimaMatrizId = concepto.MatrizId;
 
-            MostrarMatriz(_matrizActual, concepto);
             ActualizarNavegacion();
 
             return _matrizActual != null && _matrizActual.Id == concepto.MatrizId.Value;
@@ -859,6 +1247,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _lblInfoMatriz.Text   = info;
             _panelBotonesAgregar.Enabled = false;
             MostrarDatosCabecera(false);
+            _btnNuevaMatriz.Visible = false;
             _dgvComponentes.Rows.Clear();
             _lblMat.Text = "Mat: —"; _lblMO.Text = "M.O.: —";
             _lblMaq.Text = "Maq.: —"; _lblBas.Text = "Bas.: —";
@@ -1198,7 +1587,26 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
         private void BtnAnterior_Click(object sender, EventArgs e)  { int f = FilaConceptoAnterior();  if (f >= 0) NavegerAFila(f); }
         private void BtnSiguiente_Click(object sender, EventArgs e) { int f = FilaConceptoSiguiente(); if (f >= 0) NavegerAFila(f); }
 
-        public void BeginCreateMatrix(TipoMatriz tipo, Action<Matriz>? onSaved = null, Action? onCancelled = null)
+        private void BtnNuevaMatrizAcceso_Click(object sender, EventArgs e)
+        {
+            SolicitudNuevaMatriz?.Invoke(this, EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// Muestra u oculta la acción primaria "Nueva matriz" del header. Se usa para el
+        /// contexto "concepto sin APU asignada" del presupuesto: es la única vía de
+        /// creación visible en la vista de matrices.
+        /// </summary>
+        internal void MostrarAccesoNuevaMatriz(bool visible)
+        {
+            if (_btnNuevaMatriz == null) return;
+            if (visible && (_modoCreacionMatriz || _modoEdicionCabecera || _modoSubedicionComponente))
+                return;
+            _btnNuevaMatriz.Enabled = true;
+            _btnNuevaMatriz.Visible = visible;
+        }
+
+        public void BeginCreateMatrix(TipoMatriz tipo, Action<Matriz>? onSaved = null, Action? onCancelled = null, bool soloApu = false)
         {
             _modoCreacionMatriz = true;
             _modoEdicionCabecera = true;
@@ -1215,6 +1623,11 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _rbTipoApu.Checked = tipo == TipoMatriz.APU;
             _rbTipoBasico.Checked = tipo == TipoMatriz.Basico;
             _rbTipoCuadrilla.Checked = tipo == TipoMatriz.Cuadrilla;
+            // El comando de asignación del presupuesto solo admite APU: cuando la
+            // creación nace de la asignación, los demás tipos no deben poder elegirse
+            // para no crear una matriz que luego no se pueda asignar.
+            _rbTipoBasico.Enabled = !soloApu;
+            _rbTipoCuadrilla.Enabled = !soloApu;
             _lblTituloMatriz.Text = tipo == TipoMatriz.Cuadrilla ? "Nueva cuadrilla" : (tipo == TipoMatriz.Basico ? "Nueva matriz básica" : "Nueva APU");
             _lblInfoMatriz.Text = "Captura los datos generales y agrega componentes. Guarda la matriz al finalizar.";
             _lblMat.Text = "Mat: 0.00"; _lblMO.Text = "M.O.: 0.00"; _lblMaq.Text = "Maq.: 0.00"; _lblBas.Text = "Bas.: 0.00"; _lblDir.Text = "Costo Directo: 0.00";
@@ -1224,29 +1637,127 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
         }
 
         public void BeginEditMatrix(int matrizId, Action<Matriz>? onSaved = null, Action? onCancelled = null)
+            => IntentarBeginEditMatrix(matrizId, onSaved, onCancelled);
+
+        /// <summary>
+        /// Reabre la edición de cabecera. Si hay un resultado incierto bloqueando el
+        /// panel, NO se libera por el simple F2/reapertura: primero se lee la
+        /// cabecera con un contexto NUEVO y sin seguimiento; solo si existe, pertenece
+        /// al proyecto y se puede sincronizar con la instancia compartida se libera el
+        /// bloqueo. Así una identidad stale del contexto compartido no habilita un
+        /// reintento sobre valores viejos. Si la lectura falla o no coincide, el
+        /// bloqueo se mantiene y la edición queda deshabilitada.
+        /// </summary>
+        private bool IntentarBeginEditMatrix(int matrizId, Action<Matriz>? onSaved, Action? onCancelled)
         {
             var matriz = CargarMatrizConComponentes(matrizId, false);
-            if (matriz == null) return;
+            if (matriz == null)
+            {
+                if (_cabeceraEdicionBloqueadaPorResultadoIncierto)
+                {
+                    BloquearCabeceraNoReconciliada(
+                        "No se pudo reconciliar la cabecera: la matriz ya no está disponible en la base. " +
+                        "Recargue el presupuesto antes de reintentar.");
+                }
+                return false;
+            }
 
+            void AplicarEdicion()
+            {
+                _subedicionCabeceraConfirmadaPorComando = false;
+                _huboEdicionEnSubedicion = false;
+                _subedicionSoloCantidadConfirmada = false;
+                _modoCreacionMatriz = false;
+                _modoEdicionCabecera = true;
+                _matrizEditandoId = matrizId;
+                _onMatrixHeaderSaved = onSaved;
+                _onMatrixHeaderCancelled = onCancelled;
+                _componentesTemp.Clear();
+                _matrizActual = matriz;
+                _txtClaveMatriz.Text = matriz.Clave ?? string.Empty;
+                _txtDescripcionMatriz.Text = matriz.Descripcion ?? string.Empty;
+                _txtUnidadMatriz.Text = matriz.Unidad ?? string.Empty;
+                _rbTipoApu.Checked = matriz.Tipo == TipoMatriz.APU;
+                _rbTipoBasico.Checked = matriz.Tipo == TipoMatriz.Basico;
+                _rbTipoCuadrilla.Checked = matriz.Tipo == TipoMatriz.Cuadrilla;
+                // La restricción de tipo es exclusiva de la creación por asignación:
+                // editar una matriz existente vuelve a habilitar todos los tipos.
+                _rbTipoBasico.Enabled = true;
+                _rbTipoCuadrilla.Enabled = true;
+                MostrarDatosCabecera(true);
+                MostrarMatriz(matriz, null);
+                _panelBotonesAgregar.Enabled = true;
+                _txtClaveMatriz.Focus();
+            }
+
+            if (!IntentarReconciliarCabeceraBloqueada(matrizId, matriz, AplicarEdicion))
+                return false;
+
+            return true;
+        }
+
+        private Matriz? LeerCabeceraFrescaParaReconciliar(int matrizId)
+        {
+            try
+            {
+                using var contextoFresco = _factoryComando.Create(_context.DatabasePath);
+                var matriz = contextoFresco.Matrices
+                    .AsNoTracking()
+                    .FirstOrDefault(m => m.Id == matrizId);
+
+                if (matriz == null || matriz.ProyectoId != _proyectoId)
+                    return null;
+
+                return matriz;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"PanelMatricesEmbebido.LeerCabeceraFrescaParaReconciliar: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Copia SOLO los campos de cabecera confirmados por la lectura fresca sobre
+        /// la instancia tracked que se va a mostrar y sincroniza sus OriginalValues.
+        /// No limpia el tracker ni revierte cambios ajenos de otras propiedades.
+        /// </summary>
+        private void SincronizarCabeceraDesdeLecturaFresca(Matriz tracked, Matriz fresca)
+        {
+            var entrada = _context.Entry(tracked);
+            tracked.Clave = fresca.Clave;
+            tracked.Descripcion = fresca.Descripcion;
+            tracked.Unidad = fresca.Unidad;
+            tracked.Tipo = fresca.Tipo;
+            tracked.FechaModificacion = fresca.FechaModificacion;
+
+            if (entrada.State == EntityState.Added || entrada.State == EntityState.Detached)
+                return;
+
+            entrada.Property(m => m.Clave).OriginalValue = fresca.Clave;
+            entrada.Property(m => m.Descripcion).OriginalValue = fresca.Descripcion;
+            entrada.Property(m => m.Unidad).OriginalValue = fresca.Unidad;
+            entrada.Property(m => m.Tipo).OriginalValue = fresca.Tipo;
+            entrada.Property(m => m.FechaModificacion).OriginalValue = fresca.FechaModificacion;
+        }
+
+        private void BloquearCabeceraNoReconciliada(string mensaje)
+        {
+            UltimaRazonSinDespacharCabecera = "No se pudo reconciliar la cabecera";
+            MostrarAvisoCabeceraMatriz("Matriz", mensaje, MessageBoxIcon.Warning);
+            _modoCreacionMatriz = false;
+            _modoEdicionCabecera = false;
+            _modoSubedicionComponente = false;
+            _matrizPadreIdSubedicion = null;
+            _filaPadreSubedicion = null;
             _huboEdicionEnSubedicion = false;
             _subedicionSoloCantidadConfirmada = false;
-            _modoCreacionMatriz = false;
-            _modoEdicionCabecera = true;
-            _matrizEditandoId = matrizId;
-            _onMatrixHeaderSaved = onSaved;
-            _onMatrixHeaderCancelled = onCancelled;
-            _componentesTemp.Clear();
-            _matrizActual = matriz;
-            _txtClaveMatriz.Text = matriz.Clave ?? string.Empty;
-            _txtDescripcionMatriz.Text = matriz.Descripcion ?? string.Empty;
-            _txtUnidadMatriz.Text = matriz.Unidad ?? string.Empty;
-            _rbTipoApu.Checked = matriz.Tipo == TipoMatriz.APU;
-            _rbTipoBasico.Checked = matriz.Tipo == TipoMatriz.Basico;
-            _rbTipoCuadrilla.Checked = matriz.Tipo == TipoMatriz.Cuadrilla;
-            MostrarDatosCabecera(true);
-            MostrarMatriz(matriz, null);
-            _panelBotonesAgregar.Enabled = true;
-            _txtClaveMatriz.Focus();
+            _subedicionCabeceraConfirmadaPorComando = false;
+            _matrizEditandoId = null;
+            _onMatrixHeaderSaved = null;
+            _onMatrixHeaderCancelled = null;
+            MostrarSinSeleccion("No se pudo reconciliar la cabecera", mensaje);
         }
 
         private void MostrarDatosCabecera(bool visible)
@@ -1254,6 +1765,9 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _panelDatos.Visible = visible;
             _btnGuardarMatriz.Visible = visible;
             _btnCancelarMatriz.Visible = visible;
+            // En edición/creación el acceso de creación queda fuera de circulación:
+            // Guardar/Cancelar son el par de acciones de ese estado.
+            if (visible) _btnNuevaMatriz.Visible = false;
         }
 
         private TipoMatriz GetTipoCabeceraSeleccionado()
@@ -1326,26 +1840,18 @@ private async void BtnGuardarMatriz_Click(object sender, EventArgs e)
             return;
         }
 
-        Matriz matrizEdit = _context.Matrices.Include(m => m.Componentes).ThenInclude(c => c.Material)
-            .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
-            .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
-            .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
-            .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
-            .FirstOrDefault(m => m.Id == _matrizEditandoId.Value);
-        if (matrizEdit == null) return;
-        matrizEdit.Clave = clave;
-        matrizEdit.Descripcion = descripcion;
-        matrizEdit.Unidad = unidad;
-        matrizEdit.Tipo = GetTipoCabeceraSeleccionado();
-        matrizEdit.FechaModificacion = DateTime.Now;
-        _context.SaveChanges();
+            if (!GuardarCabeceraEdicionActual())
+                return;
 
-        _matrizActual = matrizEdit;
-        _panelBotonesAgregar.Enabled = true;
-        MostrarDatosCabecera(true);
-        MostrarMatriz(matrizEdit, null);
-        _onMatrixHeaderSaved?.Invoke(matrizEdit);
-    }
+            _panelBotonesAgregar.Enabled = true;
+            MostrarDatosCabecera(true);
+
+            if (_matrizActual != null)
+            {
+                MostrarMatriz(_matrizActual, null);
+                _onMatrixHeaderSaved?.Invoke(_matrizActual);
+            }
+        }
     catch (Exception ex)
     {
         MessageBox.Show($"Error al guardar la matriz: {ex.Message}", "Matriz", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -1364,11 +1870,11 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
             _panelDatos.SuspendLayout();
             try
             {
+                bool teniaMatriz = _matrizActual != null;
                 _modoCreacionMatriz = false;
                 _modoEdicionCabecera = false;
-                _onMatrixHeaderCancelled?.Invoke();
 
-                if (_matrizActual != null)
+                if (teniaMatriz)
                 {
                     MostrarMatriz(_matrizActual, null);
                 }
@@ -1377,6 +1883,12 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
                     MostrarDatosCabecera(false);
                     MostrarSinSeleccion();
                 }
+
+                // El callback se invoca después de restaurar la vista del panel: los
+                // llamadores (selector APU, workspace del presupuesto) devuelven la
+                // superficie previa o reponen el estado del concepto sin surtir
+                // efecto sobre un panel aún en modo de edición.
+                _onMatrixHeaderCancelled?.Invoke();
             }
             finally
             {

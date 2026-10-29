@@ -1,477 +1,138 @@
+using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
-using SOPRO.Data.Context;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace SOPRO.WinForms.Helpers
 {
+    /// <summary>
+    /// Fábrica PURA de las definiciones de columna predeterminadas del presupuesto.
+    /// No conoce contextos ni escribe: entrega DTOs disconnected que el formulario
+    /// envía al servicio de Application antes de pintar el grid.
+    /// </summary>
     public static class ColumnasPresupuestoHelper
     {
-
         /// <summary>
-        /// Crea las columnas predeterminadas para un proyecto nuevo
+        /// 23 columnas predeterminadas: las 7 base visibles, las 16 adicionales
+        /// ocultas y las 23 con su orden canónico (-7..16).
         /// </summary>
-        public static void CrearColumnasPredeterminadas(SOPROContext context, int proyectoId)
+        public static IReadOnlyList<BudgetColumnDefinitionDto> CrearDefinicionesPredeterminadas()
         {
-            var columnas = new[]
+            return new List<BudgetColumnDefinitionDto>
             {
                 // ============================================
                 // COLUMNAS BASE DEL SISTEMA (siempre visibles)
                 // ============================================
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Tipo",
-                    NombreInterno = "Tipo",
-                    TipoColumna = TipoColumnaPersonalizada.Personal,
-                    TipoDato = TipoDatoColumna.Texto,
-                    AnchoColumna = 120,
-                    Visible = true,
-                    Orden = -7,
-                    Alineacion = AlineacionColumna.Centro,
-                    Formula = string.Empty,
-                    FormatoNumerico = string.Empty,
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Clave",
-                    NombreInterno = "Clave",
-                    TipoColumna = TipoColumnaPersonalizada.Personal,
-                    TipoDato = TipoDatoColumna.Texto,
-                    AnchoColumna = 100,
-                    Visible = true,
-                    Orden = -6,
-                    Alineacion = AlineacionColumna.Izquierda,
-                    Formula = string.Empty,
-                    FormatoNumerico = string.Empty,
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Descripción",
-                    NombreInterno = "Descripcion",
-                    TipoColumna = TipoColumnaPersonalizada.Personal,
-                    TipoDato = TipoDatoColumna.Texto,
-                    AnchoColumna = 300,
-                    Visible = true,
-                    Orden = -5,
-                    Alineacion = AlineacionColumna.Izquierda,
-                    Formula = string.Empty,
-                    FormatoNumerico = string.Empty,
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Unidad",
-                    NombreInterno = "Unidad",
-                    TipoColumna = TipoColumnaPersonalizada.Personal,
-                    TipoDato = TipoDatoColumna.Texto,
-                    AnchoColumna = 80,
-                    Visible = true,
-                    Orden = -4,
-                    Alineacion = AlineacionColumna.Centro,
-                    Formula = string.Empty,
-                    FormatoNumerico = string.Empty,
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Cantidad",
-                    NombreInterno = "Cantidad",
-                    TipoColumna = TipoColumnaPersonalizada.Personal,
-                    TipoDato = TipoDatoColumna.Numerico,
-                    AnchoColumna = 100,
-                    Visible = true,
-                    Orden = -3,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = string.Empty,
-                    FormatoNumerico = "N2",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "P.U.",
-                    NombreInterno = "PrecioUnitario",
-                    TipoColumna = TipoColumnaPersonalizada.Calculada,
-                    TipoDato = TipoDatoColumna.Moneda,
-                    AnchoColumna = 120,
-                    Visible = true,
-                    Orden = -2,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = "CostoDirectoUnitario",
-                    FormatoNumerico = "C4",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Importe",
-                    NombreInterno = "Importe",
-                    TipoColumna = TipoColumnaPersonalizada.Calculada,
-                    TipoDato = TipoDatoColumna.Moneda,
-                    AnchoColumna = 140,
-                    Visible = true,
-                    Orden = -1,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = "Cantidad * CostoDirectoUnitario",
-                    FormatoNumerico = "C2",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                
+                Columna("Tipo", "Tipo", TipoColumnaPersonalizada.Personal, TipoDatoColumna.Texto,
+                    ancho: 120, visible: true, orden: -7, alineacion: AlineacionColumna.Centro),
+                Columna("Clave", "Clave", TipoColumnaPersonalizada.Personal, TipoDatoColumna.Texto,
+                    ancho: 100, visible: true, orden: -6, alineacion: AlineacionColumna.Izquierda),
+                Columna("Descripción", "Descripcion", TipoColumnaPersonalizada.Personal, TipoDatoColumna.Texto,
+                    ancho: 300, visible: true, orden: -5, alineacion: AlineacionColumna.Izquierda),
+                Columna("Unidad", "Unidad", TipoColumnaPersonalizada.Personal, TipoDatoColumna.Texto,
+                    ancho: 80, visible: true, orden: -4, alineacion: AlineacionColumna.Centro),
+                Columna("Cantidad", "Cantidad", TipoColumnaPersonalizada.Personal, TipoDatoColumna.Numerico,
+                    ancho: 100, visible: true, orden: -3, alineacion: AlineacionColumna.Derecha,
+                    formatoNumerico: "N2"),
+                Columna("P.U.", "PrecioUnitario", TipoColumnaPersonalizada.Calculada, TipoDatoColumna.Moneda,
+                    ancho: 120, visible: true, orden: -2, alineacion: AlineacionColumna.Derecha,
+                    formula: "CostoDirectoUnitario", formatoNumerico: "C4"),
+                Columna("Importe", "Importe", TipoColumnaPersonalizada.Calculada, TipoDatoColumna.Moneda,
+                    ancho: 140, visible: true, orden: -1, alineacion: AlineacionColumna.Derecha,
+                    formula: "Cantidad * CostoDirectoUnitario", formatoNumerico: "C2"),
+
                 // ============================================
                 // COLUMNAS ADICIONALES (ocultas por defecto)
                 // ============================================
-                // Costos Indirectos
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "% Indirectos",
-                    NombreInterno = "PorcentajeIndirectos",
-                    TipoColumna = TipoColumnaPersonalizada.Personal,
-                    TipoDato = TipoDatoColumna.Porcentaje,
-                    AnchoColumna = 90,
-                    Visible = false,
-                    Orden = 1,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = string.Empty,
-                    FormatoNumerico = "0.00",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Indirectos",
-                    NombreInterno = "Indirectos",
-                    TipoColumna = TipoColumnaPersonalizada.Calculada,
-                    TipoDato = TipoDatoColumna.Moneda,
-                    AnchoColumna = 110,
-                    Visible = false,
-                    Orden = 2,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = "CostoDirecto * (PorcentajeIndirectos / 100)",
-                    FormatoNumerico = "C2",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                
-                // Financiamiento
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "% Financiamiento",
-                    NombreInterno = "PorcentajeFinanciamiento",
-                    TipoColumna = TipoColumnaPersonalizada.Personal,
-                    TipoDato = TipoDatoColumna.Porcentaje,
-                    AnchoColumna = 110,
-                    Visible = false,
-                    Orden = 3,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = string.Empty,
-                    FormatoNumerico = "0.00",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Financiamiento",
-                    NombreInterno = "Financiamiento",
-                    TipoColumna = TipoColumnaPersonalizada.Calculada,
-                    TipoDato = TipoDatoColumna.Moneda,
-                    AnchoColumna = 110,
-                    Visible = false,
-                    Orden = 4,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = "(CostoDirecto + Indirectos) * (PorcentajeFinanciamiento / 100)",
-                    FormatoNumerico = "C2",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                
-                // Utilidad
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "% Utilidad",
-                    NombreInterno = "PorcentajeUtilidad",
-                    TipoColumna = TipoColumnaPersonalizada.Personal,
-                    TipoDato = TipoDatoColumna.Porcentaje,
-                    AnchoColumna = 90,
-                    Visible = false,
-                    Orden = 5,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = string.Empty,
-                    FormatoNumerico = "0.00",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Utilidad",
-                    NombreInterno = "Utilidad",
-                    TipoColumna = TipoColumnaPersonalizada.Calculada,
-                    TipoDato = TipoDatoColumna.Moneda,
-                    AnchoColumna = 110,
-                    Visible = false,
-                    Orden = 6,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = "(CostoDirecto + Indirectos + Financiamiento) * (PorcentajeUtilidad / 100)",
-                    FormatoNumerico = "C2",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                
-                // Cargos Adicionales
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Cargos Adicionales",
-                    NombreInterno = "CargosAdicionales",
-                    TipoColumna = TipoColumnaPersonalizada.Personal,
-                    TipoDato = TipoDatoColumna.Moneda,
-                    AnchoColumna = 130,
-                    Visible = false,
-                    Orden = 7,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = string.Empty,
-                    FormatoNumerico = "C2",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                
-                // Precio Unitario (con sobrecostos)
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "P.U. Final",
-                    NombreInterno = "PrecioUnitarioFinal",
-                    TipoColumna = TipoColumnaPersonalizada.Calculada,
-                    TipoDato = TipoDatoColumna.Moneda,
-                    AnchoColumna = 120,
-                    Visible = false,
-                    Orden = 8,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = "CostoDirecto + Indirectos + Financiamiento + Utilidad + CargosAdicionales",
-                    FormatoNumerico = "C4",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                
-                // Subtotal (sin IVA)
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Subtotal",
-                    NombreInterno = "Subtotal",
-                    TipoColumna = TipoColumnaPersonalizada.Calculada,
-                    TipoDato = TipoDatoColumna.Moneda,
-                    AnchoColumna = 120,
-                    Visible = false,
-                    Orden = 9,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = "Cantidad * PrecioUnitarioFinal",
-                    FormatoNumerico = "C2",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                
-                // IVA
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "IVA",
-                    NombreInterno = "IVA",
-                    TipoColumna = TipoColumnaPersonalizada.Calculada,
-                    TipoDato = TipoDatoColumna.Moneda,
-                    AnchoColumna = 110,
-                    Visible = false,
-                    Orden = 10,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = "Subtotal * 0.16",
-                    FormatoNumerico = "C2",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                
-                // Total Final
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Total",
-                    NombreInterno = "Total",
-                    TipoColumna = TipoColumnaPersonalizada.Calculada,
-                    TipoDato = TipoDatoColumna.Moneda,
-                    AnchoColumna = 130,
-                    Visible = false,
-                    Orden = 11,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = "Subtotal + IVA",
-                    FormatoNumerico = "C2",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                
-                // Otras columnas útiles
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Incidencia %",
-                    NombreInterno = "IncidenciaPorcentaje",
-                    TipoColumna = TipoColumnaPersonalizada.Calculada,
-                    TipoDato = TipoDatoColumna.Porcentaje,
-                    AnchoColumna = 100,
-                    Visible = false,
-                    Orden = 12,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = "(Importe / TotalPresupuesto) * 100",
-                    FormatoNumerico = "0.00",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Observaciones",
-                    NombreInterno = "Observaciones",
-                    TipoColumna = TipoColumnaPersonalizada.Personal,
-                    TipoDato = TipoDatoColumna.Texto,
-                    AnchoColumna = 200,
-                    Visible = false,
-                    Orden = 13,
-                    Alineacion = AlineacionColumna.Izquierda,
-                    Formula = string.Empty,
-                    FormatoNumerico = string.Empty,
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                
-                // Importe de Mano de Obra
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Importe M.O.",
-                    NombreInterno = "ImporteManoObra",
-                    TipoColumna = TipoColumnaPersonalizada.Calculada,
-                    TipoDato = TipoDatoColumna.Moneda,
-                    AnchoColumna = 120,
-                    Visible = false,
-                    Orden = 14,
-                    Alineacion = AlineacionColumna.Derecha,
-                    Formula = "ImporteManoObraAPU * Cantidad",
-                    FormatoNumerico = "C2",
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                
-                // P.U. en Letra
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "P.U. en Letra",
-                    NombreInterno = "PrecioUnitarioLetra",
-                    TipoColumna = TipoColumnaPersonalizada.Calculada,
-                    TipoDato = TipoDatoColumna.Texto,
-                    AnchoColumna = 250,
-                    Visible = false,
-                    Orden = 15,
-                    Alineacion = AlineacionColumna.Izquierda,
-                    Formula = "NumeroALetra(PrecioUnitarioFinal)",
-                    FormatoNumerico = string.Empty,
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                },
-                
-                // Total en Letra
-                new ColumnaPersonalizada
-                {
-                    ProyectoId = proyectoId,
-                    Nombre = "Total en Letra",
-                    NombreInterno = "TotalLetra",
-                    TipoColumna = TipoColumnaPersonalizada.Calculada,
-                    TipoDato = TipoDatoColumna.Texto,
-                    AnchoColumna = 300,
-                    Visible = false,
-                    Orden = 16,
-                    Alineacion = AlineacionColumna.Izquierda,
-                    Formula = "NumeroALetra(Total)",
-                    FormatoNumerico = string.Empty,
-                    FormatoFecha = string.Empty,
-                    CondicionTotalizacion = string.Empty
-                }
+                Columna("% Indirectos", "PorcentajeIndirectos", TipoColumnaPersonalizada.Personal, TipoDatoColumna.Porcentaje,
+                    ancho: 90, visible: false, orden: 1, alineacion: AlineacionColumna.Derecha,
+                    formatoNumerico: "0.00"),
+                Columna("Indirectos", "Indirectos", TipoColumnaPersonalizada.Calculada, TipoDatoColumna.Moneda,
+                    ancho: 110, visible: false, orden: 2, alineacion: AlineacionColumna.Derecha,
+                    formula: "CostoDirecto * (PorcentajeIndirectos / 100)", formatoNumerico: "C2"),
+                Columna("% Financiamiento", "PorcentajeFinanciamiento", TipoColumnaPersonalizada.Personal, TipoDatoColumna.Porcentaje,
+                    ancho: 110, visible: false, orden: 3, alineacion: AlineacionColumna.Derecha,
+                    formatoNumerico: "0.00"),
+                Columna("Financiamiento", "Financiamiento", TipoColumnaPersonalizada.Calculada, TipoDatoColumna.Moneda,
+                    ancho: 110, visible: false, orden: 4, alineacion: AlineacionColumna.Derecha,
+                    formula: "(CostoDirecto + Indirectos) * (PorcentajeFinanciamiento / 100)", formatoNumerico: "C2"),
+                Columna("% Utilidad", "PorcentajeUtilidad", TipoColumnaPersonalizada.Personal, TipoDatoColumna.Porcentaje,
+                    ancho: 90, visible: false, orden: 5, alineacion: AlineacionColumna.Derecha,
+                    formatoNumerico: "0.00"),
+                Columna("Utilidad", "Utilidad", TipoColumnaPersonalizada.Calculada, TipoDatoColumna.Moneda,
+                    ancho: 110, visible: false, orden: 6, alineacion: AlineacionColumna.Derecha,
+                    formula: "(CostoDirecto + Indirectos + Financiamiento) * (PorcentajeUtilidad / 100)", formatoNumerico: "C2"),
+                Columna("Cargos Adicionales", "CargosAdicionales", TipoColumnaPersonalizada.Personal, TipoDatoColumna.Moneda,
+                    ancho: 130, visible: false, orden: 7, alineacion: AlineacionColumna.Derecha,
+                    formatoNumerico: "C2"),
+                Columna("P.U. Final", "PrecioUnitarioFinal", TipoColumnaPersonalizada.Calculada, TipoDatoColumna.Moneda,
+                    ancho: 120, visible: false, orden: 8, alineacion: AlineacionColumna.Derecha,
+                    formula: "CostoDirecto + Indirectos + Financiamiento + Utilidad + CargosAdicionales", formatoNumerico: "C4"),
+                Columna("Subtotal", "Subtotal", TipoColumnaPersonalizada.Calculada, TipoDatoColumna.Moneda,
+                    ancho: 120, visible: false, orden: 9, alineacion: AlineacionColumna.Derecha,
+                    formula: "Cantidad * PrecioUnitarioFinal", formatoNumerico: "C2"),
+                Columna("IVA", "IVA", TipoColumnaPersonalizada.Calculada, TipoDatoColumna.Moneda,
+                    ancho: 110, visible: false, orden: 10, alineacion: AlineacionColumna.Derecha,
+                    formula: "Subtotal * 0.16", formatoNumerico: "C2"),
+                Columna("Total", "Total", TipoColumnaPersonalizada.Calculada, TipoDatoColumna.Moneda,
+                    ancho: 130, visible: false, orden: 11, alineacion: AlineacionColumna.Derecha,
+                    formula: "Subtotal + IVA", formatoNumerico: "C2"),
+                Columna("Incidencia %", "IncidenciaPorcentaje", TipoColumnaPersonalizada.Calculada, TipoDatoColumna.Porcentaje,
+                    ancho: 100, visible: false, orden: 12, alineacion: AlineacionColumna.Derecha,
+                    formula: "(Importe / TotalPresupuesto) * 100", formatoNumerico: "0.00"),
+                Columna("Observaciones", "Observaciones", TipoColumnaPersonalizada.Personal, TipoDatoColumna.Texto,
+                    ancho: 200, visible: false, orden: 13, alineacion: AlineacionColumna.Izquierda),
+                Columna("Importe M.O.", "ImporteManoObra", TipoColumnaPersonalizada.Calculada, TipoDatoColumna.Moneda,
+                    ancho: 120, visible: false, orden: 14, alineacion: AlineacionColumna.Derecha,
+                    formula: "ImporteManoObraAPU * Cantidad", formatoNumerico: "C2"),
+                Columna("P.U. en Letra", "PrecioUnitarioLetra", TipoColumnaPersonalizada.Calculada, TipoDatoColumna.Texto,
+                    ancho: 250, visible: false, orden: 15, alineacion: AlineacionColumna.Izquierda,
+                    formula: "NumeroALetra(PrecioUnitarioFinal)"),
+                Columna("Total en Letra", "TotalLetra", TipoColumnaPersonalizada.Calculada, TipoDatoColumna.Texto,
+                    ancho: 300, visible: false, orden: 16, alineacion: AlineacionColumna.Izquierda,
+                    formula: "NumeroALetra(Total)")
             };
-            
-            var existentes = context.ColumnasPersonalizadas
-                .Where(c => c.ProyectoId == proyectoId)
-                .ToList();
+        }
 
-            if (existentes.Count > 0)
+        /// <summary>Definición disconnected para el alta de una columna personal.</summary>
+        public static BudgetColumnDefinitionDto CrearDefinicionPersonal(string nombre)
+        {
+            return new BudgetColumnDefinitionDto
             {
-                var oficiales = new HashSet<string>(
-                    columnas.Select(c => c.NombreInterno),
-                    StringComparer.OrdinalIgnoreCase);
+                Nombre = nombre ?? string.Empty,
+                NombreInterno = string.Empty,
+                TipoColumna = TipoColumnaPersonalizada.Personal,
+                TipoDato = TipoDatoColumna.Texto,
+                AnchoColumna = 100,
+                Visible = true
+            };
+        }
 
-                if (EsSetInicialLegacyPresupuesto(existentes))
-                {
-                    context.ColumnasPersonalizadas.RemoveRange(existentes);
-                    context.SaveChanges();
-                    existentes.Clear();
-                }
-                else
-                {
-                    var extrasLegacy = existentes
-                        .Where(c => !oficiales.Contains(c.NombreInterno ?? string.Empty))
-                        .Where(c => EsColumnaLegacyNoOficial(c.NombreInterno))
-                        .ToList();
-
-                    bool soloTieneExtrasLegacyNoOficiales = extrasLegacy.Count > 0
-                        && existentes.All(c => oficiales.Contains(c.NombreInterno ?? string.Empty)
-                            || EsColumnaLegacyNoOficial(c.NombreInterno));
-
-                    if (soloTieneExtrasLegacyNoOficiales)
-                    {
-                        context.ColumnasPersonalizadas.RemoveRange(extrasLegacy);
-                        context.SaveChanges();
-                        existentes = context.ColumnasPersonalizadas
-                            .Where(c => c.ProyectoId == proyectoId)
-                            .ToList();
-                    }
-
-                    var existentesPorNombre = new HashSet<string>(
-                        existentes.Select(c => c.NombreInterno ?? string.Empty),
-                        StringComparer.OrdinalIgnoreCase);
-
-                    var faltantes = columnas
-                        .Where(c => !existentesPorNombre.Contains(c.NombreInterno ?? string.Empty))
-                        .ToList();
-
-                    if (faltantes.Count == 0)
-                        return;
-
-                    context.ColumnasPersonalizadas.AddRange(faltantes);
-                    context.SaveChanges();
-                    return;
-                }
-            }
-
-            context.ColumnasPersonalizadas.AddRange(columnas);
-            context.SaveChanges();
+        private static BudgetColumnDefinitionDto Columna(
+            string nombre,
+            string nombreInterno,
+            TipoColumnaPersonalizada tipoColumna,
+            TipoDatoColumna tipoDato,
+            int ancho,
+            bool visible,
+            int orden,
+            AlineacionColumna alineacion,
+            string formula = "",
+            string formatoNumerico = "")
+        {
+            return new BudgetColumnDefinitionDto
+            {
+                Nombre = nombre,
+                NombreInterno = nombreInterno,
+                TipoColumna = tipoColumna,
+                TipoDato = tipoDato,
+                AnchoColumna = ancho,
+                Visible = visible,
+                Orden = orden,
+                Alineacion = alineacion,
+                Formula = formula,
+                FormatoNumerico = formatoNumerico
+            };
         }
 
         /// <summary>
@@ -486,41 +147,6 @@ namespace SOPRO.WinForms.Helpers
                 || string.Equals(nombreInterno, "PorcentajeFinanciamiento", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(nombreInterno, "PorcentajeUtilidad", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(nombreInterno, "CargosAdicionales", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool EsSetInicialLegacyPresupuesto(List<ColumnaPersonalizada> existentes)
-        {
-            if (existentes.Count != 17)
-                return false;
-
-            var legacy = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "Tipo",
-                "Clave",
-                "Descripcion",
-                "Unidad",
-                "Cantidad",
-                "PrecioUnitario",
-                "Importe",
-                "PorcentajeIndirectos",
-                "Indirectos",
-                "PorcentajeFinanciamiento",
-                "Financiamiento",
-                "PorcentajeUtilidad",
-                "Utilidad",
-                "PorcentajeCargosAdicionales",
-                "CargosAdicionales",
-                "PrecioUnitarioFinal",
-                "ImporteFinal"
-            };
-
-            return existentes.All(c => legacy.Contains(c.NombreInterno ?? string.Empty));
-        }
-
-        private static bool EsColumnaLegacyNoOficial(string? nombreInterno)
-        {
-            return string.Equals(nombreInterno, "PorcentajeCargosAdicionales", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(nombreInterno, "ImporteFinal", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

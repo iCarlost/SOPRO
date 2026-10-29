@@ -8,6 +8,7 @@ using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 using SOPRO.WinForms.Forms;
 using SOPRO.WinForms.Helpers;
 
@@ -331,22 +332,26 @@ public class FormPresupuestoAsignacionMatrizComandoTests
 
             CrearTriggerDeFallo(dbPath);
 
-            Assert.IsTrue(form.TryApplySelectedMatrixAssignment(
+            Assert.IsFalse(form.TryApplySelectedMatrixAssignment(
                     fila,
                     escenario.MatrizDestino,
                     7m,
-                    preserveCurrentTexts: true));
+                    preserveCurrentTexts: true),
+                "Un comando no confirmado no se reporta como asignación aplicada.");
 
             Assert.AreEqual(BudgetOperationStatus.Failed, form.UltimoEstadoAsignacionMatriz,
                 "El UPDATE rechazado debe clasificarse como fallo revertido por el comando.");
+            Assert.IsNotNull(form.UltimoDiagnosticoAsignacionMatriz,
+                "El intento no confirmado debe dejar diagnóstico.");
 
-            // El borrador de la selección sigue visible, pero el Tag compartido no se mutó.
+            // Los valores visibles ORIGINALES se conservan: no se pinta el borrador de
+            // la selección (la cantidad propuesta 7 no se escribe en la grilla).
             Assert.AreEqual("1.1", BuscarCelda(grid, fila, "Clave")!.Value?.ToString());
             Assert.AreEqual("Concreto simple en obra",
                 BuscarCelda(grid, fila, "Descripcion")!.Value?.ToString());
             Assert.AreEqual("m3", BuscarCelda(grid, fila, "Unidad")!.Value?.ToString());
-            Assert.AreEqual(7m, Convert.ToDecimal(BuscarCelda(grid, fila, "Cantidad")!.Value),
-                "El borrador de la selección conserva la cantidad propuesta.");
+            Assert.AreEqual(10m, Convert.ToDecimal(BuscarCelda(grid, fila, "Cantidad")!.Value),
+                "La fila conserva la cantidad visible original.");
 
             var tag = (ConceptoPresupuesto)grid.Rows[fila].Tag!;
             Assert.AreEqual(escenario.MatrizOrigen.Id, tag.MatrizId,
@@ -432,22 +437,25 @@ public class FormPresupuestoAsignacionMatrizComandoTests
             // enviarse, pero tampoco ejecutarse el guardado heredado.
             escenario.Proyecto.Descripcion = "cambio pendiente ajeno";
 
-            Assert.IsTrue(form.TryApplySelectedMatrixAssignment(
+            Assert.IsFalse(form.TryApplySelectedMatrixAssignment(
                     fila,
                     escenario.MatrizDestino,
                     7m,
                     preserveCurrentTexts: true),
-                "La fila persistida debe consumirse sin caer a la ruta heredada.");
+                "Sin despacho no hay asignación aplicada: la fila conserva lo visible.");
 
             Assert.IsNull(form.UltimoEstadoAsignacionMatriz,
                 "Sin despacho no hay estado de comando; la distinción queda explícita.");
+            StringAssert.Contains(form.UltimoDiagnosticoAsignacionMatriz ?? string.Empty,
+                "no enviada",
+                "El intento no enviado debe registrar su diagnóstico.");
 
             Assert.AreEqual("1.1", BuscarCelda(grid, fila, "Clave")!.Value?.ToString());
             Assert.AreEqual("Concreto simple en obra",
                 BuscarCelda(grid, fila, "Descripcion")!.Value?.ToString());
             Assert.AreEqual("m3", BuscarCelda(grid, fila, "Unidad")!.Value?.ToString());
-            Assert.AreEqual(7m, Convert.ToDecimal(BuscarCelda(grid, fila, "Cantidad")!.Value),
-                "El borrador de la selección queda visible.");
+            Assert.AreEqual(10m, Convert.ToDecimal(BuscarCelda(grid, fila, "Cantidad")!.Value),
+                "Los valores visibles originales no se sobrescriben con el borrador.");
 
             var tag = (ConceptoPresupuesto)grid.Rows[fila].Tag!;
             Assert.AreEqual(escenario.MatrizOrigen.Id, tag.MatrizId,
@@ -648,21 +656,25 @@ public class FormPresupuestoAsignacionMatrizComandoTests
 
             CrearTriggerDeFalloInsercion(dbPath);
 
-            Assert.IsTrue(form.TryApplySelectedMatrixAssignment(
+            Assert.IsFalse(form.TryApplySelectedMatrixAssignment(
                     filaNueva,
                     escenario.MatrizDestino,
                     7m,
-                    preserveCurrentTexts: false));
+                    preserveCurrentTexts: false),
+                "Un alta no confirmada no se reporta como asignación aplicada.");
 
             Assert.AreEqual(BudgetOperationStatus.Failed, form.UltimoEstadoAsignacionMatriz,
                 "El INSERT rechazado debe clasificarse como fallo revertido.");
+            Assert.IsNotNull(form.UltimoDiagnosticoAsignacionMatriz,
+                "El intento no confirmado debe dejar diagnóstico.");
 
             Assert.IsNull(grid.Rows[filaNueva].Tag,
                 "Un alta fallida conserva la fila como no persistida (Tag null).");
-            Assert.AreEqual("APU-002", BuscarCelda(grid, filaNueva, "Clave")!.Value?.ToString());
-            Assert.AreEqual("Acero de refuerzo",
-                BuscarCelda(grid, filaNueva, "Descripcion")!.Value?.ToString());
-            Assert.AreEqual(7m, Convert.ToDecimal(BuscarCelda(grid, filaNueva, "Cantidad")!.Value));
+            Assert.IsTrue(string.IsNullOrEmpty(BuscarCelda(grid, filaNueva, "Clave")!.Value?.ToString()),
+                "Un alta fallida no pinta un borrador ficticio: la fila conserva sus valores visibles.");
+            Assert.IsTrue(string.IsNullOrEmpty(BuscarCelda(grid, filaNueva, "Descripcion")!.Value?.ToString()));
+            Assert.IsNull(BuscarCelda(grid, filaNueva, "Cantidad")!.Value,
+                "La cantidad visible original de la fila vacía no se sobrescribe.");
             Assert.AreEqual(conceptosIniciales, ContarConceptosEnBase(dbPath, escenario.Proyecto.Id),
                 "El INSERT rechazado no deja la fila nueva.");
             Assert.IsFalse(ctx.ChangeTracker.HasChanges(),
@@ -761,6 +773,108 @@ public class FormPresupuestoAsignacionMatrizComandoTests
             Assert.AreEqual(350m, persistido.ImporteTotal);
             Assert.AreEqual(2, persistido.Orden,
                 "La actualización conserva la posición que le dio el alta por Tipo.");
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void AsignacionMatrizSeleccionada_AltaConResultadoIncierto_BloqueaElReintentoYNoLoReportaComoTrackerSucio()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_selector_new_unknown_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx);
+            int conceptosIniciales = ContarConceptosEnBase(dbPath, escenario.Proyecto.Id);
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"),
+                Path.Combine(root, "local")));
+            var grid = form.GridPrincipal;
+
+            int filaNueva = BuscarFilaVacia(grid);
+            Assert.IsTrue(filaNueva >= 0, "Debe existir una fila vacía para el alta.");
+
+            // 1er intento: el comando confirma el INSERT y el cierre del contexto falla
+            // -> OutcomeUnknown real, sin tocar datos reales.
+            var factoryPrevia = SustituirFactory(form, new DisposeThrowingFactory(dbPath));
+            try
+            {
+                Assert.IsFalse(form.TryApplySelectedMatrixAssignment(
+                        filaNueva,
+                        escenario.MatrizDestino,
+                        7m,
+                        preserveCurrentTexts: false),
+                    "Un resultado incierto no se reporta como asignación aplicada.");
+            }
+            finally
+            {
+                SustituirFactory(form, factoryPrevia);
+            }
+
+            Assert.AreEqual(BudgetOperationStatus.OutcomeUnknown, form.UltimoEstadoAsignacionMatriz,
+                "El alta quedó con resultado incierto.");
+            Assert.AreEqual(conceptosIniciales + 1, ContarConceptosEnBase(dbPath, escenario.Proyecto.Id),
+                "El INSERT se confirmó antes de que fallara el cierre del contexto.");
+            Assert.IsNull(grid.Rows[filaNueva].Tag,
+                "La vista no se pinta con un resultado incierto.");
+
+            // 2º intento sobre la misma fila nueva: la causa del bloqueo es la
+            // incertidumbre previa, no trabajo pendiente en el contexto compartido.
+            Assert.IsFalse(form.TryApplySelectedMatrixAssignment(
+                    filaNueva,
+                    escenario.MatrizDestino,
+                    7m,
+                    preserveCurrentTexts: false),
+                "La alta debe seguir bloqueada hasta reconciliar con la base.");
+
+            Assert.AreEqual(BudgetOperationStatus.OutcomeUnknown, form.UltimoEstadoAsignacionMatriz,
+                "El estado debe seguir reflejando la incertidumbre, no un tracker sucio.");
+
+            string diagnostico = form.UltimoDiagnosticoAsignacionMatriz ?? string.Empty;
+            StringAssert.Contains(diagnostico, "incierto",
+                "El diagnóstico debe decir que la alta anterior tuvo resultado incierto.");
+            StringAssert.Contains(diagnostico, "Reconcilie",
+                "El diagnóstico debe pedir reconciliar antes de reintentar.");
+            Assert.IsFalse(diagnostico.Contains("cambios pendientes", StringComparison.OrdinalIgnoreCase),
+                "El bloqueo NO es por trabajo pendiente en el contexto compartido.");
+
+            Assert.AreEqual(conceptosIniciales + 1, ContarConceptosEnBase(dbPath, escenario.Proyecto.Id),
+                "El reintento bloqueado no envía otra operación ni inserta una segunda fila.");
+            Assert.IsNull(grid.Rows[filaNueva].Tag,
+                "Un intento bloqueado no cambia ni pinta la fila.");
+
+            // Recarga segura: libera el bloqueo (misma ruta que reconciliación de la vista).
+            form.RecargarTrasDialogoColumnas();
+
+            int filaVaciaTrasRecarga = BuscarFilaVacia(grid);
+            Assert.IsTrue(filaVaciaTrasRecarga >= 0,
+                "Tras la recarga debe quedar una fila vacía disponible para el alta.");
+
+            Assert.IsTrue(form.TryApplySelectedMatrixAssignment(
+                    filaVaciaTrasRecarga,
+                    escenario.MatrizDestino,
+                    2m,
+                    preserveCurrentTexts: false),
+                "Tras la recarga segura el alta vuelve a estar disponible.");
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoAsignacionMatriz);
+            Assert.AreEqual(conceptosIniciales + 2, ContarConceptosEnBase(dbPath, escenario.Proyecto.Id));
         }
         finally
         {
@@ -985,6 +1099,52 @@ public class FormPresupuestoAsignacionMatrizComandoTests
                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
            ?? throw new InvalidOperationException(
                $"No se encontró el campo FormatoHelper.{CampoProyectoGlobalFormato}.");
+
+    /// <summary>
+    /// Fábrica de prueba por instancia: el contexto confirma y luego falla al cerrarse,
+    /// lo que produce un OutcomeUnknown REAL (la escritura ya quedó en la base).
+    /// </summary>
+    private sealed class DisposeThrowingFactory : IProjectDbContextFactory
+    {
+        private readonly string _dbPath;
+
+        public DisposeThrowingFactory(string dbPath) => _dbPath = dbPath;
+
+        public SOPROContext Create(string databasePath) => new DisposeThrowingContext(_dbPath);
+
+        public Task<SOPROContext> CreateAsync(string databasePath, CancellationToken cancellationToken = default)
+            => Task.FromResult(Create(databasePath));
+    }
+
+    private sealed class DisposeThrowingContext : SOPROContext
+    {
+        public DisposeThrowingContext(string dbPath)
+            : base(dbPath)
+        {
+        }
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            throw new InvalidOperationException("dispose_simulado_asignacion");
+        }
+    }
+
+    /// <summary>
+    /// Sustituye (y devuelve el previo) la fábrica del formulario para inducir fallos de
+    /// cierre postcommit. Se restaura siempre en el llamador.
+    /// </summary>
+    private static IProjectDbContextFactory SustituirFactory(
+        FormPresupuesto form, IProjectDbContextFactory factory)
+    {
+        var campo = typeof(FormPresupuesto).GetField(
+            "_factory", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("No se encontró el campo _factory.");
+
+        var previo = (IProjectDbContextFactory)campo.GetValue(form)!;
+        campo.SetValue(form, factory);
+        return previo;
+    }
 
     private static void EliminarDirectorio(string root)
     {

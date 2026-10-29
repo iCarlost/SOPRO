@@ -101,10 +101,15 @@ namespace SOPRO.Application.Services
 
         public void EnsureDefaultColumns(SOPROContext context, int projectId)
         {
-            EnsureBudgetColumns(context, projectId);
-            EnsureExplosionColumns(context, projectId);
-            EnsureIndirectColumns(context, projectId);
-            EnsureFinanciamientoColumns(context, projectId);
+            EnsureBudgetColumns(context.DatabasePath, projectId);
+
+            // Las demás columnas de módulo también se siembran en un contexto PROPIO:
+            // el contexto de sesión que termina compartiéndose no debe confirmar
+            // entidades ajenas (p. ej. un Concepto pendiente) al abrir/crear proyecto.
+            using var seedContext = _dbContextFactory.Create(context.DatabasePath);
+            EnsureExplosionColumns(seedContext, projectId);
+            EnsureIndirectColumns(seedContext, projectId);
+            EnsureFinanciamientoColumns(seedContext, projectId);
         }
 
         private static void EnsureExplosionColumns(SOPROContext context, int projectId)
@@ -163,42 +168,27 @@ namespace SOPRO.Application.Services
             context.SaveChanges();
         }
 
-        private static void EnsureBudgetColumns(SOPROContext context, int projectId)
+        /// <summary>
+        /// Seed de las columnas legacy del presupuesto sobre un contexto NUEVO por
+        /// operación (factory + transacción + un único SaveChanges). El contexto de la
+        /// sesión que termina compartiéndose no escribe ni confirma entidades ajenas.
+        /// Mantiene la semántica histórica: si ya existe la columna base Tipo no se
+        /// toca nada; si no existe, se reemplaza la configuración vieja por las 17
+        /// columnas legacy (la vista las asegura luego a 23).
+        /// </summary>
+        private void EnsureBudgetColumns(string databasePath, int projectId)
         {
-            bool hasBaseColumns = context.ColumnasPersonalizadas.Any(c => c.ProyectoId == projectId && c.NombreInterno == "Tipo");
-            if (hasBaseColumns)
-                return;
+            var resultado = BudgetColumnConfigurationService.EnsureSeedColumns(
+                _dbContextFactory,
+                databasePath,
+                projectId,
+                BudgetColumnConfigurationService.CrearDefinicionesLegacyPresupuesto());
 
-            var orphanColumns = context.ColumnasPersonalizadas
-                .Where(c => c.ProyectoId == projectId)
-                .ToList();
-
-            if (orphanColumns.Any())
+            if (!resultado.IsCommitted)
             {
-                context.ColumnasPersonalizadas.RemoveRange(orphanColumns);
-                context.SaveChanges();
+                throw new InvalidOperationException(
+                    resultado.Message ?? "No se pudieron preparar las columnas del presupuesto.");
             }
-
-            context.ColumnasPersonalizadas.AddRange(
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "Tipo",                 NombreInterno = "Tipo",                    TipoColumna = TipoColumnaPersonalizada.Personal,  TipoDato = TipoDatoColumna.Texto,      AnchoColumna = 120, Visible = true,  Orden = -7, Alineacion = AlineacionColumna.Centro,    Formula = string.Empty,                                                                                                                  FormatoNumerico = string.Empty, FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "Clave",                NombreInterno = "Clave",                   TipoColumna = TipoColumnaPersonalizada.Personal,  TipoDato = TipoDatoColumna.Texto,      AnchoColumna = 100, Visible = true,  Orden = -6, Alineacion = AlineacionColumna.Izquierda, Formula = string.Empty,                                                                                                                  FormatoNumerico = string.Empty, FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "Descripción",          NombreInterno = "Descripcion",             TipoColumna = TipoColumnaPersonalizada.Personal,  TipoDato = TipoDatoColumna.Texto,      AnchoColumna = 300, Visible = true,  Orden = -5, Alineacion = AlineacionColumna.Izquierda, Formula = string.Empty,                                                                                                                  FormatoNumerico = string.Empty, FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "Unidad",               NombreInterno = "Unidad",                  TipoColumna = TipoColumnaPersonalizada.Personal,  TipoDato = TipoDatoColumna.Texto,      AnchoColumna = 80,  Visible = true,  Orden = -4, Alineacion = AlineacionColumna.Centro,    Formula = string.Empty,                                                                                                                  FormatoNumerico = string.Empty, FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "Cantidad",             NombreInterno = "Cantidad",                TipoColumna = TipoColumnaPersonalizada.Personal,  TipoDato = TipoDatoColumna.Numerico,   AnchoColumna = 100, Visible = true,  Orden = -3, Alineacion = AlineacionColumna.Derecha,   Formula = string.Empty,                                                                                                                  FormatoNumerico = "N2",         FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "P.U.",                 NombreInterno = "PrecioUnitario",          TipoColumna = TipoColumnaPersonalizada.Calculada, TipoDato = TipoDatoColumna.Moneda,     AnchoColumna = 120, Visible = true,  Orden = -2, Alineacion = AlineacionColumna.Derecha,   Formula = "CostoDirectoUnitario",                                                                                                         FormatoNumerico = "C4",         FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "Importe",              NombreInterno = "Importe",                 TipoColumna = TipoColumnaPersonalizada.Calculada, TipoDato = TipoDatoColumna.Moneda,     AnchoColumna = 140, Visible = true,  Orden = -1, Alineacion = AlineacionColumna.Derecha,   Formula = "Cantidad * CostoDirectoUnitario",                                                                                              FormatoNumerico = "C2",         FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "% Indirectos",         NombreInterno = "PorcentajeIndirectos",    TipoColumna = TipoColumnaPersonalizada.Personal,  TipoDato = TipoDatoColumna.Porcentaje, AnchoColumna = 90,  Visible = false, Orden = 1,  Alineacion = AlineacionColumna.Derecha,   Formula = string.Empty,                                                                                                                  FormatoNumerico = "0.00",       FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "Indirectos",           NombreInterno = "Indirectos",              TipoColumna = TipoColumnaPersonalizada.Calculada, TipoDato = TipoDatoColumna.Moneda,     AnchoColumna = 110, Visible = false, Orden = 2,  Alineacion = AlineacionColumna.Derecha,   Formula = "CostoDirecto * (PorcentajeIndirectos / 100)",                                                                                  FormatoNumerico = "C2",         FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "% Financiamiento",     NombreInterno = "PorcentajeFinanciamiento",TipoColumna = TipoColumnaPersonalizada.Personal,  TipoDato = TipoDatoColumna.Porcentaje, AnchoColumna = 110, Visible = false, Orden = 3,  Alineacion = AlineacionColumna.Derecha,   Formula = string.Empty,                                                                                                                  FormatoNumerico = "0.00",       FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "Financiamiento",       NombreInterno = "Financiamiento",          TipoColumna = TipoColumnaPersonalizada.Calculada, TipoDato = TipoDatoColumna.Moneda,     AnchoColumna = 110, Visible = false, Orden = 4,  Alineacion = AlineacionColumna.Derecha,   Formula = "(CostoDirecto + Indirectos) * (PorcentajeFinanciamiento / 100)",                                                               FormatoNumerico = "C2",         FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "% Utilidad",           NombreInterno = "PorcentajeUtilidad",      TipoColumna = TipoColumnaPersonalizada.Personal,  TipoDato = TipoDatoColumna.Porcentaje, AnchoColumna = 90,  Visible = false, Orden = 5,  Alineacion = AlineacionColumna.Derecha,   Formula = string.Empty,                                                                                                                  FormatoNumerico = "0.00",       FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "Utilidad",             NombreInterno = "Utilidad",                TipoColumna = TipoColumnaPersonalizada.Calculada, TipoDato = TipoDatoColumna.Moneda,     AnchoColumna = 110, Visible = false, Orden = 6,  Alineacion = AlineacionColumna.Derecha,   Formula = "(CostoDirecto + Indirectos + Financiamiento) * (PorcentajeUtilidad / 100)",                                                   FormatoNumerico = "C2",         FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "% Cargos Adicionales", NombreInterno = "PorcentajeCargosAdicionales", TipoColumna = TipoColumnaPersonalizada.Personal, TipoDato = TipoDatoColumna.Porcentaje, AnchoColumna = 130, Visible = false, Orden = 7, Alineacion = AlineacionColumna.Derecha, Formula = string.Empty, FormatoNumerico = "0.00", FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "Cargos Adicionales",   NombreInterno = "CargosAdicionales",       TipoColumna = TipoColumnaPersonalizada.Calculada, TipoDato = TipoDatoColumna.Moneda,     AnchoColumna = 140, Visible = false, Orden = 8,  Alineacion = AlineacionColumna.Derecha,   Formula = "(CostoDirecto + Indirectos + Financiamiento + Utilidad) * (PorcentajeCargosAdicionales / 100)",                              FormatoNumerico = "C2",         FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "Precio Unitario Final", NombreInterno = "PrecioUnitarioFinal",    TipoColumna = TipoColumnaPersonalizada.Calculada, TipoDato = TipoDatoColumna.Moneda,     AnchoColumna = 140, Visible = false, Orden = 9,  Alineacion = AlineacionColumna.Derecha,   Formula = "CostoDirecto + Indirectos + Financiamiento + Utilidad + CargosAdicionales",                                                  FormatoNumerico = "C4",         FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty },
-                new ColumnaPersonalizada { ProyectoId = projectId, Nombre = "Importe Final",         NombreInterno = "ImporteFinal",           TipoColumna = TipoColumnaPersonalizada.Calculada, TipoDato = TipoDatoColumna.Moneda,     AnchoColumna = 140, Visible = false, Orden = 10, Alineacion = AlineacionColumna.Derecha,   Formula = "Cantidad * PrecioUnitarioFinal",                                                                                               FormatoNumerico = "C2",         FormatoFecha = string.Empty, CondicionTotalizacion = string.Empty }
-            );
-            context.SaveChanges();
         }
     }
 }
