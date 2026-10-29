@@ -13,6 +13,15 @@ namespace SOPRO.WinForms.Forms
     /// </summary>
     public partial class FormPresupuesto
     {
+        /// <summary>
+        /// Punto de aislamiento de las pruebas para el diálogo de inconsistencias: si es
+        /// null (producción) se construye y muestra el diálogo modal normal; si está
+        /// instalado, solo se invoca y no se crea ningún formulario. Permite ejercitar
+        /// apertura y operaciones reales sin bloquear el hilo STA del runner.
+        /// </summary>
+        internal static Action<IReadOnlyList<PresupuestoValidationService.ValidationIssue>, string, bool>?
+            InterceptorDialogoInconsistencias { get; set; }
+
         private List<PresupuestoValidationService.ValidationIssue> ObtenerInconsistenciasPresupuesto()
         {
             return PresupuestoValidationService.Validate(_context, _proyecto.Id);
@@ -30,6 +39,12 @@ namespace SOPRO.WinForms.Forms
 
         private void MostrarDialogoInconsistencias(List<PresupuestoValidationService.ValidationIssue> issues, string titulo, bool bloquear)
         {
+            if (InterceptorDialogoInconsistencias is not null)
+            {
+                InterceptorDialogoInconsistencias(issues, titulo, bloquear);
+                return;
+            }
+
             using var dialog = new Form
             {
                 Text = titulo,

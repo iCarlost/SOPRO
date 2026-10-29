@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SOPRO.Application.Services;
+using SOPRO.WinForms.Forms;
 using SOPRO.WinForms.Helpers;
 
 namespace SOPRO.Tests.WinForms.TestInfrastructure;
@@ -12,22 +14,36 @@ namespace SOPRO.Tests.WinForms.TestInfrastructure;
 /// confirmación) se captura aquí; al final, cualquier uso del fallback hace fallar la
 /// corrida indicando el texto, para localizar la vista que faltó inyectar.
 /// En producción este fallback no existe: se conserva el diálogo modal.
+/// <para>
+/// También intercepta el diálogo modal de inconsistencias del presupuesto
+/// (<see cref="FormPresupuesto.InterceptorDialogoInconsistencias"/>): los tests muestran
+/// presupuestos con cantidad/P.U. en cero y la advertencia de apertura esperaba
+/// interacción humana, colgando la suite. La validación de producto no se altera: solo
+/// se registra la llamada y no se crea el formulario.
+/// </para>
 /// </summary>
 [TestClass]
 public class NotificadorNoModalSetup
 {
     private static readonly List<string> _mensajesCapturados = new();
     private static readonly List<string> _confirmacionesCapturadas = new();
+    private static readonly List<(string Titulo, bool Bloquear, int Inconsistencias)> _dialogosValidacionCapturados = new();
 
     private static Action<string, System.Windows.Forms.MessageBoxIcon>? _mostrarPrevio;
     private static Func<string, bool>? _confirmarPrevio;
     private static (int Mensajes, int Confirmaciones) _contadoresPrevios;
+    private static Action<IReadOnlyList<PresupuestoValidationService.ValidationIssue>, string, bool>?
+        _interceptorDialogoPrevio;
 
     /// <summary>Mensajes que alguna vista emitió sin notificador inyectado.</summary>
     public static IReadOnlyList<string> MensajesCapturados => _mensajesCapturados;
 
     /// <summary>Confirmaciones que alguna vista pidió sin seam inyectado.</summary>
     public static IReadOnlyList<string> ConfirmacionesCapturadas => _confirmacionesCapturadas;
+
+    /// <summary>Diálogos de inconsistencias interceptados (título, bloqueante, nº de issues).</summary>
+    public static IReadOnlyList<(string Titulo, bool Bloquear, int Inconsistencias)> DialogosValidacionCapturados
+        => _dialogosValidacionCapturados;
 
     [AssemblyInitialize]
     public static void Inicializar(TestContext context)
@@ -36,6 +52,7 @@ public class NotificadorNoModalSetup
         _mostrarPrevio = NotificadorPrograma.MostrarPredeterminado;
         _confirmarPrevio = NotificadorPrograma.ConfirmarPredeterminado;
         _contadoresPrevios = NotificadorPrograma.ContadoresFallbackNoModal;
+        _interceptorDialogoPrevio = FormPresupuesto.InterceptorDialogoInconsistencias;
 
         NotificadorPrograma.MostrarPredeterminado = (mensaje, _) =>
         {
@@ -50,6 +67,15 @@ public class NotificadorNoModalSetup
             lock (_confirmacionesCapturadas)
                 _confirmacionesCapturadas.Add(mensaje);
             return false;
+        };
+
+        // Sin diálogo modal de validación: la llamada se registra y la operación sigue
+        // exactamente el mismo contrato (ValidarPresupuestoAntesDeContinuar devuelve
+        // !bloquear). No se silencia ningún fallo: solo se elimina la espera de UI.
+        FormPresupuesto.InterceptorDialogoInconsistencias = (issues, titulo, bloquear) =>
+        {
+            lock (_dialogosValidacionCapturados)
+                _dialogosValidacionCapturados.Add((titulo, bloquear, issues.Count));
         };
     }
 
@@ -80,6 +106,7 @@ public class NotificadorNoModalSetup
             NotificadorPrograma.RestaurarContadoresFallbackNoModal(
                 _contadoresPrevios.Mensajes,
                 _contadoresPrevios.Confirmaciones);
+            FormPresupuesto.InterceptorDialogoInconsistencias = _interceptorDialogoPrevio;
         }
     }
 }
