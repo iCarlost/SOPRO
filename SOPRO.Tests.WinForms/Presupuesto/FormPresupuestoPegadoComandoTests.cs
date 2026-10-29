@@ -124,6 +124,147 @@ public class FormPresupuestoPegadoComandoTests
     }
 
     [TestMethod]
+    public void PegadoComando_SoloDescripcion_ConservaElBorradorVisibleDeClave()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_pegado_solodesc_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx);
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"),
+                Path.Combine(root, "local")));
+
+            int escriturasContextoCompartido = 0;
+            ctx.SavedChanges += (_, __) => escriturasContextoCompartido++;
+
+            var grid = form.GridPrincipal;
+            int fila = BuscarFilaPorConcepto(grid, escenario.Concepto.Id);
+            var claveCell = BuscarCelda(grid, fila, "Clave");
+            var descCell = BuscarCelda(grid, fila, "Descripcion");
+            Assert.IsNotNull(claveCell);
+            Assert.IsNotNull(descCell);
+
+            // Borrador visible de clave que NO resuelve matriz ni copia: la celda queda
+            // distinta del Tag y de la base, como una clave que el usuario aún no confirmó.
+            claveCell!.Value = "BORRADOR-LOCAL";
+            Assert.AreEqual("BORRADOR-LOCAL", claveCell.Value?.ToString());
+            Assert.AreEqual("C-001", ((ConceptoPresupuesto)grid.Rows[fila].Tag!).Clave);
+            Assert.AreEqual("C-001", LeerConceptoEnBase(dbPath, escenario.Concepto.Id).Clave,
+                "El borrador de la clave no puede haberse persistido.");
+
+            grid.CurrentCell = descCell;
+
+            var outcome = form.ProcesarPegadoPresupuesto(
+                "Descripción pegada sin clave",
+                _ => true);
+
+            Assert.AreEqual(BudgetPasteOutcomeKind.Committed, outcome.Kind, outcome.Message);
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoPegado);
+
+            var persistido = LeerConceptoEnBase(dbPath, escenario.Concepto.Id);
+            Assert.AreEqual("Descripción pegada sin clave", persistido.Descripcion);
+            Assert.AreEqual("C-001", persistido.Clave,
+                "El pegado de solo Descripción no toca la clave en la base.");
+
+            Assert.AreEqual("Descripción pegada sin clave", descCell!.Value?.ToString(),
+                "La descripción sí participó del pegado y se muestra confirmada.");
+            Assert.AreEqual("BORRADOR-LOCAL", claveCell.Value?.ToString(),
+                "La clave visible del borrador no puede ser reemplazada por el valor persistido.");
+            Assert.AreEqual("m3", BuscarCelda(grid, fila, "Unidad")!.Value?.ToString(),
+                "La unidad ajena al bloque conserva su valor visible.");
+            Assert.AreEqual(10m, Convert.ToDecimal(BuscarCelda(grid, fila, "Cantidad")!.Value),
+                "La cantidad ajena al bloque conserva su valor visible.");
+
+            var tag = (ConceptoPresupuesto)grid.Rows[fila].Tag!;
+            Assert.AreEqual("C-001", tag.Clave, "El Tag refleja la base, no el borrador visible.");
+            Assert.AreEqual("Descripción pegada sin clave", tag.Descripcion);
+            Assert.AreEqual(EntityState.Unchanged, ctx.Entry(tag).State);
+            Assert.AreEqual(0, escriturasContextoCompartido);
+            Assert.IsFalse(ctx.ChangeTracker.HasChanges());
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void PegadoComando_ClaveIncluidaVacia_LaCeldaSeLimpiaSegunElContrato()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_pegado_clavevacia_{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenario(ctx);
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"),
+                Path.Combine(root, "local")));
+
+            var grid = form.GridPrincipal;
+            int fila = BuscarFilaPorConcepto(grid, escenario.Concepto.Id);
+            var claveCell = BuscarCelda(grid, fila, "Clave");
+            Assert.IsNotNull(claveCell);
+            Assert.AreEqual("C-001", claveCell!.Value?.ToString());
+            grid.CurrentCell = claveCell;
+
+            // La clave vacía SÍ participa del bloque: el contrato distingue cadena
+            // vacía (limpia) de columna ausente (no participó). El texto adicional
+            // acompaña al tabulador para que el bloque no sea solo espacios en blanco.
+            var outcome = form.ProcesarPegadoPresupuesto("\tDescripción no aceptada sin clave", _ => true);
+
+            Assert.AreEqual(BudgetPasteOutcomeKind.Committed, outcome.Kind, outcome.Message);
+            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoPegado);
+            Assert.AreEqual(1, outcome.SkippedCells,
+                "Sin clave resultante, la descripción del bloque se omite por restricción de tipo.");
+
+            var persistido = LeerConceptoEnBase(dbPath, escenario.Concepto.Id);
+            Assert.AreEqual(string.Empty, persistido.Clave,
+                "Una clave vacía pegada limpia la clave persistida.");
+            Assert.AreEqual("Concreto simple en obra", persistido.Descripcion,
+                "La descripción omitida no se escribe.");
+
+            Assert.AreEqual(string.Empty, claveCell.Value?.ToString(),
+                "La celda de clave sí participó y muestra el valor confirmado vacío.");
+            Assert.AreEqual("Concreto simple en obra",
+                BuscarCelda(grid, fila, "Descripcion")!.Value?.ToString());
+            Assert.AreEqual(string.Empty, ((ConceptoPresupuesto)grid.Rows[fila].Tag!).Clave);
+            Assert.AreEqual(EntityState.Unchanged, ctx.Entry(grid.Rows[fila].Tag!).State);
+            Assert.IsFalse(ctx.ChangeTracker.HasChanges());
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
     public void PegadoComando_FallaElUpdateDeLaSegundaFila_NoEscribeNiMutaElGridYElReintentoConfirma()
     {
         var root = Path.Combine(Path.GetTempPath(), $"sopro_fp_pegado_fail_{Guid.NewGuid():N}");
