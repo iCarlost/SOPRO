@@ -261,6 +261,7 @@ namespace SOPRO.WinForms.Forms
             var snapshots = BuildKeyRowSnapshotsFromTags();
             var rowCommands = new List<BudgetPasteRowCommand>(operationsPlan.Operations.Count);
             var confirmaciones = new List<string>();
+            var columnasPorConcepto = new Dictionary<int, ColumnasPegadas>(operationsPlan.Operations.Count);
 
             foreach (var operacion in operationsPlan.Operations)
             {
@@ -308,6 +309,10 @@ namespace SOPRO.WinForms.Forms
                     operacion.Unidad,
                     operacion.Cantidad,
                     target));
+
+                columnasPorConcepto[operacion.Target.Concept!.Id] = ColumnasPegadas.DesdeOperacion(
+                    operacion,
+                    resolvioClave: target.Kind != BudgetPasteKeyTargetKind.None);
             }
 
             // Confirmación de reemplazo duplicado ANTES de escribir: cancelar deja el
@@ -358,7 +363,7 @@ namespace SOPRO.WinForms.Forms
             bool aplicadoEnVista = false;
             try
             {
-                AplicarPegadoConfirmado(resultado.Confirmed);
+                AplicarPegadoConfirmado(resultado.Confirmed, columnasPorConcepto);
                 aplicadoEnVista = true;
             }
             catch (Exception ex)
@@ -483,11 +488,57 @@ namespace SOPRO.WinForms.Forms
             => BuildKeyRowSnapshotsFromTags(dgvPresupuesto);
 
         /// <summary>
+        /// Columnas que el bloque pegado incluyó realmente en una fila. Una columna
+        /// ausente (<c>null</c> en la operación) no se escribe al reconciliar la vista:
+        /// la celda conserva el borrador que el usuario veía. Cuando el pegado resuelve
+        /// una clave (matriz o copia desde otra fila), la base reescribe la fila completa
+        /// aunque el bloque solo traiga la clave, así que esa fila se reconcilia entera.
+        /// </summary>
+        private readonly struct ColumnasPegadas
+        {
+            private ColumnasPegadas(bool clave, bool descripcion, bool unidad, bool cantidad)
+            {
+                Clave = clave;
+                Descripcion = descripcion;
+                Unidad = unidad;
+                Cantidad = cantidad;
+            }
+
+            public bool Clave { get; }
+
+            public bool Descripcion { get; }
+
+            public bool Unidad { get; }
+
+            public bool Cantidad { get; }
+
+            public static ColumnasPegadas Todas { get; } = new(true, true, true, true);
+
+            public static ColumnasPegadas DesdeOperacion(
+                BudgetClipboardPasteOperation operacion,
+                bool resolvioClave)
+            {
+                if (resolvioClave)
+                    return Todas;
+
+                return new ColumnasPegadas(
+                    operacion.Clave is not null,
+                    operacion.Descripcion is not null,
+                    operacion.Unidad is not null,
+                    operacion.Cantidad.HasValue);
+            }
+        }
+
+        /// <summary>
         /// Vuelca la instantánea CONFIRMADA del lote: Tags, celdas propias y totales de
         /// agrupadores, todo bajo el guard de reentrada. Las entidades quedan
         /// <c>Unchanged</c> para que ningún guardado heredado posterior las reescriba.
+        /// Solo se escriben las celdas editables que el pegado incluyó: las columnas
+        /// ausentes conservan el borrador visible del usuario.
         /// </summary>
-        private void AplicarPegadoConfirmado(BudgetPasteSnapshot confirmado)
+        private void AplicarPegadoConfirmado(
+            BudgetPasteSnapshot confirmado,
+            IReadOnlyDictionary<int, ColumnasPegadas> columnasPorConcepto)
         {
             var filasPorConcepto = ConstruirIndiceFilasPorConcepto();
             bool actualizandoPrevio = _actualizandoDesdeComando;
@@ -502,11 +553,13 @@ namespace SOPRO.WinForms.Forms
                     if (!filasPorConcepto.TryGetValue(fila.ConceptId, out int rowIndex))
                         continue;
 
+                    columnasPorConcepto.TryGetValue(fila.ConceptId, out var columnas);
+
                     if (dgvPresupuesto.Rows[rowIndex].Tag is ConceptoPresupuesto entidad)
                         SincronizarEntidadPegado(entidad, fila);
 
                     var claveCell = ObtenerCeldaPorNombreInterno(rowIndex, "Clave");
-                    if (claveCell != null)
+                    if (claveCell != null && columnas.Clave)
                         claveCell.Value = fila.Clave;
 
                     if (fila.EsAgrupador)
@@ -519,13 +572,13 @@ namespace SOPRO.WinForms.Forms
                     }
 
                     var descCell = ObtenerCeldaPorNombreInterno(rowIndex, "Descripcion");
-                    if (descCell != null) descCell.Value = fila.Descripcion;
+                    if (descCell != null && columnas.Descripcion) descCell.Value = fila.Descripcion;
 
                     var unidadCell = ObtenerCeldaPorNombreInterno(rowIndex, "Unidad");
-                    if (unidadCell != null) unidadCell.Value = fila.Unidad;
+                    if (unidadCell != null && columnas.Unidad) unidadCell.Value = fila.Unidad;
 
                     var cantidadCell = ObtenerCeldaPorNombreInterno(rowIndex, "Cantidad");
-                    if (cantidadCell != null) cantidadCell.Value = fila.Cantidad;
+                    if (cantidadCell != null && columnas.Cantidad) cantidadCell.Value = fila.Cantidad;
 
                     var puCell = ObtenerCeldaPorNombreInterno(rowIndex, "PrecioUnitario");
                     if (puCell != null) puCell.Value = fila.PrecioUnitario.ToStringImporte();

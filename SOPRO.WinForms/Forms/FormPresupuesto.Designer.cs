@@ -346,7 +346,6 @@ namespace SOPRO.WinForms.Forms
             StartPosition = FormStartPosition.CenterScreen;
             Text = "Presupuesto - SOPRO";
             WindowState = FormWindowState.Maximized;
-            KeyDown += DgvPresupuesto_KeyDown;
             panelToolbar.ResumeLayout(false);
             panelToolbar.PerformLayout();
             splitContainer.Panel1.ResumeLayout(false);
