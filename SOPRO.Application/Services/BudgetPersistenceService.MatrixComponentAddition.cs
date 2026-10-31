@@ -14,16 +14,16 @@ namespace SOPRO.Application.Services
         /// económica del proyecto, la matriz, el estado COMPLETO de todos sus
         /// componentes actuales (no solo Id y Orden), la pertenencia y la base de cada
         /// insumo del catálogo y el rowset COMPLETO de filas del presupuesto.
-        /// Solo se admiten materiales, mano de obra, maquinaria y herramienta; un
-        /// lote con cualquier componente auxiliar (incluidas las cuadrillas que puede
-        /// devolver el selector de mano de obra) se rechaza completo, sin recortes ni
-        /// sustituciones. La navegación de cada componente se toma del catálogo
-        /// fresco, el rendimiento y el orden se derivan con la semántica existente y
-        /// los importes, el cierre de matrices auxiliares, las hojas y los agrupadores
-        /// se calculan con los servicios canónicos. Un único SaveChanges cierra la
-        /// transacción; un conflicto, un ciclo o un fallo dejan la base sin cambios y
-        /// el reintento del mismo comando no duplica nada. Un lote vacío es un no-op
-        /// que no llama a SaveChanges.
+        /// Se admiten materiales, mano de obra, maquinaria, herramienta y auxiliares
+        /// (básicos y cuadrillas); un auxiliar se revalida contra su matriz fuente
+        /// fresca (existencia, proyecto, tipo y costo directo) y se rechaza si genera
+        /// autorreferencia o ciclo. La navegación de cada componente se toma del
+        /// catálogo fresco, el rendimiento y el orden se derivan con la semántica
+        /// existente y los importes, el cierre de matrices auxiliares, las hojas y los
+        /// agrupadores se calculan con los servicios canónicos. Un único SaveChanges
+        /// cierra la transacción; un conflicto, un ciclo o un fallo dejan la base sin
+        /// cambios y el reintento del mismo comando no duplica nada. Un lote vacío es
+        /// un no-op que no llama a SaveChanges.
         /// </summary>
         public static BudgetMatrixComponentAdditionResult ExecuteMatrixComponentAdditionCommand(
             IProjectDbContextFactory factory,
@@ -49,14 +49,13 @@ namespace SOPRO.Application.Services
             SOPROContext context,
             BudgetMatrixComponentAdditionCommand command)
         {
-            // Rechazo del lote COMPLETO antes de leer o escribir: nunca se recorta un
-            // auxiliar ni se cae a otro tipo. Es la salvaguarda para el selector de
-            // mano de obra, que también puede devolver cuadrillas (matrices).
+            // Rechazo del lote COMPLETO antes de leer o escribir: solo se admiten
+            // tipos de componente conocidos. Los auxiliares (cuadrillas/básicos) son
+            // válidos y se revalidan contra su matriz fuente más abajo.
             if (command.Additions.Any(a => !IsSupportedAdditionType(a.TipoComponente)))
                 return BudgetWriteStep<BudgetMatrixComponentAdditionSnapshot>.Abort(
                     BudgetOperationResult.Failed(
-                        "El lote contiene un componente auxiliar o cuadrilla. " +
-                        "La adición de auxiliares no está soportada; no se guardó nada."));
+                        "El lote contiene un tipo de componente no soportado; no se guardó nada."));
 
             var proyecto = context.Proyectos
                 .AsNoTracking()
@@ -144,6 +143,35 @@ namespace SOPRO.Application.Services
                 validadas.Add(validada!);
             }
 
+            // Autorreferencia y ciclos: una arista nueva matriz→auxiliar solo puede
+            // cerrar un ciclo si la auxiliar ya depende (transitivamente) de la
+            // matriz destino. Se valida ANTES de agregar componentes para devolver un
+            // resultado accionable y no depender de una excepción del cierre.
+            if (validadas.Any(v => v.Item.TipoComponente == TipoComponenteMatriz.Auxiliar))
+            {
+                var cierreDestino = PricePropagationService.CalcularCierreAscendente(
+                    context, new[] { matriz.Id }, command.ProjectId);
+
+                foreach (var validada in validadas.Where(
+                    v => v.Item.TipoComponente == TipoComponenteMatriz.Auxiliar))
+                {
+                    if (validada.Item.SourceId == matriz.Id)
+                    {
+                        return BudgetWriteStep<BudgetMatrixComponentAdditionSnapshot>.Abort(
+                            BudgetOperationResult.Failed(
+                                $"No se puede agregar la matriz {matriz.Id} como auxiliar de sí misma; no se guardó nada."));
+                    }
+
+                    if (cierreDestino.Contains(validada.Item.SourceId))
+                    {
+                        return BudgetWriteStep<BudgetMatrixComponentAdditionSnapshot>.Abort(
+                            BudgetOperationResult.Failed(
+                                $"La adición de la matriz auxiliar {validada.Item.SourceId} a la matriz " +
+                                $"{matriz.Id} crearía un ciclo de dependencias; no se guardó nada."));
+                    }
+                }
+            }
+
             var ultimoOrden = componentes.Count == 0
                 ? 0
                 : Math.Max(componentes.Max(c => c.Orden), 0);
@@ -167,11 +195,22 @@ namespace SOPRO.Application.Services
             // Cierre completo SIN guardar: la matriz con sus altas + ascendientes
             // auxiliares en orden topológico, hojas que referencian cualquiera de esas
             // matrices y agrupadores. Un ciclo alcanzable o una navegación incompleta
-            // lanza y el ejecutor clasifica el fallo como revertido, sin escritura.
-            var afectadas = PricePropagationService.RecalcularCierreAuxiliarSinGuardar(
-                context,
-                new[] { matriz.Id },
-                command.ProjectId);
+            // se reporta como fallo accionable y el ejecutor revierte, sin escritura.
+            IReadOnlyList<Matriz> afectadas;
+            try
+            {
+                afectadas = PricePropagationService.RecalcularCierreAuxiliarSinGuardar(
+                    context,
+                    new[] { matriz.Id },
+                    command.ProjectId);
+            }
+            catch (InvalidOperationException ex) when (
+                ex.Message.Contains("Ciclo", StringComparison.OrdinalIgnoreCase))
+            {
+                return BudgetWriteStep<BudgetMatrixComponentAdditionSnapshot>.Abort(
+                    BudgetOperationResult.Failed(
+                        $"El cierre de matrices contiene un ciclo de dependencias; no se guardó nada. {ex.Message}"));
+            }
 
             // El comando no pidió conceptos del presupuesto: los efectos derivados
             // (hojas y agrupadores) viajan en la instantánea. Los Ids de las filas
@@ -237,7 +276,8 @@ namespace SOPRO.Application.Services
             => tipo is TipoComponenteMatriz.Material
                 or TipoComponenteMatriz.ManoDeObra
                 or TipoComponenteMatriz.Maquinaria
-                or TipoComponenteMatriz.Herramienta;
+                or TipoComponenteMatriz.Herramienta
+                or TipoComponenteMatriz.Auxiliar;
 
         private static bool MatchesComponentStateFingerprint(
             IReadOnlyList<ComponenteMatriz> actual,
@@ -256,9 +296,9 @@ namespace SOPRO.Application.Services
         }
 
         /// <summary>
-        /// Relee UN insumo del catálogo fresco y valida pertenencia y base esperada.
-        /// Devuelve el error clasificado o null con la fila rastreada lista para
-        /// construir el componente. No acepta auxiliares ni busca en otras tablas.
+        /// Relee UN insumo del catálogo fresco o UNA matriz auxiliar y valida
+        /// pertenencia y base esperada. Devuelve el error clasificado o null con la
+        /// fila rastreada lista para construir el componente.
         /// </summary>
         private static BudgetOperationResult? TryLoadCatalogSource(
             SOPROContext context,
@@ -330,29 +370,62 @@ namespace SOPRO.Application.Services
                     return null;
                 }
 
+                case TipoComponenteMatriz.Auxiliar:
+                {
+                    var auxiliar = context.Matrices.FirstOrDefault(m => m.Id == item.SourceId);
+                    if (auxiliar == null)
+                        return CatalogMissing(item);
+
+                    var actual = BudgetMatrixComponentSourceBase.FromAuxiliar(auxiliar);
+                    var error = ValidateCatalogSource(projectId, actual, item.ExpectedSource);
+                    if (error != null)
+                        return error;
+
+                    validada = new ValidatedAddition(item, auxiliar: auxiliar);
+                    return null;
+                }
+
                 default:
                     return BudgetOperationResult.Failed(
-                        "El lote contiene un componente auxiliar o cuadrilla. " +
-                        "La adición de auxiliares no está soportada; no se guardó nada.");
+                        "El lote contiene un tipo de componente no soportado; no se guardó nada.");
             }
         }
 
         private static BudgetOperationResult CatalogMissing(BudgetMatrixComponentAdditionItem item)
-            => BudgetOperationResult.Conflict(
-                $"El insumo {item.TipoComponente} {item.SourceId} ya no existe en el catálogo; " +
-                "la vista debe recargarse.");
+            => item.TipoComponente == TipoComponenteMatriz.Auxiliar
+                ? BudgetOperationResult.Conflict(
+                    $"La matriz auxiliar {item.SourceId} ya no existe en la base; " +
+                    "la vista debe recargarse.")
+                : BudgetOperationResult.Conflict(
+                    $"El insumo {item.TipoComponente} {item.SourceId} ya no existe en el catálogo; " +
+                    "la vista debe recargarse.");
 
         private static BudgetOperationResult? ValidateCatalogSource(
             int projectId,
             BudgetMatrixComponentSourceBase actual,
             BudgetMatrixComponentSourceBase expected)
         {
+            // Un auxiliar SIEMPRE debe ser una matriz local del proyecto: la
+            // propagación canónica no cruza proyectos y el selector solo presenta
+            // matrices del proyecto. Las filas maestras (ProyectoId nulo) no son una
+            // excepción válida para auxiliares.
+            if (actual.TipoComponente == TipoComponenteMatriz.Auxiliar)
+            {
+                if (!actual.ProjectId.HasValue || actual.ProjectId.Value != projectId)
+                {
+                    return BudgetOperationResult.Conflict(
+                        $"La matriz auxiliar {actual.SourceId} no pertenece al proyecto " +
+                        $"{projectId}; la vista debe recargarse.");
+                }
+            }
             // Un insumo maestro (ProyectoId nulo) es válido en cualquier proyecto; uno
             // local solo en su proyecto. Nunca se acepta el de otro proyecto.
-            if (actual.ProjectId.HasValue && actual.ProjectId.Value != projectId)
+            else if (actual.ProjectId.HasValue && actual.ProjectId.Value != projectId)
+            {
                 return BudgetOperationResult.Conflict(
                     $"El insumo {actual.TipoComponente} {actual.SourceId} no pertenece al proyecto " +
                     $"{projectId}; la vista debe recargarse.");
+            }
 
             if (!MatchesCatalogSourceBase(actual, expected))
                 return BudgetOperationResult.Conflict(
@@ -389,13 +462,15 @@ namespace SOPRO.Application.Services
                 Material? material = null,
                 ManoDeObra? manoDeObra = null,
                 Maquinaria? maquinaria = null,
-                Herramienta? herramienta = null)
+                Herramienta? herramienta = null,
+                Matriz? auxiliar = null)
             {
                 Item = item;
                 Material = material;
                 ManoDeObra = manoDeObra;
                 Maquinaria = maquinaria;
                 Herramienta = herramienta;
+                Auxiliar = auxiliar;
             }
 
             public BudgetMatrixComponentAdditionItem Item { get; }
@@ -407,6 +482,8 @@ namespace SOPRO.Application.Services
             public Maquinaria? Maquinaria { get; }
 
             public Herramienta? Herramienta { get; }
+
+            public Matriz? Auxiliar { get; }
 
             public ComponenteMatriz CreateComponent(int matrixId, int orden)
             {
@@ -439,6 +516,11 @@ namespace SOPRO.Application.Services
                     case TipoComponenteMatriz.Herramienta:
                         componente.HerramientaId = Herramienta!.Id;
                         componente.Herramienta = Herramienta;
+                        break;
+
+                    case TipoComponenteMatriz.Auxiliar:
+                        componente.AuxiliarId = Auxiliar!.Id;
+                        componente.Auxiliar = Auxiliar;
                         break;
 
                     default:

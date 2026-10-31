@@ -1,6 +1,7 @@
 ﻿using SOPRO.Application.Models.Catalogs;
 using SOPRO.Application.Models.Matrices;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Matrices;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.Data.Repositories;
@@ -19,6 +20,24 @@ namespace SOPRO.WinForms.Forms
     /// </summary>
     public partial class FormMatrices
     {
+
+        /// <summary>
+        /// Recarga el catálogo después de una escritura externa (eliminación en lote
+        /// de insumos o consolidación). La consulta del catálogo es con seguimiento,
+        /// así que con el tracker limpio se descartan matrices/componentes rastreados
+        /// para materializar el precio recalculado desde la base. Con trabajo
+        /// pendiente no se recarga: nunca se guarda ni se limpia el tracker ajeno.
+        /// </summary>
+        internal void RecargarTrasCambioDeInsumos()
+        {
+            if (!MatrixCatalogRefreshHelper.DescartarRastreados(_context))
+            {
+                lblStatus.Text = "Hay cambios sin guardar; no se recargó el catálogo de matrices.";
+                return;
+            }
+
+            CargarMatrices();
+        }
 
         private async void CargarMatrices()
         {
@@ -78,6 +97,13 @@ namespace SOPRO.WinForms.Forms
             }
         }
 
+        /// <summary>
+        /// Aviso de la guarda de contexto compartido: la eliminación escribe por un
+        /// contexto nuevo y no debe convivir con ediciones pendientes de la UI.
+        /// </summary>
+        private const string MensajeCambiosSinGuardarMatrices =
+            "Hay cambios sin guardar en el proyecto. Guarde o descarte esos cambios antes de eliminar matrices.";
+
         private async Task EliminarMatricesSeleccionadasAsync()
         {
             var seleccionadas = SeleccionGridHelper.FilasSeleccionadas(dgvMatrices)
@@ -99,23 +125,71 @@ namespace SOPRO.WinForms.Forms
                 seleccionadas.Add(_matrizSeleccionada);
             }
 
-            string mensaje = seleccionadas.Count == 1
-                ? _matrixDeleteFlowService.BuildPreview(seleccionadas[0]).ConfirmationMessage
-                : $"¿Desea eliminar las {seleccionadas.Count} matrices seleccionadas?\n\nEsta acción no se puede deshacer.";
-
-            if (MessageBox.Show(mensaje, "Confirmar Eliminación",
-                MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+            // El comando escribe por un contexto nuevo: si la UI tiene ediciones
+            // pendientes en el contexto compartido, se aborta sin guardar ni limpiar.
+            if (CatalogoBatchDeletionHelper.HayCambiosSinGuardar(_context))
+            {
+                MessageBox.Show(MensajeCambiosSinGuardarMatrices,
+                    "Cambios sin guardar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
+            }
+
+            var ids = seleccionadas
+                .Select(m => m.Id)
+                .Distinct()
+                .OrderBy(id => id)
+                .ToList();
 
             try
             {
-                foreach (var matriz in seleccionadas)
-                    await _repository.DeleteAsync(matriz);
+                // La previsualización describe el mismo lote que ejecutará el comando:
+                // referencias auxiliares externas que se quitarán, recálculo y filas
+                // del presupuesto que bloquean. La confirmación nunca promete un
+                // borrado que luego vaya a rechazarse por una dependencia esperada.
+                var previewResult = await _previewMatricesBatchDeletion.Execute(
+                    _sessionInfo, new PreviewMatricesBatchDeletionRequest(ids));
 
-                await _repository.SaveChangesAsync();
+                if (!previewResult.IsSuccess)
+                {
+                    MessageBox.Show(previewResult.Error!.Message, "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                var preview = previewResult.Value!;
+
+                if (preview.IsBlocked)
+                {
+                    MessageBox.Show(preview.BuildBlockingMessage(), "Eliminación bloqueada",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                if (MessageBox.Show(preview.BuildConfirmationMessage(), "Confirmar Eliminación",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                        MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+                    return;
+
+                var result = await _deleteMatricesBatch.Execute(
+                    _sessionInfo, new DeleteMatricesBatchRequest(ids));
+
+                if (!result.IsSuccess)
+                {
+                    MessageBox.Show(result.Error!.Message, "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
                 MessageBox.Show(seleccionadas.Count == 1 ? "Matriz eliminada exitosamente." : "Matrices eliminadas exitosamente.", "Eliminado",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
-                CargarMatrices();
+
+                // El refresco ocurre SOLO después del commit: una selección rechazada
+                // o revertida no debe recargar el catálogo.
+                RecargarTrasCambioDeInsumos();
+            }
+            catch (OperationCanceledException)
+            {
+                // Operación cancelada: no mostrar error.
             }
             catch (Exception ex)
             {

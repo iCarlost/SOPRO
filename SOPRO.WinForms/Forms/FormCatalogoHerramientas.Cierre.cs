@@ -38,7 +38,10 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            if (e.Control && e.KeyCode == Keys.Delete)
+            if (CatalogoBatchDeletionHelper.DebeDespacharSupr(
+                    e.KeyCode, e.Shift, e.Alt,
+                    dgvHerramientas.IsCurrentCellInEditMode,
+                    ObtenerIdsSeleccionados().Count > 0))
             {
                 e.Handled = true;
                 e.SuppressKeyPress = true;

@@ -91,7 +91,15 @@ namespace SOPRO.WinForms.Forms
                                 try
                                 {
                                     var svc = new SOPRO.Application.Services.RecalculoGlobalService();
-                                    svc.Ejecutar(_context, _proyecto.Id);
+                                    var recalculo = svc.TryEjecutar(_context, _proyecto.Id);
+                                    if (!recalculo.IsSuccess)
+                                    {
+                                        MessageBox.Show(
+                                            $"No se pudo recalcular el proyecto:\n{recalculo.Error!.Message}",
+                                            "Recálculo", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                        return;
+                                    }
+
                                     MessageBox.Show("Datos actualizados.", "Guardado",
                                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                                 }

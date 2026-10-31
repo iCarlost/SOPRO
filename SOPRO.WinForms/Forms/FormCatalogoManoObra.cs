@@ -12,6 +12,9 @@ using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
 using SOPRO.Application.Services;
 using SOPRO.Application.Models.Catalogs;
+using SOPRO.Application.Contracts;
+using SOPRO.Application.UseCases.Catalog;
+using SOPRO.Data.Factories;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -23,6 +26,10 @@ namespace SOPRO.WinForms.Forms
         private readonly Repository<ManoDeObra> _repository;
         private readonly CatalogLoadService _catalogLoadService = new();
         private readonly int? _proyectoId;
+        private readonly ProjectSessionInfo _sessionInfo;
+        private readonly IProjectDbContextFactory _factory = new ProjectDbContextFactory();
+        private readonly PreviewCatalogBatchDeletion _previewCatalogBatchDeletion;
+        private readonly DeleteCatalogBatch _deleteCatalogBatch;
         private ManoDeObra _manoDeObraSeleccionada;
         private Proyecto ProyectoActual => _proyectoId.HasValue
             ? _context.Proyectos.Find(_proyectoId.Value)
@@ -56,6 +63,9 @@ namespace SOPRO.WinForms.Forms
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _repository = new Repository<ManoDeObra>(_context);
             _proyectoId = proyectoId;
+            _sessionInfo = LegacySessionBridge.FromLegacy(_context, proyectoId);
+            _previewCatalogBatchDeletion = new PreviewCatalogBatchDeletion(_factory);
+            _deleteCatalogBatch = new DeleteCatalogBatch(_factory);
 
             if (_proyectoId.HasValue)
                 new EditableReportTitleHelper(_context, panelTop, lblTitulo, () => _proyectoId ?? 0, ReportTitleModuleKeys.CatalogoManoObra).Attach();

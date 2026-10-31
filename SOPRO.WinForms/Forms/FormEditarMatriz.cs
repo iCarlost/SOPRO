@@ -278,7 +278,7 @@ ConfigurarGrid();
         
         private void Recalcular()
         {
-            var totales = MatrixComponentCalculationService.Recalculate(_componentesTemp, FormatoHelper.DecimalesImporte);
+            var totales = MatrixComponentCalculationService.RecalculateParaVista(_componentesTemp, FormatoHelper.DecimalesImporte);
 
             _totalMaterial = totales.TotalMaterial;
             _baseManoObra = totales.BaseManoObra;

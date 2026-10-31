@@ -253,7 +253,7 @@ namespace SOPRO.WinForms.Forms
             btnRecalcularRibbon.Enabled = false;
             Cursor = Cursors.WaitCursor;
 
-            SOPRO.Application.Services.RecalculoGlobalResultado resultado = null;
+            SOPRO.Application.Contracts.Result<SOPRO.Application.Services.RecalculoGlobalResultado>? resultado = null;
             Exception error = null;
 
             try
@@ -262,7 +262,7 @@ namespace SOPRO.WinForms.Forms
                 resultado = await Task.Run(() =>
                 {
                     using var ctx = _factory.Create(dbPathRecalculo);
-                    return svc.Ejecutar(ctx, proyId);
+                    return svc.TryEjecutar(ctx, proyId);
                 });
             }
             catch (Exception ex)
@@ -283,6 +283,17 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
+            if (resultado == null || !resultado.IsSuccess)
+            {
+                RestaurarFocoTrasRecalculo(tabActiva, formActivoAntes, controlConFocoAntes);
+                MessageBox.Show(
+                    $"Error en el recálculo global:\n{resultado?.Error?.Message ?? "No se pudo completar el recálculo."}",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            var recalculado = resultado.Value!;
+
             // Refrescar todos los tabs abiertos que implementen IRecalculable
             foreach (TabPage tab in tabControl.TabPages)
             {
@@ -302,7 +313,7 @@ namespace SOPRO.WinForms.Forms
             // Mostrar resultado discretamente como tooltip debajo del botón recalcular
             var tip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 0, ReshowDelay = 0 };
             // Mostrar debajo del botón (y = altura del botón + margen)
-            tip.Show(resultado.ResumenTexto, btnRecalcularRibbon,
+            tip.Show(recalculado.ResumenTexto, btnRecalcularRibbon,
                 0, btnRecalcularRibbon.Height + 4, 5000);
         }
     }

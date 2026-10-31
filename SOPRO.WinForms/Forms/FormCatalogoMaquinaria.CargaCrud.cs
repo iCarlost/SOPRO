@@ -12,6 +12,7 @@ using System.Linq;
 using System.Windows.Forms;
 using ClosedXML.Excel;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Catalog;
 using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
@@ -109,63 +110,106 @@ namespace SOPRO.WinForms.Forms
             if (form.ShowDialog() == DialogResult.OK) CargarMaquinaria();
         }
 
-        private void btnEliminar_Click(object sender, EventArgs e)
+        private async void btnEliminar_Click(object sender, EventArgs e)
         {
-            if (_maquinariaSeleccionada == null)
+            var ids = ObtenerIdsSeleccionados();
+
+            if (ids.Count == 0)
             {
-                MessageBox.Show("Seleccione un registro para eliminar.", "Selección Requerida",
+                MessageBox.Show("Seleccione al menos un registro para eliminar.", "Selección Requerida",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            if (_proyectoId.HasValue && _maquinariaSeleccionada.Origen == OrigenInsumo.Maestro)
+
+            // El alcance lo decide la previsualización por el ProyectoId real de cada
+            // fila, no Origen: una copia importada del maestro vive en el proyecto y
+            // es eliminable; un lote maestro puro o mixto se rechaza con Conflict.
+
+            // El comando escribe por un contexto nuevo: si la UI tiene ediciones
+            // pendientes en el contexto compartido, se aborta sin guardar ni limpiar.
+            if (CatalogoBatchDeletionHelper.HayCambiosSinGuardar(_context))
             {
-                MessageBox.Show("No puede eliminar registros del catálogo maestro desde un proyecto.",
-                    "Registro del Catálogo Maestro", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(CatalogoBatchDeletionHelper.MensajeCambiosSinGuardar,
+                    "Cambios sin guardar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            if (MessageBox.Show(
-                $"¿Está seguro de eliminar el registro?\n\nClave: {_maquinariaSeleccionada.Clave}\n" +
-                $"Descripción: {_maquinariaSeleccionada.Descripcion}\n\nEsta acción no se puede deshacer.",
-                "Confirmar Eliminación", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
 
             try
             {
-                var compsMaq = _context.ComponentesMatriz
-                    .Where(c => c.MaquinariaId == _maquinariaSeleccionada.Id).ToList();
-                if (compsMaq.Any())
+                var previewResult = await _previewCatalogBatchDeletion.Execute(
+                    _sessionInfo, new PreviewCatalogBatchDeletionRequest(CatalogItemKind.Maquinaria, ids));
+
+                if (!previewResult.IsSuccess)
                 {
-                    int nm = compsMaq.Select(c => c.MatrizId).Distinct().Count();
-                    if (MessageBox.Show(
-                        $"Este insumo está usado en {compsMaq.Count} componente(s) de {nm} matriz/matrices.\n\n"
-                        + "Al eliminarlo, esos componentes también serán eliminados.\n\n¿Desea continuar?",
-                        "Insumo en uso", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
-                    _context.ComponentesMatriz.RemoveRange(compsMaq);
+                    MessageBox.Show(previewResult.Error!.Message, "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
                 }
 
-                // Primero borrar el insumo y guardar
-                var enBDMaq = _context.Maquinaria.Find(_maquinariaSeleccionada.Id);
-                if (enBDMaq != null) _context.Maquinaria.Remove(enBDMaq);
-                _context.SaveChanges();
+                var preview = previewResult.Value!;
 
-                // Ahora propagar a matrices afectadas (el contexto ya refleja el estado real)
-                if (compsMaq.Any())
+                var confirmar = MessageBox.Show(
+                    CatalogoBatchDeletionHelper.ConstruirConfirmacion(preview),
+                    "Confirmar Eliminación", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2);
+
+                if (confirmar != DialogResult.Yes) return;
+
+                if (CatalogoBatchDeletionHelper.HayCambiosSinGuardar(_context))
                 {
-                    var matrizIds = compsMaq.Select(c => c.MatrizId).Distinct().ToList();
-                    RecalculationCoordinatorService.RecalculateAfterInsumoDeletion(_context, matrizIds);
+                    MessageBox.Show(CatalogoBatchDeletionHelper.MensajeCambiosSinGuardar,
+                        "Cambios sin guardar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                var deleteResult = await _deleteCatalogBatch.Execute(
+                    _sessionInfo,
+                    new DeleteCatalogBatchRequest(CatalogItemKind.Maquinaria, ids, preview.Fingerprint));
+
+                if (!deleteResult.IsSuccess)
+                {
+                    MessageBox.Show(deleteResult.Error!.Message, "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // Refresco SOLO después del commit.
+                if (deleteResult.Value!.TriggeredRecalculation)
                     OpenFormsRefreshHelper.RefrescarPresupuestosAbiertos();
-                }
 
                 InsumosModificados?.Invoke(null, EventArgs.Empty);
-                MessageBox.Show("Registro eliminado exitosamente.", "Eliminado",
+                MessageBox.Show("Registro(s) eliminado(s) exitosamente.", "Eliminado",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 CargarMaquinaria();
             }
+            catch (OperationCanceledException)
+            {
+                // Operación cancelada: no mostrar error.
+            }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al eliminar el registro:\n{ex.Message}", "Error",
+                MessageBox.Show($"Error al eliminar los registros:\n{ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
+        internal IReadOnlyList<Maquinaria> ObtenerMaquinariaSeleccionada()
+        {
+            var seleccionados = new List<Maquinaria>();
+
+            foreach (var fila in SeleccionGridHelper.FilasSeleccionadas(dgvMaquinaria))
+            {
+                if (fila is null || fila.IsNewRow) continue;
+                if (fila.DataBoundItem is Maquinaria maquinaria)
+                    seleccionados.Add(maquinaria);
+            }
+
+            return seleccionados;
+        }
+
+        internal IReadOnlyList<int> ObtenerIdsSeleccionados()
+            => CatalogoBatchDeletionHelper.IdsSeleccionados<Maquinaria>(dgvMaquinaria, m => m.Id);
+
 
         private void btnRefrescar_Click(object sender, EventArgs e) => CargarMaquinaria();
         private void btnCerrar_Click(object sender, EventArgs e) => Close();
@@ -206,14 +250,17 @@ namespace SOPRO.WinForms.Forms
 
         private void ActualizarEstadoBotones()
         {
-            var haySeleccion = _maquinariaSeleccionada != null;
-            var esMaestro = haySeleccion && _maquinariaSeleccionada.Origen == OrigenInsumo.Maestro;
+            var seleccionados = ObtenerMaquinariaSeleccionada();
+            var haySeleccion = seleccionados.Count > 0;
             var enProyecto = _proyectoId.HasValue;
+            var todosMaestros = haySeleccion && seleccionados.All(m => m.Origen == OrigenInsumo.Maestro);
 
-            btnEditar.Enabled = haySeleccion && !(enProyecto && esMaestro);
-            btnEliminar.Enabled = haySeleccion && !(enProyecto && esMaestro);
+            btnEditar.Enabled = haySeleccion && !(enProyecto && todosMaestros);
+            // La elegibilidad para eliminar no depende de Origen: el comando resuelve
+            // el alcance por ProyectoId y la previsualización rechaza lo no permitido.
+            btnEliminar.Enabled = haySeleccion;
             EstadoConsolidacionCambiado?.Invoke(this, EventArgs.Empty);
-            btnCalcularCosto.Enabled = haySeleccion && !(enProyecto && esMaestro);
+            btnCalcularCosto.Enabled = haySeleccion && !(enProyecto && todosMaestros);
         }
     }
 }

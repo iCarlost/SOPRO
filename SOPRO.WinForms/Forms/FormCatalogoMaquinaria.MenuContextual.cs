@@ -12,6 +12,7 @@ using System.Linq;
 using System.Windows.Forms;
 using ClosedXML.Excel;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Catalog;
 using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
@@ -56,8 +57,11 @@ namespace SOPRO.WinForms.Forms
             itemEditar.Enabled = puedeEditar;
             itemEditar.Click += (_, __) => btnEditar_Click(sender, EventArgs.Empty);
 
-            var itemEliminar = menu.Items.Add("🗑️  Eliminar");
-            itemEliminar.Enabled = puedeEditar;
+            var idsEliminar = ObtenerIdsSeleccionados();
+            var itemEliminar = menu.Items.Add($"🗑️  {CatalogoBatchDeletionHelper.EtiquetaEliminar(CatalogItemKind.Maquinaria, idsEliminar.Count)}");
+            // La eliminación no se filtra por Origen: la elegibilidad real la decide
+            // la previsualización con el ProyectoId de cada fila.
+            itemEliminar.Enabled = idsEliminar.Count > 0;
             itemEliminar.Click += (_, __) => btnEliminar_Click(sender, EventArgs.Empty);
 
             menu.Items.Add(new ToolStripSeparator());

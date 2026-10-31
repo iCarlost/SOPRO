@@ -114,9 +114,58 @@ namespace SOPRO.Application.Services
         }
 
         public static MatrixComponentTotals Recalculate(IList<ComponenteMatriz> componentes, int decimalesImporte)
+            => Recalculate(componentes, decimalesImporte, matriz: null);
+
+        /// <summary>
+        /// Variante tolerante para PINTAR la vista del editor: excluye del grafo los
+        /// componentes cuya navegación no coincide con su <see cref="TipoComponente"/>
+        /// (los mismos que <see cref="ImportesUnitarios"/> descarta) y devuelve los
+        /// totales de los componentes evaluables. Nunca lanza por una fila malformada
+        /// y nunca persiste nada: la fila inválida sigue visible en el grid para que
+        /// el usuario la corrija o elimine, y el guardado/recálculo estrictos siguen
+        /// rechazándola con <see cref="MatrixComponentReferenceException"/>.
+        /// </summary>
+        public static MatrixComponentTotals RecalculateParaVista(
+            IList<ComponenteMatriz> componentes,
+            int decimalesImporte)
         {
             if (componentes == null) throw new ArgumentNullException(nameof(componentes));
 
+            var evaluables = componentes.Where(TieneNavegacionCompleta).ToList();
+            return evaluables.Count == 0
+                ? new MatrixComponentTotals()
+                : Calcular(evaluables, decimalesImporte);
+        }
+
+        /// <summary>
+        /// Variante con contexto de matriz: valida las referencias de cada
+        /// componente antes de materializar el grafo y, si alguna no coincide con
+        /// su <see cref="TipoComponente"/>, lanza
+        /// <see cref="MatrixComponentReferenceException"/> nombrando la matriz y el
+        /// componente. El recálculo nunca se ejecuta sobre una navegación nula.
+        /// </summary>
+        public static MatrixComponentTotals Recalculate(
+            IList<ComponenteMatriz> componentes,
+            int decimalesImporte,
+            Matriz? matriz)
+        {
+            if (componentes == null) throw new ArgumentNullException(nameof(componentes));
+
+            if (MatrixComponentEditingService.TryFindInvalidNavigation(
+                    componentes, out var invalido, out var posicion, out var mensaje))
+            {
+                throw matriz is null
+                    ? new MatrixComponentReferenceException(mensaje, componente: invalido, position: posicion)
+                    : MatrixComponentReferenceException.ForRecalculation(matriz, invalido, posicion, mensaje);
+            }
+
+            return Calcular(componentes, decimalesImporte);
+        }
+
+        private static MatrixComponentTotals Calcular(
+            IList<ComponenteMatriz> componentes,
+            int decimalesImporte)
+        {
             var engine = new SoproCalculationEngine(decimalesImporte, decimalesImporte, 4);
             var snapshot = MatrixGraphSnapshotAdapter.BuildRootSnapshot(0, componentes);
             var result = new MatrixGraphCalculator(engine).Calculate(snapshot.Graph);

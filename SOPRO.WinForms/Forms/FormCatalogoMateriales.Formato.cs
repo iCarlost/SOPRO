@@ -17,6 +17,7 @@ using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Application.UseCases.Materials;
+using SOPRO.Application.UseCases.Catalog;
 using SOPRO.Application.Models.Catalogs;
 
 namespace SOPRO.WinForms.Forms
@@ -99,8 +100,8 @@ namespace SOPRO.WinForms.Forms
 
             // N4: la sesión es datos puros (no posee contexto): no hay Dispose.
             _listMaterials = new ListMaterials(_factory);
-            _deleteMaterial = new DeleteMaterial(_factory);
-            _previewMaterialDeletion = new PreviewMaterialDeletion(_factory);
+            _previewCatalogBatchDeletion = new PreviewCatalogBatchDeletion(_factory);
+            _deleteCatalogBatch = new DeleteCatalogBatch(_factory);
 
             if (_proyectoId.HasValue)
                 new EditableReportTitleHelper(_context, panelTop, lblTitulo, () => _proyectoId ?? 0, ReportTitleModuleKeys.CatalogoMateriales).Attach();

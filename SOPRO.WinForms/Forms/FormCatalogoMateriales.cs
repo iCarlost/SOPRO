@@ -14,6 +14,7 @@ using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
 using SOPRO.Application.Models.Catalogs;
 using SOPRO.Application.UseCases.Materials;
+using SOPRO.Application.UseCases.Catalog;
 using SOPRO.Data.Factories;
 
 namespace SOPRO.WinForms.Forms
@@ -32,8 +33,8 @@ namespace SOPRO.WinForms.Forms
 
         // Casos de uso de la frontera N3: la UI no calcula ni persiste materiales directamente.
         private readonly ListMaterials _listMaterials;
-        private readonly DeleteMaterial _deleteMaterial;
-        private readonly PreviewMaterialDeletion _previewMaterialDeletion;
+        private readonly PreviewCatalogBatchDeletion _previewCatalogBatchDeletion;
+        private readonly DeleteCatalogBatch _deleteCatalogBatch;
 
         private MaterialListItem _materialSeleccionado;
         private List<ColumnaMaterial> _columnasConfig = new List<ColumnaMaterial>();

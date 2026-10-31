@@ -4,6 +4,7 @@ using SOPRO.Application.Models.Matrices;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
 using SOPRO.Application.Services.Reporting;
+using SOPRO.Application.UseCases.Matrices;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.Data.Factories;
@@ -23,10 +24,11 @@ namespace SOPRO.WinForms.Forms
     {
         private readonly SOPROContext _context;
         private readonly ProjectSessionInfo _sessionInfo;
-        private readonly Repository<Matriz> _repository;
+        private readonly IProjectDbContextFactory _factory = new ProjectDbContextFactory();
+        private readonly DeleteMatricesBatch _deleteMatricesBatch;
         private readonly MatrixCatalogViewService _matrixCatalogViewService = new();
         private readonly MatrixUsageLookupService _matrixUsageLookupService = new();
-        private readonly MatrixDeleteFlowService _matrixDeleteFlowService = new();
+        private readonly PreviewMatricesBatchDeletion _previewMatricesBatchDeletion;
         private readonly MatrixConsolidationService _matrixConsolidationService = new();
         private readonly CatalogoMatricesExportService _exportService = new(new ProjectDbContextFactory());
         private readonly int _proyectoId;
@@ -77,7 +79,8 @@ namespace SOPRO.WinForms.Forms
             FormRenderHelper.OptimizeForGridRendering(this);
 
             _context = context ?? throw new ArgumentNullException(nameof(context));
-            _repository = new Repository<Matriz>(_context);
+            _deleteMatricesBatch = new DeleteMatricesBatch(_factory);
+            _previewMatricesBatchDeletion = new PreviewMatricesBatchDeletion(_factory);
             _proyectoId = proyectoId;
             _modoEmbebido = modoEmbebido;
             _sessionInfo = LegacySessionBridge.FromLegacy(_context, _proyectoId);
@@ -112,7 +115,7 @@ namespace SOPRO.WinForms.Forms
             dgvMatrices.CellMouseDown += DgvMatrices_CellMouseDownFormato;
             dgvMatrices.KeyDown += DgvMatrices_KeyDownFormato;
 
-            _onInsumos = (_, __) => CargarMatrices();
+            _onInsumos = (_, __) => RecargarTrasCambioDeInsumos();
             FormCatalogoMateriales.InsumosModificados += _onInsumos;
             FormCatalogoManoObra.InsumosModificados += _onInsumos;
             FormCatalogoHerramientas.InsumosModificados += _onInsumos;

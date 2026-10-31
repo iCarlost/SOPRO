@@ -12,10 +12,11 @@ namespace SOPRO.Tests.Services.Persistencia;
 /// <summary>
 /// Contrato del comando único de alta en lote de componentes NUEVOS sobre una matriz
 /// persistida (ADR-0001): intención inmutable con el estado COMPLETO de los
-/// componentes existentes, bases de catálogo y rowset del presupuesto; rechazo
-/// completo de auxiliares; revalidación exacta contra la base; cálculo canónico con
-/// las altas aún sin guardar; y un solo commit. La intención no depende de ningún
-/// estado de UI (el dirty tracker de la vista queda fuera de Application).
+/// componentes existentes, bases de catálogo y rowset del presupuesto; admisión de
+/// auxiliares válidos (básicos/cuadrillas) con revalidación de su matriz fuente y
+/// rechazo de autorreferencias/ciclos; revalidación exacta contra la base; cálculo
+/// canónico con las altas aún sin guardar; y un solo commit. La intención no depende
+/// de ningún estado de UI (el dirty tracker de la vista queda fuera de Application).
 /// </summary>
 [TestClass]
 public class BudgetMatrixComponentAdditionPersistenceTests
@@ -369,14 +370,81 @@ public class BudgetMatrixComponentAdditionPersistenceTests
     }
 
     [TestMethod]
-    public void ExecuteMatrixComponentAdditionCommand_MezclaConAuxiliar_RechazaTodoElLoteSinEscribir()
+    public void ExecuteMatrixComponentAdditionCommand_CuadrillaEnApu_PersisteAuxiliarYRecalculaHojasYAgrupadores()
     {
         var dbPath = TestDbFactory.CreateTempDbPath();
         try
         {
             int proyectoId;
             int matrizId;
-            int materialId;
+            int hojaId;
+            int agrupadorId;
+            int cuadrillaId;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                proyectoId = scenario.Proyecto.Id;
+                matrizId = scenario.MatrizApu.Id;
+                hojaId = scenario.Concepto.Id;
+
+                var cuadrilla = AddMatrix(context, proyectoId, "CUAD-1", TipoMatriz.Cuadrilla, 50m);
+                var agrupador = AddAggregator(context, proyectoId);
+                context.SaveChanges();
+
+                cuadrillaId = cuadrilla.Id;
+                agrupadorId = agrupador.Id;
+            }
+
+            var command = CreateCommand(
+                dbPath,
+                proyectoId,
+                matrizId,
+                CreateItem(dbPath, TipoComponenteMatriz.Auxiliar, cuadrillaId, 1m, "cuadrilla"));
+
+            var result = BudgetPersistenceService.ExecuteMatrixComponentAdditionCommand(
+                new ProjectDbContextFactory(), dbPath, command);
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, result.Status, result.Message);
+            var snapshot = result.Confirmed!;
+            Assert.AreEqual(160m, snapshot.Matrix.CostoDirecto,
+                "100 base + 50 de cuadrilla + 5 de cada %MO sobre la nueva base de 80.");
+            Assert.AreEqual(6, snapshot.AffectedComponents.Count);
+            Assert.AreEqual(1, snapshot.Leaves.Count);
+            Assert.AreEqual(1600m, snapshot.Leaves[0].ImporteTotal);
+            Assert.AreEqual(1, snapshot.Aggregators.Count);
+            Assert.AreEqual(1600m, snapshot.Aggregators[0].ImporteTotal);
+
+            var alta = snapshot.AffectedComponents.Single(c => c.ComponentId == snapshot.AddedComponentIds.Single());
+            Assert.AreEqual(TipoComponenteMatriz.Auxiliar, alta.TipoComponente);
+            Assert.AreEqual(50m, alta.Importe);
+            Assert.AreEqual(6, alta.Orden);
+
+            using var verificacion = new SOPROContext(dbPath);
+            var nueva = verificacion.ComponentesMatriz.AsNoTracking()
+                .Single(c => c.Id == snapshot.AddedComponentIds.Single());
+            Assert.AreEqual(TipoComponenteMatriz.Auxiliar, nueva.TipoComponente);
+            Assert.AreEqual(cuadrillaId, nueva.AuxiliarId);
+            Assert.AreEqual(50m, nueva.Importe, "La cuadrilla entra como hoja con su costo directo.");
+            Assert.AreEqual(160m, verificacion.Matrices.AsNoTracking().Single(m => m.Id == matrizId).CostoDirecto);
+            Assert.AreEqual(1600m, verificacion.ConceptosPresupuesto.AsNoTracking().Single(c => c.Id == hojaId).ImporteTotal);
+            Assert.AreEqual(1600m, verificacion.ConceptosPresupuesto.AsNoTracking().Single(c => c.Id == agrupadorId).ImporteTotal);
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ExecuteMatrixComponentAdditionCommand_MezclaManoDeObraYCuadrilla_ConfirmaTodoElLote()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int matrizId;
+            int manoDeObraId;
             int cuadrillaId;
 
             using (var context = TestDbFactory.CreateContextAt(dbPath))
@@ -385,46 +453,380 @@ public class BudgetMatrixComponentAdditionPersistenceTests
                 proyectoId = scenario.Proyecto.Id;
                 matrizId = scenario.MatrizApu.Id;
 
-                var material = AddMaterial(context, proyectoId, "MAT-LOTE", 10m);
-                var cuadrilla = AddMatrix(context, proyectoId, "CUAD-1", TipoMatriz.Cuadrilla, 50m);
+                var manoDeObra = AddManoDeObra(context, proyectoId, "MO-NEW", 20m);
+                var cuadrilla = AddMatrix(context, proyectoId, "CUAD-MIX", TipoMatriz.Cuadrilla, 50m);
                 context.SaveChanges();
 
-                materialId = material.Id;
+                manoDeObraId = manoDeObra.Id;
                 cuadrillaId = cuadrilla.Id;
             }
-
-            var auxiliar = new BudgetMatrixComponentAdditionItem(
-                TipoComponenteMatriz.Auxiliar,
-                cuadrillaId,
-                new BudgetMatrixComponentSourceBase(
-                    TipoComponenteMatriz.Auxiliar,
-                    cuadrillaId,
-                    proyectoId,
-                    "CUAD-1",
-                    "Cuadrilla de prueba",
-                    "jor",
-                    50m,
-                    esPorcentajeManoDeObra: false),
-                1m,
-                notes: null);
 
             var command = CreateCommand(
                 dbPath,
                 proyectoId,
                 matrizId,
-                CreateItem(dbPath, TipoComponenteMatriz.Material, materialId, 1m),
-                auxiliar);
+                CreateItem(dbPath, TipoComponenteMatriz.ManoDeObra, manoDeObraId, 1m),
+                CreateItem(dbPath, TipoComponenteMatriz.Auxiliar, cuadrillaId, 1m));
+
+            var result = BudgetPersistenceService.ExecuteMatrixComponentAdditionCommand(
+                new ProjectDbContextFactory(), dbPath, command);
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, result.Status, result.Message);
+            var snapshot = result.Confirmed!;
+            Assert.AreEqual(184m, snapshot.Matrix.CostoDirecto,
+                "100 base + 20 de mano de obra + 50 de cuadrilla + 7 de cada %MO sobre la nueva base de 100.");
+            Assert.AreEqual(2, snapshot.AddedComponentIds.Count);
+            Assert.AreEqual(7, snapshot.AffectedComponents.Count);
+
+            var altas = snapshot.AffectedComponents
+                .Where(c => snapshot.AddedComponentIds.Contains(c.ComponentId))
+                .OrderBy(c => c.Orden)
+                .ToList();
+            Assert.AreEqual(TipoComponenteMatriz.ManoDeObra, altas[0].TipoComponente);
+            Assert.AreEqual(20m, altas[0].Importe);
+            Assert.AreEqual(TipoComponenteMatriz.Auxiliar, altas[1].TipoComponente);
+            Assert.AreEqual(50m, altas[1].Importe);
+
+            using var verificacion = new SOPROContext(dbPath);
+            Assert.AreEqual(7, verificacion.ComponentesMatriz.AsNoTracking().Count(c => c.MatrizId == matrizId));
+            Assert.AreEqual(184m, verificacion.Matrices.AsNoTracking().Single(m => m.Id == matrizId).CostoDirecto);
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ExecuteMatrixComponentAdditionCommand_BasicoValido_ConfirmaComoAuxiliar()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int matrizId;
+            int basicoId;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                proyectoId = scenario.Proyecto.Id;
+                matrizId = scenario.MatrizApu.Id;
+                basicoId = AddMatrix(context, proyectoId, "BAS-NEW", TipoMatriz.Basico, 25m).Id;
+                context.SaveChanges();
+            }
+
+            var command = CreateCommand(
+                dbPath,
+                proyectoId,
+                matrizId,
+                CreateItem(dbPath, TipoComponenteMatriz.Auxiliar, basicoId, 2m));
+
+            var result = BudgetPersistenceService.ExecuteMatrixComponentAdditionCommand(
+                new ProjectDbContextFactory(), dbPath, command);
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, result.Status, result.Message);
+            var snapshot = result.Confirmed!;
+            Assert.AreEqual(150m, snapshot.Matrix.CostoDirecto, "100 base + 2 × 25 del básico.");
+
+            using var verificacion = new SOPROContext(dbPath);
+            var nueva = verificacion.ComponentesMatriz.AsNoTracking()
+                .Single(c => c.Id == snapshot.AddedComponentIds.Single());
+            Assert.AreEqual(TipoComponenteMatriz.Auxiliar, nueva.TipoComponente);
+            Assert.AreEqual(basicoId, nueva.AuxiliarId);
+            Assert.AreEqual(50m, nueva.Importe);
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ExecuteMatrixComponentAdditionCommand_AuxiliarMaestra_DevuelveConflictoSinEscribir()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int matrizId;
+            int auxiliarMaestroId;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                proyectoId = scenario.Proyecto.Id;
+                matrizId = scenario.MatrizApu.Id;
+
+                var auxiliarMaestro = new Matriz
+                {
+                    ProyectoId = null,
+                    Clave = "BAS-MAESTRA",
+                    Descripcion = "Básico maestro sin proyecto",
+                    Unidad = "m3",
+                    Tipo = TipoMatriz.Basico,
+                    CostoDirecto = 50m,
+                    Notas = string.Empty
+                };
+                context.Matrices.Add(auxiliarMaestro);
+                context.SaveChanges();
+                auxiliarMaestroId = auxiliarMaestro.Id;
+            }
+
+            var command = CreateCommand(
+                dbPath,
+                proyectoId,
+                matrizId,
+                CreateItem(dbPath, TipoComponenteMatriz.Auxiliar, auxiliarMaestroId, 1m));
+
+            var result = BudgetPersistenceService.ExecuteMatrixComponentAdditionCommand(
+                new ProjectDbContextFactory(), dbPath, command);
+
+            Assert.AreEqual(BudgetOperationStatus.Conflict, result.Status, result.Message);
+            Assert.IsNull(result.Confirmed);
+            StringAssert.Contains(result.Message!, "no pertenece al proyecto");
+
+            using var verificacion = new SOPROContext(dbPath);
+            Assert.AreEqual(5, verificacion.ComponentesMatriz.Count(c => c.MatrizId == matrizId));
+            Assert.AreEqual(100m, verificacion.Matrices.AsNoTracking().Single(m => m.Id == matrizId).CostoDirecto);
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ExecuteMatrixComponentAdditionCommand_AuxiliarCostoCambio_DevuelveConflictoSinEscribir()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int matrizId;
+            int cuadrillaId;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                proyectoId = scenario.Proyecto.Id;
+                matrizId = scenario.MatrizApu.Id;
+                cuadrillaId = AddMatrix(context, proyectoId, "CUAD-STALE", TipoMatriz.Cuadrilla, 50m).Id;
+                context.SaveChanges();
+            }
+
+            var command = CreateCommand(
+                dbPath,
+                proyectoId,
+                matrizId,
+                CreateItem(dbPath, TipoComponenteMatriz.Auxiliar, cuadrillaId, 1m));
+
+            using (var otroModulo = new SOPROContext(dbPath))
+            {
+                otroModulo.Matrices.Single(m => m.Id == cuadrillaId).CostoDirecto = 80m;
+                otroModulo.SaveChanges();
+            }
+
+            var result = BudgetPersistenceService.ExecuteMatrixComponentAdditionCommand(
+                new ProjectDbContextFactory(), dbPath, command);
+
+            Assert.AreEqual(BudgetOperationStatus.Conflict, result.Status, result.Message);
+            Assert.IsNull(result.Confirmed);
+
+            using var verificacion = new SOPROContext(dbPath);
+            Assert.AreEqual(5, verificacion.ComponentesMatriz.Count(c => c.MatrizId == matrizId));
+            Assert.AreEqual(100m, verificacion.Matrices.AsNoTracking().Single(m => m.Id == matrizId).CostoDirecto);
+            Assert.AreEqual(80m, verificacion.Matrices.AsNoTracking().Single(m => m.Id == cuadrillaId).CostoDirecto);
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ExecuteMatrixComponentAdditionCommand_AuxiliarTipoOPertenenciaCambio_DevuelveConflictoSinEscribir()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int matrizId;
+            int cuadrillaId;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                proyectoId = scenario.Proyecto.Id;
+                matrizId = scenario.MatrizApu.Id;
+                cuadrillaId = AddMatrix(context, proyectoId, "CUAD-MOVE", TipoMatriz.Cuadrilla, 50m).Id;
+                context.SaveChanges();
+            }
+
+            var command = CreateCommand(
+                dbPath,
+                proyectoId,
+                matrizId,
+                CreateItem(dbPath, TipoComponenteMatriz.Auxiliar, cuadrillaId, 1m));
+
+            using (var otroModulo = new SOPROContext(dbPath))
+            {
+                var otroProyecto = AddProject(otroModulo, "proyecto_ajeno_aux");
+                var cuadrilla = otroModulo.Matrices.Single(m => m.Id == cuadrillaId);
+                cuadrilla.ProyectoId = otroProyecto.Id;
+                cuadrilla.Tipo = TipoMatriz.Basico;
+                otroModulo.SaveChanges();
+            }
+
+            var result = BudgetPersistenceService.ExecuteMatrixComponentAdditionCommand(
+                new ProjectDbContextFactory(), dbPath, command);
+
+            Assert.AreEqual(BudgetOperationStatus.Conflict, result.Status, result.Message);
+            Assert.IsNull(result.Confirmed);
+
+            using var verificacion = new SOPROContext(dbPath);
+            Assert.AreEqual(5, verificacion.ComponentesMatriz.Count(c => c.MatrizId == matrizId));
+            Assert.AreEqual(100m, verificacion.Matrices.AsNoTracking().Single(m => m.Id == matrizId).CostoDirecto);
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ExecuteMatrixComponentAdditionCommand_AuxiliarEliminada_DevuelveConflictoSinEscribir()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int matrizId;
+            int cuadrillaId;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                proyectoId = scenario.Proyecto.Id;
+                matrizId = scenario.MatrizApu.Id;
+                cuadrillaId = AddMatrix(context, proyectoId, "CUAD-DEL", TipoMatriz.Cuadrilla, 50m).Id;
+                context.SaveChanges();
+            }
+
+            var command = CreateCommand(
+                dbPath,
+                proyectoId,
+                matrizId,
+                CreateItem(dbPath, TipoComponenteMatriz.Auxiliar, cuadrillaId, 1m));
+
+            using (var otroModulo = new SOPROContext(dbPath))
+            {
+                otroModulo.Matrices.Remove(otroModulo.Matrices.Single(m => m.Id == cuadrillaId));
+                otroModulo.SaveChanges();
+            }
+
+            var result = BudgetPersistenceService.ExecuteMatrixComponentAdditionCommand(
+                new ProjectDbContextFactory(), dbPath, command);
+
+            Assert.AreEqual(BudgetOperationStatus.Conflict, result.Status, result.Message);
+            Assert.IsNull(result.Confirmed);
+
+            using var verificacion = new SOPROContext(dbPath);
+            Assert.AreEqual(5, verificacion.ComponentesMatriz.Count(c => c.MatrizId == matrizId));
+            Assert.AreEqual(100m, verificacion.Matrices.AsNoTracking().Single(m => m.Id == matrizId).CostoDirecto);
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ExecuteMatrixComponentAdditionCommand_Autorreferencia_RechazaSinEscribir()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int matrizId;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                proyectoId = scenario.Proyecto.Id;
+                matrizId = scenario.MatrizApu.Id;
+            }
+
+            var command = CreateCommand(
+                dbPath,
+                proyectoId,
+                matrizId,
+                CreateItem(dbPath, TipoComponenteMatriz.Auxiliar, matrizId, 1m));
 
             var result = BudgetPersistenceService.ExecuteMatrixComponentAdditionCommand(
                 new ProjectDbContextFactory(), dbPath, command);
 
             Assert.AreEqual(BudgetOperationStatus.Failed, result.Status, result.Message);
             Assert.IsNull(result.Confirmed);
-            StringAssert.Contains(result.Message!, "auxiliar");
+            StringAssert.Contains(result.Message!, "sí misma");
 
             using var verificacion = new SOPROContext(dbPath);
-            Assert.AreEqual(5, verificacion.ComponentesMatriz.Count(c => c.MatrizId == matrizId),
-                "El lote se rechaza completo: no se inserta la fila válida.");
+            Assert.AreEqual(5, verificacion.ComponentesMatriz.Count(c => c.MatrizId == matrizId));
+            Assert.AreEqual(100m, verificacion.Matrices.AsNoTracking().Single(m => m.Id == matrizId).CostoDirecto);
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ExecuteMatrixComponentAdditionCommand_Ciclo_RechazaSinEscribir()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int matrizId;
+            int basicoId;
+
+            using (var context = TestDbFactory.CreateContextAt(dbPath))
+            {
+                var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+                proyectoId = scenario.Proyecto.Id;
+                matrizId = scenario.MatrizApu.Id;
+
+                // La fuente ya depende del destino: agregarla al destino cerraría el ciclo.
+                var basico = AddMatrix(context, proyectoId, "BAS-CICLO", TipoMatriz.Basico, 10m);
+                context.ComponentesMatriz.Add(new ComponenteMatriz
+                {
+                    MatrizId = basico.Id,
+                    TipoComponente = TipoComponenteMatriz.Auxiliar,
+                    AuxiliarId = matrizId,
+                    Cantidad = 1m,
+                    Orden = 1,
+                    Notas = string.Empty
+                });
+                context.SaveChanges();
+                basicoId = basico.Id;
+            }
+
+            var command = CreateCommand(
+                dbPath,
+                proyectoId,
+                matrizId,
+                CreateItem(dbPath, TipoComponenteMatriz.Auxiliar, basicoId, 1m));
+
+            var result = BudgetPersistenceService.ExecuteMatrixComponentAdditionCommand(
+                new ProjectDbContextFactory(), dbPath, command);
+
+            Assert.AreEqual(BudgetOperationStatus.Failed, result.Status, result.Message);
+            Assert.IsNull(result.Confirmed);
+            StringAssert.Contains(result.Message!, "ciclo");
+
+            using var verificacion = new SOPROContext(dbPath);
+            Assert.AreEqual(5, verificacion.ComponentesMatriz.Count(c => c.MatrizId == matrizId));
+            Assert.AreEqual(1, verificacion.ComponentesMatriz.Count(c => c.MatrizId == basicoId));
             Assert.AreEqual(100m, verificacion.Matrices.AsNoTracking().Single(m => m.Id == matrizId).CostoDirecto);
         }
         finally
@@ -826,6 +1228,8 @@ public class BudgetMatrixComponentAdditionPersistenceTests
                 context.Maquinaria.AsNoTracking().Single(m => m.Id == sourceId)),
             TipoComponenteMatriz.Herramienta => BudgetMatrixComponentSourceBase.FromHerramienta(
                 context.Herramientas.AsNoTracking().Single(h => h.Id == sourceId)),
+            TipoComponenteMatriz.Auxiliar => BudgetMatrixComponentSourceBase.FromAuxiliar(
+                context.Matrices.AsNoTracking().Single(m => m.Id == sourceId)),
             _ => throw new InvalidOperationException($"Tipo no soportado por la prueba: {tipo}.")
         };
 
@@ -904,6 +1308,29 @@ public class BudgetMatrixComponentAdditionPersistenceTests
         context.Matrices.Add(matriz);
         context.SaveChanges();
         return matriz;
+    }
+
+    private static ManoDeObra AddManoDeObra(
+        SOPROContext context,
+        int proyectoId,
+        string clave,
+        decimal salarioReal)
+    {
+        var manoDeObra = new ManoDeObra
+        {
+            ProyectoId = proyectoId,
+            Clave = clave,
+            Descripcion = "Mano de obra de prueba",
+            Unidad = "jor",
+            SalarioBase = salarioReal,
+            FactorSalarioReal = 1m,
+            SalarioReal = salarioReal,
+            Notas = string.Empty
+        };
+
+        context.ManoDeObra.Add(manoDeObra);
+        context.SaveChanges();
+        return manoDeObra;
     }
 
     private static ComponenteMatriz AddComponent(

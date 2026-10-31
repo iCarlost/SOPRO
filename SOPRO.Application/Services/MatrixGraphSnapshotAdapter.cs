@@ -88,12 +88,12 @@ namespace SOPRO.Application.Services
                     case TipoComponenteMatriz.Material:
                         input = new MatrixComponentInput(
                             id, index, MatrixComponentType.Material, comp.Cantidad,
-                            Require(comp.Material, index, comp.TipoComponente, nameof(comp.Material)).PrecioUnitario, false);
+                            Require(comp.Material, rootMatrixId, comp, index, nameof(comp.Material)).PrecioUnitario, false);
                         break;
 
                     case TipoComponenteMatriz.ManoDeObra:
                     {
-                        var manoDeObra = Require(comp.ManoDeObra, index, comp.TipoComponente, nameof(comp.ManoDeObra));
+                        var manoDeObra = Require(comp.ManoDeObra, rootMatrixId, comp, index, nameof(comp.ManoDeObra));
                         input = new MatrixComponentInput(
                             id, index, MatrixComponentType.Labor, comp.Cantidad,
                             manoDeObra.SalarioReal, manoDeObra.EsPorcentajeMO);
@@ -103,12 +103,12 @@ namespace SOPRO.Application.Services
                     case TipoComponenteMatriz.Maquinaria:
                         input = new MatrixComponentInput(
                             id, index, MatrixComponentType.Machinery, comp.Cantidad,
-                            Require(comp.Maquinaria, index, comp.TipoComponente, nameof(comp.Maquinaria)).CostoHorario, false);
+                            Require(comp.Maquinaria, rootMatrixId, comp, index, nameof(comp.Maquinaria)).CostoHorario, false);
                         break;
 
                     case TipoComponenteMatriz.Herramienta:
                     {
-                        var herramienta = Require(comp.Herramienta, index, comp.TipoComponente, nameof(comp.Herramienta));
+                        var herramienta = Require(comp.Herramienta, rootMatrixId, comp, index, nameof(comp.Herramienta));
                         input = new MatrixComponentInput(
                             id, index, MatrixComponentType.Tool, comp.Cantidad,
                             herramienta.PrecioUnitario, herramienta.EsPorcentajeMO);
@@ -117,7 +117,7 @@ namespace SOPRO.Application.Services
 
                     case TipoComponenteMatriz.Auxiliar:
                     {
-                        var auxiliar = Require(comp.Auxiliar, index, comp.TipoComponente, nameof(comp.Auxiliar));
+                        var auxiliar = Require(comp.Auxiliar, rootMatrixId, comp, index, nameof(comp.Auxiliar));
                         if (!leafNodeIds.TryGetValue(auxiliar, out var auxNodeId))
                         {
                             auxNodeId = --nextTempNodeId;
@@ -152,10 +152,16 @@ namespace SOPRO.Application.Services
             return new Snapshot(new MatrixGraphInput(rootMatrixId, nodes), rootMatrixId, componentIds);
         }
 
-        private static T Require<T>(T? navigation, int index, TipoComponenteMatriz tipo, string name)
+        private static T Require<T>(
+            T? navigation,
+            int rootMatrixId,
+            ComponenteMatriz component,
+            int index,
+            string name)
             where T : class
             => navigation ?? throw new InvalidOperationException(
-                $"El componente {tipo} en la posicion {index} no tiene la navegacion {name} cargada. " +
+                $"El componente {component.TipoComponente} en la posicion {index} no tiene la navegacion {name} cargada " +
+                $"(matriz {rootMatrixId}, componente Id {component.Id}). " +
                 "El snapshot del grafo requiere navegaciones completas.");
     }
 }

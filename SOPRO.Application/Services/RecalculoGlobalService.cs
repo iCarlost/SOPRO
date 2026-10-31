@@ -3,6 +3,8 @@ using SOPRO.Application.Services.Programacion;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
+using SOPRO.Application.Contracts;
+using SOPRO.Application.Models.Matrices;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -89,6 +91,37 @@ namespace SOPRO.Application.Services
             return resultado;
         }
 
+        /// <summary>
+        /// Variante tipada de <see cref="Ejecutar"/>: devuelve
+        /// <see cref="Result{T}"/> en lugar de dejar escapar una excepción. Un
+        /// componente con referencia inválida se reporta como
+        /// <see cref="AppErrorCode.Validation"/> con el mensaje que nombra la matriz
+        /// y el componente; la fase 1 valida antes de su primer SaveChanges, así que
+        /// ese rechazo no escribe ningún precio. Cualquier otro fallo se clasifica
+        /// como <see cref="AppErrorCode.Database"/>.
+        /// </summary>
+        public Result<RecalculoGlobalResultado> TryEjecutar(SOPROContext ctx, int proyectoId)
+        {
+            ArgumentNullException.ThrowIfNull(ctx);
+
+            try
+            {
+                return Result<RecalculoGlobalResultado>.Ok(Ejecutar(ctx, proyectoId));
+            }
+            catch (MatrixComponentReferenceException ex)
+            {
+                return Result<RecalculoGlobalResultado>.Fail(
+                    AppErrorCode.Validation, ex.Message, ex.ToString());
+            }
+            catch (Exception ex)
+            {
+                return Result<RecalculoGlobalResultado>.Fail(
+                    AppErrorCode.Database,
+                    "No se pudo completar el recálculo global.",
+                    ex.Message);
+            }
+        }
+
         // ════════════════════════════════════════════════════════════════════════
         // FASE 1: COMPONENTES DE MATRICES
         // ════════════════════════════════════════════════════════════════════════
@@ -127,7 +160,7 @@ namespace SOPRO.Application.Services
             {
                 // Usamos el servicio existente — ya recibe decimalesImporte como parámetro ✅
                 var totals = MatrixComponentCalculationService.Recalculate(
-                    matriz.Componentes.ToList(), engine.AmountDecimals);
+                    matriz.Componentes.ToList(), engine.AmountDecimals, matriz);
 
                 matriz.CostoDirecto = engine.RoundAmount(totals.CostoDirectoTotal);
                 total += matriz.Componentes.Count;

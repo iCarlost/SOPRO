@@ -28,8 +28,9 @@ namespace SOPRO.Tests.WinForms.Matrices;
 /// avisa que no se guardó nada, reteniendo el mismo comando inmutable;</item>
 /// <item>el reintento EXPLÍCICO del lote retenido confirma una sola vez, sin
 /// duplicar filas;</item>
-/// <item>un lote con auxiliar/cuadrilla (o mixto) se rechaza COMPLETO antes de
-/// escribir, sin recortes;</item>
+/// <item>una cuadrilla y un lote natural mixto de mano de obra + cuadrilla se
+/// confirman completos, y un auxiliar sin referencia se rechaza antes de
+/// escribir;</item>
 /// <item>un tracker compartido sucio ajeno bloquea el despacho sin persistir el
 /// sucio y el reintento tras limpiarlo confirma el MISMO lote;</item>
 /// <item>una selección vacía es un no-op sin comando.</item>
@@ -360,7 +361,7 @@ public class PanelMatricesComponenteAltasComandoTests
     }
 
     [TestMethod]
-    public void AltasLotePersistido_LoteAuxiliarOMixto_SeRechazaCompletoAntesDeEscribir()
+    public void AltasLotePersistido_CuadrillaYMezclaNatural_ConfirmanTodoElLote()
     {
         var root = CrearRaiz("altas_aux");
         var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
@@ -377,8 +378,11 @@ public class PanelMatricesComponenteAltasComandoTests
             ctx.Database.EnsureCreated();
 
             var escenario = CrearEscenarioDosHojas(ctx);
+            ctx.Matrices.Single(m => m.Clave == "CUA-001").CostoDirecto = 50m;
+            ctx.SaveChanges();
+
             var cuadrilla = ctx.Matrices.AsNoTracking().Single(m => m.Clave == "CUA-001");
-            var materialB = ctx.Materiales.AsNoTracking().Single(m => m.Clave == "MAT-B");
+            var oficial = ctx.ManoDeObra.AsNoTracking().Single(m => m.Clave == "MO-OF");
 
             form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
                 Path.Combine(root, "sopro"), Path.Combine(root, "local")));
@@ -387,47 +391,155 @@ public class PanelMatricesComponenteAltasComandoTests
 
             panel.NotificarFilaCambiada(BuscarFilaPorConcepto(grid, escenario.Hoja1.Id));
 
-            bool eventoEmitido = false;
-            panel.AltasComponentesConfirmadas += (_, __) => eventoEmitido = true;
+            var snapshots = new List<BudgetMatrixComponentAdditionSnapshot>();
+            panel.AltasComponentesConfirmadas += (_, s) => snapshots.Add(s);
 
             int guardasCompartidos = 0;
             ctx.SavedChanges += (_, __) => guardasCompartidos++;
 
-            // Lote de cuadrilla (como puede devolverlo el selector de mano de obra).
+            // Lote de cuadrilla (como lo devuelve el selector de mano de obra).
             PanelMatricesEmbebido.SeleccionInsumoParaPrueba = _ => new List<ComponenteMatriz>
             {
                 new() { TipoComponente = TipoComponenteMatriz.Auxiliar, AuxiliarId = cuadrilla.Id, Auxiliar = cuadrilla, Cantidad = 1m, Notas = string.Empty },
             };
             panel.AgregarInsumosPersistidosParaPrueba(TipoComponenteMatriz.ManoDeObra);
 
-            Assert.IsNull(panel.UltimoEstadoAltasComponente, "El lote se rechazó antes del comando.");
-            Assert.AreEqual(0, guardasCompartidos, "El rechazo del lote auxiliar no escribe nada.");
-            Assert.IsFalse(eventoEmitido);
-            Assert.AreEqual(1, avisos.Count);
-            StringAssert.Contains(avisos[0], "auxiliar o cuadrilla");
+            Assert.AreEqual(BudgetOperationStatus.Committed, panel.UltimoEstadoAltasComponente,
+                panel.UltimaRazonAltasSinDespachar);
+            Assert.IsNull(panel.AltaPendiente);
+            Assert.AreEqual(0, guardasCompartidos, "El alta usa un contexto nuevo, no el compartido.");
+            Assert.AreEqual(1, snapshots.Count);
+            Assert.AreEqual(1, snapshots[0].AddedComponentIds.Count);
+            Assert.AreEqual(TipoComponenteMatriz.Auxiliar, snapshots[0].AffectedComponents
+                .Single(c => c.ComponentId == snapshots[0].AddedComponentIds.Single()).TipoComponente);
 
-            // Lote MIXTO (material + cuadrilla): también se rechaza COMPLETO, sin recortes.
-            avisos.Clear();
+            // Lote natural mixto: mano de obra individual + cuadrilla en el MISMO lote.
             PanelMatricesEmbebido.SeleccionInsumoParaPrueba = _ => new List<ComponenteMatriz>
             {
-                new() { TipoComponente = TipoComponenteMatriz.Material, MaterialId = materialB.Id, Material = materialB, Cantidad = 3m, Notas = string.Empty },
+                new() { TipoComponente = TipoComponenteMatriz.ManoDeObra, ManoDeObraId = oficial.Id, ManoDeObra = oficial, Cantidad = 1m, Notas = string.Empty },
                 new() { TipoComponente = TipoComponenteMatriz.Auxiliar, AuxiliarId = cuadrilla.Id, Auxiliar = cuadrilla, Cantidad = 1m, Notas = string.Empty },
+            };
+            panel.AgregarInsumosPersistidosParaPrueba(TipoComponenteMatriz.ManoDeObra);
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, panel.UltimoEstadoAltasComponente,
+                panel.UltimaRazonAltasSinDespachar);
+            Assert.IsNull(panel.AltaPendiente);
+            Assert.AreEqual(0, guardasCompartidos);
+            Assert.AreEqual(2, snapshots.Count);
+            Assert.AreEqual(2, snapshots[1].AddedComponentIds.Count);
+            CollectionAssert.AreEquivalent(
+                new[] { TipoComponenteMatriz.ManoDeObra, TipoComponenteMatriz.Auxiliar },
+                snapshots[1].AffectedComponents
+                    .Where(c => snapshots[1].AddedComponentIds.Contains(c.ComponentId))
+                    .Select(c => c.TipoComponente)
+                    .ToArray());
+            Assert.AreEqual(0, avisos.Count);
+
+            // Un auxiliar sin referencia sigue rechazándose antes de escribir.
+            PanelMatricesEmbebido.SeleccionInsumoParaPrueba = _ => new List<ComponenteMatriz>
+            {
+                new() { TipoComponente = TipoComponenteMatriz.Auxiliar, AuxiliarId = 0, Auxiliar = null, Cantidad = 1m, Notas = string.Empty },
+            };
+            panel.AgregarInsumosPersistidosParaPrueba(TipoComponenteMatriz.ManoDeObra);
+
+            Assert.IsNull(panel.UltimoEstadoAltasComponente, "El auxiliar sin referencia no despacha comando.");
+            Assert.IsNull(panel.AltaPendiente, "Un lote rechazado no queda retenido.");
+            Assert.AreEqual(0, guardasCompartidos);
+            Assert.AreEqual(1, avisos.Count);
+            StringAssert.Contains(avisos[0], "auxiliar");
+
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                Assert.AreEqual(5, verificacion.ComponentesMatriz.AsNoTracking().Count(c => c.MatrizId == escenario.MatrizApu.Id),
+                    "Solo se persistieron las dos altas confirmadas; el auxiliar inválido no escribió.");
+                Assert.AreEqual(2, verificacion.ComponentesMatriz.AsNoTracking()
+                    .Count(c => c.MatrizId == escenario.MatrizApu.Id && c.TipoComponente == TipoComponenteMatriz.Auxiliar),
+                    "Las dos altas de cuadrilla confirmadas quedaron persistidas.");
+            }
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void AltasLotePersistido_TipoIncompatibleConSelector_SeRechazaAntesDeEscribir()
+    {
+        var root = CrearRaiz("altas_tipo_incompatible");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        var avisos = new List<string>();
+        PanelMatricesEmbebido.MostrarAvisoAltasComponente = (_, m, _) => avisos.Add(m);
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenarioDosHojas(ctx);
+            var basico = new Matriz
+            {
+                ProyectoId = escenario.Proyecto.Id,
+                Clave = "BAS-001",
+                Descripcion = "Básico de prueba",
+                Unidad = "m3",
+                Tipo = TipoMatriz.Basico,
+                CostoDirecto = 10m,
+                Notas = string.Empty
+            };
+            ctx.Matrices.Add(basico);
+            ctx.SaveChanges();
+
+            var cuadrilla = ctx.Matrices.AsNoTracking().Single(m => m.Clave == "CUA-001");
+            basico = ctx.Matrices.AsNoTracking().Single(m => m.Clave == "BAS-001");
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"), Path.Combine(root, "local")));
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+
+            panel.NotificarFilaCambiada(BuscarFilaPorConcepto(grid, escenario.Hoja1.Id));
+
+            int guardasCompartidos = 0;
+            ctx.SavedChanges += (_, __) => guardasCompartidos++;
+
+            // Un básico NO es una cuadrilla: el selector de Mano de Obra no lo admite.
+            PanelMatricesEmbebido.SeleccionInsumoParaPrueba = _ => new List<ComponenteMatriz>
+            {
+                new() { TipoComponente = TipoComponenteMatriz.Auxiliar, AuxiliarId = basico.Id, Auxiliar = basico, Cantidad = 1m, Notas = string.Empty },
             };
             panel.AgregarInsumosPersistidosParaPrueba(TipoComponenteMatriz.ManoDeObra);
 
             Assert.IsNull(panel.UltimoEstadoAltasComponente);
-            Assert.IsNull(panel.AltaPendiente, "Un lote rechazado no queda retenido.");
+            Assert.IsNull(panel.AltaPendiente);
             Assert.AreEqual(0, guardasCompartidos);
-            Assert.IsFalse(eventoEmitido);
             Assert.AreEqual(1, avisos.Count);
-            StringAssert.Contains(avisos[0], "auxiliar o cuadrilla");
+            StringAssert.Contains(avisos[0], "incompatibles");
 
-            using (var verificacion = new SOPROContext(dbPath))
+            // Una cuadrilla NO es un básico: el selector de Auxiliares no la admite.
+            avisos.Clear();
+            PanelMatricesEmbebido.SeleccionInsumoParaPrueba = _ => new List<ComponenteMatriz>
             {
-                Assert.AreEqual(2, verificacion.ComponentesMatriz.AsNoTracking().Count(c => c.MatrizId == escenario.MatrizApu.Id),
-                    "Ningún scritura ocurrió con los lotes rechazados.");
-                Assert.AreEqual(150m, verificacion.Matrices.AsNoTracking().Single(m => m.Id == escenario.MatrizApu.Id).CostoDirecto);
-            }
+                new() { TipoComponente = TipoComponenteMatriz.Auxiliar, AuxiliarId = cuadrilla.Id, Auxiliar = cuadrilla, Cantidad = 1m, Notas = string.Empty },
+            };
+            panel.AgregarInsumosPersistidosParaPrueba(TipoComponenteMatriz.Auxiliar);
+
+            Assert.IsNull(panel.UltimoEstadoAltasComponente);
+            Assert.IsNull(panel.AltaPendiente);
+            Assert.AreEqual(0, guardasCompartidos);
+            Assert.AreEqual(1, avisos.Count);
+            StringAssert.Contains(avisos[0], "incompatibles");
+
+            using var verificacion = new SOPROContext(dbPath);
+            Assert.AreEqual(2, verificacion.ComponentesMatriz.AsNoTracking().Count(c => c.MatrizId == escenario.MatrizApu.Id));
+            Assert.AreEqual(150m, verificacion.Matrices.AsNoTracking().Single(m => m.Id == escenario.MatrizApu.Id).CostoDirecto);
         }
         finally
         {

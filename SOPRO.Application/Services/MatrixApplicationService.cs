@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Sopro.Calculation;
 using SOPRO.Application.DTOs.Matrices;
 using SOPRO.Application.Models;
+using SOPRO.Application.Models.Matrices;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 
@@ -41,6 +42,19 @@ namespace SOPRO.Application.Services
             var isNew = existingMatrix == null;
             Matriz matrix;
 
+            // La referencia de cada componente se valida ANTES de cualquier
+            // escritura: el guardado de una matriz existente elimina sus componentes
+            // anteriores, así que un rechazo posterior dejaría la matriz incompleta.
+            // Una referencia ausente o de otro tipo produce una navegación nula al
+            // recalcular; nunca debe persistirse.
+            var mappedComponents = dto.Componentes
+                .Select((component, index) => MapComponent(existingMatrix?.Id ?? 0, component, index))
+                .ToList();
+
+            var referenceValidation = MatrixComponentEditingService.ValidateReferences(mappedComponents);
+            if (!referenceValidation.Success)
+                throw new MatrixComponentReferenceException(referenceValidation.ErrorMessage);
+
             if (isNew)
             {
                 matrix = new Matriz();
@@ -58,9 +72,14 @@ namespace SOPRO.Application.Services
                 await context.SaveChangesAsync();
             }
 
-            var mappedComponents = dto.Componentes
-                .Select((component, index) => MapComponent(matrix.Id, component, index))
-                .ToList();
+            // Para una matriz nueva el Id solo existe después del SaveChanges: se
+            // remapea el lote ya validado con el Id definitivo.
+            if (isNew)
+            {
+                mappedComponents = dto.Componentes
+                    .Select((component, index) => MapComponent(matrix.Id, component, index))
+                    .ToList();
+            }
 
             if (mappedComponents.Count > 0)
             {
