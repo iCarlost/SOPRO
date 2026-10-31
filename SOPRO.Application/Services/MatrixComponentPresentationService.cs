@@ -55,6 +55,7 @@ namespace SOPRO.Application.Services
                         break;
 
                     case TipoComponenteMatriz.Auxiliar:
+                        row.Tipo = "🧩 Básico";
                         if (comp.Auxiliar != null)
                         {
                             row.Tipo = comp.Auxiliar.Tipo == TipoMatriz.Cuadrilla ? "👷 Cuadrilla" : "🧩 Básico";

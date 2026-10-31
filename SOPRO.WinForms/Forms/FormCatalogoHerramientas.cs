@@ -11,6 +11,9 @@ using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
 using SOPRO.Application.Services;
+using SOPRO.Application.Contracts;
+using SOPRO.Application.UseCases.Catalog;
+using SOPRO.Data.Factories;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -21,6 +24,10 @@ namespace SOPRO.WinForms.Forms
         private readonly SOPROContext _context;
         private readonly Repository<Herramienta> _repository;
         private readonly int? _proyectoId;
+        private readonly ProjectSessionInfo _sessionInfo;
+        private readonly IProjectDbContextFactory _factory = new ProjectDbContextFactory();
+        private readonly PreviewCatalogBatchDeletion _previewCatalogBatchDeletion;
+        private readonly DeleteCatalogBatch _deleteCatalogBatch;
         private Herramienta _herramientaSeleccionada;
         private List<ColumnaHerramienta> _columnasConfig = new List<ColumnaHerramienta>();
         private bool _cargandoColumnas = false;

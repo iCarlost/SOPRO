@@ -42,7 +42,13 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            if (e.Control && e.KeyCode == Keys.Delete)
+            int seleccionadas = SeleccionGridHelper.FilasSeleccionadas(dgvMatrices)
+                .Count(r => !r.IsNewRow);
+            bool tieneObjetivo = seleccionadas > 0 || _matrizSeleccionada != null;
+
+            if (MatricesDeleteKeyHelper.DebeDespacharSupr(
+                    e.KeyCode, e.Control, e.Shift, e.Alt,
+                    dgvMatrices.IsCurrentCellInEditMode, tieneObjetivo))
             {
                 e.Handled = true;
                 e.SuppressKeyPress = true;

@@ -161,7 +161,7 @@ namespace SOPRO.Application.Services
                 if (!mat.ProyectoId.HasValue) continue;
                 if (!proyectos.TryGetValue(mat.ProyectoId.Value, out var proyecto)) continue;
                 var totals = MatrixComponentCalculationService.Recalculate(
-                    mat.Componentes.ToList(), proyecto.DecimalesImporte);
+                    mat.Componentes.ToList(), proyecto.DecimalesImporte, mat);
                 mat.CostoDirecto = CalculationEngineFactory.FromProyecto(proyecto)
                     .RoundAmount(totals.CostoDirectoTotal);
             }

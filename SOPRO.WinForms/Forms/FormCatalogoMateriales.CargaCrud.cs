@@ -14,6 +14,7 @@ using ClosedXML.Excel;
 using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
 using SOPRO.Application.UseCases.Materials;
+using SOPRO.Application.UseCases.Catalog;
 using SOPRO.Application.Models.Catalogs;
 using System.Threading;
 
@@ -132,40 +133,34 @@ namespace SOPRO.WinForms.Forms
 
         private async void btnEliminar_Click(object sender, EventArgs e)
         {
-            if (_materialSeleccionado == null)
+            var ids = ObtenerIdsSeleccionados();
+
+            if (ids.Count == 0)
             {
-                MessageBox.Show("Seleccione un material para eliminar.", "Selección Requerida",
+                MessageBox.Show("Seleccione al menos un material para eliminar.", "Selección Requerida",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            if (_proyectoId.HasValue && _materialSeleccionado.Origen == OrigenInsumo.Maestro)
+            // El alcance lo decide la previsualización por el ProyectoId real de cada
+            // fila, no Origen: una copia importada del maestro vive en el proyecto y
+            // es eliminable; un lote maestro puro o mixto se rechaza con Conflict.
+
+            // El comando escribe por un contexto nuevo: si la UI tiene ediciones
+            // pendientes en el contexto compartido, se aborta sin guardar ni limpiar.
+            if (CatalogoBatchDeletionHelper.HayCambiosSinGuardar(_context))
             {
-                MessageBox.Show("No puede eliminar materiales del catálogo maestro desde un proyecto.",
-                    "Material del Catálogo Maestro", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(CatalogoBatchDeletionHelper.MensajeCambiosSinGuardar,
+                    "Cambios sin guardar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            // El Id y los datos del mensaje se capturan ANTES del primer await:
-            // la selección puede cambiar mientras la previsualización consulta.
-            int materialId = _materialSeleccionado.Id;
-            string claveConfirmacion = _materialSeleccionado.Clave;
-            string descripcionConfirmacion = _materialSeleccionado.Descripcion;
-
-            var result = MessageBox.Show(
-                $"¿Está seguro de eliminar el material?\n\n" +
-                $"Clave: {claveConfirmacion}\n" +
-                $"Descripción: {descripcionConfirmacion}\n\n" +
-                "Esta acción no se puede deshacer.",
-                "Confirmar Eliminación", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-
-            if (result != DialogResult.Yes) return;
-
             try
             {
-                // Previsualización del impacto: la UI solo decide la confirmación.
-                var previewResult = await _previewMaterialDeletion.Execute(
-                    _sessionInfo, new PreviewMaterialDeletionRequest(materialId));
+                // La previsualización solo lee y describe el mismo lote que ejecutará
+                // el comando; la UI únicamente decide la confirmación.
+                var previewResult = await _previewCatalogBatchDeletion.Execute(
+                    _sessionInfo, new PreviewCatalogBatchDeletionRequest(CatalogItemKind.Material, ids));
 
                 if (!previewResult.IsSuccess)
                 {
@@ -175,26 +170,24 @@ namespace SOPRO.WinForms.Forms
                 }
 
                 var preview = previewResult.Value!;
-                if (preview.ComponentCount > 0)
-                {
-                    var confirmar = MessageBox.Show(
-                        $"Este insumo está usado en {preview.ComponentCount} componente(s) de {preview.AffectedMatrixCount} matriz/matrices.\n\n" +
-                        "Al eliminarlo, esos componentes también serán eliminados.\n\n¿Desea continuar?",
-                        "Insumo en uso", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-                    if (confirmar != DialogResult.Yes) return;
-                }
 
-                if (preview.CrossProjectReferenceCount > 0)
+                var confirmar = MessageBox.Show(
+                    CatalogoBatchDeletionHelper.ConstruirConfirmacion(preview),
+                    "Confirmar Eliminación", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2);
+
+                if (confirmar != DialogResult.Yes) return;
+
+                if (CatalogoBatchDeletionHelper.HayCambiosSinGuardar(_context))
                 {
-                    MessageBox.Show(
-                        $"Este insumo está referenciado en {preview.CrossProjectReferenceCount} componente(s) de matrices de otro proyecto.\n\n" +
-                        "La eliminación no puede continuar: no se eliminan componentes fuera del proyecto de la sesión.",
-                        "Insumo referenciado en otro proyecto", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(CatalogoBatchDeletionHelper.MensajeCambiosSinGuardar,
+                        "Cambios sin guardar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
 
-                var deleteResult = await _deleteMaterial.Execute(
-                    _sessionInfo, new DeleteMaterialRequest(materialId));
+                var deleteResult = await _deleteCatalogBatch.Execute(
+                    _sessionInfo,
+                    new DeleteCatalogBatchRequest(CatalogItemKind.Material, ids, preview.Fingerprint));
 
                 if (!deleteResult.IsSuccess)
                 {
@@ -203,12 +196,14 @@ namespace SOPRO.WinForms.Forms
                     return;
                 }
 
+                // El refresco ocurre SOLO después del commit: una selección rechazada
+                // o revertida no debe recargar ni notificar a otros formularios.
                 if (deleteResult.Value!.TriggeredRecalculation)
                     OpenFormsRefreshHelper.RefrescarPresupuestosAbiertos();
 
                 InsumosModificados?.Invoke(null, EventArgs.Empty);
 
-                MessageBox.Show("Material eliminado exitosamente.", "Eliminado",
+                MessageBox.Show("Material(es) eliminado(s) exitosamente.", "Eliminado",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 CargarMateriales();
             }
@@ -218,10 +213,28 @@ namespace SOPRO.WinForms.Forms
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al eliminar el material:\n{ex.Message}", "Error",
+                MessageBox.Show($"Error al eliminar los materiales:\n{ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
+        internal IReadOnlyList<MaterialListItem> ObtenerMaterialesSeleccionados()
+        {
+            var seleccionados = new List<MaterialListItem>();
+
+            foreach (var fila in SeleccionGridHelper.FilasSeleccionadas(dgvMateriales))
+            {
+                if (fila is null || fila.IsNewRow) continue;
+                if (fila.DataBoundItem is MaterialListItem material)
+                    seleccionados.Add(material);
+            }
+
+            return seleccionados;
+        }
+
+        internal IReadOnlyList<int> ObtenerIdsSeleccionados()
+            => CatalogoBatchDeletionHelper.IdsSeleccionados<MaterialListItem>(dgvMateriales, m => m.Id);
+
 
         private void btnConfigColumnas_Click(object sender, EventArgs e)
         {
@@ -274,12 +287,15 @@ namespace SOPRO.WinForms.Forms
 
         private void ActualizarEstadoBotones()
         {
-            var haySeleccion = _materialSeleccionado != null;
-            var esMaestro = haySeleccion && _materialSeleccionado.Origen == OrigenInsumo.Maestro;
+            var seleccionados = ObtenerMaterialesSeleccionados();
+            var haySeleccion = seleccionados.Count > 0;
             var enProyecto = _proyectoId.HasValue;
+            var todosMaestros = haySeleccion && seleccionados.All(m => m.Origen == OrigenInsumo.Maestro);
 
-            btnEditar.Enabled = haySeleccion && !(enProyecto && esMaestro);
-            btnEliminar.Enabled = haySeleccion && !(enProyecto && esMaestro);
+            btnEditar.Enabled = haySeleccion && !(enProyecto && todosMaestros);
+            // La elegibilidad para eliminar no depende de Origen: el comando resuelve
+            // el alcance por ProyectoId y la previsualización rechaza lo no permitido.
+            btnEliminar.Enabled = haySeleccion;
             EstadoConsolidacionCambiado?.Invoke(this, EventArgs.Empty);
         }
 

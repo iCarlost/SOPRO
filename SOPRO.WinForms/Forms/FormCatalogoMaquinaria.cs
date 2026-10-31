@@ -13,6 +13,9 @@ using System.Windows.Forms;
 using ClosedXML.Excel;
 using SOPRO.Application.Services;
 using SOPRO.Application.Models.Catalogs;
+using SOPRO.Application.Contracts;
+using SOPRO.Application.UseCases.Catalog;
+using SOPRO.Data.Factories;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -24,6 +27,10 @@ namespace SOPRO.WinForms.Forms
         private readonly Repository<Maquinaria> _repository;
         private readonly CatalogLoadService _catalogLoadService = new();
         private readonly int? _proyectoId;
+        private readonly ProjectSessionInfo _sessionInfo;
+        private readonly IProjectDbContextFactory _factory = new ProjectDbContextFactory();
+        private readonly PreviewCatalogBatchDeletion _previewCatalogBatchDeletion;
+        private readonly DeleteCatalogBatch _deleteCatalogBatch;
         private Maquinaria _maquinariaSeleccionada;
         private List<ColumnaMaquinaria> _columnasConfig = new List<ColumnaMaquinaria>();
         private bool _cargandoColumnas = false;

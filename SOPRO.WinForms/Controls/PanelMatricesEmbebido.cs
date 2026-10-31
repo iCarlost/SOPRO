@@ -260,7 +260,7 @@ private void PintarComponentesEnGrid(System.Collections.Generic.IEnumerable<Comp
     catch { }
 
     var lista = componentes?.ToList() ?? new System.Collections.Generic.List<ComponenteMatriz>();
-    var totales = MatrixComponentCalculationService.Recalculate(lista, FormatoHelper.DecimalesImporte);
+    var totales = MatrixComponentCalculationService.RecalculateParaVista(lista, FormatoHelper.DecimalesImporte);
     var rows = MatrixComponentPresentationService.BuildRows(lista, totales.BaseManoObra);
 
     _dgvComponentes.Rows.Clear();
@@ -306,7 +306,7 @@ private void PintarComponentesEnGrid(System.Collections.Generic.IEnumerable<Comp
 
 private void RefrescarVistaTemporal()
 {
-    var totals = MatrixComponentCalculationService.Recalculate(_componentesTemp, FormatoHelper.DecimalesImporte);
+    var totals = MatrixComponentCalculationService.RecalculateParaVista(_componentesTemp, FormatoHelper.DecimalesImporte);
     PintarComponentesEnGrid(_componentesTemp);
     _lblDir.Text = $"Costo Directo: {totals.CostoDirectoTotal.ToStringImporte()}";
 }

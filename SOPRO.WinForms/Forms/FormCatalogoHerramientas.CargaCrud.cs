@@ -11,6 +11,7 @@ using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Catalog;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -97,50 +98,81 @@ namespace SOPRO.WinForms.Forms
             if (dialog.ShowDialog(this) == DialogResult.OK) CargarHerramientas();
         }
 
-        private void btnEliminar_Click(object sender, EventArgs e)
+        private async void btnEliminar_Click(object sender, EventArgs e)
         {
-            if (_herramientaSeleccionada == null)
+            var ids = ObtenerIdsSeleccionados();
+
+            if (ids.Count == 0)
             {
-                MessageBox.Show("Seleccione una herramienta para eliminar.", "Selección Requerida",
+                MessageBox.Show("Seleccione al menos una herramienta para eliminar.", "Selección Requerida",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            if (MessageBox.Show(
-                $"¿Está seguro de eliminar la herramienta '{_herramientaSeleccionada.Clave}'?\n\nEsta acción no se puede deshacer.",
-                "Confirmar Eliminación", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
-                MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+
+            // Las herramientas pertenecen a un proyecto y el alcance lo decide la
+            // previsualización por ProyectoId, no Origen: una copia importada del
+            // maestro es eliminable; el lote fuera de alcance se rechaza con Conflict.
+
+            // El comando escribe por un contexto nuevo: si la UI tiene ediciones
+            // pendientes en el contexto compartido, se aborta sin guardar ni limpiar.
+            if (CatalogoBatchDeletionHelper.HayCambiosSinGuardar(_context))
+            {
+                MessageBox.Show(CatalogoBatchDeletionHelper.MensajeCambiosSinGuardar,
+                    "Cambios sin guardar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
             try
             {
-                var compsH = _context.ComponentesMatriz
-                    .Where(c => c.HerramientaId == _herramientaSeleccionada.Id).ToList();
-                if (compsH.Any())
+                var previewResult = await _previewCatalogBatchDeletion.Execute(
+                    _sessionInfo, new PreviewCatalogBatchDeletionRequest(CatalogItemKind.Herramienta, ids));
+
+                if (!previewResult.IsSuccess)
                 {
-                    int nm = compsH.Select(c => c.MatrizId).Distinct().Count();
-                    if (MessageBox.Show(
-                        $"Esta herramienta está usada en {compsH.Count} componente(s) de {nm} matriz/matrices.\n\n"
-                        + "Al eliminarla, esos componentes también serán eliminados.\n\n¿Desea continuar?",
-                        "Herramienta en uso", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
-                    _context.ComponentesMatriz.RemoveRange(compsH);
+                    MessageBox.Show(previewResult.Error!.Message, "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
                 }
 
-                // Primero borrar el insumo y guardar
-                var enBDH = _context.Herramientas.Find(_herramientaSeleccionada.Id);
-                if (enBDH != null) _context.Herramientas.Remove(enBDH);
-                _context.SaveChanges();
+                var preview = previewResult.Value!;
 
-                // Ahora propagar a matrices afectadas (el contexto ya refleja el estado real)
-                if (compsH.Any())
+                var confirmar = MessageBox.Show(
+                    CatalogoBatchDeletionHelper.ConstruirConfirmacion(preview),
+                    "Confirmar Eliminación", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2);
+
+                if (confirmar != DialogResult.Yes) return;
+
+                if (CatalogoBatchDeletionHelper.HayCambiosSinGuardar(_context))
                 {
-                    var matrizIds = compsH.Select(c => c.MatrizId).Distinct().ToList();
-                    RecalculationCoordinatorService.RecalculateAfterInsumoDeletion(_context, matrizIds);
+                    MessageBox.Show(CatalogoBatchDeletionHelper.MensajeCambiosSinGuardar,
+                        "Cambios sin guardar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                var deleteResult = await _deleteCatalogBatch.Execute(
+                    _sessionInfo,
+                    new DeleteCatalogBatchRequest(CatalogItemKind.Herramienta, ids, preview.Fingerprint));
+
+                if (!deleteResult.IsSuccess)
+                {
+                    MessageBox.Show(deleteResult.Error!.Message, "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // Refresco SOLO después del commit.
+                if (deleteResult.Value!.TriggeredRecalculation)
                     OpenFormsRefreshHelper.RefrescarPresupuestosAbiertos();
-                }
 
                 InsumosModificados?.Invoke(null, EventArgs.Empty);
-                MessageBox.Show("Herramienta eliminada exitosamente.", "Éxito",
+                MessageBox.Show("Herramienta(s) eliminada(s) exitosamente.", "Éxito",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 CargarHerramientas();
+            }
+            catch (OperationCanceledException)
+            {
+                // Operación cancelada: no mostrar error.
             }
             catch (Exception ex)
             {
@@ -148,6 +180,24 @@ namespace SOPRO.WinForms.Forms
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
+        internal IReadOnlyList<Herramienta> ObtenerHerramientasSeleccionadas()
+        {
+            var seleccionados = new List<Herramienta>();
+
+            foreach (var fila in SeleccionGridHelper.FilasSeleccionadas(dgvHerramientas))
+            {
+                if (fila is null || fila.IsNewRow) continue;
+                if (fila.DataBoundItem is Herramienta herramienta)
+                    seleccionados.Add(herramienta);
+            }
+
+            return seleccionados;
+        }
+
+        internal IReadOnlyList<int> ObtenerIdsSeleccionados()
+            => CatalogoBatchDeletionHelper.IdsSeleccionados<Herramienta>(dgvHerramientas, h => h.Id);
+
 
         private void btnConfigColumnas_Click(object sender, EventArgs e)
         {
@@ -199,9 +249,16 @@ namespace SOPRO.WinForms.Forms
 
         private void ActualizarEstadoBotones()
         {
-            bool haySeleccion = _herramientaSeleccionada != null;
-            btnEditar.Enabled = haySeleccion;
+            var seleccionados = ObtenerHerramientasSeleccionadas();
+            var haySeleccion = seleccionados.Count > 0;
+            var enProyecto = _proyectoId.HasValue;
+            var todosMaestros = haySeleccion && seleccionados.All(h => h.Origen == OrigenInsumo.Maestro);
+
+            btnEditar.Enabled = haySeleccion && !(enProyecto && todosMaestros);
+            // La elegibilidad para eliminar no depende de Origen: el comando resuelve
+            // el alcance por ProyectoId y la previsualización rechaza lo no permitido.
             btnEliminar.Enabled = haySeleccion;
+            EstadoConsolidacionCambiado?.Invoke(this, EventArgs.Empty);
         }
     }
 }

@@ -174,7 +174,8 @@ namespace SOPRO.WinForms.Controls
         /// mutación: bases del proyecto (AsNoTracking), de la matriz y del estado
         /// completo de sus componentes, rowset del presupuesto y bases de catálogo
         /// de cada insumo seleccionado. Devuelve <c>null</c> con el motivo del
-        /// rechazo cuando el lote auxiliar/mixto o la vista no lo admiten.
+        /// rechazo cuando el lote tiene tipos incompatibles o una fila auxiliar sin
+        /// fuente/navegación.
         /// </summary>
         private BudgetMatrixComponentAdditionCommand? PrepararComandoAltas(
             List<ComponenteMatriz> seleccion,
@@ -189,21 +190,33 @@ namespace SOPRO.WinForms.Controls
                 return null;
             }
 
-            // Rechazo COMPLETO del lote antes de escribir: nunca se recorta un
-            // auxiliar ni se cae a otro tipo. El selector de mano de obra también
-            // puede devolver cuadrillas (matrices).
-            if (seleccion.Any(c => c is null || c.TipoComponente == TipoComponenteMatriz.Auxiliar))
+            // Se aceptan las filas auxiliares que el selector entrega como matriz
+            // (cuadrillas desde Mano de Obra y básicos desde Auxiliares) siempre que
+            // traigan su fuente y navegación. Solo se rechaza un lote con tipos
+            // incompatibles con el selector o una fila auxiliar sin referencia.
+            if (seleccion.Any(c => c is null))
             {
                 motivoRechazo =
-                    "El lote contiene un componente auxiliar o cuadrilla. La adición de auxiliares " +
-                    "no está soportada; no se guardó nada. Seleccione solo insumos individuales.";
+                    "El lote contiene una fila nula; no se guardó nada.";
                 return null;
             }
 
-            if (seleccion.Any(c => c.TipoComponente != tipoComponente))
+            // Una fila auxiliar sin fuente/navegación no se puede convertir en una
+            // base de catálogo válida: se reporta antes de evaluar compatibilidad.
+            var auxiliarSinFuente = seleccion.FirstOrDefault(c =>
+                c.TipoComponente == TipoComponenteMatriz.Auxiliar
+                && (c.AuxiliarId is not > 0 || c.Auxiliar == null));
+            if (auxiliarSinFuente != null)
             {
                 motivoRechazo =
-                    "El lote mezcla tipos de insumo distintos y no se guardó nada; " +
+                    $"El auxiliar {auxiliarSinFuente.AuxiliarId} cambió en la vista; no se guardó nada.";
+                return null;
+            }
+
+            if (seleccion.Any(c => !EsTipoSeleccionable(tipoComponente, c)))
+            {
+                motivoRechazo =
+                    "El lote mezcla tipos de insumo incompatibles y no se guardó nada; " +
                     "agregue cada tipo por separado.";
                 return null;
             }
@@ -251,7 +264,7 @@ namespace SOPRO.WinForms.Controls
 
             var adiciones = bases.Select(b =>
                 new BudgetMatrixComponentAdditionItem(
-                    tipoComponente, b.SourceId, b.Base, b.Cantidad, b.Notas));
+                    b.Base.TipoComponente, b.SourceId, b.Base, b.Cantidad, b.Notas));
 
             try
             {
@@ -293,8 +306,10 @@ namespace SOPRO.WinForms.Controls
                 TipoComponenteMatriz.Herramienta => componente.Herramienta == null
                     ? $"La herramienta {componente.HerramientaId} cambió en la vista; no se guardó nada."
                     : null,
-                _ => "El lote contiene un componente auxiliar o cuadrilla. " +
-                     "La adición de auxiliares no está soportada; no se guardó nada.",
+                TipoComponenteMatriz.Auxiliar => componente.AuxiliarId is > 0 && componente.Auxiliar != null
+                    ? null
+                    : $"El auxiliar {componente.AuxiliarId} cambió en la vista; no se guardó nada.",
+                _ => "El lote contiene un tipo de componente no soportado; no se guardó nada.",
             };
 
             if (error != null)
@@ -305,7 +320,40 @@ namespace SOPRO.WinForms.Controls
                 TipoComponenteMatriz.Material => BudgetMatrixComponentSourceBase.FromMaterial(componente.Material!),
                 TipoComponenteMatriz.ManoDeObra => BudgetMatrixComponentSourceBase.FromManoDeObra(componente.ManoDeObra!),
                 TipoComponenteMatriz.Maquinaria => BudgetMatrixComponentSourceBase.FromMaquinaria(componente.Maquinaria!),
+                TipoComponenteMatriz.Auxiliar => BudgetMatrixComponentSourceBase.FromAuxiliar(componente.Auxiliar!),
                 _ => BudgetMatrixComponentSourceBase.FromHerramienta(componente.Herramienta!),
+            };
+        }
+
+        /// <summary>
+        /// Tipos que el selector solicitado puede devolver en un mismo lote:
+        /// Mano de Obra entrega mano de obra individual y cuadrillas (Auxiliar cuya
+        /// matriz es <see cref="TipoMatriz.Cuadrilla"/>); Auxiliares entrega
+        /// únicamente básicos (<see cref="TipoMatriz.Basico"/>). El resto exige
+        /// exactamente su tipo. Se valida la fila completa, no solo el enum, para no
+        /// aceptar un APU u otra matriz inyectada bajo un selector incompatible.
+        /// </summary>
+        private static bool EsTipoSeleccionable(
+            TipoComponenteMatriz tipoSolicitado,
+            ComponenteMatriz componente)
+        {
+            if (componente is null)
+                return false;
+
+            return tipoSolicitado switch
+            {
+                TipoComponenteMatriz.ManoDeObra =>
+                    componente.TipoComponente == TipoComponenteMatriz.ManoDeObra
+                    || (componente.TipoComponente == TipoComponenteMatriz.Auxiliar
+                        && componente.Auxiliar != null
+                        && componente.Auxiliar.Tipo == TipoMatriz.Cuadrilla),
+
+                TipoComponenteMatriz.Auxiliar =>
+                    componente.TipoComponente == TipoComponenteMatriz.Auxiliar
+                    && componente.Auxiliar != null
+                    && componente.Auxiliar.Tipo == TipoMatriz.Basico,
+
+                _ => componente.TipoComponente == tipoSolicitado
             };
         }
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SOPRO.Application.Models.Matrices;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 
@@ -95,9 +96,11 @@ public class MatrixComponentUnitImportesTests
         Assert.IsFalse(importes.ContainsKey(sinMaterial));
         Assert.IsFalse(importes.ContainsKey(sinAuxiliar));
 
-        // Contraste: la ruta estricta sí lanza ante navegaciones incompletas.
-        Assert.ThrowsExactly<InvalidOperationException>(
+        // Contraste: la ruta estricta lanza un error tipado ante navegaciones
+        // incompletas (nunca evalúa una navegación nula).
+        var ex = Assert.ThrowsExactly<MatrixComponentReferenceException>(
             () => MatrixComponentCalculationService.Recalculate(componentes, 2));
+        StringAssert.Contains(ex.Message, nameof(ComponenteMatriz.MaterialId));
     }
 
     [TestMethod]

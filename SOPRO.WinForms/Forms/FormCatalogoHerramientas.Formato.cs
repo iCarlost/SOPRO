@@ -11,6 +11,7 @@ using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
 using SOPRO.Application.Services;
+using SOPRO.Application.UseCases.Catalog;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
 using SOPRO.Application.UseCases.Reporting;
@@ -106,6 +107,9 @@ namespace SOPRO.WinForms.Forms
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _repository = new Repository<Herramienta>(_context);
             _proyectoId = proyectoId;
+            _sessionInfo = LegacySessionBridge.FromLegacy(_context, proyectoId);
+            _previewCatalogBatchDeletion = new PreviewCatalogBatchDeletion(_factory);
+            _deleteCatalogBatch = new DeleteCatalogBatch(_factory);
 
             if (_proyectoId.HasValue)
                 new EditableReportTitleHelper(_context, panelHeader, lblTitulo, () => _proyectoId ?? 0, ReportTitleModuleKeys.CatalogoHerramientas).Attach();

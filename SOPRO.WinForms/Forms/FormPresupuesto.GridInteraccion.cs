@@ -123,7 +123,15 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            if (e.KeyCode == Keys.Delete && e.Control)
+            if (PresupuestoDeleteKeyHelper.DebeDespacharSupr(
+                    e.KeyCode,
+                    e.Shift,
+                    e.Alt,
+                    dgvPresupuesto.IsCurrentCellInEditMode,
+                    _panelMatricesEmbebido != null
+                        && _panelMatricesEmbebido.Visible
+                        && _panelMatricesEmbebido.ContainsFocus
+                        && _panelMatricesEmbebido.TieneFocoEnEntradaTexto()))
             {
                 e.Handled = true;
                 e.SuppressKeyPress = true;

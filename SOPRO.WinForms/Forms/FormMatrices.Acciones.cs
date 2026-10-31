@@ -30,24 +30,9 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            var preview = _matrixDeleteFlowService.BuildPreview(_matrizSeleccionada);
-            if (MessageBox.Show(preview.ConfirmationMessage, "Confirmar Eliminación",
-                MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
-                return;
-
-            try
-            {
-                await _repository.DeleteAsync(_matrizSeleccionada);
-                await _repository.SaveChangesAsync();
-                MessageBox.Show("Matriz eliminada exitosamente.", "Eliminado",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                CargarMatrices();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error al eliminar la matriz:\n{ex.Message}", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            // El botón, el menú contextual y Supr comparten el mismo comando: la
+            // validación de dependencias vive en el caso de uso, no en la UI.
+            await EliminarMatricesSeleccionadasAsync();
         }
 
         private void btnCopiar_Click(object sender, EventArgs e)
