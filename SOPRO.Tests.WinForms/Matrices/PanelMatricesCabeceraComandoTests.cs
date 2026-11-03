@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.EntityFrameworkCore;
@@ -34,6 +35,8 @@ public class PanelMatricesCabeceraComandoTests
         (titulo, mensaje, icono) => MessageBox.Show(mensaje, titulo, MessageBoxButtons.OK, icono);
     private static readonly Func<string, string, MessageBoxButtons, MessageBoxIcon, DialogResult> ConfirmacionPorDefecto =
         (mensaje, titulo, botones, icono) => MessageBox.Show(mensaje, titulo, botones, icono);
+    private static readonly Func<bool> DescartarPorDefecto =
+        PanelMatricesEmbebido.ConfirmarDescartarNuevaMatriz;
 
     [TestMethod]
     public void EdicionCabeceraExplicita_Exito_SincronizaTrackedSinSegundaEscritura()
@@ -122,6 +125,162 @@ public class PanelMatricesCabeceraComandoTests
     }
 
     [TestMethod]
+    public void CerrarFormulario_ConBorradorNuevoCancelado_NoPersisteNiCierra()
+    {
+        var root = CrearRaiz("cerrar_borrador");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        var avisos = new System.Collections.Generic.List<string>();
+        PanelMatricesEmbebido.MostrarAvisoAltasComponente = (_, m, _) => avisos.Add(m);
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = CrearContexto(dbPath);
+            var escenario = CrearEscenario(ctx);
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"), Path.Combine(root, "local")));
+            form.Show();
+            form.ExpandirWorkspaceParaPrueba();
+            System.Windows.Forms.Application.DoEvents();
+            var panel = form.PanelMatricesInterno!;
+
+            panel.BeginCreateMatrix(TipoMatriz.APU, soloApu: true);
+            panel.EstablecerCabeceraParaPrueba("BORRADOR-CIERRE", "Borrador", "m3", TipoMatriz.APU);
+
+            PanelMatricesEmbebido.ConfirmarDescartarNuevaMatriz = () => false;
+            form.Close();
+
+            Assert.IsFalse(form.IsDisposed, "Cancelar el descarte debe impedir el cierre.");
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                Assert.IsFalse(verificacion.Matrices.AsNoTracking()
+                    .Any(m => m.Clave == "BORRADOR-CIERRE"));
+            }
+
+            PanelMatricesEmbebido.ConfirmarDescartarNuevaMatriz = () => true;
+            form.Close();
+            Assert.IsTrue(form.IsDisposed, "Confirmar el descarte permite cerrar sin escribir.");
+        }
+        finally
+        {
+            PanelMatricesEmbebido.ConfirmarDescartarNuevaMatriz = DescartarPorDefecto;
+            PanelMatricesEmbebido.MostrarAvisoAltasComponente = (titulo, mensaje, icono) =>
+                MessageBox.Show(mensaje, titulo, MessageBoxButtons.OK, icono);
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void SalidaSegura_Subedicion_DevuelveAlPadreSinDejarHijoActivo()
+    {
+        var root = CrearRaiz("salida_subedicion");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        PanelMatricesEmbebido.MostrarAvisoCabeceraMatriz = (_, _, _) => { };
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = CrearContexto(dbPath);
+            var escenario = CrearEscenario(ctx);
+            var (hijo, _) = AgregarHijoAuxiliar(ctx, escenario);
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"), Path.Combine(root, "local")));
+            form.Show();
+            form.ExpandirWorkspaceParaPrueba();
+            System.Windows.Forms.Application.DoEvents();
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+
+            panel.BeginEditMatrix(escenario.MatrizA.Id);
+            panel.NotificarFilaCambiada(BuscarFilaPorConcepto(grid, escenario.HojaA.Id));
+            panel.SelectFilaComponenteParaPrueba(
+                ctx.ComponentesMatriz.AsNoTracking()
+                    .Single(c => c.MatrizId == escenario.MatrizA.Id && c.AuxiliarId == hijo.Id).Id);
+            panel.EntrarSubedicionComponenteParaPrueba();
+            Assert.IsTrue(panel.EstaEnSubedicionComponenteParaPrueba);
+
+            Assert.IsTrue(panel.IntentarSalirDeCabeceraActual());
+            Assert.IsFalse(panel.EstaEnSubedicionComponenteParaPrueba,
+                "La salida segura debe devolver al padre y no dejar el hijo activo.");
+            Assert.AreEqual(escenario.MatrizA.Id, panel.MatrizVisibleEnPanel?.Id);
+            Assert.IsTrue(panel.Visible, "El panel no debe ocultarse con una subedición activa.");
+        }
+        finally
+        {
+            PanelMatricesEmbebido.MostrarAvisoCabeceraMatriz = AvisoPorDefecto;
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void EditarMatrizComponente_ConflictoCabeceraPadre_NoAbreSubedicionNiDescartaBorrador()
+    {
+        var root = CrearRaiz("subedicion_conflicto_padre");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        PanelMatricesEmbebido.MostrarAvisoCabeceraMatriz = (_, _, _) => { };
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = CrearContexto(dbPath);
+            var escenario = CrearEscenario(ctx);
+            var (hijo, _) = AgregarHijoAuxiliar(ctx, escenario);
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"), Path.Combine(root, "local")));
+            form.Show();
+            form.ExpandirWorkspaceParaPrueba();
+            System.Windows.Forms.Application.DoEvents();
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+
+            panel.BeginEditMatrix(escenario.MatrizA.Id);
+            panel.NotificarFilaCambiada(BuscarFilaPorConcepto(grid, escenario.HojaA.Id));
+            panel.SelectFilaComponenteParaPrueba(
+                ctx.ComponentesMatriz.AsNoTracking()
+                    .Single(c => c.MatrizId == escenario.MatrizA.Id && c.AuxiliarId == hijo.Id).Id);
+            panel.EstablecerCabeceraParaPrueba("APU-CONFLICTO", "Cabecera en conflicto", "m3", TipoMatriz.APU);
+
+            using (var externa = new SOPROContext(dbPath))
+            {
+                var padre = externa.Matrices.Single(m => m.Id == escenario.MatrizA.Id);
+                padre.Clave = "APU-EXTERNA-SUB";
+                padre.Descripcion = "Cambio externo";
+                externa.SaveChanges();
+            }
+
+            panel.EntrarSubedicionComponenteParaPrueba();
+
+            Assert.IsFalse(panel.EstaEnSubedicionComponenteParaPrueba,
+                "Un conflicto de cabecera del padre no debe abrir la subedición.");
+            Assert.AreEqual("APU-CONFLICTO", panel.ClaveCabeceraParaPrueba.Trim(),
+                "La cabecera pendiente se conserva.");
+            Assert.AreEqual("Cabecera en conflicto", panel.DescripcionCabeceraParaPrueba);
+            Assert.AreEqual(escenario.MatrizA.Id, panel.MatrizVisibleEnPanel?.Id);
+            Assert.AreEqual(BudgetOperationStatus.Conflict, panel.UltimoEstadoEdicionCabecera);
+        }
+        finally
+        {
+            PanelMatricesEmbebido.MostrarAvisoCabeceraMatriz = AvisoPorDefecto;
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
     public void EdicionCabeceraExplicita_Conflicto_ConservaBorradorYSinTocarTracker()
     {
         var root = CrearRaiz("cabecera_conflicto");
@@ -137,9 +296,13 @@ public class PanelMatricesCabeceraComandoTests
             var escenario = CrearEscenario(ctx);
             form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
                 Path.Combine(root, "sopro"), Path.Combine(root, "local")));
+            form.Show();
+            form.ExpandirWorkspaceParaPrueba();
+            System.Windows.Forms.Application.DoEvents();
             var grid = form.GridPrincipal;
             var panel = form.PanelMatricesInterno!;
 
+            panel.BeginEditMatrix(escenario.MatrizA.Id);
             panel.NotificarFilaCambiada(BuscarFilaPorConcepto(grid, escenario.HojaA.Id));
             int filaAntes = panel.FilaConceptoActual;
 
@@ -163,6 +326,26 @@ public class PanelMatricesCabeceraComandoTests
             Assert.AreEqual(filaAntes, panel.FilaConceptoActual, "El conflicto no navega.");
             Assert.IsFalse(ctx.ChangeTracker.HasChanges(),
                 "El conflicto de la ruta de comando no toca el tracker compartido.");
+            Assert.IsTrue(panel.TieneCambiosPendientesCabeceraParaPrueba,
+                "El conflicto debe dejar la cabecera en edición con cambios pendientes.");
+
+            // Reapertura/selector: la salida segura vuelve a intentar autoguardar y,
+            // al fallar, conserva la cabecera y no abre otra superficie.
+            typeof(FormPresupuesto)
+                .GetMethod("OpenApuSelectorForRow", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(form, new object[] { filaAntes });
+            Assert.AreEqual(" APU-001B ", panel.ClaveCabeceraParaPrueba,
+                "La reapertura no debe descartar el borrador en conflicto.");
+            Assert.AreEqual(filaAntes, panel.FilaConceptoActual);
+
+            // Esc/salida segura: no revierte silenciosamente el borrador; el guardado
+            // de cabecera vuelve a fallar y la vista permanece en la matriz editada.
+            panel.CancelarCabeceraParaPrueba();
+            Assert.AreEqual(" APU-001B ", panel.ClaveCabeceraParaPrueba,
+                "Esc conserva la clave capturada tras un conflicto de autoguardado.");
+            Assert.AreEqual("Borrador conservado", panel.DescripcionCabeceraParaPrueba);
+            Assert.AreEqual(filaAntes, panel.FilaConceptoActual,
+                "Esc no navega cuando el autoguardado de cabecera falla.");
 
             using var verificacion = new SOPROContext(dbPath);
             var matrizDb = verificacion.Matrices.AsNoTracking().Single(m => m.Id == escenario.MatrizA.Id);
@@ -454,6 +637,12 @@ public class PanelMatricesCabeceraComandoTests
 
             Matriz? creada = null;
             panel.BeginCreateMatrix(TipoMatriz.APU, m => creada = m);
+
+            Assert.IsFalse(panel.BotonGuardarVisibleParaPrueba,
+                "El borrador de matriz nueva no ofrece Guardar.");
+            Assert.IsFalse(panel.BotonCancelarVisibleParaPrueba,
+                "El borrador de matriz nueva no ofrece Cancelar; sale con Esc/cierre.");
+
             panel.EstablecerCabeceraParaPrueba("NUEVA-001", "Matriz nueva", "m2", TipoMatriz.APU);
             panel.AgregarComponenteTemporalParaPrueba(new ComponenteMatriz
             {
@@ -473,20 +662,33 @@ public class PanelMatricesCabeceraComandoTests
                 Thread.Sleep(10);
             }
 
-            Assert.IsNotNull(creada, "La creación sigue usando MatrixApplicationService.SaveAsync.");
+            Assert.IsNull(creada,
+                "El borrador no usa la ruta heredada MatrixApplicationService.SaveAsync.");
             Assert.IsNull(panel.UltimoEstadoEdicionCabecera,
                 "La creación no transita la ruta de comando de edición de cabecera.");
-            Assert.AreEqual("NUEVA-001", creada!.Clave);
 
-            using var verificacion = new SOPROContext(dbPath);
-            var matrizDb = verificacion.Matrices.AsNoTracking()
-                .Single(m => m.Clave == "NUEVA-001" && m.ProyectoId == escenario.Proyecto.Id);
-            Assert.AreEqual("Matriz nueva", matrizDb.Descripcion);
-            Assert.AreEqual(1, verificacion.ComponentesMatriz.AsNoTracking().Count(c => c.MatrizId == matrizDb.Id));
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                Assert.IsFalse(verificacion.Matrices.AsNoTracking()
+                    .Any(m => m.Clave == "NUEVA-001" && m.ProyectoId == escenario.Proyecto.Id),
+                    "Guardar en borrador no debe persistir nada.");
+            }
+
+            // La salida del borrador sin primer lote tampoco escribe.
+            PanelMatricesEmbebido.ConfirmarDescartarNuevaMatriz = () => true;
+            panel.CancelarCabeceraParaPrueba();
+
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                Assert.IsFalse(verificacion.Matrices.AsNoTracking()
+                    .Any(m => m.Clave == "NUEVA-001" && m.ProyectoId == escenario.Proyecto.Id),
+                    "Salir del borrador sin primer lote no debe crear la matriz.");
+            }
         }
         finally
         {
             PanelMatricesEmbebido.MostrarAvisoCabeceraMatriz = AvisoPorDefecto;
+            PanelMatricesEmbebido.ConfirmarDescartarNuevaMatriz = DescartarPorDefecto;
             form?.Dispose();
             ctx?.Dispose();
             RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);

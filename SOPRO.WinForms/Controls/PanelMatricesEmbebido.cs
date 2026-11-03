@@ -83,6 +83,7 @@ namespace SOPRO.WinForms.Controls
         private int? _cabeceraBloqueadaMatrizId;
         private bool _restaurandoFilaPresupuesto;
         private bool _restauracionFilaProgramada;
+        private bool _guardandoCabeceraAutomaticamente;
 
         public PanelMatricesEmbebido(SOPROContext context, int proyectoId)
         {
@@ -93,8 +94,36 @@ namespace SOPRO.WinForms.Controls
             FormatoHelper.ConfiguracionCambiada += OnConfiguracionCambiada;
             
             InitializeComponent();
+            _txtClaveMatriz.Validated += Cabecera_Validated;
+            _txtDescripcionMatriz.Validated += Cabecera_Validated;
+            _txtUnidadMatriz.Validated += Cabecera_Validated;
+            _rbTipoApu.Validated += Cabecera_Validated;
+            _rbTipoBasico.Validated += Cabecera_Validated;
+            _rbTipoCuadrilla.Validated += Cabecera_Validated;
             ConfigurarMenuContextualComponentes();
             MostrarSinSeleccion();
+        }
+
+        private void Cabecera_Validated(object? sender, EventArgs e)
+        {
+            if (_guardandoCabeceraAutomaticamente
+                || _modoCreacionMatriz
+                || !_modoEdicionCabecera
+                || !_matrizEditandoId.HasValue
+                || !TieneCambiosPendientesCabecera())
+            {
+                return;
+            }
+
+            _guardandoCabeceraAutomaticamente = true;
+            try
+            {
+                GuardarCabeceraEdicionActual();
+            }
+            finally
+            {
+                _guardandoCabeceraAutomaticamente = false;
+            }
         }
 
         public bool TieneFocoEnEntradaTexto()
@@ -117,6 +146,10 @@ namespace SOPRO.WinForms.Controls
         internal bool CabeceraDatosVisiblesParaPrueba => _panelDatos.Visible;
         internal bool AccesoNuevaMatrizVisible => _btnNuevaMatriz != null && _btnNuevaMatriz.Visible;
         internal Button AccesoNuevaMatrizParaPrueba => _btnNuevaMatriz;
+        internal bool BotonGuardarVisibleParaPrueba => _btnGuardarMatriz.Visible;
+        internal bool BotonCancelarVisibleParaPrueba => _btnCancelarMatriz.Visible;
+        internal void SimularNuevaMatrizPendienteReconciliacionParaPrueba()
+            => _nuevaMatrizPendienteReconciliacion = true;
         internal void CancelarCabeceraParaPrueba() => BtnCancelarMatriz_Click(this, EventArgs.Empty);
 
         /// <summary>
@@ -158,6 +191,18 @@ namespace SOPRO.WinForms.Controls
         internal static Func<string, string, MessageBoxButtons, MessageBoxIcon, DialogResult> ConfirmarCambioContextoParaPrueba
         { get; set; } = (mensaje, titulo, botones, icono) => MessageBox.Show(mensaje, titulo, botones, icono);
 
+        /// <summary>
+        /// Confirmación de descarte del borrador de matriz nueva cuando el usuario
+        /// sale con contenido incompleto. Nunca se descarta en silencio.
+        /// </summary>
+        internal static Func<bool> ConfirmarDescartarNuevaMatriz { get; set; }
+            = () => MessageBox.Show(
+                "Hay una matriz nueva con datos capturados que aún no se ha guardado. " +
+                "¿Desea descartarla? No se escribirá nada.",
+                "Descartar matriz nueva",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning) == DialogResult.Yes;
+
         /// <summary>Clasificación de la última edición de cabecera ejecutada como comando.</summary>
         internal BudgetOperationStatus? UltimoEstadoEdicionCabecera { get; private set; }
 
@@ -189,6 +234,8 @@ namespace SOPRO.WinForms.Controls
         internal bool TieneCambiosPendientesCabeceraParaPrueba => TieneCambiosPendientesCabecera();
 
         internal bool GuardarCabeceraParaPrueba() => GuardarCabeceraEdicionActual();
+
+        internal void ValidarCabeceraParaPrueba() => Cabecera_Validated(this, EventArgs.Empty);
 
         internal void GuardarCabeceraExplicitaParaPrueba() => BtnGuardarMatriz_Click(this, EventArgs.Empty);
 
@@ -313,10 +360,56 @@ private void RefrescarVistaTemporal()
 
 private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
 {
-    using var dlg = new Forms.FormSeleccionarInsumo(_context, _proyectoId, tipoComponente);
-    if (dlg.ShowDialog() != DialogResult.OK) return;
+    List<ComponenteMatriz>? seleccionados;
+    if (SeleccionInsumoParaPrueba != null)
+    {
+        seleccionados = SeleccionInsumoParaPrueba(tipoComponente);
+    }
+    else
+    {
+        using var dlg = new Forms.FormSeleccionarInsumo(_context, _proyectoId, tipoComponente);
+        if (dlg.ShowDialog() != DialogResult.OK) return;
+        seleccionados = dlg.ComponentesSeleccionados;
+    }
 
-    var selectionResult = MatrixComponentSelectionFlowService.AddSelectedComponents(_componentesTemp, dlg.ComponentesSeleccionados);
+    if (seleccionados is null || seleccionados.Count == 0)
+        return;
+
+    if (_modoCreacionMatriz)
+    {
+        // Primera alta de una matriz nueva: el lote completo (temporal acumulado +
+        // selección actual) viaja en UN comando atómico junto con la creación de la
+        // matriz y la asignación al concepto. Un fallo conserva el borrador visible.
+        string firmaSeleccion = CrearFirmaSeleccion(seleccionados);
+        bool repetirMismaSeleccion = _componentesTemp.Count > 0
+            && string.Equals(_firmaUltimaSeleccionRechazada, firmaSeleccion, StringComparison.Ordinal);
+        var candidatos = repetirMismaSeleccion
+            ? _componentesTemp.ToList()
+            : _componentesTemp.Concat(seleccionados).ToList();
+
+        var comando = PrepararComandoNuevaMatriz(candidatos, seleccionados, tipoComponente, out var motivoRechazo);
+        if (comando == null)
+        {
+            _firmaUltimaSeleccionRechazada = firmaSeleccion;
+            UltimaRazonNuevaMatrizSinDespachar = motivoRechazo;
+            MostrarAvisoAltasComponente(
+                "Nueva matriz",
+                motivoRechazo ?? "La matriz nueva no se guardó.",
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        _componentesTemp.Clear();
+        _componentesTemp.AddRange(candidatos);
+        foreach (var componente in _componentesTemp)
+            componente.Notas ??= string.Empty;
+
+        RefrescarVistaTemporal();
+        DespacharNuevaMatriz(comando, firmaSeleccion);
+        return;
+    }
+
+    var selectionResult = MatrixComponentSelectionFlowService.AddSelectedComponents(_componentesTemp, seleccionados);
     if (!selectionResult.HasComponents) return;
 
     foreach (var componente in _componentesTemp)
@@ -389,7 +482,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
 
         /// <summary>
         /// Ruta ÚNICA de guardado de cabecera de una matriz YA persistida, compartida
-        /// por el botón Guardar y por el guardado implícito al cambiar de concepto.
+        /// por la validación de campos y por el guardado implícito al cambiar de concepto.
         /// Es SÍNCRONA a propósito: el llamador no debe navegar ni restaurar la vista
         /// antes de conocer el resultado. Despacha un solo comando sobre contexto
         /// nuevo y, solo tras el commit, sincroniza el tracker y la base esperada.
@@ -727,6 +820,47 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             }
         }
 
+        /// <summary>
+        /// Salida segura de la cabecera antes de cambiar de fila, cerrar el workspace,
+        /// abrir el selector o cualquier navegación: un borrador nuevo pide descarte
+        /// explícito; una cabecera persistida con cambios intenta autoguardar. Si el
+        /// guardado falla o queda incierto, conserva los inputs y bloquea la salida.
+        /// </summary>
+        internal bool IntentarSalirDeCabeceraActual()
+        {
+            if (_modoSubedicionComponente)
+            {
+                if (_modoEdicionCabecera && TieneCambiosPendientesCabecera()
+                    && !GuardarCabeceraEdicionActual())
+                {
+                    return false;
+                }
+
+                // Salir de la subedición devuelve al padre con la ruta existente; no
+                // se oculta el panel dejando un hijo/subedición activos.
+                FinalizarSubedicionComponente(false);
+                return !_modoSubedicionComponente;
+            }
+
+            if (_modoCreacionMatriz)
+            {
+                if (TieneCambiosPendientesCabecera() && !ConfirmarDescartarNuevaMatriz())
+                    return false;
+
+                LimpiarEstadoEdicionParaCambioExterno();
+                return true;
+            }
+
+            if (_modoEdicionCabecera && TieneCambiosPendientesCabecera()
+                && !GuardarCabeceraEdicionActual())
+            {
+                return false;
+            }
+
+            LimpiarEstadoEdicionParaCambioExterno();
+            return true;
+        }
+
         private bool ConfirmarCambioDeContextoExterno(int filaDestino)
         {
             bool cambiaFila = filaDestino != _filaActual;
@@ -735,6 +869,12 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
 
             if (!cambiaFila)
                 return true;
+
+            if (_nuevaMatrizPendienteReconciliacion)
+            {
+                RestaurarFilaActualEnPresupuesto();
+                return false;
+            }
 
             if (!estaEnSubedicion && !hayPendientes)
                 return true;
@@ -762,6 +902,21 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             var mensaje = estaEnSubedicion
                 ? "Estás editando una matriz componente dentro del panel."
                 : "Hay cambios pendientes en la matriz mostrada en el panel.";
+
+            if (!estaEnSubedicion)
+            {
+                // Navegación segura: una cabecera persistida con cambios se autoguarda
+                // antes de cambiar de fila. Un conflicto o resultado incierto conserva
+                // los inputs y bloquea la navegación; no se descarta en silencio.
+                if (hayPendientes && !GuardarCabeceraEdicionActual())
+                {
+                    RestaurarFilaActualEnPresupuesto();
+                    return false;
+                }
+
+                LimpiarEstadoEdicionParaCambioExterno();
+                return true;
+            }
 
             var r = ConfirmarCambioContextoParaPrueba(
                 mensaje + "\n" +
@@ -946,6 +1101,12 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             if (_modoSubedicionComponente)
                 return;
 
+            // Abrir el hijo reemplaza la cabecera visible del padre: primero debe
+            // resolverse cualquier borrador/conflicto de autoguardado. Si no se puede
+            // guardar, se permanece en el padre con los inputs intactos.
+            if (!IntentarSalirDeCabeceraActual())
+                return;
+
             _matrizPadreIdSubedicion = _matrizActual.Id;
             _filaPadreSubedicion = _dgvComponentes.CurrentRow?.Index;
             _modoSubedicionComponente = true;
@@ -976,6 +1137,15 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
         {
             if (!_modoSubedicionComponente || !_matrizPadreIdSubedicion.HasValue)
                 return;
+
+            // Salir de la subedición no descarta cabecera: si hay cambios pendientes,
+            // se intenta autoguardar antes de finalizar. Un conflicto/resultado incierto
+            // mantiene la subedición abierta y los inputs intactos.
+            if (_modoEdicionCabecera && TieneCambiosPendientesCabecera()
+                && !GuardarCabeceraEdicionActual())
+            {
+                return;
+            }
 
             int matrizPadreId = _matrizPadreIdSubedicion.Value;
             int? filaPadre = _filaPadreSubedicion;
@@ -1606,11 +1776,30 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _btnNuevaMatriz.Visible = visible;
         }
 
-        public void BeginCreateMatrix(TipoMatriz tipo, Action<Matriz>? onSaved = null, Action? onCancelled = null, bool soloApu = false)
+        public void BeginCreateMatrix(
+            TipoMatriz tipo,
+            Action<Matriz>? onSaved = null,
+            Action? onCancelled = null,
+            bool soloApu = false,
+            decimal? cantidad = null,
+            int? conceptoOrigenId = null)
         {
+            if (_nuevaMatrizPendienteReconciliacion)
+            {
+                MostrarAvisoAltasComponente(
+                    "Nueva matriz",
+                    "No se puede iniciar otra matriz: la creación anterior quedó con resultado incierto. " +
+                    "Cierre y vuelva a abrir el presupuesto para reconciliar la vista.",
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
             _modoCreacionMatriz = true;
             _modoEdicionCabecera = true;
             _matrizEditandoId = null;
+            _firmaUltimaSeleccionRechazada = null;
+            _cantidadNuevaMatriz = cantidad;
+            _conceptoOrigenIdNuevaMatriz = conceptoOrigenId;
             _onMatrixHeaderSaved = onSaved;
             _onMatrixHeaderCancelled = onCancelled;
             _matrizActual = null;
@@ -1629,7 +1818,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _rbTipoBasico.Enabled = !soloApu;
             _rbTipoCuadrilla.Enabled = !soloApu;
             _lblTituloMatriz.Text = tipo == TipoMatriz.Cuadrilla ? "Nueva cuadrilla" : (tipo == TipoMatriz.Basico ? "Nueva matriz básica" : "Nueva APU");
-            _lblInfoMatriz.Text = "Captura los datos generales y agrega componentes. Guarda la matriz al finalizar.";
+            _lblInfoMatriz.Text = "Captura los datos generales y agrega el primer lote de componentes. La matriz se guarda al agregar el primer lote válido.";
             _lblMat.Text = "Mat: 0.00"; _lblMO.Text = "M.O.: 0.00"; _lblMaq.Text = "Maq.: 0.00"; _lblBas.Text = "Bas.: 0.00"; _lblDir.Text = "Costo Directo: 0.00";
             CapturarEstadoBaseCabeceraDesdeUI();
             MostrarDatosCabecera(true);
@@ -1763,10 +1952,10 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
         private void MostrarDatosCabecera(bool visible)
         {
             _panelDatos.Visible = visible;
-            _btnGuardarMatriz.Visible = visible;
-            _btnCancelarMatriz.Visible = visible;
-            // En edición/creación el acceso de creación queda fuera de circulación:
-            // Guardar/Cancelar son el par de acciones de ese estado.
+            // La cabecera también sigue el modelo de autoguardado: Guardar/Cancelar
+            // no forman parte de la superficie del panel en ningún estado.
+            _btnGuardarMatriz.Visible = false;
+            _btnCancelarMatriz.Visible = false;
             if (visible) _btnNuevaMatriz.Visible = false;
         }
 
@@ -1793,50 +1982,11 @@ private async void BtnGuardarMatriz_Click(object sender, EventArgs e)
     {
         if (_modoCreacionMatriz || !_matrizEditandoId.HasValue)
         {
-            var validation = MatrixSaveFlowService.ValidateBeforeSave(clave, descripcion, _componentesTemp);
-            if (!validation.IsValid)
-            {
-                MessageBox.Show(validation.Message, "Validación", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            var claveDuplicada = await MatrixApplicationService.ExistsByKeyAsync(_context, _proyectoId, clave, null);
-            if (claveDuplicada)
-            {
-                MessageBox.Show(MatrixSaveFlowService.GetDuplicateKeyMessage(), "Clave Duplicada", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                _txtClaveMatriz.Focus();
-                return;
-            }
-
-            var totals = MatrixComponentCalculationService.Recalculate(_componentesTemp, FormatoHelper.DecimalesImporte);
-            var dto = MatrixEditorService.BuildEditDto(
-                _proyectoId,
-                clave,
-                descripcion,
-                unidad,
-                _rbTipoCuadrilla.Checked,
-                _rbTipoApu.Checked,
-                totals.CostoDirectoTotal,
-                _componentesTemp);
-
-            var result = await MatrixApplicationService.SaveAsync(_context, dto, null);
-            var matriz = _context.Matrices
-                .Include(m => m.Componentes).ThenInclude(c => c.Material)
-                .Include(m => m.Componentes).ThenInclude(c => c.ManoDeObra)
-                .Include(m => m.Componentes).ThenInclude(c => c.Maquinaria)
-                .Include(m => m.Componentes).ThenInclude(c => c.Auxiliar)
-                .Include(m => m.Componentes).ThenInclude(c => c.Herramienta)
-                .FirstOrDefault(m => m.Id == result.MatrixId);
-            if (matriz == null) return;
-
-            _matrizActual = matriz;
-            _matrizEditandoId = matriz.Id;
-            _modoCreacionMatriz = false;
-            _componentesTemp.Clear();
-            _panelBotonesAgregar.Enabled = true;
-            MostrarDatosCabecera(true);
-            MostrarMatriz(matriz, null);
-            _onMatrixHeaderSaved?.Invoke(matriz);
+            MostrarAvisoCabeceraMatriz(
+                "Matriz nueva",
+                "La matriz nueva se guarda automáticamente al agregar el primer lote de componentes válido. " +
+                "Agregue al menos un componente para crearla.",
+                MessageBoxIcon.Information);
             return;
         }
 
@@ -1862,9 +2012,19 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
         {
             if (_modoSubedicionComponente)
             {
+                if (_modoEdicionCabecera && TieneCambiosPendientesCabecera()
+                    && !GuardarCabeceraEdicionActual())
+                {
+                    return;
+                }
+
                 _onMatrixHeaderCancelled?.Invoke();
                 return;
             }
+
+            var onMatrixHeaderCancelled = _onMatrixHeaderCancelled;
+            if (!IntentarSalirDeCabeceraActual())
+                return;
 
             this.SuspendLayout();
             _panelDatos.SuspendLayout();
@@ -1873,6 +2033,11 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
                 bool teniaMatriz = _matrizActual != null;
                 _modoCreacionMatriz = false;
                 _modoEdicionCabecera = false;
+                _firmaUltimaSeleccionRechazada = null;
+                _cantidadNuevaMatriz = null;
+                _conceptoOrigenIdNuevaMatriz = null;
+                _componentesTemp.Clear();
+                _dgvComponentes.Rows.Clear();
 
                 if (teniaMatriz)
                 {
@@ -1888,7 +2053,7 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
                 // llamadores (selector APU, workspace del presupuesto) devuelven la
                 // superficie previa o reponen el estado del concepto sin surtir
                 // efecto sobre un panel aún en modo de edición.
-                _onMatrixHeaderCancelled?.Invoke();
+                onMatrixHeaderCancelled?.Invoke();
             }
             finally
             {

@@ -1197,6 +1197,16 @@ namespace SOPRO.WinForms.Forms
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            // Cerrar el formulario es una salida de la cabecera: un borrador nuevo
+            // pide descarte; una cabecera persistida con cambios intenta autoguardar.
+            // Un conflicto/resultado incierto conserva la captura y cancela el cierre.
+            if (_panelMatricesEmbebido != null
+                && !_panelMatricesEmbebido.IntentarSalirDeCabeceraActual())
+            {
+                e.Cancel = true;
+                return;
+            }
+
             // Persistir el orden visual por servicio (contexto propio, un lote y un
             // SaveChanges). No se usa el contexto compartido: cerrar el form no debe
             // vaciar cambios pendientes de otras operaciones (p. ej. un Concepto).
@@ -1216,7 +1226,15 @@ namespace SOPRO.WinForms.Forms
         private void btnToggleMatrices_Click(object sender, EventArgs e)
         {
             if (!splitContainer.Panel2Collapsed)
+            {
+                if (_panelMatricesEmbebido != null
+                    && !_panelMatricesEmbebido.IntentarSalirDeCabeceraActual())
+                {
+                    return;
+                }
+
                 SaveWorkspacePanelState();
+            }
 
             splitContainer.Panel2Collapsed = !splitContainer.Panel2Collapsed;
 

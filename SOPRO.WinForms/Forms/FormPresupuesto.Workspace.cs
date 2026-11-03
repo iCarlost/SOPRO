@@ -301,6 +301,12 @@ namespace SOPRO.WinForms.Forms
         {
             EnsureWorkspaceExpanded();
 
+            if (_panelMatricesEmbebido != null
+                && !_panelMatricesEmbebido.IntentarSalirDeCabeceraActual())
+            {
+                return;
+            }
+
             if (cantidadActual <= 0m)
                 cantidadActual = CantidadMinimaSelector;
 
@@ -362,36 +368,17 @@ namespace SOPRO.WinForms.Forms
             {
                 // El selector se dispone al mostrar el panel: la cantidad y el tipo
                 // elegidos por el usuario deben capturarse AHORA (la cantidad leída al
-                // abrir la fila puede ser cero/obsoleta).
+                // abrir la fila puede ser cero/obsoleta). El flujo nace para asignar
+                // una matriz al concepto, así que solo APU es válido.
                 decimal cantidadNuevaMatriz = selector.CantidadParaNuevaMatriz;
                 TipoMatriz tipoNuevaMatriz = selector.SelectedTipo;
-                MostrarPanelMatrizEmbebido(false);
-                _panelMatricesEmbebido?.BeginCreateMatrix(tipoNuevaMatriz,
-                    onSaved: matrizCreada =>
-                    {
-                        try
-                        {
-                            if (targetRowIndex >= 0)
-                                AsignarMatrizAPresupuesto(targetRowIndex, matrizCreada, cantidadNuevaMatriz, preserveCurrentTexts: true);
-                        }
-                        catch (Exception ex)
-                        {
-                            MessageBox.Show($"Error al asignar la matriz creada: {ex.Message}", "Presupuesto", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        }
-                        finally
-                        {
-                            MostrarPanelMatrizEmbebido(true);
-                            if (targetRowIndex >= 0 && targetRowIndex < dgvPresupuesto.Rows.Count)
-                            {
-                                var cell = ObtenerCeldaPorNombreInterno(targetRowIndex, "Descripcion")
-                                           ?? ObtenerCeldaPorNombreInterno(targetRowIndex, "PrecioUnitario");
-                                if (cell != null)
-                                    dgvPresupuesto.CurrentCell = cell;
-                                dgvPresupuesto.Focus();
-                            }
-                        }
-                    },
-                    onCancelled: () => MostrarSelectorApuEmbebido(targetRowIndex, cantidadNuevaMatriz, matrizIdActual, filtroInicial));
+                int? conceptoOrigenId = (dgvPresupuesto.Rows[targetRowIndex].Tag as ConceptoPresupuesto)?.Id;
+                IniciarCreacionMatrizDesdeSelector(
+                    targetRowIndex,
+                    tipoNuevaMatriz,
+                    cantidadNuevaMatriz,
+                    onCancelled: () => MostrarSelectorApuEmbebido(targetRowIndex, cantidadNuevaMatriz, matrizIdActual, filtroInicial),
+                    conceptoOrigenId);
             };
             selector.RequestEditMatrix += (_, __) =>
             {
@@ -400,6 +387,12 @@ namespace SOPRO.WinForms.Forms
                 if (!selectedMatrixId.HasValue)
                 {
                     MessageBox.Show("Selecciona una matriz para editar.", "Selector APU", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                if (_panelMatricesEmbebido != null
+                    && !_panelMatricesEmbebido.IntentarSalirDeCabeceraActual())
+                {
                     return;
                 }
 
@@ -424,11 +417,43 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Abre la captura de una matriz nueva desde el panel embebido (concepto sin APU
-        /// asignada). Reutiliza <see cref="PanelMatricesEmbebido.BeginCreateMatrix"/> y la
-        /// ruta de asignación existente: al confirmar guarda, la matriz se asigna a la
-        /// fila y al cancelar el panel repone el mensaje "Concepto sin APU asignada".
+        /// Entrada de la creación desde el selector APU. Solo APU puede vincularse al
+        /// concepto; un tipo distinto se informa y no inicia borrador. La asignación
+        /// posterior ocurre por el evento NuevaMatrizConComponentesConfirmada, nunca
+        /// por un callback heredado.
         /// </summary>
+        internal void IniciarCreacionMatrizDesdeSelectorParaPrueba(
+            int rowIndex, TipoMatriz tipo, decimal cantidad, int? conceptoOrigenId = null)
+            => IniciarCreacionMatrizDesdeSelector(
+                rowIndex, tipo, cantidad, onCancelled: null, conceptoOrigenId);
+
+        private void IniciarCreacionMatrizDesdeSelector(
+            int rowIndex,
+            TipoMatriz tipo,
+            decimal cantidad,
+            Action? onCancelled,
+            int? conceptoOrigenId = null)
+        {
+            if (tipo != TipoMatriz.APU)
+            {
+                MostrarAvisoAsignacionMatriz(
+                    "Nueva matriz",
+                    "Solo se puede crear y asignar una matriz de tipo APU a un concepto del presupuesto. " +
+                    "Seleccione APU para continuar.",
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            MostrarPanelMatrizEmbebido(false);
+            _panelMatricesEmbebido?.BeginCreateMatrix(
+                TipoMatriz.APU,
+                onSaved: null,
+                onCancelled: onCancelled,
+                soloApu: true,
+                cantidad: cantidad,
+                conceptoOrigenId: conceptoOrigenId ?? (dgvPresupuesto.Rows[rowIndex].Tag as ConceptoPresupuesto)?.Id);
+        }
+
         private void IniciarCreacionMatrizDesdePanel()
         {
             if (_panelMatricesEmbebido == null)
@@ -448,45 +473,13 @@ namespace SOPRO.WinForms.Forms
             decimal cantidadActual = LeerCantidadPositivaDeFila(targetRowIndex, CantidadPorDefectoPanel);
 
             _panelMatricesEmbebido.BeginCreateMatrix(TipoMatriz.APU, soloApu: true,
-                onSaved: matrizCreada =>
-                {
-                    // El comando de asignación solo admite APU: una matriz de otro tipo
-                    // no debe llegar a la asignación ni aparentar éxito.
-                    if (matrizCreada.Tipo != TipoMatriz.APU)
-                    {
-                        MostrarAvisoAsignacionMatriz(
-                            "Asignación de matriz",
-                            "Solo se puede asignar una matriz de tipo APU al presupuesto. " +
-                            "La matriz creada no se asignó a la fila.",
-                            MessageBoxIcon.Warning);
-                        return;
-                    }
-
-                    try
-                    {
-                        AsignarMatrizAPresupuesto(targetRowIndex, matrizCreada, cantidadActual, preserveCurrentTexts: true);
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show($"Error al asignar la matriz creada: {ex.Message}", "Presupuesto", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-                    finally
-                    {
-                        if (targetRowIndex >= 0 && targetRowIndex < dgvPresupuesto.Rows.Count)
-                        {
-                            var cell = ObtenerCeldaPorNombreInterno(targetRowIndex, "Descripcion")
-                                       ?? ObtenerCeldaPorNombreInterno(targetRowIndex, "PrecioUnitario");
-                            if (cell != null)
-                                dgvPresupuesto.CurrentCell = cell;
-                            dgvPresupuesto.Focus();
-                        }
-                    }
-                },
+                cantidad: cantidadActual,
+                conceptoOrigenId: concepto?.Id,
                 onCancelled: () =>
                 {
-                    // El botón Cancelar del panel ya restauró la superficie; la fila del
-                    // concepto sigue activa, así que esto repone el mensaje
-                    // "Concepto sin APU asignada" con el acceso de creación visible.
+                    // El panel ya restauró la superficie; la fila del concepto sigue
+                    // activa, así que esto repone el mensaje "Concepto sin APU asignada"
+                    // con el acceso de creación visible.
                     if (targetRowIndex >= 0 && targetRowIndex < dgvPresupuesto.Rows.Count)
                         _panelMatricesEmbebido.NotificarFilaCambiada(targetRowIndex);
                 });
@@ -494,6 +487,12 @@ namespace SOPRO.WinForms.Forms
 
         private void btnWorkspaceCerrar_Click(object sender, EventArgs e)
         {
+            if (_panelMatricesEmbebido != null
+                && !_panelMatricesEmbebido.IntentarSalirDeCabeceraActual())
+            {
+                return;
+            }
+
             SaveWorkspacePanelState();
             splitContainer.Panel2Collapsed = true;
             btnToggleMatrices.Text = "📐 Matrices ▼";
@@ -683,6 +682,12 @@ namespace SOPRO.WinForms.Forms
         private void OpenApuSelectorForRow(int rowIndex)
         {
             if (rowIndex < 0 || rowIndex >= dgvPresupuesto.Rows.Count) return;
+
+            if (_panelMatricesEmbebido != null
+                && !_panelMatricesEmbebido.IntentarSalirDeCabeceraActual())
+            {
+                return;
+            }
 
             var row = dgvPresupuesto.Rows[rowIndex];
             var tipoCell = ObtenerCeldaPorNombreInterno(rowIndex, "Tipo");
