@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 using SOPRO.Application.Models.Presupuesto;
+using SOPRO.Core.Entities;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -60,6 +61,53 @@ namespace SOPRO.WinForms.Forms
 
                 AplicarInstantaneaComponente(snapshot.Project, snapshot.Leaves, snapshot.Aggregators);
             };
+
+            _panelMatricesEmbebido.NuevaMatrizConComponentesConfirmada += (sender, snapshot) =>
+            {
+                if (IsDisposed || _cargando)
+                    return;
+                if (snapshot is null || snapshot.ProjectId != _proyecto.Id)
+                    return;
+
+                // El selector/panel pudo ocultarse al iniciar la creación: tras el
+                // commit se repone la superficie del panel embebido.
+                MostrarPanelMatrizEmbebido(true);
+                AplicarNuevaMatrizConfirmada(snapshot);
+            };
+        }
+
+        /// <summary>
+        /// Aplica la primera alta confirmada por el panel: identifica la fila por
+        /// <c>ConceptoId</c> (no por índice) y vuelca la instantánea de asignación
+        /// canónica. No hay callback heredado ni segunda escritura.
+        /// </summary>
+        private void AplicarNuevaMatrizConfirmada(BudgetNewMatrixWithComponentsSnapshot snapshot)
+        {
+            var filasPorConcepto = ConstruirIndiceFilasPorConcepto();
+            if (!filasPorConcepto.TryGetValue(snapshot.ConceptId, out int rowIndex))
+            {
+                AdvertirRecargaPorFilaNoVisible();
+                return;
+            }
+
+            var concepto = dgvPresupuesto.Rows[rowIndex].Tag as ConceptoPresupuesto;
+            if (concepto is null)
+            {
+                AdvertirRecargaPorFilaNoVisible();
+                return;
+            }
+
+            AplicarAsignacionMatrizConfirmada(rowIndex, concepto, snapshot.Assignment);
+        }
+
+        private void AdvertirRecargaPorFilaNoVisible()
+        {
+            MostrarAvisoAsignacionMatriz(
+                "Nueva matriz",
+                "La matriz se creó y vinculó, pero la fila del concepto ya no está visible en la vista. " +
+                "Se recargará el presupuesto para reconciliar la pantalla.",
+                MessageBoxIcon.Warning);
+            RecargarPreciosDesdeBase();
         }
 
         /// <summary>

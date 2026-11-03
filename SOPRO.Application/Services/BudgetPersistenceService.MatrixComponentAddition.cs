@@ -228,6 +228,16 @@ namespace SOPRO.Application.Services
             Matriz matriz,
             IReadOnlyList<Matriz> afectadas,
             IReadOnlyList<ComponenteMatriz> nuevos)
+            => BuildMatrixComponentAdditionSnapshot(
+                context, command.ProjectId, proyecto, matriz, afectadas, nuevos);
+
+        internal static BudgetMatrixComponentAdditionSnapshot BuildMatrixComponentAdditionSnapshot(
+            SOPROContext context,
+            int projectId,
+            Proyecto proyecto,
+            Matriz matriz,
+            IReadOnlyList<Matriz> afectadas,
+            IReadOnlyList<ComponenteMatriz> nuevos)
         {
             var matricesAfectadas = afectadas
                 .OrderBy(m => m.Id)
@@ -247,7 +257,7 @@ namespace SOPRO.Application.Services
             // Las filas se releen del contexto rastreado: el recálculo ya escribió en
             // esas mismas instancias, así que la instantánea refleja lo que el único
             // SaveChanges va a persistir.
-            var filas = LoadOrderedRows(context, command.ProjectId);
+            var filas = LoadOrderedRows(context, projectId);
 
             var hojas = filas
                 .Where(f => !f.EsAgrupador
@@ -262,7 +272,7 @@ namespace SOPRO.Application.Services
                 .ToArray();
 
             return new BudgetMatrixComponentAdditionSnapshot(
-                command.ProjectId,
+                projectId,
                 BudgetProjectCalculationBase.FromProyecto(proyecto),
                 BudgetConfirmedMatrixRow.FromMatriz(matriz),
                 nuevos.Select(c => c.Id).ToArray(),

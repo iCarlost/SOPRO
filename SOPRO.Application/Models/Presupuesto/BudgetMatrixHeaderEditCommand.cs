@@ -4,8 +4,8 @@ namespace SOPRO.Application.Models.Presupuesto
 {
     /// <summary>
     /// Intención de editar la cabecera de una matriz YA persistida del proyecto
-    /// (ADR-0001), tanto desde el botón Guardar como desde el guardado implícito al
-    /// cambiar de concepto. Lleva identidad, la base persistida EXACTA de la
+    /// (ADR-0001), desde la validación de campos o el guardado implícito al cambiar
+    /// de concepto. Lleva identidad, la base persistida EXACTA de la
     /// cabecera que la vista cargó y los valores propuestos. La propuesta se
     /// normaliza aquí como en <see cref="MatrixApplicationService"/> (Clave en
     /// mayúsculas y sin espacios exteriores; Descripción y Unidad sin espacios

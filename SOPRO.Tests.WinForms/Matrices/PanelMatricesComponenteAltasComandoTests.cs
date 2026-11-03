@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Windows.Forms;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -716,6 +717,399 @@ public class PanelMatricesComponenteAltasComandoTests
         }
     }
 
+    [TestMethod]
+    public void PrimeraAltaMatrizNueva_CreaVinculaYDejaBotonesDeCabeceraPersistida()
+    {
+        var root = CrearRaiz("nueva_matriz_auto");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        var avisos = new List<string>();
+        var avisosCabecera = new List<string>();
+        PanelMatricesEmbebido.MostrarAvisoAltasComponente = (_, m, _) => avisos.Add(m);
+        PanelMatricesEmbebido.MostrarAvisoCabeceraMatriz = (_, m, _) => avisosCabecera.Add(m);
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            var escenario = CrearEscenarioDosHojas(ctx);
+            var hojaNueva = new ConceptoPresupuesto
+            {
+                ProyectoId = escenario.Proyecto.Id,
+                Clave = "C-NUEVA",
+                Descripcion = "Concepto sin matriz para alta",
+                Unidad = "m3",
+                Cantidad = 10m,
+                MatrizId = null,
+                CostoDirectoUnitario = 0m,
+                CostoDirectoTotal = 0m,
+                PrecioUnitario = 0m,
+                ImporteTotal = 0m,
+                Nivel = 1,
+                Orden = 3,
+                EsAgrupador = false,
+                ColumnasPersonalizadasJSON = string.Empty,
+                Notas = string.Empty
+            };
+            ctx.ConceptosPresupuesto.Add(hojaNueva);
+            ctx.SaveChanges();
+
+            var materialB = ctx.Materiales.AsNoTracking().Single(m => m.Clave == "MAT-B");
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"), Path.Combine(root, "local")));
+            form.Show();
+            form.ExpandirWorkspaceParaPrueba();
+            System.Windows.Forms.Application.DoEvents();
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+
+            panel.NotificarFilaCambiada(BuscarFilaPorConcepto(grid, hojaNueva.Id));
+
+            bool callbackHeredado = false;
+            BudgetNewMatrixWithComponentsSnapshot? snapshot = null;
+            panel.NuevaMatrizConComponentesConfirmada += (_, s) => snapshot = s;
+
+            int guardasCompartidos = 0;
+            ctx.SavedChanges += (_, __) => guardasCompartidos++;
+
+            panel.BeginCreateMatrix(TipoMatriz.APU, soloApu: true, onSaved: _ => callbackHeredado = true);
+            Assert.IsFalse(panel.BotonGuardarVisibleParaPrueba);
+            Assert.IsFalse(panel.BotonCancelarVisibleParaPrueba);
+
+            panel.EstablecerCabeceraParaPrueba("NUEVA-01", "Matriz nueva automática", "m3", TipoMatriz.APU);
+            PanelMatricesEmbebido.SeleccionInsumoParaPrueba = _ => new List<ComponenteMatriz>
+            {
+                new() { TipoComponente = TipoComponenteMatriz.Material, MaterialId = materialB.Id, Material = materialB, Cantidad = 3m, Notas = string.Empty },
+            };
+            panel.AgregarPrimerLoteNuevaMatrizParaPrueba(TipoComponenteMatriz.Material);
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, panel.UltimoEstadoNuevaMatriz,
+                panel.UltimaRazonNuevaMatrizSinDespachar);
+            Assert.IsFalse(callbackHeredado, "La primera alta no invoca el callback heredado.");
+            Assert.IsNotNull(snapshot);
+            Assert.IsFalse(panel.BotonGuardarVisibleParaPrueba,
+                "La cabecera persistida también usa autoguardado y no muestra Guardar.");
+            Assert.IsFalse(panel.BotonCancelarVisibleParaPrueba,
+                "La cabecera persistida no muestra Cancelar porque no revierte cambios confirmados.");
+            Assert.AreEqual(0, guardasCompartidos, "El comando usa un contexto nuevo.");
+            Assert.AreEqual("NUEVA-01", panel.MatrizVisibleEnPanel!.Clave);
+
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                var matriz = verificacion.Matrices.AsNoTracking()
+                    .Single(m => m.Clave == "NUEVA-01" && m.ProyectoId == escenario.Proyecto.Id);
+                Assert.AreEqual(TipoMatriz.APU, matriz.Tipo);
+                Assert.AreEqual(30m, matriz.CostoDirecto, "3 × 10 del material.");
+                Assert.AreEqual(matriz.Id, verificacion.ConceptosPresupuesto.AsNoTracking()
+                    .Single(c => c.Id == hojaNueva.Id).MatrizId);
+                Assert.AreEqual(1, verificacion.ComponentesMatriz.AsNoTracking().Count(c => c.MatrizId == matriz.Id));
+            }
+
+            var filaNueva = BuscarFilaPorConcepto(grid, hojaNueva.Id);
+            Assert.AreEqual(panel.MatrizVisibleEnPanel!.Id,
+                (grid.Rows[filaNueva].Tag as ConceptoPresupuesto)?.MatrizId,
+                "La fila del presupuesto se actualiza tras el commit.");
+
+            // La cabecera persistida se autoguarda al validar el campo, sin botones.
+            panel.EstablecerCabeceraParaPrueba("NUEVA-01", "Matriz nueva actualizada", "m3", TipoMatriz.APU);
+            panel.ValidarCabeceraParaPrueba();
+            for (int i = 0; i < 200 && panel.UltimoEstadoEdicionCabecera == null; i++)
+            {
+                System.Windows.Forms.Application.DoEvents();
+                Thread.Sleep(10);
+            }
+            Assert.AreEqual(BudgetOperationStatus.Committed, panel.UltimoEstadoEdicionCabecera,
+                "La cabecera de la matriz ya persistida se autoguarda por comando.");
+
+            using (var verificacionCabecera = new SOPROContext(dbPath))
+            {
+                Assert.AreEqual("Matriz nueva actualizada", verificacionCabecera.Matrices
+                    .AsNoTracking().Single(m => m.Clave == "NUEVA-01").Descripcion);
+            }
+        }
+        finally
+        {
+            PanelMatricesEmbebido.SeleccionInsumoParaPrueba = null;
+            PanelMatricesEmbebido.MostrarAvisoAltasComponente = (titulo, mensaje, icono) =>
+                MessageBox.Show(mensaje, titulo, MessageBoxButtons.OK, icono);
+            PanelMatricesEmbebido.MostrarAvisoCabeceraMatriz = (titulo, mensaje, icono) =>
+                MessageBox.Show(mensaje, titulo, MessageBoxButtons.OK, icono);
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void RequestNewMatrix_TipoNoApu_NoIniciaBorradorYNoAsigna()
+    {
+        var root = CrearRaiz("request_nueva_tipo");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        var avisos = new List<string>();
+        var avisosAsignacion = new List<string>();
+        FormPresupuesto.MostrarAvisoAsignacionMatriz = (_, m, _) => avisosAsignacion.Add(m);
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+            var escenario = CrearEscenarioDosHojas(ctx);
+            var hoja = CrearHojaSinMatriz(ctx, escenario, "C-SELECTOR", orden: 3);
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"), Path.Combine(root, "local")));
+            form.Show();
+            form.ExpandirWorkspaceParaPrueba();
+            System.Windows.Forms.Application.DoEvents();
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+            int fila = BuscarFilaPorConcepto(grid, hoja.Id);
+            panel.NotificarFilaCambiada(fila);
+
+            form.IniciarCreacionMatrizDesdeSelectorParaPrueba(fila, TipoMatriz.Basico, 2m);
+
+            Assert.AreEqual(1, avisosAsignacion.Count);
+            StringAssert.Contains(avisosAsignacion[0], "APU");
+            Assert.IsNull(panel.MatrizVisibleEnPanel);
+            Assert.AreNotEqual("Nueva APU", panel.TituloCabeceraParaPrueba,
+                "Un tipo no APU no debe iniciar el borrador vinculado.");
+
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                Assert.IsFalse(verificacion.Matrices.Any(m => m.ProyectoId == escenario.Proyecto.Id
+                    && m.Clave == "NUEVA-01"));
+                Assert.IsNull(verificacion.ConceptosPresupuesto.AsNoTracking()
+                    .Single(c => c.Id == hoja.Id).MatrizId);
+            }
+
+            // APU sí inicia el borrador, sin asignar todavía (la asignación llega por
+            // el evento de la primera alta, no por callback).
+            form.IniciarCreacionMatrizDesdeSelectorParaPrueba(fila, TipoMatriz.APU, 2m);
+            Assert.AreEqual("Nueva APU", panel.TituloCabeceraParaPrueba);
+            Assert.IsFalse(panel.BotonGuardarVisibleParaPrueba);
+            using (var verificacion = new SOPROContext(dbPath))
+            {
+                Assert.IsNull(verificacion.ConceptosPresupuesto.AsNoTracking()
+                    .Single(c => c.Id == hoja.Id).MatrizId);
+            }
+
+            PanelMatricesEmbebido.ConfirmarDescartarNuevaMatriz = () => true;
+            panel.CancelarCabeceraParaPrueba();
+        }
+        finally
+        {
+            FormPresupuesto.MostrarAvisoAsignacionMatriz = (titulo, mensaje, icono) =>
+                MessageBox.Show(mensaje, titulo, MessageBoxButtons.OK, icono);
+            PanelMatricesEmbebido.ConfirmarDescartarNuevaMatriz = () => MessageBox.Show(
+                "¿Descartar?", "Descartar matriz nueva", MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning) == DialogResult.Yes;
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void PrimeraAltaMatrizNueva_ReintentoMismaSeleccion_NoDuplicaComponentes()
+    {
+        var root = CrearRaiz("nueva_matriz_retry");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        var avisos = new List<string>();
+        PanelMatricesEmbebido.MostrarAvisoAltasComponente = (_, m, _) => avisos.Add(m);
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+            var escenario = CrearEscenarioDosHojas(ctx);
+            var hoja = CrearHojaSinMatriz(ctx, escenario, "C-RETRY", orden: 3);
+            var materialB = ctx.Materiales.AsNoTracking().Single(m => m.Clave == "MAT-B");
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"), Path.Combine(root, "local")));
+            form.Show();
+            form.ExpandirWorkspaceParaPrueba();
+            System.Windows.Forms.Application.DoEvents();
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+            panel.NotificarFilaCambiada(BuscarFilaPorConcepto(grid, hoja.Id));
+
+            panel.BeginCreateMatrix(TipoMatriz.APU, soloApu: true);
+            panel.EstablecerCabeceraParaPrueba("NUEVA-RETRY", "Matriz con reintento", "m3", TipoMatriz.APU);
+
+            CrearTriggerDeFallo(dbPath);
+            PanelMatricesEmbebido.SeleccionInsumoParaPrueba = _ => new List<ComponenteMatriz>
+            {
+                new() { TipoComponente = TipoComponenteMatriz.Material, MaterialId = materialB.Id, Material = materialB, Cantidad = 1m, Notas = string.Empty },
+            };
+            panel.AgregarPrimerLoteNuevaMatrizParaPrueba(TipoComponenteMatriz.Material);
+
+            Assert.AreEqual(BudgetOperationStatus.Failed, panel.UltimoEstadoNuevaMatriz,
+                panel.UltimaRazonNuevaMatrizSinDespachar);
+            EliminarTriggerDeFallo(dbPath);
+
+            // Reintento de la MISMA selección: no debe concatenarse otra vez al borrador.
+            panel.AgregarPrimerLoteNuevaMatrizParaPrueba(TipoComponenteMatriz.Material);
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, panel.UltimoEstadoNuevaMatriz,
+                panel.UltimaRazonNuevaMatrizSinDespachar);
+
+            using var verificacion = new SOPROContext(dbPath);
+            var matriz = verificacion.Matrices.AsNoTracking()
+                .Single(m => m.Clave == "NUEVA-RETRY" && m.ProyectoId == escenario.Proyecto.Id);
+            Assert.AreEqual(1, verificacion.ComponentesMatriz.AsNoTracking().Count(c => c.MatrizId == matriz.Id),
+                "El reintento de la misma selección no debe duplicar componentes.");
+            Assert.AreEqual(10m, matriz.CostoDirecto, "1 × 10 del material; no 2 filas.");
+        }
+        finally
+        {
+            PanelMatricesEmbebido.SeleccionInsumoParaPrueba = null;
+            PanelMatricesEmbebido.MostrarAvisoAltasComponente = (titulo, mensaje, icono) =>
+                MessageBox.Show(mensaje, titulo, MessageBoxButtons.OK, icono);
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void PrimeraAltaMatrizNueva_MaterialFallidoLuegoManoDeObra_ConservaLoteYConfirma()
+    {
+        var root = CrearRaiz("nueva_matriz_tipos");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        var avisos = new List<string>();
+        PanelMatricesEmbebido.MostrarAvisoAltasComponente = (_, m, _) => avisos.Add(m);
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+            var escenario = CrearEscenarioDosHojas(ctx);
+            var hoja = CrearHojaSinMatriz(ctx, escenario, "C-TIPOS", orden: 3);
+            var materialB = ctx.Materiales.AsNoTracking().Single(m => m.Clave == "MAT-B");
+            var oficial = ctx.ManoDeObra.AsNoTracking().Single(m => m.Clave == "MO-OF");
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"), Path.Combine(root, "local")));
+            form.Show();
+            form.ExpandirWorkspaceParaPrueba();
+            System.Windows.Forms.Application.DoEvents();
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+            panel.NotificarFilaCambiada(BuscarFilaPorConcepto(grid, hoja.Id));
+
+            panel.BeginCreateMatrix(TipoMatriz.APU, soloApu: true);
+            panel.EstablecerCabeceraParaPrueba("NUEVA-TIPOS", "Matriz con dos tipos", "m3", TipoMatriz.APU);
+
+            CrearTriggerDeFallo(dbPath);
+            PanelMatricesEmbebido.SeleccionInsumoParaPrueba = _ => new List<ComponenteMatriz>
+            {
+                new() { TipoComponente = TipoComponenteMatriz.Material, MaterialId = materialB.Id, Material = materialB, Cantidad = 1m, Notas = string.Empty },
+            };
+            panel.AgregarPrimerLoteNuevaMatrizParaPrueba(TipoComponenteMatriz.Material);
+            Assert.AreEqual(BudgetOperationStatus.Failed, panel.UltimoEstadoNuevaMatriz);
+            EliminarTriggerDeFallo(dbPath);
+
+            PanelMatricesEmbebido.SeleccionInsumoParaPrueba = _ => new List<ComponenteMatriz>
+            {
+                new() { TipoComponente = TipoComponenteMatriz.ManoDeObra, ManoDeObraId = oficial.Id, ManoDeObra = oficial, Cantidad = 1m, Notas = string.Empty },
+            };
+            panel.AgregarPrimerLoteNuevaMatrizParaPrueba(TipoComponenteMatriz.ManoDeObra);
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, panel.UltimoEstadoNuevaMatriz,
+                panel.UltimaRazonNuevaMatrizSinDespachar);
+
+            using var verificacion = new SOPROContext(dbPath);
+            var matriz = verificacion.Matrices.AsNoTracking()
+                .Single(m => m.Clave == "NUEVA-TIPOS" && m.ProyectoId == escenario.Proyecto.Id);
+            var componentes = verificacion.ComponentesMatriz.AsNoTracking()
+                .Where(c => c.MatrizId == matriz.Id)
+                .OrderBy(c => c.Orden)
+                .ToList();
+            Assert.AreEqual(2, componentes.Count,
+                "El material pendiente y la mano de obra posterior deben conservarse.");
+            Assert.AreEqual(TipoComponenteMatriz.Material, componentes[0].TipoComponente);
+            Assert.AreEqual(TipoComponenteMatriz.ManoDeObra, componentes[1].TipoComponente);
+            Assert.AreEqual(40m, matriz.CostoDirecto, "10 del material + 30 de la mano de obra.");
+        }
+        finally
+        {
+            PanelMatricesEmbebido.SeleccionInsumoParaPrueba = null;
+            PanelMatricesEmbebido.MostrarAvisoAltasComponente = (titulo, mensaje, icono) =>
+                MessageBox.Show(mensaje, titulo, MessageBoxButtons.OK, icono);
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void BeginCreateMatrix_ConReconciliacionPendiente_NoIniciaNuevoBorrador()
+    {
+        var root = CrearRaiz("nueva_matriz_bloqueada");
+        var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        var avisos = new List<string>();
+        PanelMatricesEmbebido.MostrarAvisoAltasComponente = (_, m, _) => avisos.Add(m);
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+            var escenario = CrearEscenarioDosHojas(ctx);
+            var hoja = CrearHojaSinMatriz(ctx, escenario, "C-BLOQ", orden: 3);
+
+            form = new FormPresupuesto(ctx, escenario.Proyecto, new ProjectWorkspaceService(
+                Path.Combine(root, "sopro"), Path.Combine(root, "local")));
+            form.Show();
+            form.ExpandirWorkspaceParaPrueba();
+            System.Windows.Forms.Application.DoEvents();
+            var panel = form.PanelMatricesInterno!;
+            panel.NotificarFilaCambiada(BuscarFilaPorConcepto(form.GridPrincipal, hoja.Id));
+
+            panel.SimularNuevaMatrizPendienteReconciliacionParaPrueba();
+            panel.BeginCreateMatrix(TipoMatriz.APU, soloApu: true);
+
+            Assert.AreNotEqual("Nueva APU", panel.TituloCabeceraParaPrueba,
+                "Con resultado incierto pendiente no se abre otro borrador.");
+            Assert.AreEqual(1, avisos.Count);
+            StringAssert.Contains(avisos[0], "resultado incierto");
+        }
+        finally
+        {
+            PanelMatricesEmbebido.MostrarAvisoAltasComponente = (titulo, mensaje, icono) =>
+                MessageBox.Show(mensaje, titulo, MessageBoxButtons.OK, icono);
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
     // ═════════════════════════════ Infraestructura ═════════════════════════════
 
     private sealed class EscenarioPanel
@@ -727,6 +1121,36 @@ public class PanelMatricesComponenteAltasComandoTests
         public ConceptoPresupuesto Hoja1 { get; init; } = null!;
         public ConceptoPresupuesto Hoja2 { get; init; } = null!;
         public ConceptoPresupuesto Agrupador { get; init; } = null!;
+    }
+
+    private static ConceptoPresupuesto CrearHojaSinMatriz(
+        SOPROContext ctx,
+        EscenarioPanel escenario,
+        string clave,
+        int orden)
+    {
+        var hoja = new ConceptoPresupuesto
+        {
+            ProyectoId = escenario.Proyecto.Id,
+            Clave = clave,
+            Descripcion = $"Hoja {clave}",
+            EsAgrupador = false,
+            Nivel = 1,
+            Orden = orden,
+            Unidad = "m3",
+            ColumnasPersonalizadasJSON = string.Empty,
+            Notas = string.Empty,
+            Cantidad = 10m,
+            MatrizId = null,
+            CostoDirectoUnitario = 0m,
+            CostoDirectoTotal = 0m,
+            PrecioUnitario = 0m,
+            ImporteTotal = 0m,
+            FechaModificacion = new DateTime(2026, 1, 1),
+        };
+        ctx.ConceptosPresupuesto.Add(hoja);
+        ctx.SaveChanges();
+        return hoja;
     }
 
     private static EscenarioPanel CrearEscenarioDosHojas(SOPROContext ctx)

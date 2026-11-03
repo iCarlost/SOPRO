@@ -21,12 +21,31 @@ namespace SOPRO.WinForms.Controls
     /// componentes: si el selector importó catálogo de otro proyecto con
     /// <c>ExternalInsumoImportService</c>, ese commit ya ocurrió y NO se resta
     /// ni se revierte aquí.
-    /// El modo de creación (componentes temporales) sigue la ruta heredada a
-    /// propósito.
+    /// El alta sobre una matriz YA persistida usa el comando existente; la primera
+    /// alta de una matriz nueva usa <see cref="BudgetPersistenceService.ExecuteNewMatrixWithComponentsCommand"/>
+    /// y crea la matriz, el lote y el vínculo al concepto en una sola transacción.
+    /// El panel jamás usa la ruta heredada (Add/SaveChanges/GuardarYPropagar) para
+    /// esas altas ni recalcula importes por su cuenta.
     /// </summary>
     public partial class PanelMatricesEmbebido
     {
         private BudgetMatrixComponentAdditionCommand? _comandoAltasComponentesPendiente;
+        private bool _despachandoNuevaMatriz;
+        private bool _nuevaMatrizPendienteReconciliacion;
+        private string? _firmaUltimaSeleccionRechazada;
+        private decimal? _cantidadNuevaMatriz;
+        private int? _conceptoOrigenIdNuevaMatriz;
+
+        /// <summary>
+        /// Estado de la última primera alta de matriz vinculada a un concepto.
+        /// </summary>
+        internal BudgetOperationStatus? UltimoEstadoNuevaMatriz { get; private set; }
+
+        internal string? UltimaRazonNuevaMatrizSinDespachar { get; private set; }
+
+        /// <summary>Entrada de primera alta para las pruebas; misma ruta que el selector.</summary>
+        internal void AgregarPrimerLoteNuevaMatrizParaPrueba(TipoComponenteMatriz tipoComponente)
+            => AgregarComponentesTemporales(tipoComponente);
 
         /// <summary>
         /// Clasificación de la última alta en lote ejecutada como comando, o
@@ -52,6 +71,13 @@ namespace SOPRO.WinForms.Controls
         /// filas por Id; NUNCA dispara refrescos de precios por segunda vez.
         /// </summary>
         public event EventHandler<BudgetMatrixComponentAdditionSnapshot>? AltasComponentesConfirmadas;
+
+        /// <summary>
+        /// Primera alta confirmada de una matriz nueva vinculada a un concepto:
+        /// FormPresupuesto aplica la asignación y los totales por Id, sin callback
+        /// heredado ni segunda escritura.
+        /// </summary>
+        public event EventHandler<BudgetNewMatrixWithComponentsSnapshot>? NuevaMatrizConComponentesConfirmada;
 
         /// <summary>Aislamiento de avisos de la ruta de altas para las pruebas.</summary>
         internal static Action<string, string, MessageBoxIcon> MostrarAvisoAltasComponente { get; set; }
@@ -87,11 +113,11 @@ namespace SOPRO.WinForms.Controls
             => AgregarComponentesPersistidos(tipoComponente);
 
         /// <summary>
-        /// Ruta de comando para el lote del selector: construye las bases y el
-        /// lote SOLO desde la vista (sin mutar nada), rechaza lotes auxiliares o
-        /// mixtos COMPLETOS antes de escribir y despacha una vez. Un fallo o
-        /// conflicto preserva la vista y avisa que no se guardó nada; un lote
-        /// vacío termina sin comando ni aviso.
+        /// Ruta de comando para el lote del selector sobre una matriz persistida:
+        /// construye las bases y el lote SOLO desde la vista (sin mutar nada), valida
+        /// tipos y fuentes y despacha una vez. Un fallo o conflicto preserva la vista
+        /// y avisa que no se guardó nada; un lote vacío termina sin comando ni aviso.
+        /// La primera alta de matriz nueva tiene su propia ruta atómica.
         /// </summary>
         private void AgregarComponentesPersistidos(TipoComponenteMatriz tipoComponente)
         {
@@ -190,57 +216,9 @@ namespace SOPRO.WinForms.Controls
                 return null;
             }
 
-            // Se aceptan las filas auxiliares que el selector entrega como matriz
-            // (cuadrillas desde Mano de Obra y básicos desde Auxiliares) siempre que
-            // traigan su fuente y navegación. Solo se rechaza un lote con tipos
-            // incompatibles con el selector o una fila auxiliar sin referencia.
-            if (seleccion.Any(c => c is null))
-            {
-                motivoRechazo =
-                    "El lote contiene una fila nula; no se guardó nada.";
+            var adiciones = ConstruirAdiciones(seleccion, tipoComponente, out motivoRechazo);
+            if (adiciones == null)
                 return null;
-            }
-
-            // Una fila auxiliar sin fuente/navegación no se puede convertir en una
-            // base de catálogo válida: se reporta antes de evaluar compatibilidad.
-            var auxiliarSinFuente = seleccion.FirstOrDefault(c =>
-                c.TipoComponente == TipoComponenteMatriz.Auxiliar
-                && (c.AuxiliarId is not > 0 || c.Auxiliar == null));
-            if (auxiliarSinFuente != null)
-            {
-                motivoRechazo =
-                    $"El auxiliar {auxiliarSinFuente.AuxiliarId} cambió en la vista; no se guardó nada.";
-                return null;
-            }
-
-            if (seleccion.Any(c => !EsTipoSeleccionable(tipoComponente, c)))
-            {
-                motivoRechazo =
-                    "El lote mezcla tipos de insumo incompatibles y no se guardó nada; " +
-                    "agregue cada tipo por separado.";
-                return null;
-            }
-
-            var bases = new List<(int SourceId, BudgetMatrixComponentSourceBase Base, decimal Cantidad, string Notas)>();
-            foreach (var componente in seleccion)
-            {
-                var baseOrigen = ConstruirBaseComponente(componente, out var error);
-                if (baseOrigen == null)
-                {
-                    motivoRechazo = error ?? "Las altas no se guardaron.";
-                    return null;
-                }
-
-                if (componente.Cantidad <= 0m)
-                {
-                    motivoRechazo =
-                        $"El insumo {baseOrigen.Clave} {componente.TipoComponente} " +
-                        "tiene una cantidad inválida; no se guardó nada.";
-                    return null;
-                }
-
-                bases.Add((baseOrigen.SourceId, baseOrigen, componente.Cantidad, componente.Notas ?? string.Empty));
-            }
 
             var proyecto = _context.Proyectos.AsNoTracking()
                 .FirstOrDefault(p => p.Id == _proyectoId);
@@ -262,10 +240,6 @@ namespace SOPRO.WinForms.Controls
             var fingerprint =
                 BudgetMatrixComponentStateFingerprint.FromComponentes(_matrizActual.Componentes);
 
-            var adiciones = bases.Select(b =>
-                new BudgetMatrixComponentAdditionItem(
-                    b.Base.TipoComponente, b.SourceId, b.Base, b.Cantidad, b.Notas));
-
             try
             {
                 return new BudgetMatrixComponentAdditionCommand(
@@ -285,10 +259,345 @@ namespace SOPRO.WinForms.Controls
         }
 
         /// <summary>
-        /// Base de catálogo esperada, construida desde el objeto que mostró la
-        /// vista SIN tocar el tracker: es solo lectura y su fuente de verdad es la
-        /// que revalidará el comando contra la base fresca.
+        /// Valida el lote y construye las altas tipadas con el tipo REAL de cada fila.
+        /// Compartido por el alta sobre matriz persistida y por la primera alta
+        /// vinculada. Devuelve <c>null</c> con el motivo del rechazo.
         /// </summary>
+        private static List<BudgetMatrixComponentAdditionItem>? ConstruirAdiciones(
+            List<ComponenteMatriz> seleccion,
+            TipoComponenteMatriz? tipoComponente,
+            out string? motivoRechazo)
+        {
+            motivoRechazo = null;
+
+            if (seleccion.Any(c => c is null))
+            {
+                motivoRechazo = "El lote contiene una fila nula; no se guardó nada.";
+                return null;
+            }
+
+            var auxiliarSinFuente = seleccion.FirstOrDefault(c =>
+                c.TipoComponente == TipoComponenteMatriz.Auxiliar
+                && (c.AuxiliarId is not > 0 || c.Auxiliar == null));
+            if (auxiliarSinFuente != null)
+            {
+                motivoRechazo =
+                    $"El auxiliar {auxiliarSinFuente.AuxiliarId} cambió en la vista; no se guardó nada.";
+                return null;
+            }
+
+            if (tipoComponente.HasValue
+                && seleccion.Any(c => !EsTipoSeleccionable(tipoComponente.Value, c)))
+            {
+                motivoRechazo =
+                    "El lote mezcla tipos de insumo incompatibles y no se guardó nada; " +
+                    "agregue cada tipo por separado.";
+                return null;
+            }
+
+            var adiciones = new List<BudgetMatrixComponentAdditionItem>(seleccion.Count);
+            foreach (var componente in seleccion)
+            {
+                var baseOrigen = ConstruirBaseComponente(componente, out var error);
+                if (baseOrigen == null)
+                {
+                    motivoRechazo = error ?? "Las altas no se guardaron.";
+                    return null;
+                }
+
+                if (componente.Cantidad <= 0m)
+                {
+                    motivoRechazo =
+                        $"El insumo {baseOrigen.Clave} {componente.TipoComponente} " +
+                        "tiene una cantidad inválida; no se guardó nada.";
+                    return null;
+                }
+
+                adiciones.Add(new BudgetMatrixComponentAdditionItem(
+                    baseOrigen.TipoComponente,
+                    baseOrigen.SourceId,
+                    baseOrigen,
+                    componente.Cantidad,
+                    componente.Notas ?? string.Empty));
+            }
+
+            return adiciones;
+        }
+
+        /// <summary>
+        /// Construye el comando de primera alta vinculada desde la vista: cabecera,
+        /// concepto persistido por <c>ConceptoId</c>, rowset completo y lote. Solo se
+        /// invoca en estado borrador y con al menos un componente.
+        /// </summary>
+        private BudgetNewMatrixWithComponentsCommand? PrepararComandoNuevaMatriz(
+            List<ComponenteMatriz> seleccion,
+            List<ComponenteMatriz> nuevas,
+            TipoComponenteMatriz tipoComponente,
+            out string? motivoRechazo)
+        {
+            motivoRechazo = null;
+
+            if (!_modoCreacionMatriz || _matrizActual != null)
+            {
+                motivoRechazo = "La matriz ya está persistida; use la ruta de altas existente.";
+                return null;
+            }
+
+            string clave = (_txtClaveMatriz.Text ?? string.Empty).Trim();
+            string descripcion = (_txtDescripcionMatriz.Text ?? string.Empty).Trim();
+            string unidad = (_txtUnidadMatriz.Text ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(clave)
+                || string.IsNullOrWhiteSpace(descripcion)
+                || string.IsNullOrWhiteSpace(unidad))
+            {
+                motivoRechazo = "Clave, Descripción y Unidad son obligatorios.";
+                return null;
+            }
+
+            if (GetTipoCabeceraSeleccionado() != TipoMatriz.APU)
+            {
+                motivoRechazo =
+                    "Solo una matriz APU se puede vincular a un concepto del presupuesto.";
+                return null;
+            }
+
+            if (_dgvPresupuesto == null)
+            {
+                motivoRechazo = "No hay un concepto de presupuesto seleccionado para vincular la matriz.";
+                return null;
+            }
+
+            ConceptoPresupuesto? concepto = null;
+            DataGridViewRow? filaConcepto = null;
+            if (_conceptoOrigenIdNuevaMatriz is int conceptoOrigenId)
+            {
+                filaConcepto = _dgvPresupuesto.Rows
+                    .Cast<DataGridViewRow>()
+                    .FirstOrDefault(r => (r.Tag as ConceptoPresupuesto)?.Id == conceptoOrigenId);
+                concepto = filaConcepto?.Tag as ConceptoPresupuesto;
+            }
+            else if (_filaActual >= 0 && _filaActual < _dgvPresupuesto.Rows.Count)
+            {
+                filaConcepto = _dgvPresupuesto.Rows[_filaActual];
+                concepto = filaConcepto.Tag as ConceptoPresupuesto;
+            }
+
+            if (concepto is not { Id: > 0 })
+            {
+                motivoRechazo =
+                    "El concepto de origen debe estar guardado para crear y vincular la matriz. " +
+                    "Guarde primero el presupuesto.";
+                return null;
+            }
+
+            if (concepto.EsAgrupador || concepto.MatrizId.HasValue)
+            {
+                motivoRechazo =
+                    "El concepto seleccionado ya tiene matriz o es un agrupador; no se puede vincular otra matriz.";
+                return null;
+            }
+
+            decimal cantidad = _cantidadNuevaMatriz ?? concepto.Cantidad;
+            if (cantidad <= 0m)
+            {
+                motivoRechazo = "La cantidad del concepto debe ser mayor que cero para crear la matriz.";
+                return null;
+            }
+
+            var filas = _dgvPresupuesto.Rows
+                .Cast<DataGridViewRow>()
+                .Select(r => r.Tag as ConceptoPresupuesto)
+                .Where(c => c is { Id: > 0 })
+                .ToList();
+
+            if (!filas.Any(c => c!.Id == concepto.Id))
+            {
+                motivoRechazo =
+                    "El rowset del presupuesto no está íntegro en la vista; recargue y reintente.";
+                return null;
+            }
+
+            var rowset = BudgetAssignmentRowset.FromConceptos(filas!);
+
+            var adicionesNuevas = ConstruirAdiciones(nuevas, tipoComponente, out motivoRechazo);
+            if (adicionesNuevas == null)
+                return null;
+
+            // El lote acumulado puede contener tipos válidos de selecciones previas:
+            // no se le impone el tipo del último selector. Solo se valida que cada
+            // fila acumulada siga siendo una fuente válida y convertible.
+            var adiciones = ConstruirAdiciones(seleccion, tipoComponente: null, out motivoRechazo);
+            if (adiciones == null)
+                return null;
+
+            var proyecto = _context.Proyectos.AsNoTracking()
+                .FirstOrDefault(p => p.Id == _proyectoId);
+            if (proyecto == null)
+            {
+                motivoRechazo = "El proyecto no está disponible en la vista; recargue y reintente.";
+                return null;
+            }
+
+            try
+            {
+                return new BudgetNewMatrixWithComponentsCommand(
+                    _proyectoId,
+                    BudgetProjectCalculationBase.FromProyecto(proyecto),
+                    concepto.Id,
+                    BudgetConceptAssignmentBase.FromConcepto(concepto),
+                    rowset,
+                    clave,
+                    descripcion,
+                    unidad,
+                    TipoMatriz.APU,
+                    cantidad,
+                    adiciones);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Preparación de matriz nueva: {ex.Message}");
+                motivoRechazo = "La matriz nueva no se guardó: los datos no son válidos; revise la captura.";
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Despacha la primera alta con protección de reentrada. Un fallo conserva el
+        /// borrador y no reenvía nada; un resultado incierto bloquea toda mutación
+        /// posterior hasta reconciliar la vista.
+        /// </summary>
+        private void DespacharNuevaMatriz(
+            BudgetNewMatrixWithComponentsCommand comando,
+            string firmaSeleccion)
+        {
+            if (_despachandoNuevaMatriz)
+                return;
+
+            if (_nuevaMatrizPendienteReconciliacion)
+            {
+                MostrarAvisoAltasComponente(
+                    "Nueva matriz",
+                    "No se puede reintentar: la creación anterior quedó con resultado incierto. " +
+                    "Cierre y vuelva a abrir el presupuesto para reconciliar la vista.",
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            UltimoEstadoNuevaMatriz = null;
+            UltimaRazonNuevaMatrizSinDespachar = null;
+            _despachandoNuevaMatriz = true;
+            try
+            {
+                _context.ChangeTracker.DetectChanges();
+                if (_context.ChangeTracker.HasChanges())
+                {
+                    _firmaUltimaSeleccionRechazada = firmaSeleccion;
+                    UltimaRazonNuevaMatrizSinDespachar = "Contexto compartido sucio";
+                    MostrarAvisoAltasComponente(
+                        "Nueva matriz",
+                        "La matriz nueva no se envió a guardar: hay cambios pendientes ajenos en el " +
+                        "contexto. Guarde o descarte esos cambios y reintente.",
+                        MessageBoxIcon.Information);
+                    return;
+                }
+
+                BudgetNewMatrixWithComponentsResult resultado;
+                try
+                {
+                    resultado = BudgetPersistenceService.ExecuteNewMatrixWithComponentsCommand(
+                        _factoryComando,
+                        _context.DatabasePath,
+                        comando);
+                }
+                catch (Exception ex)
+                {
+                    _firmaUltimaSeleccionRechazada = firmaSeleccion;
+                    UltimaRazonNuevaMatrizSinDespachar = "Excepción al despachar el comando";
+                    Debug.WriteLine($"Matriz nueva con componentes: {ex}");
+                    MostrarAvisoAltasComponente(
+                        "Nueva matriz",
+                        "La matriz nueva no se guardó por un problema inesperado; el borrador queda visible.",
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                UltimoEstadoNuevaMatriz = resultado.Status;
+
+                if (!resultado.IsCommitted || resultado.Confirmed is null)
+                {
+                    _firmaUltimaSeleccionRechazada = firmaSeleccion;
+
+                    if (resultado.Status == BudgetOperationStatus.OutcomeUnknown)
+                    {
+                        _edicionCantidadComponenteBloqueada = true;
+                        _nuevaMatrizPendienteReconciliacion = true;
+                        MostrarAvisoAltasComponente(
+                            "Nueva matriz",
+                            "No se sabe si la matriz nueva quedó guardada. Cierre y vuelva a abrir el " +
+                            "presupuesto para reconciliar la vista antes de reintentar.",
+                            MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    MostrarAvisoAltasComponente(
+                        "Nueva matriz",
+                        (resultado.Message ?? "La matriz nueva no se guardó.") +
+                        (string.IsNullOrEmpty(resultado.Message) ? string.Empty : " No se guardó nada."),
+                        MessageBoxIcon.Information);
+                    return;
+                }
+
+                _nuevaMatrizPendienteReconciliacion = false;
+                _firmaUltimaSeleccionRechazada = null;
+                AplicarNuevaMatrizConfirmada(resultado.Confirmed);
+            }
+            finally
+            {
+                _despachandoNuevaMatriz = false;
+            }
+        }
+
+        /// <summary>
+        /// Firma determinista de una selección del selector para reconocer un reintento
+        /// del MISMO lote y no concatenarlo dos veces al borrador pendiente.
+        /// </summary>
+        private static string CrearFirmaSeleccion(IEnumerable<ComponenteMatriz> componentes)
+            => string.Join("|", componentes.Select(c => string.Join(";",
+                ((int)c.TipoComponente).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                c.MaterialId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                c.ManoDeObraId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                c.MaquinariaId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                c.AuxiliarId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                c.HerramientaId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                c.Cantidad.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                c.Notas ?? string.Empty)));
+
+        private void AplicarNuevaMatrizConfirmada(BudgetNewMatrixWithComponentsSnapshot snapshot)
+        {
+            _matrizEditandoId = snapshot.MatrixId;
+            _modoCreacionMatriz = false;
+            _modoEdicionCabecera = true;
+            _firmaUltimaSeleccionRechazada = null;
+            _cantidadNuevaMatriz = null;
+            _conceptoOrigenIdNuevaMatriz = null;
+            _componentesTemp.Clear();
+            _panelBotonesAgregar.Enabled = true;
+            _onMatrixHeaderSaved = null;
+            _onMatrixHeaderCancelled = null;
+
+            var recargada = CargarMatrizConComponentes(snapshot.MatrixId, asNoTracking: true);
+            if (recargada != null)
+            {
+                _matrizActual = recargada;
+                CapturarEstadoBaseCabeceraDesdeMatriz(recargada);
+                MostrarMatriz(recargada, null);
+            }
+
+            MostrarDatosCabecera(true);
+            NuevaMatrizConComponentesConfirmada?.Invoke(this, snapshot);
+        }
+
+
         private static BudgetMatrixComponentSourceBase? ConstruirBaseComponente(
             ComponenteMatriz componente, out string? error)
         {

@@ -432,6 +432,17 @@ public class SelectorApuFlujoPresupuestoTests
             ctx = new SOPROContext(root.DbPath);
             ctx.Database.EnsureCreated();
             var escenario = CrearEscenario(ctx);
+            var materialSelector = new Material
+            {
+                ProyectoId = escenario.Proyecto.Id,
+                Clave = "MAT-SELECTOR",
+                Descripcion = "Material selector",
+                Unidad = "kg",
+                PrecioUnitario = 60m,
+                Notas = string.Empty,
+            };
+            ctx.Materiales.Add(materialSelector);
+            ctx.SaveChanges();
             form = CrearForm(ctx, escenario, root);
             form.Show();
             form.ExpandirWorkspaceParaPrueba();
@@ -464,28 +475,42 @@ public class SelectorApuFlujoPresupuestoTests
             var panel = form.PanelMatricesInterno!;
             Assert.IsTrue(panel.Visible, "El panel de captura debe quedar visible.");
 
-            var matrizNueva = AgregarMatrizNueva(
-                ctx, escenario.Proyecto.Id, "APU-N1", "Matriz nueva desde selector", "m2", 60m);
-
-            LeerCallbackMatrizGuardada(panel)(matrizNueva);
+            panel.EstablecerCabeceraParaPrueba("APU-N1", "Matriz nueva desde selector", "m2", TipoMatriz.APU);
+            PanelMatricesEmbebido.SeleccionInsumoParaPrueba = _ => new List<ComponenteMatriz>
+            {
+                new()
+                {
+                    TipoComponente = TipoComponenteMatriz.Material,
+                    MaterialId = materialSelector.Id,
+                    Material = materialSelector,
+                    Cantidad = 1m,
+                    Notas = string.Empty,
+                },
+            };
+            panel.AgregarPrimerLoteNuevaMatrizParaPrueba(TipoComponenteMatriz.Material);
             System.Windows.Forms.Application.DoEvents();
 
             Assert.AreEqual(0, avisos.Count,
                 "La asignación no debe avisar de fallo: " + string.Join(" | ", avisos));
-            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoAsignacionMatriz);
+            Assert.AreEqual(BudgetOperationStatus.Committed, panel.UltimoEstadoNuevaMatriz,
+                panel.UltimaRazonNuevaMatrizSinDespachar);
 
+            int matrizNuevaId;
             using (var verificacion = new SOPROContext(root.DbPath))
             {
+                var matriz = verificacion.Matrices.AsNoTracking()
+                    .Single(m => m.Clave == "APU-N1" && m.ProyectoId == escenario.Proyecto.Id);
+                matrizNuevaId = matriz.Id;
                 var persistido = verificacion.ConceptosPresupuesto
                     .AsNoTracking()
                     .Single(c => c.Id == escenario.ConceptoCantidadCero.Id);
-                Assert.AreEqual(matrizNueva.Id, persistido.MatrizId, "La matriz debe quedar persistida.");
+                Assert.AreEqual(matrizNuevaId, persistido.MatrizId, "La matriz debe quedar persistida.");
                 Assert.AreEqual(3m, persistido.Cantidad, "Debe persistirse la cantidad editada en el selector.");
                 Assert.AreEqual(60m, persistido.PrecioUnitario);
                 Assert.AreEqual(180m, persistido.ImporteTotal);
             }
 
-            Assert.AreEqual(matrizNueva.Id, escenario.ConceptoCantidadCero.MatrizId);
+            Assert.AreEqual(matrizNuevaId, escenario.ConceptoCantidadCero.MatrizId);
             Assert.AreEqual(3m, Convert.ToDecimal(BuscarCelda(grid, fila, "Cantidad")!.Value));
             StringAssert.Contains(
                 BuscarCelda(grid, fila, "PrecioUnitario")!.Value?.ToString() ?? string.Empty, "60");
@@ -498,7 +523,7 @@ public class SelectorApuFlujoPresupuestoTests
             Assert.IsNull(LeerSelectorEmbebido(form));
             Assert.IsTrue(panel.Visible);
             Assert.IsNotNull(panel.MatrizVisibleEnPanel);
-            Assert.AreEqual(matrizNueva.Id, panel.MatrizVisibleEnPanel.Id);
+            Assert.AreEqual(matrizNuevaId, panel.MatrizVisibleEnPanel.Id);
         }
         finally
         {
@@ -525,6 +550,17 @@ public class SelectorApuFlujoPresupuestoTests
             ctx = new SOPROContext(root.DbPath);
             ctx.Database.EnsureCreated();
             var escenario = CrearEscenario(ctx);
+            var materialPanel = new Material
+            {
+                ProyectoId = escenario.Proyecto.Id,
+                Clave = "MAT-PANEL",
+                Descripcion = "Material panel",
+                Unidad = "kg",
+                PrecioUnitario = 60m,
+                Notas = string.Empty,
+            };
+            ctx.Materiales.Add(materialPanel);
+            ctx.SaveChanges();
             form = CrearForm(ctx, escenario, root);
             form.Show();
             form.ExpandirWorkspaceParaPrueba();
@@ -541,23 +577,38 @@ public class SelectorApuFlujoPresupuestoTests
             InvocarIniciarCreacionMatrizDesdePanel(form);
             System.Windows.Forms.Application.DoEvents();
             Assert.IsTrue(panel.Visible, "La captura de matriz nueva debe mostrarse en el panel.");
+            Assert.AreEqual("Nueva APU", panel.TituloCabeceraParaPrueba);
 
-            var matrizNueva = AgregarMatrizNueva(
-                ctx, escenario.Proyecto.Id, "APU-N2", "Matriz nueva desde panel", "m2", 60m);
-
-            LeerCallbackMatrizGuardada(panel)(matrizNueva);
+            panel.EstablecerCabeceraParaPrueba("APU-N2", "Matriz nueva desde panel", "m2", TipoMatriz.APU);
+            PanelMatricesEmbebido.SeleccionInsumoParaPrueba = _ => new List<ComponenteMatriz>
+            {
+                new()
+                {
+                    TipoComponente = TipoComponenteMatriz.Material,
+                    MaterialId = materialPanel.Id,
+                    Material = materialPanel,
+                    Cantidad = 1m,
+                    Notas = string.Empty,
+                },
+            };
+            panel.AgregarPrimerLoteNuevaMatrizParaPrueba(TipoComponenteMatriz.Material);
             System.Windows.Forms.Application.DoEvents();
 
             Assert.AreEqual(0, avisos.Count,
                 "La asignación no debe avisar de fallo: " + string.Join(" | ", avisos));
-            Assert.AreEqual(BudgetOperationStatus.Committed, form.UltimoEstadoAsignacionMatriz);
+            Assert.AreEqual(BudgetOperationStatus.Committed, panel.UltimoEstadoNuevaMatriz,
+                panel.UltimaRazonNuevaMatrizSinDespachar);
 
+            int matrizNuevaId;
             using (var verificacion = new SOPROContext(root.DbPath))
             {
+                var matriz = verificacion.Matrices.AsNoTracking()
+                    .Single(m => m.Clave == "APU-N2" && m.ProyectoId == escenario.Proyecto.Id);
+                matrizNuevaId = matriz.Id;
                 var persistido = verificacion.ConceptosPresupuesto
                     .AsNoTracking()
                     .Single(c => c.Id == escenario.ConceptoCantidadCero.Id);
-                Assert.AreEqual(matrizNueva.Id, persistido.MatrizId);
+                Assert.AreEqual(matrizNuevaId, persistido.MatrizId);
                 Assert.AreEqual(1m, persistido.Cantidad,
                     "Sin selector y con cantidad 0 debe usarse el default positivo 1.0.");
                 Assert.AreEqual(60m, persistido.PrecioUnitario);
@@ -571,7 +622,7 @@ public class SelectorApuFlujoPresupuestoTests
             Assert.IsNull(LeerSelectorEmbebido(form));
             Assert.IsTrue(panel.Visible);
             Assert.IsNotNull(panel.MatrizVisibleEnPanel);
-            Assert.AreEqual(matrizNueva.Id, panel.MatrizVisibleEnPanel.Id);
+            Assert.AreEqual(matrizNuevaId, panel.MatrizVisibleEnPanel.Id);
         }
         finally
         {
@@ -758,7 +809,7 @@ public class SelectorApuFlujoPresupuestoTests
     }
 
     [TestMethod]
-    public void NuevaMatriz_DesdePanel_TipoNoApu_NoAsignaNiAparentaExito()
+    public void NuevaMatriz_DesdePanel_IniciaBorradorApuSinAsignarHastaPrimerLote()
     {
         var previo = LeerProyectoGlobalFormato();
         var avisoPrevio = FormPresupuesto.MostrarAvisoAsignacionMatriz;
@@ -789,40 +840,34 @@ public class SelectorApuFlujoPresupuestoTests
             InvocarIniciarCreacionMatrizDesdePanel(form);
             System.Windows.Forms.Application.DoEvents();
             Assert.IsTrue(panel.Visible, "La captura de matriz nueva debe mostrarse en el panel.");
+            Assert.AreEqual("Nueva APU", panel.TituloCabeceraParaPrueba,
+                "La creación nace restringida a APU.");
+            Assert.IsFalse(panel.BotonGuardarVisibleParaPrueba);
+            Assert.IsFalse(panel.BotonCancelarVisibleParaPrueba);
 
-            var matrizBasica = new Matriz
-            {
-                ProyectoId = escenario.Proyecto.Id,
-                Clave = "BAS-PANEL",
-                Descripcion = "Básico creado desde el panel",
-                Unidad = "m3",
-                Tipo = TipoMatriz.Basico,
-                CostoDirecto = 20m,
-                Notas = string.Empty
-            };
-            ctx.Matrices.Add(matrizBasica);
-            ctx.SaveChanges();
-
-            LeerCallbackMatrizGuardada(panel)(matrizBasica);
-            System.Windows.Forms.Application.DoEvents();
-
-            Assert.AreEqual(1, avisos.Count,
-                "El intento con tipo no soportado debe avisarse: " + string.Join(" | ", avisos));
+            Assert.AreEqual(0, avisos.Count,
+                "El borrador no debe intentar una asignación: " + string.Join(" | ", avisos));
             Assert.IsNull(form.UltimoEstadoAsignacionMatriz,
-                "La matriz no APU no debe llegar a la asignación.");
+                "La asignación solo ocurre tras la primera alta confirmada.");
 
             using (var verificacion = new SOPROContext(root.DbPath))
             {
                 Assert.IsNull(verificacion.ConceptosPresupuesto.AsNoTracking()
                         .Single(c => c.Id == escenario.ConceptoSinMatriz.Id).MatrizId,
-                    "La matriz no APU no se asigna a la fila del presupuesto.");
+                    "El borrador no asigna la matriz a la fila del presupuesto.");
             }
 
             Assert.IsNull((grid.Rows[fila].Tag as ConceptoPresupuesto)?.MatrizId,
                 "La fila conserva su Tag sin matriz.");
+
+            PanelMatricesEmbebido.ConfirmarDescartarNuevaMatriz = () => true;
+            panel.CancelarCabeceraParaPrueba();
         }
         finally
         {
+            PanelMatricesEmbebido.ConfirmarDescartarNuevaMatriz = () => MessageBox.Show(
+                "¿Descartar?", "Descartar matriz nueva", MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning) == DialogResult.Yes;
             FormPresupuesto.MostrarAvisoAsignacionMatriz = avisoPrevio;
             form?.Dispose();
             ctx?.Dispose();
