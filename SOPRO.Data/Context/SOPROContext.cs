@@ -79,7 +79,19 @@ namespace SOPRO.Data.Context
 
         // Ruta del archivo de base de datos
         private readonly string _dbPath;
+        private readonly bool _readOnly;
+
+        /// <summary>
+        /// Ruta del archivo realmente conectado (no la ruta lógica del proyecto
+        /// cuando se trabaja sobre una copia temporal).
+        /// </summary>
         public string DatabasePath => _dbPath;
+
+        /// <summary>
+        /// Indica que el contexto abre el archivo en modo solo lectura y no puede
+        /// migrarse ni escribir en él.
+        /// </summary>
+        public bool IsReadOnly => _readOnly;
 
         /// <summary>
         /// Constructor por defecto (para catálogo maestro)
@@ -97,15 +109,39 @@ namespace SOPRO.Data.Context
         /// Constructor con ruta específica (para proyectos)
         /// </summary>
         public SOPROContext(string dbPath)
+            : this(dbPath, readOnly: false)
         {
+        }
+
+        /// <summary>
+        /// Constructor con ruta y modo de acceso. En solo lectura la conexión usa
+        /// <c>Mode=ReadOnly</c> y sin pooling: el archivo no se crea ni se modifica.
+        /// </summary>
+        public SOPROContext(string dbPath, bool readOnly)
+        {
+            ArgumentNullException.ThrowIfNull(dbPath);
             _dbPath = dbPath;
+            _readOnly = readOnly;
         }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             if (!optionsBuilder.IsConfigured)
             {
-                optionsBuilder.UseSqlite($"Data Source={_dbPath}");
+                var connectionString = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+                {
+                    DataSource = _dbPath
+                };
+
+                if (_readOnly)
+                {
+                    connectionString.Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly;
+                    // Sin pooling: el handle se libera al cerrar y la copia puede
+                    // borrarse de forma determinista.
+                    connectionString.Pooling = false;
+                }
+
+                optionsBuilder.UseSqlite(connectionString.ToString());
             }
         }
 

@@ -34,6 +34,7 @@ namespace SOPRO.WinForms.Forms
         private readonly int _proyectoId;
         private readonly bool _modoEmbebido;
         private readonly EventHandler _onInsumos;
+        private bool _suscripcionesGlobalesLiberadas;
         private ContextMenuStrip? _menuMatrices;
 
         private Matriz _matrizSeleccionada;
@@ -101,7 +102,6 @@ namespace SOPRO.WinForms.Forms
             dgvMatrices.ColumnHeaderMouseClick += (_, e) => NotificarColumnaSeleccionada(e.ColumnIndex);
             dgvMatrices.ColumnWidthChanged += DgvMatrices_ColumnWidthChanged;
             FormDatosProyecto.DecimalesActualizados += OnDecimalesActualizados_Mat;
-            this.FormClosed += (s, e) => FormDatosProyecto.DecimalesActualizados -= OnDecimalesActualizados_Mat;
             dgvMatrices.KeyDown += dgvMatrices_KeyDown;
             dgvMatrices.CellFormatting += DgvMatrices_CellFormatting;
             dgvMatrices.CellMouseDown += dgvMatrices_CellMouseDown;
@@ -121,6 +121,13 @@ namespace SOPRO.WinForms.Forms
             FormCatalogoHerramientas.InsumosModificados += _onInsumos;
             FormCatalogoMaquinaria.InsumosModificados += _onInsumos;
             FormEditarMatriz.MatrizGuardada += _onInsumos;
+
+            // Liberar SIEMPRE las suscripciones a eventos estáticos: el form se embebe
+            // (TopLevel=false) en las pestañas de FormProyecto y el cierre del proyecto
+            // puede descartarlo sin pasar por OnFormClosed. Los eventos estáticos
+            // retendrían esta instancia y su contexto ya liberado, y una guarda de
+            // matriz en otro proyecto dispararía el manejador obsoleto.
+            this.Disposed += (s, e) => LiberarSuscripcionesGlobales();
         }
 
 

@@ -38,7 +38,7 @@ namespace SOPRO.Application.Services
         {
             var ids = NormalizarSeleccion(idsSeleccionados, insumoBaseId);
             var idsAReemplazar = ids.Where(x => x != insumoBaseId).ToList();
-            var q = QueryComponentesPorTipo(context, tipo, idsAReemplazar);
+            var q = QueryComponentesDelProyecto(context, proyectoId, tipo, idsAReemplazar);
             var matrizIds = q.Select(c => c.MatrizId).Distinct().ToList();
             var conceptos = matrizIds.Count == 0
                 ? 0
@@ -62,8 +62,9 @@ namespace SOPRO.Application.Services
                 return new ConsolidacionResultado();
 
             ValidarSeleccion(context, proyectoId, tipo, ids);
+            ValidarReferenciasAjenas(context, proyectoId, tipo, idsAReemplazar);
 
-            var componentes = QueryComponentesPorTipo(context, tipo, idsAReemplazar).ToList();
+            var componentes = QueryComponentesDelProyecto(context, proyectoId, tipo, idsAReemplazar).ToList();
             var matrizIds = componentes.Select(c => c.MatrizId).Distinct().ToList();
             var conceptosAfectados = matrizIds.Count == 0
                 ? 0
@@ -94,11 +95,11 @@ namespace SOPRO.Application.Services
 
             context.SaveChanges();
 
-            EliminarSustituidos(context, tipo, idsAReemplazar);
+            EliminarSustituidos(context, proyectoId, tipo, idsAReemplazar);
             context.SaveChanges();
 
             if (matrizIds.Count > 0)
-                RecalculationCoordinatorService.RecalculateAfterInsumoDeletion(context, matrizIds);
+                RecalculationCoordinatorService.RecalculateAfterInsumoDeletion(context, matrizIds, proyectoId);
 
             return new ConsolidacionResultado
             {
@@ -134,50 +135,78 @@ namespace SOPRO.Application.Services
             };
         }
 
+        /// <summary>
+        /// Componentes que pertenecen a matrices del proyecto destino: la
+        /// consolidación nunca reescribe componentes de matrices de otro proyecto.
+        /// </summary>
+        private static IQueryable<ComponenteMatriz> QueryComponentesDelProyecto(SOPROContext context, int proyectoId, ConsolidacionInsumoTipo tipo, IReadOnlyCollection<int> ids)
+        {
+            var matrizIdsProyecto = context.Matrices
+                .Where(m => m.ProyectoId == proyectoId)
+                .Select(m => m.Id);
+
+            return QueryComponentesPorTipo(context, tipo, ids)
+                .Where(c => matrizIdsProyecto.Contains(c.MatrizId));
+        }
+
+        /// <summary>
+        /// Rechaza la operación si algún insumo seleccionado es referenciado por una
+        /// matriz de otro proyecto: eliminarlo propagaría el cambio fuera del
+        /// proyecto destino (mutación o cascada cruzada).
+        /// </summary>
+        private static void ValidarReferenciasAjenas(SOPROContext context, int proyectoId, ConsolidacionInsumoTipo tipo, IReadOnlyCollection<int> ids)
+        {
+            var hayReferenciasAjenas = QueryComponentesPorTipo(context, tipo, ids)
+                .Join(context.Matrices, c => c.MatrizId, m => m.Id, (c, m) => new { m.ProyectoId })
+                .Any(x => x.ProyectoId != proyectoId);
+
+            if (hayReferenciasAjenas)
+                throw new InvalidOperationException(
+                    "No se pueden consolidar insumos referenciados por matrices de otro proyecto.");
+        }
+
         private static void ValidarSeleccion(SOPROContext context, int proyectoId, ConsolidacionInsumoTipo tipo, IReadOnlyCollection<int> ids)
         {
             switch (tipo)
             {
                 case ConsolidacionInsumoTipo.Material:
-                    ValidarRegistros(context.Materiales.Where(x => ids.Contains(x.Id)).ToList(), proyectoId, ids.Count, x => x.ProyectoId, x => x.Origen);
+                    ValidarRegistros(context.Materiales.Where(x => ids.Contains(x.Id)).ToList(), proyectoId, ids.Count, x => x.ProyectoId);
                     break;
                 case ConsolidacionInsumoTipo.ManoDeObra:
-                    ValidarRegistros(context.ManoDeObra.Where(x => ids.Contains(x.Id)).ToList(), proyectoId, ids.Count, x => x.ProyectoId, x => x.Origen);
+                    ValidarRegistros(context.ManoDeObra.Where(x => ids.Contains(x.Id)).ToList(), proyectoId, ids.Count, x => x.ProyectoId);
                     break;
                 case ConsolidacionInsumoTipo.Herramienta:
-                    ValidarRegistros(context.Herramientas.Where(x => ids.Contains(x.Id)).ToList(), proyectoId, ids.Count, x => (int?)x.ProyectoId, x => x.Origen);
+                    ValidarRegistros(context.Herramientas.Where(x => ids.Contains(x.Id)).ToList(), proyectoId, ids.Count, x => (int?)x.ProyectoId);
                     break;
                 case ConsolidacionInsumoTipo.Maquinaria:
-                    ValidarRegistros(context.Maquinaria.Where(x => ids.Contains(x.Id)).ToList(), proyectoId, ids.Count, x => x.ProyectoId, x => x.Origen);
+                    ValidarRegistros(context.Maquinaria.Where(x => ids.Contains(x.Id)).ToList(), proyectoId, ids.Count, x => x.ProyectoId);
                     break;
             }
         }
 
-        private static void ValidarRegistros<T>(List<T> rows, int proyectoId, int expectedCount, Func<T, int?> proyectoAccessor, Func<T, OrigenInsumo> origenAccessor)
+        private static void ValidarRegistros<T>(List<T> rows, int proyectoId, int expectedCount, Func<T, int?> proyectoAccessor)
         {
             if (rows.Count != expectedCount)
                 throw new InvalidOperationException("No se encontraron todos los insumos seleccionados para consolidar.");
             if (rows.Any(x => proyectoAccessor(x) != proyectoId))
                 throw new InvalidOperationException("La consolidación solo está disponible para insumos del proyecto actual.");
-            if (rows.Any(x => origenAccessor(x) == OrigenInsumo.Maestro))
-                throw new InvalidOperationException("No se pueden consolidar registros del catálogo maestro desde un proyecto.");
         }
 
-        private static void EliminarSustituidos(SOPROContext context, ConsolidacionInsumoTipo tipo, IReadOnlyCollection<int> ids)
+        private static void EliminarSustituidos(SOPROContext context, int proyectoId, ConsolidacionInsumoTipo tipo, IReadOnlyCollection<int> ids)
         {
             switch (tipo)
             {
                 case ConsolidacionInsumoTipo.Material:
-                    context.Materiales.RemoveRange(context.Materiales.Where(x => ids.Contains(x.Id)).ToList());
+                    context.Materiales.RemoveRange(context.Materiales.Where(x => ids.Contains(x.Id) && x.ProyectoId == proyectoId).ToList());
                     break;
                 case ConsolidacionInsumoTipo.ManoDeObra:
-                    context.ManoDeObra.RemoveRange(context.ManoDeObra.Where(x => ids.Contains(x.Id)).ToList());
+                    context.ManoDeObra.RemoveRange(context.ManoDeObra.Where(x => ids.Contains(x.Id) && x.ProyectoId == proyectoId).ToList());
                     break;
                 case ConsolidacionInsumoTipo.Herramienta:
-                    context.Herramientas.RemoveRange(context.Herramientas.Where(x => ids.Contains(x.Id)).ToList());
+                    context.Herramientas.RemoveRange(context.Herramientas.Where(x => ids.Contains(x.Id) && x.ProyectoId == proyectoId).ToList());
                     break;
                 case ConsolidacionInsumoTipo.Maquinaria:
-                    context.Maquinaria.RemoveRange(context.Maquinaria.Where(x => ids.Contains(x.Id)).ToList());
+                    context.Maquinaria.RemoveRange(context.Maquinaria.Where(x => ids.Contains(x.Id) && x.ProyectoId == proyectoId).ToList());
                     break;
             }
         }

@@ -69,10 +69,13 @@ namespace SOPRO.WinForms.Forms
             nudSalarioReal.Value = _manoDeObra.SalarioReal;
             txtNotas.Text = _manoDeObra.Notas;
             
-            if (_manoDeObra.Origen == OrigenInsumo.Maestro)
-                rbMaestro.Checked = true;
-            else
-                rbProyecto.Checked = true;
+            // El destino del guardado se decide por propiedad (ProyectoId), no
+            // por Origen: una copia importada del maestro vive en el proyecto y
+            // conserva Origen = Maestro; su edición debe seguir guardándose en
+            // el proyecto, nunca en el catálogo maestro.
+            bool esDelProyectoActual = _proyectoId.HasValue && _manoDeObra.ProyectoId == _proyectoId;
+            rbProyecto.Checked = esDelProyectoActual;
+            rbMaestro.Checked = !esDelProyectoActual;
             
             ConfigurarCamposSegunUnidad(); // Configurar visibilidad según unidad
         }

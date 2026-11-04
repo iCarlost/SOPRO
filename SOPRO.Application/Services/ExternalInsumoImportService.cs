@@ -1,4 +1,3 @@
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Sopro.Calculation;
 using SOPRO.Application.Models.ExternalProjects;
@@ -37,14 +36,16 @@ namespace SOPRO.Application.Services
             if (!File.Exists(projectPath))
                 throw new FileNotFoundException("No se encontró el proyecto seleccionado.", projectPath);
 
-            // N4-3: el contexto del proyecto externo se abre por operación con la fábrica.
-            using var externalContext = _dbContextFactory.Create(projectPath);
-            SchemaManager.EnsureCurrentSchema(externalContext);
+            // La fuente externa NUNCA se migra: el arrendamiento elige entre lectura
+            // directa (esquema actual) o copia temporal migrada (esquema legado).
+            using var externalSource = ExternalProjectSource.Open(_dbContextFactory, projectPath);
+            var externalContext = externalSource.Context;
+            var originalPath = externalSource.OriginalPath;
             var projectName = externalContext.Proyectos
                 .AsNoTracking()
                 .OrderBy(p => p.Id)
                 .Select(p => p.Nombre)
-                .FirstOrDefault() ?? Path.GetFileNameWithoutExtension(projectPath);
+                .FirstOrDefault() ?? Path.GetFileNameWithoutExtension(originalPath);
 
             filtro = string.IsNullOrWhiteSpace(filtro) ? null : filtro.Trim().ToLowerInvariant();
             var items = new List<ExternalProjectInsumoOption>();
@@ -60,40 +61,40 @@ namespace SOPRO.Application.Services
                 case TipoComponenteMatriz.Material:
                     items.AddRange(externalContext.Materiales.AsNoTracking().OrderBy(x => x.Clave).ToList()
                         .Where(x => Match(x.Clave, x.Descripcion))
-                        .Select(x => new ExternalProjectInsumoOption { ItemId = x.Id, ProjectName = projectName, ProjectPath = projectPath, TipoComponente = TipoComponenteMatriz.Material, Clave = x.Clave, Descripcion = x.Descripcion, Unidad = x.Unidad, PrecioUnitario = x.PrecioUnitario, PrecioMostrado = x.PrecioUnitario.ToString("C2") }));
+                        .Select(x => new ExternalProjectInsumoOption { ItemId = x.Id, ProjectName = projectName, ProjectPath = originalPath, TipoComponente = TipoComponenteMatriz.Material, Clave = x.Clave, Descripcion = x.Descripcion, Unidad = x.Unidad, PrecioUnitario = x.PrecioUnitario, PrecioMostrado = x.PrecioUnitario.ToString("C2") }));
                     break;
                 case TipoComponenteMatriz.ManoDeObra:
                     if (incluirManoDeObraIndividual)
                     {
                         items.AddRange(externalContext.ManoDeObra.AsNoTracking().OrderBy(x => x.Clave).ToList()
                             .Where(x => Match(x.Clave, x.Descripcion))
-                            .Select(x => new ExternalProjectInsumoOption { ItemId = x.Id, ProjectName = projectName, ProjectPath = projectPath, TipoComponente = TipoComponenteMatriz.ManoDeObra, Tag = "Individual", Clave = x.Clave, Descripcion = x.Descripcion, Unidad = x.Unidad, PrecioUnitario = x.SalarioReal, PrecioMostrado = x.SalarioReal.ToString("C2") }));
+                            .Select(x => new ExternalProjectInsumoOption { ItemId = x.Id, ProjectName = projectName, ProjectPath = originalPath, TipoComponente = TipoComponenteMatriz.ManoDeObra, Tag = "Individual", Clave = x.Clave, Descripcion = x.Descripcion, Unidad = x.Unidad, PrecioUnitario = x.SalarioReal, PrecioMostrado = x.SalarioReal.ToString("C2") }));
                     }
                     if (incluirCuadrillas)
                     {
                         items.AddRange(externalContext.Matrices.AsNoTracking().Where(m => m.Tipo == TipoMatriz.Cuadrilla).OrderBy(x => x.Clave).ToList()
                             .Where(x => Match(x.Clave, x.Descripcion))
-                            .Select(x => new ExternalProjectInsumoOption { ItemId = x.Id, ProjectName = projectName, ProjectPath = projectPath, TipoComponente = TipoComponenteMatriz.Auxiliar, Tag = "Cuadrilla", Clave = x.Clave, Descripcion = "👷 " + x.Descripcion, Unidad = x.Unidad, PrecioUnitario = x.CostoDirecto, PrecioMostrado = x.CostoDirecto.ToString("C2") }));
+                            .Select(x => new ExternalProjectInsumoOption { ItemId = x.Id, ProjectName = projectName, ProjectPath = originalPath, TipoComponente = TipoComponenteMatriz.Auxiliar, Tag = "Cuadrilla", Clave = x.Clave, Descripcion = "👷 " + x.Descripcion, Unidad = x.Unidad, PrecioUnitario = x.CostoDirecto, PrecioMostrado = x.CostoDirecto.ToString("C2") }));
                     }
                     break;
                 case TipoComponenteMatriz.Maquinaria:
                     items.AddRange(externalContext.Maquinaria.AsNoTracking().OrderBy(x => x.Clave).ToList()
                         .Where(x => Match(x.Clave, x.Descripcion))
-                        .Select(x => new ExternalProjectInsumoOption { ItemId = x.Id, ProjectName = projectName, ProjectPath = projectPath, TipoComponente = TipoComponenteMatriz.Maquinaria, Clave = x.Clave, Descripcion = x.Descripcion, Unidad = "hora", PrecioUnitario = x.CostoHorario, PrecioMostrado = x.CostoHorario.ToString("C2") }));
+                        .Select(x => new ExternalProjectInsumoOption { ItemId = x.Id, ProjectName = projectName, ProjectPath = originalPath, TipoComponente = TipoComponenteMatriz.Maquinaria, Clave = x.Clave, Descripcion = x.Descripcion, Unidad = "hora", PrecioUnitario = x.CostoHorario, PrecioMostrado = x.CostoHorario.ToString("C2") }));
                     break;
                 case TipoComponenteMatriz.Auxiliar:
                     items.AddRange(externalContext.Matrices.AsNoTracking().Where(m => m.Tipo == TipoMatriz.Basico).OrderBy(x => x.Clave).ToList()
                         .Where(x => Match(x.Clave, x.Descripcion))
-                        .Select(x => new ExternalProjectInsumoOption { ItemId = x.Id, ProjectName = projectName, ProjectPath = projectPath, TipoComponente = TipoComponenteMatriz.Auxiliar, Clave = x.Clave, Descripcion = x.Descripcion, Unidad = x.Unidad, PrecioUnitario = x.CostoDirecto, PrecioMostrado = x.CostoDirecto.ToString("C4") }));
+                        .Select(x => new ExternalProjectInsumoOption { ItemId = x.Id, ProjectName = projectName, ProjectPath = originalPath, TipoComponente = TipoComponenteMatriz.Auxiliar, Clave = x.Clave, Descripcion = x.Descripcion, Unidad = x.Unidad, PrecioUnitario = x.CostoDirecto, PrecioMostrado = x.CostoDirecto.ToString("C4") }));
                     break;
                 case TipoComponenteMatriz.Herramienta:
-                    items.AddRange(LoadExternalHerramientasBasic(projectPath)
+                    items.AddRange(LoadExternalHerramientasBasic(externalSource)
                         .Where(x => Match(x.Clave, x.Descripcion))
-                        .Select(x => new ExternalProjectInsumoOption { ItemId = x.Id, ProjectName = projectName, ProjectPath = projectPath, TipoComponente = TipoComponenteMatriz.Herramienta, Clave = x.Clave, Descripcion = x.Descripcion, Unidad = x.Unidad, PrecioUnitario = x.PrecioUnitario, PrecioMostrado = x.PrecioUnitario.ToString("C2") }));
+                        .Select(x => new ExternalProjectInsumoOption { ItemId = x.Id, ProjectName = projectName, ProjectPath = originalPath, TipoComponente = TipoComponenteMatriz.Herramienta, Clave = x.Clave, Descripcion = x.Descripcion, Unidad = x.Unidad, PrecioUnitario = x.PrecioUnitario, PrecioMostrado = x.PrecioUnitario.ToString("C2") }));
                     break;
             }
 
-            return new ExternalProjectInsumoLoadResult { ProjectName = projectName, ProjectPath = projectPath, Items = items.OrderBy(x => x.Clave).ToList() };
+            return new ExternalProjectInsumoLoadResult { ProjectName = projectName, ProjectPath = originalPath, Items = items.OrderBy(x => x.Clave).ToList() };
         }
 
         public ExternalInsumoImportPreview BuildPreview(SOPROContext currentContext, int currentProjectId, string projectPath, IEnumerable<ExternalProjectInsumoOption> selectedItems)
@@ -154,9 +155,13 @@ namespace SOPRO.Application.Services
             var list = selectedItems?.ToList() ?? new List<ExternalProjectInsumoOption>();
             if (list.Count == 0) return result;
 
-            using var externalContext = _dbContextFactory.Create(projectPath);
-            SchemaManager.EnsureCurrentSchema(externalContext);
-            var sourceProjectName = externalContext.Proyectos.AsNoTracking().OrderBy(p => p.Id).Select(p => p.Nombre).FirstOrDefault() ?? Path.GetFileNameWithoutExtension(projectPath);
+            // Reemplazos de MO existente: se propagan al final para no dejar
+            // obsoletas las matrices/conceptos destino que ya la consumían.
+            var manoReemplazadas = new List<int>();
+
+            using var externalSource = ExternalProjectSource.Open(_dbContextFactory, projectPath);
+            var externalContext = externalSource.Context;
+            var sourceProjectName = externalContext.Proyectos.AsNoTracking().OrderBy(p => p.Id).Select(p => p.Nombre).FirstOrDefault() ?? Path.GetFileNameWithoutExtension(externalSource.OriginalPath);
 
             // Motor con la precisión del proyecto destino (precisión de pantalla).
             var proyectoDestino = currentContext.Proyectos.AsNoTracking()
@@ -201,12 +206,15 @@ namespace SOPRO.Application.Services
                         if (existing != null && policy == ExternalMatrixImportConflictPolicy.ReplaceExisting)
                         {
                             target = existing;
-                            ExternalImportEntityMapper.ApplyManoDeObra(target, source, currentProjectId, sourceProjectName);
+                            ExternalImportEntityMapper.ApplyManoDeObra(
+                                target, source, currentProjectId, sourceProjectName, proyectoDestino?.ParametrosFSR);
                             currentContext.SaveChanges();
+                            manoReemplazadas.Add(target.Id);
                         }
                         else
                         {
-                            target = ExternalImportEntityMapper.CloneManoDeObra(source, currentProjectId, sourceProjectName);
+                            target = ExternalImportEntityMapper.CloneManoDeObra(
+                                source, currentProjectId, sourceProjectName, proyectoDestino?.ParametrosFSR);
                             if (existing != null) target.Clave = GenerateTempKey(source.Clave, currentContext.ManoDeObra.Where(x => x.ProyectoId == currentProjectId).Select(x => x.Clave));
                             currentContext.ManoDeObra.Add(target);
                             currentContext.SaveChanges();
@@ -240,7 +248,7 @@ namespace SOPRO.Application.Services
                     }
                     case TipoComponenteMatriz.Herramienta:
                     {
-                        var source = GetExternalHerramientaBasic(projectPath, item.ItemId);
+                        var source = GetExternalHerramientaBasic(externalSource, item.ItemId);
                         if (source == null) break;
                         var existing = currentContext.Herramientas.Where(x => x.ProyectoId == currentProjectId).AsEnumerable().FirstOrDefault(x => NormalizeKey(x.Clave) == NormalizeKey(source.Clave));
                         Herramienta target;
@@ -263,7 +271,7 @@ namespace SOPRO.Application.Services
                     }
                     case TipoComponenteMatriz.Auxiliar:
                     {
-                        var matrixResult = _matrixImportService.ImportMatrixTree(currentContext, currentProjectId, projectPath, item.ItemId, policy);
+                        var matrixResult = _matrixImportService.ImportMatrixTree(currentContext, currentProjectId, externalSource, item.ItemId, policy);
                         var target = currentContext.Matrices.Find(matrixResult.RootMatrixId);
                         if (target != null)
                         {
@@ -278,6 +286,10 @@ namespace SOPRO.Application.Services
                     }
                 }
             }
+
+            foreach (var manoId in manoReemplazadas.Distinct())
+                PricePropagationService.PropagarManoDeObra(currentContext, manoId, currentProjectId);
+
             return result;
         }
 
@@ -291,49 +303,40 @@ namespace SOPRO.Application.Services
             public string? Notas { get; set; }
         }
 
-        private static List<ExternalHerramientaBasic> LoadExternalHerramientasBasic(string projectPath)
+        private static List<ExternalHerramientaBasic> LoadExternalHerramientasBasic(ExternalProjectSource source)
         {
-            var result = new List<ExternalHerramientaBasic>();
-            using var cn = new SqliteConnection($"Data Source={projectPath}");
-            cn.Open();
-            using var cmd = cn.CreateCommand();
-            cmd.CommandText = "SELECT Id, Clave, Descripcion, Unidad, PrecioUnitario FROM Herramientas ORDER BY Clave";
-            using var reader = cmd.ExecuteReader();
-            while (reader.Read())
-            {
-                result.Add(new ExternalHerramientaBasic
+            return source.Context.Herramientas
+                .AsNoTracking()
+                .OrderBy(h => h.Clave)
+                .Select(h => new ExternalHerramientaBasic
                 {
-                    Id = reader.GetInt32(0),
-                    Clave = reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
-                    Descripcion = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
-                    Unidad = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
-                    PrecioUnitario = reader.IsDBNull(4) ? 0m : reader.GetDecimal(4)
-                });
-            }
-            return result;
+                    Id = h.Id,
+                    Clave = h.Clave,
+                    Descripcion = h.Descripcion,
+                    Unidad = h.Unidad,
+                    PrecioUnitario = h.PrecioUnitario
+                })
+                .ToList();
         }
 
-        private static Herramienta? GetExternalHerramientaBasic(string projectPath, int itemId)
+        private static Herramienta? GetExternalHerramientaBasic(ExternalProjectSource source, int itemId)
         {
-            using var cn = new SqliteConnection($"Data Source={projectPath}");
-            cn.Open();
-            using var cmd = cn.CreateCommand();
-            cmd.CommandText = "SELECT Id, Clave, Descripcion, Unidad, PrecioUnitario, Notas FROM Herramientas WHERE Id = $id LIMIT 1";
-            cmd.Parameters.AddWithValue("$id", itemId);
-            using var reader = cmd.ExecuteReader();
-            if (!reader.Read())
+            var item = source.Context.Herramientas
+                .AsNoTracking()
+                .FirstOrDefault(h => h.Id == itemId);
+            if (item == null)
                 return null;
 
             return new Herramienta
             {
-                Id = reader.GetInt32(0),
-                Clave = reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
-                Descripcion = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
-                Unidad = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
-                PrecioUnitario = reader.IsDBNull(4) ? 0m : reader.GetDecimal(4),
+                Id = item.Id,
+                Clave = item.Clave ?? string.Empty,
+                Descripcion = item.Descripcion ?? string.Empty,
+                Unidad = item.Unidad ?? string.Empty,
+                PrecioUnitario = item.PrecioUnitario,
                 // [N7-11] Las notas viajan como el resto de campos: la ruta de
                 // matrices ya las conservaba y la paridad campo a campo lo exige.
-                Notas = reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
+                Notas = item.Notas ?? string.Empty,
                 Origen = OrigenInsumo.Proyecto
             };
         }

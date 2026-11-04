@@ -33,20 +33,22 @@ namespace SOPRO.Application.Services
 
         public ExternalProjectMatrixLoadResult LoadExternalMatrices(string projectPath, TipoMatriz? tipo = null)
         {
-            if (string.IsNullOrWhiteSpace(projectPath))
-                throw new ArgumentException("Debe indicar la ruta del proyecto externo.", nameof(projectPath));
-            if (!File.Exists(projectPath))
-                throw new FileNotFoundException("No se encontró el proyecto seleccionado.", projectPath);
+            // La fuente externa NUNCA se migra: el arrendamiento decide entre lectura
+            // directa (esquema actual) o copia temporal migrada (esquema legado).
+            using var source = ExternalProjectSource.Open(_dbContextFactory, projectPath);
+            return LoadExternalMatrices(source, tipo);
+        }
 
-            // N4-3: el contexto del proyecto externo se abre por operación con la fábrica.
-            using var externalContext = _dbContextFactory.Create(projectPath);
-            SchemaManager.EnsureCurrentSchema(externalContext);
+        public ExternalProjectMatrixLoadResult LoadExternalMatrices(ExternalProjectSource source, TipoMatriz? tipo = null)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+            var externalContext = source.Context;
 
             var projectName = externalContext.Proyectos
                 .AsNoTracking()
                 .OrderBy(p => p.Id)
                 .Select(p => p.Nombre)
-                .FirstOrDefault() ?? Path.GetFileNameWithoutExtension(projectPath);
+                .FirstOrDefault() ?? Path.GetFileNameWithoutExtension(source.OriginalPath);
 
             var matrices = externalContext.Matrices
                 .AsNoTracking()
@@ -56,7 +58,7 @@ namespace SOPRO.Application.Services
                 {
                     MatrixId = m.Id,
                     ProjectName = projectName,
-                    ProjectPath = projectPath,
+                    ProjectPath = source.OriginalPath,
                     Clave = m.Clave,
                     Descripcion = m.Descripcion,
                     Unidad = m.Unidad,
@@ -68,7 +70,7 @@ namespace SOPRO.Application.Services
             return new ExternalProjectMatrixLoadResult
             {
                 ProjectName = projectName,
-                ProjectPath = projectPath,
+                ProjectPath = source.OriginalPath,
                 Matrices = matrices
             };
         }
@@ -80,9 +82,14 @@ namespace SOPRO.Application.Services
 
         public ExternalMatrixImportPreview BuildPreview(SOPROContext currentContext, int currentProjectId, string projectPath, int externalMatrixId)
         {
-            using var externalContext = _dbContextFactory.Create(projectPath);
-            SchemaManager.EnsureCurrentSchema(externalContext);
-            var graph = LoadGraph(externalContext, externalMatrixId);
+            using var source = ExternalProjectSource.Open(_dbContextFactory, projectPath);
+            return BuildPreview(currentContext, currentProjectId, source, externalMatrixId);
+        }
+
+        public ExternalMatrixImportPreview BuildPreview(SOPROContext currentContext, int currentProjectId, ExternalProjectSource source, int externalMatrixId)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+            var graph = LoadGraph(source, externalMatrixId);
 
             // [N7-1e] El grafo fuente debe ser un DAG: se diagnostica aquí, con ruta,
             // antes de calcular el preview (y, en importación, antes de abrir
@@ -167,9 +174,20 @@ namespace SOPRO.Application.Services
 
         public ExternalMatrixImportResult ImportMatrixTree(SOPROContext currentContext, int currentProjectId, string projectPath, int externalMatrixId, ExternalMatrixImportConflictPolicy conflictPolicy)
         {
-            using var externalContext = _dbContextFactory.Create(projectPath);
-            SchemaManager.EnsureCurrentSchema(externalContext);
-            var graph = LoadGraph(externalContext, externalMatrixId);
+            using var source = ExternalProjectSource.Open(_dbContextFactory, projectPath);
+            return ImportMatrixTree(currentContext, currentProjectId, source, externalMatrixId, conflictPolicy);
+        }
+
+        /// <summary>
+        /// Variante que reutiliza un arrendamiento ya abierto de la fuente externa:
+        /// evita reabrir (y volver a migrar una copia) la misma fuente cuando el
+        /// llamador ya la tiene abierta, p. ej. al importar un básico junto con sus
+        /// insumos. El arrendamiento lo libera quien lo abrió.
+        /// </summary>
+        public ExternalMatrixImportResult ImportMatrixTree(SOPROContext currentContext, int currentProjectId, ExternalProjectSource source, int externalMatrixId, ExternalMatrixImportConflictPolicy conflictPolicy)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+            var graph = LoadGraph(source, externalMatrixId);
 
             // [N7-1e] Ciclo en el grafo fuente: diagnóstico con ruta antes de tocar BD.
             ValidarAciclicidadDelGrafoFuente(graph);
@@ -195,6 +213,10 @@ namespace SOPRO.Application.Services
                 .ToList();
 
             int importedMateriales = 0, importedMano = 0, importedMaquinaria = 0, importedHerramientas = 0, importedMatrices = 0;
+
+            // Mano de obra existente reemplazada: sus consumidores fuera del grafo
+            // importado (otras matrices/conceptos del destino) deben propagarse.
+            var manoReemplazadas = new List<int>();
 
             foreach (var material in graph.Materials.Values.OrderBy(x => x.Clave))
             {
@@ -222,12 +244,15 @@ namespace SOPRO.Application.Services
                 var existing = currentMano.FirstOrDefault(x => NormalizeKey(x.Clave) == NormalizeKey(mano.Clave));
                 if (existing != null && conflictPolicy == ExternalMatrixImportConflictPolicy.ReplaceExisting)
                 {
-                    ExternalImportEntityMapper.ApplyManoDeObra(existing, mano, currentProjectId, graph.ProjectName);
+                    ExternalImportEntityMapper.ApplyManoDeObra(
+                        existing, mano, currentProjectId, graph.ProjectName, currentProject.ParametrosFSR);
                     manoMap[mano.Id] = existing.Id;
+                    manoReemplazadas.Add(existing.Id);
                 }
                 else
                 {
-                    var clone = ExternalImportEntityMapper.CloneManoDeObra(mano, currentProjectId, graph.ProjectName);
+                    var clone = ExternalImportEntityMapper.CloneManoDeObra(
+                        mano, currentProjectId, graph.ProjectName, currentProject.ParametrosFSR);
                     if (existing != null)
                         clone.Clave = GenerateTempKey(mano.Clave, currentMano.Select(x => x.Clave));
                     currentContext.ManoDeObra.Add(clone);
@@ -350,6 +375,12 @@ namespace SOPRO.Application.Services
             RecalcularConMotorDelProyecto(currentContext, currentProject, graph, matrixMap);
             currentContext.SaveChanges();
 
+            // Un reemplazo de MO cambia su SalarioReal: se propaga con la ruta
+            // canónica dentro de la misma transacción para que las demás matrices
+            // y conceptos destino que ya la consumían no queden obsoletos.
+            foreach (var manoId in manoReemplazadas.Distinct())
+                PricePropagationService.PropagarManoDeObra(currentContext, manoId, currentProjectId);
+
             tx.Commit();
             return new ExternalMatrixImportResult
             {
@@ -413,13 +444,14 @@ namespace SOPRO.Application.Services
             }
         }
 
-        private static MatrixGraph LoadGraph(SOPROContext externalContext, int externalMatrixId)
+        private static MatrixGraph LoadGraph(ExternalProjectSource source, int externalMatrixId)
         {
+            var externalContext = source.Context;
             var projectName = externalContext.Proyectos
                 .AsNoTracking()
                 .OrderBy(p => p.Id)
                 .Select(p => p.Nombre)
-                .FirstOrDefault() ?? Path.GetFileNameWithoutExtension(externalContext.DatabasePath);
+                .FirstOrDefault() ?? Path.GetFileNameWithoutExtension(source.OriginalPath);
 
             var matrices = externalContext.Matrices
                 .AsNoTracking()

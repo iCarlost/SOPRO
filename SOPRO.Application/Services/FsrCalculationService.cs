@@ -34,5 +34,24 @@ namespace SOPRO.Application.Services
                 return null;
             }
         }
+
+        /// <summary>
+        /// Calcula el FSR del proyecto con la precisión persistida/editor (6
+        /// decimales, <c>ManoDeObra.FactorSalarioReal</c>). Devuelve <c>false</c>
+        /// cuando no hay parámetros válidos o el salario no es positivo, de modo
+        /// que el llamador conserve el FSR de origen.
+        /// </summary>
+        public static bool TryCalcularFactorSalarioReal(
+            string? parametrosFSRJson, decimal salarioBase, out decimal factorSalarioReal)
+        {
+            factorSalarioReal = 0m;
+
+            var calculado = Calcular(parametrosFSRJson, salarioBase);
+            if (!calculado.HasValue)
+                return false;
+
+            factorSalarioReal = Math.Round(calculado.Value, 6);
+            return true;
+        }
     }
 }

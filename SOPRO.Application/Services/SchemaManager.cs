@@ -50,6 +50,15 @@ namespace SOPRO.Application.Services
         /// </summary>
         public static void EnsureCurrentSchema(SOPROContext context)
         {
+            ArgumentNullException.ThrowIfNull(context);
+
+            // Una fuente externa abierta en solo lectura NUNCA se migra: la regla se
+            // valida antes de tocar la conexión para no abrir ni escribir el archivo.
+            if (context.IsReadOnly)
+                throw new InvalidOperationException(
+                    "No se puede aplicar el esquema sobre una base de datos abierta en solo lectura. "
+                    + "Las fuentes externas se migran sobre una copia temporal.");
+
             var conn = context.Database.GetDbConnection();
             var wasOpen = conn.State == System.Data.ConnectionState.Open;
             if (!wasOpen) conn.Open();

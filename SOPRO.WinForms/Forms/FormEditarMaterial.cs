@@ -75,10 +75,14 @@ namespace SOPRO.WinForms.Forms
             nudPrecio.Value = _material.PrecioUnitario;
             txtNotas.Text = _material.Notas;
 
-            if (_material.Origen == OrigenInsumo.Maestro)
-                rbMaestro.Checked = true;
-            else
-                rbProyecto.Checked = true;
+            // El destino del guardado se decide por alcance, no por Origen: en
+            // sesión de proyecto ListMaterials devuelve únicamente filas del
+            // proyecto, aunque una copia importada conserve Origen = Maestro.
+            // Marcar rbMaestro a partir de ese Origen desactualizado escribiría
+            // en el catálogo maestro sin que el usuario lo pida (el grupo está
+            // oculto, no es una elección explícita).
+            rbProyecto.Checked = _proyectoId.HasValue;
+            rbMaestro.Checked = !_proyectoId.HasValue;
         }
 
         private async void txtClave_Leave(object sender, EventArgs e)

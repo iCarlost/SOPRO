@@ -49,7 +49,7 @@ namespace SOPRO.WinForms.Forms
             _maquinariaSeleccionada = clickedRow.DataBoundItem as Maquinaria;
             if (_maquinariaSeleccionada == null) return;
 
-            bool puedeEditar = !(_proyectoId.HasValue && _maquinariaSeleccionada?.Origen == OrigenInsumo.Maestro);
+            bool puedeEditar = !(_proyectoId.HasValue && _maquinariaSeleccionada?.ProyectoId != _proyectoId);
 
             var menu = new ContextMenuStrip();
 

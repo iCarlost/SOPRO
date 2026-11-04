@@ -164,19 +164,27 @@ public class HerramientasReportColumnsTests
     }
 
     [TestMethod]
-    public void ResolveValue_Origen_MuestraImportadoOLocal()
+    public void ResolveValue_Origen_UsaMarcaYPropiedadNoOrigen()
     {
         var snapshot = HerramientasReportFixtures.Herramientas();
         var origen = Columna(snapshot, "OrigenDetalle");
 
-        var local = new Herramienta { Origen = OrigenInsumo.Proyecto };
+        // Sin marca manda la PROPIEDAD de la fila: Origen desactualizado no
+        // puede reclamar el catálogo maestro. En herramientas toda fila pertenece
+        // a un proyecto (ProyectoId NOT NULL), igual que la etiqueta del grid.
+        var local = new Herramienta { Origen = OrigenInsumo.Maestro, ProyectoId = 5 };
         Assert.AreEqual("Local", HerramientasCatalogExportResolver.ResolveValue(local, origen));
 
-        var maestro = new Herramienta { Origen = OrigenInsumo.Maestro };
-        Assert.AreEqual("Maestro", HerramientasCatalogExportResolver.ResolveValue(maestro, origen));
+        var sinOrigenDeclarado = new Herramienta { Origen = OrigenInsumo.Proyecto };
+        Assert.AreEqual("Local", HerramientasCatalogExportResolver.ResolveValue(sinOrigenDeclarado, origen));
 
-        var importado = new Herramienta { Origen = OrigenInsumo.Proyecto, Notas = "[IMPORTADO DE: Obra Norte]" };
-        Assert.AreEqual("Importado: Obra Norte", HerramientasCatalogExportResolver.ResolveValue(importado, origen));
+        var importado = new Herramienta
+        {
+            Origen = OrigenInsumo.Maestro,
+            ProyectoId = 5,
+            Notas = "[IMPORTADO DE: Obra Norte]",
+        };
+        Assert.AreEqual("Importado de: Obra Norte", HerramientasCatalogExportResolver.ResolveValue(importado, origen));
     }
 
     [TestMethod]

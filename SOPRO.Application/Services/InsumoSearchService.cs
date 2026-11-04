@@ -168,10 +168,12 @@ namespace SOPRO.Application.Services
             if (!File.Exists(projectPath))
                 throw new FileNotFoundException("No se encontró el proyecto a indexar.", projectPath);
 
-            using var context = _factory.Create(projectPath);
-            SchemaManager.EnsureCurrentSchema(context);
-            var normalizedPath = NormalizePath(projectPath);
-            var projectName = context.Proyectos.AsNoTracking().OrderBy(p => p.Id).Select(p => p.Nombre).FirstOrDefault() ?? Path.GetFileNameWithoutExtension(normalizedPath);
+            // Fuente externa de solo lectura: esquema actual se lee del original y un
+            // esquema legado se migra sobre una copia temporal. Aquí NUNCA se llama a
+            // EnsureCurrentSchema sobre el proyecto ajeno.
+            using var source = ExternalProjectSource.Open(_factory, projectPath);
+            var normalizedPath = NormalizePath(source.OriginalPath);
+            var projectName = source.Context.Proyectos.AsNoTracking().OrderBy(p => p.Id).Select(p => p.Nombre).FirstOrDefault() ?? Path.GetFileNameWithoutExtension(normalizedPath);
 
             var index = new ProjectInsumoIndexFile
             {
@@ -181,7 +183,7 @@ namespace SOPRO.Application.Services
                 ProjectLastWriteUtc = File.GetLastWriteTimeUtc(normalizedPath)
             };
 
-            index.Insumos.AddRange(context.Materiales.AsNoTracking().OrderBy(x => x.Clave).Select(x => new ProjectInsumoIndexEntry
+            index.Insumos.AddRange(source.Context.Materiales.AsNoTracking().OrderBy(x => x.Clave).Select(x => new ProjectInsumoIndexEntry
             {
                 ItemId = x.Id,
                 TipoComponente = TipoComponenteMatriz.Material,
@@ -192,7 +194,7 @@ namespace SOPRO.Application.Services
                 PrecioMostrado = x.PrecioUnitario.ToString("C2")
             }).ToList());
 
-            index.Insumos.AddRange(context.ManoDeObra.AsNoTracking().OrderBy(x => x.Clave).Select(x => new ProjectInsumoIndexEntry
+            index.Insumos.AddRange(source.Context.ManoDeObra.AsNoTracking().OrderBy(x => x.Clave).Select(x => new ProjectInsumoIndexEntry
             {
                 ItemId = x.Id,
                 TipoComponente = TipoComponenteMatriz.ManoDeObra,
@@ -204,7 +206,7 @@ namespace SOPRO.Application.Services
                 PrecioMostrado = x.SalarioReal.ToString("C2")
             }).ToList());
 
-            index.Insumos.AddRange(context.Matrices.AsNoTracking().Where(m => m.Tipo == TipoMatriz.Cuadrilla).OrderBy(x => x.Clave).Select(x => new ProjectInsumoIndexEntry
+            index.Insumos.AddRange(source.Context.Matrices.AsNoTracking().Where(m => m.Tipo == TipoMatriz.Cuadrilla).OrderBy(x => x.Clave).Select(x => new ProjectInsumoIndexEntry
             {
                 ItemId = x.Id,
                 TipoComponente = TipoComponenteMatriz.Auxiliar,
@@ -216,7 +218,7 @@ namespace SOPRO.Application.Services
                 PrecioMostrado = x.CostoDirecto.ToString("C2")
             }).ToList());
 
-            index.Insumos.AddRange(context.Maquinaria.AsNoTracking().OrderBy(x => x.Clave).Select(x => new ProjectInsumoIndexEntry
+            index.Insumos.AddRange(source.Context.Maquinaria.AsNoTracking().OrderBy(x => x.Clave).Select(x => new ProjectInsumoIndexEntry
             {
                 ItemId = x.Id,
                 TipoComponente = TipoComponenteMatriz.Maquinaria,
@@ -227,7 +229,7 @@ namespace SOPRO.Application.Services
                 PrecioMostrado = x.CostoHorario.ToString("C2")
             }).ToList());
 
-            index.Insumos.AddRange(context.Matrices.AsNoTracking().Where(m => m.Tipo == TipoMatriz.Basico).OrderBy(x => x.Clave).Select(x => new ProjectInsumoIndexEntry
+            index.Insumos.AddRange(source.Context.Matrices.AsNoTracking().Where(m => m.Tipo == TipoMatriz.Basico).OrderBy(x => x.Clave).Select(x => new ProjectInsumoIndexEntry
             {
                 ItemId = x.Id,
                 TipoComponente = TipoComponenteMatriz.Auxiliar,
@@ -238,7 +240,7 @@ namespace SOPRO.Application.Services
                 PrecioMostrado = x.CostoDirecto.ToString("C4")
             }).ToList());
 
-            index.Insumos.AddRange(context.Herramientas.AsNoTracking().OrderBy(x => x.Clave).Select(x => new ProjectInsumoIndexEntry
+            index.Insumos.AddRange(source.Context.Herramientas.AsNoTracking().OrderBy(x => x.Clave).Select(x => new ProjectInsumoIndexEntry
             {
                 ItemId = x.Id,
                 TipoComponente = TipoComponenteMatriz.Herramienta,

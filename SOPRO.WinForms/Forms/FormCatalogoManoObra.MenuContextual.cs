@@ -48,7 +48,7 @@ namespace SOPRO.WinForms.Forms
             _manoDeObraSeleccionada = clickedRow.DataBoundItem as ManoDeObra;
             if (_manoDeObraSeleccionada == null) return;
 
-            bool puedeEditar = !(_proyectoId.HasValue && _manoDeObraSeleccionada?.Origen == OrigenInsumo.Maestro);
+            bool puedeEditar = !(_proyectoId.HasValue && _manoDeObraSeleccionada?.ProyectoId != _proyectoId);
 
             var menu = new ContextMenuStrip();
 

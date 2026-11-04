@@ -161,10 +161,12 @@ namespace SOPRO.Application.Services
             if (!File.Exists(projectPath))
                 throw new FileNotFoundException("No se encontró el proyecto a indexar.", projectPath);
 
-            using var context = _factory.Create(projectPath);
-            SchemaManager.EnsureCurrentSchema(context);
-            var normalizedPath = NormalizePath(projectPath);
-            var projectName = context.Proyectos
+            // Fuente externa de solo lectura: esquema actual se lee del original y un
+            // esquema legado se migra sobre una copia temporal. Aquí NUNCA se llama a
+            // EnsureCurrentSchema sobre el proyecto ajeno.
+            using var source = ExternalProjectSource.Open(_factory, projectPath);
+            var normalizedPath = NormalizePath(source.OriginalPath);
+            var projectName = source.Context.Proyectos
                 .AsNoTracking()
                 .OrderBy(p => p.Id)
                 .Select(p => p.Nombre)
@@ -176,7 +178,7 @@ namespace SOPRO.Application.Services
                 ProjectName = projectName,
                 IndexedAtUtc = DateTime.UtcNow,
                 ProjectLastWriteUtc = File.GetLastWriteTimeUtc(normalizedPath),
-                Matrices = context.Matrices
+                Matrices = source.Context.Matrices
                     .AsNoTracking()
                     .OrderBy(m => m.Tipo)
                     .ThenBy(m => m.Clave)

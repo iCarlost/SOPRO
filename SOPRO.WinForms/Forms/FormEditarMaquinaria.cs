@@ -71,10 +71,13 @@ namespace SOPRO.WinForms.Forms
             else
                 rbCostoManual.Checked = true;
             
-            if (_maquinaria.Origen == OrigenInsumo.Maestro)
-                rbMaestro.Checked = true;
-            else
-                rbProyecto.Checked = true;
+            // El destino del guardado se decide por propiedad (ProyectoId), no
+            // por Origen: una copia importada del maestro vive en el proyecto y
+            // conserva Origen = Maestro; su edición debe seguir guardándose en
+            // el proyecto, nunca en el catálogo maestro.
+            bool esDelProyectoActual = _proyectoId.HasValue && _maquinaria.ProyectoId == _proyectoId;
+            rbProyecto.Checked = esDelProyectoActual;
+            rbMaestro.Checked = !esDelProyectoActual;
                 
             lblFechaCalculo.Text = _maquinaria.FechaCalculoCosto?.ToString("dd/MMM/yyyy HH:mm") ?? "N/A";
         }

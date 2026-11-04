@@ -450,12 +450,30 @@ public class ManoObraReportSnapshotBuilderTests
     }
 
     [TestMethod]
-    public void ResolveOrigin_MapeaMaestroYProyecto()
+    public void ResolveOrigin_UsaMarcaDeImportacionYPropiedadNoOrigen()
     {
-        Assert.AreEqual("Maestro", ManoObraCatalogExportResolver.ResolveOrigin(
-            new ManoDeObra { Origen = OrigenInsumo.Maestro }));
-        Assert.AreEqual("Proyecto", ManoObraCatalogExportResolver.ResolveOrigin(
-            new ManoDeObra { Origen = OrigenInsumo.Proyecto }));
+        var snapshot = ManoObraCatalogExportResolver.BuildSnapshot(1, "MO", null);
+        var origen = ColDe(snapshot, "Origen");
+
+        // Sin marca: la PROPIEDAD de la fila decide, no Origen (que en una copia
+        // importada se queda en Maestro y reclamaría falsamente el catálogo maestro).
+        var maestro = new ManoDeObra { Origen = OrigenInsumo.Proyecto, ProyectoId = null };
+        Assert.AreEqual("Maestro", ManoObraCatalogExportResolver.ResolveOrigin(maestro));
+        Assert.AreEqual("Maestro", ManoObraCatalogExportResolver.ResolveValue(maestro, origen));
+
+        var local = new ManoDeObra { Origen = OrigenInsumo.Maestro, ProyectoId = 5 };
+        Assert.AreEqual("Local", ManoObraCatalogExportResolver.ResolveOrigin(local));
+        Assert.AreEqual("Local", ManoObraCatalogExportResolver.ResolveValue(local, origen));
+
+        // Con marca reconocida, la marca manda y nombra el catálogo de procedencia.
+        var importado = new ManoDeObra
+        {
+            Origen = OrigenInsumo.Maestro,
+            ProyectoId = 5,
+            Notas = "[IMPORTADO DE: Obra Norte] notas restantes",
+        };
+        Assert.AreEqual("Importado de: Obra Norte", ManoObraCatalogExportResolver.ResolveOrigin(importado));
+        Assert.AreEqual("Importado de: Obra Norte", ManoObraCatalogExportResolver.ResolveValue(importado, origen));
     }
 
     [TestMethod]

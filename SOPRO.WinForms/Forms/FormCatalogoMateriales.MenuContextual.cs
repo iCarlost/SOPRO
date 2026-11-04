@@ -52,7 +52,11 @@ namespace SOPRO.WinForms.Forms
             _materialSeleccionado = clickedRow.DataBoundItem as MaterialListItem;
             if (_materialSeleccionado == null) return;
 
-            bool puedeEditar = !(_proyectoId.HasValue && _materialSeleccionado.Origen == OrigenInsumo.Maestro);
+            // La elegibilidad se decide por alcance, no por Origen: ListMaterials
+            // solo devuelve filas del proyecto de la sesión (ProyectoId = proyecto),
+            // incluidas las copias importadas que conservan Origen = Maestro;
+            // el Origen desactualizado no deshabilita Editar.
+            bool puedeEditar = PuedeEditar(_materialSeleccionado);
 
             var menu = new ContextMenuStrip();
 
@@ -97,6 +101,15 @@ namespace SOPRO.WinForms.Forms
 
             menu.Show(dgvMateriales, dgvMateriales.PointToClient(Cursor.Position));
         }
+
+        /// <summary>
+        /// Elegibilidad de edición del material del menú contextual: alcance de
+        /// la sesión, no Origen (ListMaterials filtra por ProyectoId del
+        /// proyecto; una copia importada conserva Origen = Maestro y es
+        /// editable).
+        /// </summary>
+        internal bool PuedeEditar(MaterialListItem? material)
+            => material != null;
 
         /// <summary>
         /// "Dónde se usa": la consulta vive en el caso de uso headless

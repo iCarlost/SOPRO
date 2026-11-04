@@ -73,12 +73,29 @@ namespace SOPRO.WinForms.Forms
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
+            LiberarSuscripcionesGlobales();
+            base.OnFormClosed(e);
+        }
+
+        /// <summary>
+        /// Desuscribe los eventos ESTÁTICOS a los que se suscribe el formulario.
+        /// Idempotente y seguro de invocar tanto desde <see cref="OnFormClosed"/>
+        /// como desde <c>Disposed</c>: el form puede embeberse en una pestaña y
+        /// descartarse con el proyecto sin que se dispare <c>FormClosed</c>.
+        /// </summary>
+        private void LiberarSuscripcionesGlobales()
+        {
+            if (_suscripcionesGlobalesLiberadas)
+                return;
+
+            _suscripcionesGlobalesLiberadas = true;
+
+            FormDatosProyecto.DecimalesActualizados -= OnDecimalesActualizados_Mat;
             FormCatalogoMateriales.InsumosModificados -= _onInsumos;
             FormCatalogoManoObra.InsumosModificados -= _onInsumos;
             FormCatalogoHerramientas.InsumosModificados -= _onInsumos;
             FormCatalogoMaquinaria.InsumosModificados -= _onInsumos;
             FormEditarMatriz.MatrizGuardada -= _onInsumos;
-            base.OnFormClosed(e);
         }
         // ── IRecalculable ────────────────────────────────────────────────────
         public void RecalcularTodo() => CargarMatrices();

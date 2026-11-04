@@ -251,10 +251,12 @@ namespace SOPRO.WinForms.Forms
         {
             var seleccionados = ObtenerHerramientasSeleccionadas();
             var haySeleccion = seleccionados.Count > 0;
-            var enProyecto = _proyectoId.HasValue;
-            var todosMaestros = haySeleccion && seleccionados.All(h => h.Origen == OrigenInsumo.Maestro);
 
-            btnEditar.Enabled = haySeleccion && !(enProyecto && todosMaestros);
+            // Elegibilidad por propiedad (ProyectoId), no por Origen: una copia
+            // importada conserva Origen = Maestro y es editable dentro de su
+            // proyecto. El editor de herramientas solo opera en sesión de
+            // proyecto, así que en sesión maestra el botón queda inactivo.
+            btnEditar.Enabled = haySeleccion && _proyectoId.HasValue;
             // La elegibilidad para eliminar no depende de Origen: el comando resuelve
             // el alcance por ProyectoId y la previsualización rechaza lo no permitido.
             btnEliminar.Enabled = haySeleccion;

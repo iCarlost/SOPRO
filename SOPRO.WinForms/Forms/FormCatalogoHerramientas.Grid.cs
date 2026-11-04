@@ -141,7 +141,7 @@ namespace SOPRO.WinForms.Forms
 
             if (colName == "col_OrigenDetalle" || colName == "colOrigen")
             {
-                e.Value = ImportOriginStampService.BuildOriginDisplay(h.Notas, h.Origen == OrigenInsumo.Maestro ? "Maestro" : "Local");
+                e.Value = EtiquetaProcedenciaCatalogoHelper.ParaFila(h.Notas, h.ProyectoId);
                 e.FormattingApplied = true;
                 return;
             }
