@@ -30,12 +30,7 @@ namespace SOPRO.WinForms.Forms
             if (_esNuevo)
                 txtClave.Text = KeySuggestionService.Generate();
             else
-            {
                 CargarDatos();
-                // Valores por defecto
-                nudCostoHorario.Value = 0;
-                rbCostoManual.Checked = true;
-            }
         }
         
         private void ConfigurarFormulario()
