@@ -14,6 +14,7 @@ using SOPRO.Application.UseCases.Reporting;
 using SOPRO.Reporting.Formatting;
 using SOPRO.Reporting.Layout;
 using SOPRO.Core.Entities;
+using SOPRO.WinForms.Helpers;
 using DrawingFont = System.Drawing.Font;
 using MColor = MigraDoc.DocumentObjectModel.Color;
 using MOrientation = MigraDoc.DocumentObjectModel.Orientation;
@@ -524,8 +525,7 @@ namespace SOPRO.WinForms.Services
             "Descripcion" => maq.Descripcion ?? string.Empty,
             "Combustible" => maq.TipoCombustible.ToString(),
             "TipoCosto" => maq.EsCostoCalculado ? "Calc" : "Man",
-            "Origen" => ImportOriginStampService.BuildOriginDisplay(
-                maq.Notas, maq.Origen == OrigenInsumo.Maestro ? "Maestro" : "Local"),
+            "Origen" => EtiquetaProcedenciaCatalogoHelper.ParaFila(maq.Notas, maq.ProyectoId),
             _ => string.Empty
         };
     }

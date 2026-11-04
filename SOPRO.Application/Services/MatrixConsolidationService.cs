@@ -12,8 +12,7 @@ namespace SOPRO.Application.Services
         public ConsolidacionImpactoPreview ObtenerPreview(SOPROContext context, int proyectoId, TipoMatriz tipo, int matrizBaseId, IReadOnlyCollection<int> idsSeleccionados)
         {
             var idsAReemplazar = PrepararSeleccion(context, proyectoId, tipo, matrizBaseId, idsSeleccionados);
-            var componentesAfectados = context.ComponentesMatriz
-                .Where(c => c.AuxiliarId.HasValue && idsAReemplazar.Contains(c.AuxiliarId.Value))
+            var componentesAfectados = QueryComponentesAuxiliares(context, proyectoId, idsAReemplazar)
                 .Select(c => new { c.Id, c.MatrizId })
                 .ToList();
 
@@ -41,17 +40,17 @@ namespace SOPRO.Application.Services
 
             var preview = ObtenerPreview(context, proyectoId, tipo, matrizBaseId, idsSeleccionados);
 
+            ValidarReferenciasAjenas(context, proyectoId, idsAReemplazar);
+
             using var tx = context.Database.BeginTransaction();
 
-            var componentes = context.ComponentesMatriz
-                .Where(c => c.AuxiliarId.HasValue && idsAReemplazar.Contains(c.AuxiliarId.Value))
-                .ToList();
+            var componentes = QueryComponentesAuxiliares(context, proyectoId, idsAReemplazar).ToList();
 
             foreach (var componente in componentes)
                 componente.AuxiliarId = matrizBaseId;
 
             var matricesAEliminar = context.Matrices
-                .Where(m => idsAReemplazar.Contains(m.Id))
+                .Where(m => idsAReemplazar.Contains(m.Id) && m.ProyectoId == proyectoId)
                 .ToList();
 
             if (matricesAEliminar.Count > 0)
@@ -102,6 +101,42 @@ namespace SOPRO.Application.Services
                 throw new InvalidOperationException("La selección debe contener únicamente matrices del mismo tipo.");
 
             return ids.Where(id => id != matrizBaseId).ToHashSet();
+        }
+
+        private static IQueryable<ComponenteMatriz> QueryComponentesAuxiliares(SOPROContext context, int proyectoId, HashSet<int> auxiliaresAEliminar)
+        {
+            if (auxiliaresAEliminar.Count == 0)
+                return context.ComponentesMatriz.Where(c => false);
+
+            var matrizIdsProyecto = context.Matrices
+                .Where(m => m.ProyectoId == proyectoId)
+                .Select(m => m.Id);
+
+            return context.ComponentesMatriz
+                .Where(c => c.AuxiliarId.HasValue
+                    && auxiliaresAEliminar.Contains(c.AuxiliarId.Value)
+                    && matrizIdsProyecto.Contains(c.MatrizId));
+        }
+
+        /// <summary>
+        /// Rechaza la operación antes de eliminar cualquier matriz si alguna
+        /// auxiliar seleccionada es referenciada desde una matriz de otro
+        /// proyecto: consolidarla propagaría la mutación (o la cascada de borrado)
+        /// fuera del proyecto destino.
+        /// </summary>
+        private static void ValidarReferenciasAjenas(SOPROContext context, int proyectoId, HashSet<int> auxiliaresAEliminar)
+        {
+            if (auxiliaresAEliminar.Count == 0)
+                return;
+
+            var hayReferenciasAjenas = context.ComponentesMatriz
+                .Where(c => c.AuxiliarId.HasValue && auxiliaresAEliminar.Contains(c.AuxiliarId.Value))
+                .Join(context.Matrices, c => c.MatrizId, m => m.Id, (c, m) => new { m.ProyectoId })
+                .Any(x => x.ProyectoId != proyectoId);
+
+            if (hayReferenciasAjenas)
+                throw new InvalidOperationException(
+                    "No se pueden consolidar matrices referenciadas por matrices de otro proyecto.");
         }
 
         private static HashSet<int> ObtenerMatricesAfectadas(SOPROContext context, int proyectoId, HashSet<int> semillas)

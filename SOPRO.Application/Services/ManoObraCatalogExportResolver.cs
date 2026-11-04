@@ -141,9 +141,17 @@ public static class ManoObraCatalogExportResolver
         }
     }
 
-    /// <summary>Origen del insumo como texto visible ("Maestro"/"Proyecto").</summary>
+    /// <summary>
+    /// Procedencia visible de la fila: la marca de importación en Notas manda
+    /// (<c>Importado de: {proyecto}</c>); sin marca, la propiedad real de la fila
+    /// (<see cref="ManoDeObra.ProyectoId"/>) decide entre <c>Maestro</c> y
+    /// <c>Local</c>, nunca <see cref="ManoDeObra.Origen"/>.
+    /// </summary>
     public static string ResolveOrigin(ManoDeObra manoDeObra)
-        => manoDeObra.Origen == OrigenInsumo.Maestro ? "Maestro" : "Proyecto";
+    {
+        ArgumentNullException.ThrowIfNull(manoDeObra);
+        return ImportOriginStampService.BuildOriginDisplayForOwner(manoDeObra.Notas, manoDeObra.ProyectoId);
+    }
 
     /// <summary>
     /// Resuelve el color de fondo (hex) de una celda respetando el color por

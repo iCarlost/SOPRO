@@ -64,11 +64,10 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            if (seleccion.Any(x => x.Origen == OrigenInsumo.Maestro))
-            {
-                MessageBox.Show("La consolidación solo admite registros del proyecto actual.\n\nQuite de la selección cualquier insumo del catálogo maestro e intente de nuevo.", "Consolidar", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
+            // El alcance de la consolidación es del proyecto: ListMaterials solo
+            // devuelve filas del proyecto (ProyectoId = proyecto) aunque una copia
+            // importada conserve Origen = Maestro, así que aquí no se excluye
+            // nada por Origen.
 
             var items = ObtenerSeleccionConsolidable();
             using var dlg = new FormConsolidarInsumos(NombreTipoConsolidacion, items, baseId =>

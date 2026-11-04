@@ -141,7 +141,7 @@ namespace SOPRO.WinForms.Forms
             var colName = dgvManoObra.Columns[e.ColumnIndex].Name;
             if (colName == "col_Origen" || colName == "colOrigen")
             {
-                e.Value = ImportOriginStampService.BuildOriginDisplay(mo.Notas, mo.Origen == OrigenInsumo.Maestro ? "Maestro" : "Local");
+                e.Value = EtiquetaProcedenciaCatalogoHelper.ParaFila(mo.Notas, mo.ProyectoId);
                 e.FormattingApplied = true;
                 return;
             }

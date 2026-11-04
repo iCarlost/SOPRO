@@ -23,6 +23,18 @@ public interface IProjectDbContextFactory
 
     /// <summary>Variante asíncrona de la frontera; no realiza I/O (SQLite abre la conexión de forma perezosa).</summary>
     Task<SOPROContext> CreateAsync(string databasePath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Crea un contexto que abre la base en modo solo lectura (<c>Mode=ReadOnly</c>,
+    /// sin pooling). Pensado para fuentes externas: el archivo no se crea ni se
+    /// modifica. La implementación por defecto no depende del estado de la
+    /// instancia, por lo que cualquier implementación del puerto la hereda.
+    /// </summary>
+    SOPROContext CreateReadOnly(string databasePath)
+    {
+        ArgumentNullException.ThrowIfNull(databasePath);
+        return new SOPROContext(databasePath, readOnly: true);
+    }
 }
 
 /// <summary>
@@ -39,4 +51,10 @@ public sealed class ProjectDbContextFactory : IProjectDbContextFactory
 
     public Task<SOPROContext> CreateAsync(string databasePath, CancellationToken cancellationToken = default)
         => Task.FromResult(Create(databasePath));
+
+    public SOPROContext CreateReadOnly(string databasePath)
+    {
+        ArgumentNullException.ThrowIfNull(databasePath);
+        return new SOPROContext(databasePath, readOnly: true);
+    }
 }

@@ -61,7 +61,8 @@ public sealed class ListMaterials
                     m.Unidad,
                     m.PrecioUnitario,
                     m.Notas ?? string.Empty,
-                    m.Origen))
+                    m.Origen,
+                    m.ProyectoId))
                 .ToListAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 

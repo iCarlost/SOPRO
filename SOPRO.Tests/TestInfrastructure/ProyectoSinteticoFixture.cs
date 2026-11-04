@@ -29,9 +29,9 @@ internal static class ProyectoSinteticoFixture
         // Apertura REALMENTE de solo lectura: el manifiesto N0 promete copia inmutable,
         // así que se fija el atributo de archivo y se abre con Mode=ReadOnly para que
         // cualquier SaveChanges accidental falle en lugar de mutar silenciosamente la copia.
-        // SOPROContext(string) antepone "Data Source=" a la ruta, por eso se pasa el
-        // sufijo de conexión junto a la ruta.
+        // Usar el modo explícito conserva DatabasePath como la ruta real y evita
+        // depender de codificar opciones dentro del argumento de ruta.
         File.SetAttributes(tempPath, FileAttributes.ReadOnly);
-        return new SOPROContext($"{tempPath};Mode=ReadOnly;Cache=Shared");
+        return new SOPROContext(tempPath, readOnly: true);
     }
 }

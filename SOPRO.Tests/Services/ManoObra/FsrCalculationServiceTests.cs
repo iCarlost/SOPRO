@@ -77,6 +77,38 @@ public class FsrCalculationServiceTests
     }
 
     [TestMethod]
+    public void TryCalcularFactorSalarioReal_DebeRedondearASeisDecimalesONoAplicar()
+    {
+        const string parametros = """
+        {
+          "SalarioMinimo":"248.93",
+          "Jornada":"0",
+          "Semestre":"0",
+          "Anio":"2026",
+          "HorasJornada":"8",
+          "DiasCalendario":"365",
+          "DiasAguinaldo":"15",
+          "DiasVacaciones":"12",
+          "PrimaVacacional":"25",
+          "DiasDescanso":"52",
+          "DiasFestivos":"7",
+          "PctGuarderias":"1",
+          "PctRetiro":"2",
+          "PctRiesgos":"4.58875",
+          "PctINFONAVIT":"5",
+          "PctNomina":"2.4"
+        }
+        """;
+
+        Assert.IsTrue(FsrCalculationService.TryCalcularFactorSalarioReal(parametros, 500m, out var factor));
+        Assert.AreEqual(1.730824m, factor);
+
+        Assert.IsFalse(FsrCalculationService.TryCalcularFactorSalarioReal(null, 500m, out _));
+        Assert.IsFalse(FsrCalculationService.TryCalcularFactorSalarioReal("{ json invalido", 500m, out _));
+        Assert.IsFalse(FsrCalculationService.TryCalcularFactorSalarioReal(parametros, 0m, out _));
+    }
+
+    [TestMethod]
     public void Calcular_ConDiferentesSalarios_DebeRegresarFactoresDorados()
     {
         const string parametros = """

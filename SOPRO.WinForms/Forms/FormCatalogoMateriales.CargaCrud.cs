@@ -110,19 +110,14 @@ namespace SOPRO.WinForms.Forms
 
         private void btnEditar_Click(object sender, EventArgs e)
         {
+            // La propiedad se decide por alcance, no por Origen: ListMaterials solo
+            // devuelve filas del proyecto de la sesión (ProyectoId = proyecto), así
+            // que cualquier fila visible aquí -incluida una copia importada que
+            // conserva Origen = Maestro- es de este proyecto y es editable.
             if (_materialSeleccionado == null)
             {
                 MessageBox.Show("Seleccione un material para editar.", "Selección Requerida",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            if (_proyectoId.HasValue && _materialSeleccionado.Origen == OrigenInsumo.Maestro)
-            {
-                MessageBox.Show(
-                    "No puede editar materiales del catálogo maestro desde un proyecto.\n\n" +
-                    "Para modificar este material, ábralo desde Catálogos Maestros o cree una copia para este proyecto.",
-                    "Material del Catálogo Maestro", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
@@ -289,10 +284,11 @@ namespace SOPRO.WinForms.Forms
         {
             var seleccionados = ObtenerMaterialesSeleccionados();
             var haySeleccion = seleccionados.Count > 0;
-            var enProyecto = _proyectoId.HasValue;
-            var todosMaestros = haySeleccion && seleccionados.All(m => m.Origen == OrigenInsumo.Maestro);
-
-            btnEditar.Enabled = haySeleccion && !(enProyecto && todosMaestros);
+            // La propiedad se decide por alcance/ProyectoId, no por Origen: una
+            // copia importada conserva Origen = Maestro y es editable dentro de
+            // su proyecto; filas del maestro puro solo aparecen en sesión maestra,
+            // donde editar es la operación correcta.
+            btnEditar.Enabled = haySeleccion;
             // La elegibilidad para eliminar no depende de Origen: el comando resuelve
             // el alcance por ProyectoId y la previsualización rechaza lo no permitido.
             btnEliminar.Enabled = haySeleccion;

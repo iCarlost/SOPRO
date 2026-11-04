@@ -125,15 +125,15 @@ public static class HerramientasCatalogExportResolver
     /// <summary>
     /// Resuelve el texto de origen con la MISMA semántica del grid
     /// (<c>DgvHerramientas_CellFormatting</c>): si la herramienta fue importada de
-    /// otro proyecto muestra <c>Importado: {proyecto}</c>; en caso contrario el
-    /// fallback (<c>Maestro</c> para insumos maestros, <c>Local</c> para el resto).
+    /// otro proyecto muestra <c>Importado de: {proyecto}</c>; sin marca, la
+    /// PROPIEDAD real de la fila (<see cref="Herramienta.ProyectoId"/>) decide el
+    /// fallback (<c>Maestro</c> sin proyecto, <c>Local</c> con proyecto), nunca
+    /// <see cref="Herramienta.Origen"/>.
     /// </summary>
     public static string ResolveOrigin(Herramienta herramienta)
     {
         ArgumentNullException.ThrowIfNull(herramienta);
-        return ImportOriginStampService.BuildOriginDisplay(
-            herramienta.Notas,
-            herramienta.Origen == OrigenInsumo.Maestro ? "Maestro" : "Local");
+        return ImportOriginStampService.BuildOriginDisplayForOwner(herramienta.Notas, herramienta.ProyectoId);
     }
 
     /// <summary>

@@ -79,12 +79,14 @@ namespace SOPRO.WinForms.Forms
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            if (_proyectoId.HasValue && _maquinariaSeleccionada.Origen == OrigenInsumo.Maestro)
+            // La propiedad se decide por ProyectoId, no por Origen: una copia
+            // importada conserva Origen = Maestro y es editable dentro de su
+            // proyecto; solo se bloquea una fila fuera del alcance del proyecto.
+            if (_proyectoId.HasValue && _maquinariaSeleccionada.ProyectoId != _proyectoId)
             {
                 MessageBox.Show(
-                    "No puede editar registros del catálogo maestro desde un proyecto.\n\n" +
-                    "Para modificar este registro, ábralo desde Catálogos Maestros o cree una copia.",
-                    "Registro del Catálogo Maestro", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    "Este registro no pertenece al proyecto actual y no puede editarse desde aquí.",
+                    "Registro Fuera de Alcance", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
             using var form = new FormEditarMaquinaria(_context, _proyectoId, _maquinariaSeleccionada);
@@ -99,11 +101,13 @@ namespace SOPRO.WinForms.Forms
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            if (_proyectoId.HasValue && _maquinariaSeleccionada.Origen == OrigenInsumo.Maestro)
+            // La propiedad se decide por ProyectoId, no por Origen: una copia
+            // importada conserva Origen = Maestro y pertenece al proyecto.
+            if (_proyectoId.HasValue && _maquinariaSeleccionada.ProyectoId != _proyectoId)
             {
                 MessageBox.Show(
-                    "No puede calcular costos de registros del catálogo maestro desde un proyecto.",
-                    "Registro del Catálogo Maestro", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    "Este registro no pertenece al proyecto actual y no puede calcularse desde aquí.",
+                    "Registro Fuera de Alcance", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
             using var form = new FormCalculoCostoHorario(_context, _maquinariaSeleccionada);
@@ -252,15 +256,17 @@ namespace SOPRO.WinForms.Forms
         {
             var seleccionados = ObtenerMaquinariaSeleccionada();
             var haySeleccion = seleccionados.Count > 0;
-            var enProyecto = _proyectoId.HasValue;
-            var todosMaestros = haySeleccion && seleccionados.All(m => m.Origen == OrigenInsumo.Maestro);
 
-            btnEditar.Enabled = haySeleccion && !(enProyecto && todosMaestros);
+            // Elegibilidad por propiedad (ProyectoId), no por Origen: una copia
+            // importada conserva Origen = Maestro y es operable dentro de su
+            // proyecto; filas del maestro puro solo aparecen en sesión maestra,
+            // donde operar es la operación correcta.
+            btnEditar.Enabled = haySeleccion;
             // La elegibilidad para eliminar no depende de Origen: el comando resuelve
             // el alcance por ProyectoId y la previsualización rechaza lo no permitido.
             btnEliminar.Enabled = haySeleccion;
             EstadoConsolidacionCambiado?.Invoke(this, EventArgs.Empty);
-            btnCalcularCosto.Enabled = haySeleccion && !(enProyecto && todosMaestros);
+            btnCalcularCosto.Enabled = haySeleccion;
         }
     }
 }

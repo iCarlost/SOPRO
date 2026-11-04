@@ -110,6 +110,8 @@ public class MaterialsUseCasesTests
         if (!result.IsSuccess) Assert.Fail(result.Error!.Message);
         Assert.AreEqual(1, result.Value!.Count);
         Assert.AreEqual(scenario.Cemento.Id, result.Value[0].Id);
+        Assert.AreEqual(scenario.Proyecto.Id, result.Value[0].ProjectId,
+            "El DTO debe exponer la propiedad real de la fila para resolver la procedencia del export.");
     }
 
     [TestMethod]
@@ -1532,7 +1534,8 @@ public class MaterialsUseCasesTests
             "kg",
             60m,
             string.Empty,
-            OrigenInsumo.Proyecto);
+            OrigenInsumo.Proyecto,
+            ProjectId: 1);
 
         var columnaClave = new ColumnaMaterial { ProyectoId = 1, Nombre = "Clave", NombreInterno = "Clave", NombreFuente = "Clave" };
         var columnaPrecio = new ColumnaMaterial { ProyectoId = 1, Nombre = "Precio", NombreInterno = "PrecioUnitario", NombreFuente = "PrecioUnitario" };
@@ -1542,10 +1545,50 @@ public class MaterialsUseCasesTests
         Assert.AreEqual("Cemento gris", MaterialCatalogExportResolver.ResolveValue(material, new ColumnaMaterial { ProyectoId = 1, Nombre = "D", NombreInterno = "Descripcion", NombreFuente = "D" }));
         Assert.AreEqual("kg", MaterialCatalogExportResolver.ResolveValue(material, new ColumnaMaterial { ProyectoId = 1, Nombre = "U", NombreInterno = "Unidad", NombreFuente = "U" }));
         Assert.AreEqual("60.0000", MaterialCatalogExportResolver.ResolveValue(material, columnaPrecio));
-        Assert.AreEqual("Proyecto", MaterialCatalogExportResolver.ResolveValue(material, columnaOrigen));
+        Assert.AreEqual("Local", MaterialCatalogExportResolver.ResolveValue(material, columnaOrigen));
 
         var maestro = new MaterialListItem(2, "M-1", "Maestro", "pza", 1m, string.Empty, OrigenInsumo.Maestro);
         Assert.AreEqual("Maestro", MaterialCatalogExportResolver.ResolveOrigin(maestro));
+    }
+
+    [TestMethod]
+    public void MaterialCatalogExportResolver_Procedencia_UsaMarcaYPropiedadNoOrigen()
+    {
+        var columnaOrigen = new ColumnaMaterial { ProyectoId = 1, Nombre = "Origen", NombreInterno = "Origen", NombreFuente = "Origen" };
+        var snapshot = MaterialCatalogExportResolver.BuildSnapshot(1, null, new[] { columnaOrigen });
+        var origenNeutral = snapshot.Columnas.Single(c => c.Identificador == "Origen");
+
+        // Copia importada con Origen = Maestro desactualizado: la marca manda y
+        // nombra al catálogo de procedencia, tanto en la ruta legacy como en la neutral.
+        var importado = new MaterialListItem(
+            1, "MAT-IMP", "Copia importada", "pza", 5m,
+            "[IMPORTADO DE: Obra Norte] notas de la copia",
+            OrigenInsumo.Maestro,
+            ProjectId: 7);
+
+        Assert.AreEqual("Importado de: Obra Norte", MaterialCatalogExportResolver.ResolveOrigin(importado));
+        Assert.AreEqual("Importado de: Obra Norte", MaterialCatalogExportResolver.ResolveValue(importado, columnaOrigen));
+        Assert.AreEqual("Importado de: Obra Norte", MaterialCatalogExportResolver.ResolveValue(importado, origenNeutral, snapshot));
+
+        // Fila del proyecto sin marca (Origen desactualizado = Maestro): nunca
+        // puede reclamar "Maestro"; la propiedad (ProjectId) decide "Local".
+        var local = new MaterialListItem(
+            2, "MAT-LOC", "Fila del proyecto", "pza", 8m,
+            string.Empty,
+            OrigenInsumo.Maestro,
+            ProjectId: 7);
+
+        Assert.AreEqual("Local", MaterialCatalogExportResolver.ResolveOrigin(local));
+        Assert.AreEqual("Local", MaterialCatalogExportResolver.ResolveValue(local, origenNeutral, snapshot));
+
+        // Fila del maestro sin marca (Origen desactualizado = Proyecto): "Maestro".
+        var maestro = new MaterialListItem(
+            3, "MAT-MAE", "Fila maestra", "pza", 9m,
+            string.Empty,
+            OrigenInsumo.Proyecto);
+
+        Assert.AreEqual("Maestro", MaterialCatalogExportResolver.ResolveOrigin(maestro));
+        Assert.AreEqual("Maestro", MaterialCatalogExportResolver.ResolveValue(maestro, origenNeutral, snapshot));
     }
 
     [TestMethod]

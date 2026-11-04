@@ -38,14 +38,23 @@ namespace SOPRO.Application.Services
             target.FechaModificacion = DateTime.Now;
         }
 
-        public static ManoDeObra CloneManoDeObra(ManoDeObra source, int currentProjectId, string projectName)
+        public static ManoDeObra CloneManoDeObra(
+            ManoDeObra source, int currentProjectId, string projectName, string? parametrosFSRDestino = null)
         {
             var clone = new ManoDeObra();
-            ApplyManoDeObra(clone, source, currentProjectId, projectName);
+            ApplyManoDeObra(clone, source, currentProjectId, projectName, parametrosFSRDestino);
             return clone;
         }
 
-        public static void ApplyManoDeObra(ManoDeObra target, ManoDeObra source, int currentProjectId, string projectName)
+        /// <summary>
+        /// Copia la mano de obra preservando el salario base y la procedencia. Con
+        /// <paramref name="parametrosFSRDestino"/> válidos normaliza el FSR con los
+        /// parámetros del proyecto destino (redondeado a la precisión persistida) y
+        /// recalcula el salario real; sin ellos, o para filas <c>%MO</c> / salario
+        /// no positivo, conserva el FSR y salario real de origen.
+        /// </summary>
+        public static void ApplyManoDeObra(
+            ManoDeObra target, ManoDeObra source, int currentProjectId, string projectName, string? parametrosFSRDestino = null)
         {
             target.Clave = (source.Clave ?? string.Empty).Trim().ToUpperInvariant();
             target.Descripcion = source.Descripcion;
@@ -58,6 +67,23 @@ namespace SOPRO.Application.Services
             target.ManoDeObraMaestraId = null;
             target.Notas = ImportOriginStampService.AppendStamp(source.Notas, projectName);
             target.FechaModificacion = DateTime.Now;
+
+            AplicarFsrDelProyectoDestino(target, source, parametrosFSRDestino);
+        }
+
+        private static void AplicarFsrDelProyectoDestino(
+            ManoDeObra target, ManoDeObra source, string? parametrosFSRDestino)
+        {
+            if (string.IsNullOrWhiteSpace(parametrosFSRDestino)) return;
+            if (source.EsPorcentajeMO) return;
+            if (source.SalarioBase <= 0) return;
+
+            if (!FsrCalculationService.TryCalcularFactorSalarioReal(
+                    parametrosFSRDestino, source.SalarioBase, out var factorSalarioReal))
+                return;
+
+            target.FactorSalarioReal = factorSalarioReal;
+            target.CalcularSalarioReal();
         }
 
         public static Maquinaria CloneMaquinaria(Maquinaria source, int currentProjectId, string projectName)

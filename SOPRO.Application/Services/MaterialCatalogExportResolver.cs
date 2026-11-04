@@ -157,8 +157,17 @@ public static class MaterialCatalogExportResolver
         };
     }
 
+    /// <summary>
+    /// Procedencia visible del material con la MISMA semántica del grid: la marca
+    /// de importación en Notas manda (<c>Importado de: {proyecto}</c>); sin marca,
+    /// la propiedad real de la fila (<see cref="MaterialListItem.ProjectId"/>)
+    /// decide entre <c>Maestro</c> y <c>Local</c>, nunca <see cref="MaterialListItem.Origen"/>.
+    /// </summary>
     public static string ResolveOrigin(MaterialListItem material)
-        => material.Origen == OrigenInsumo.Maestro ? "Maestro" : "Proyecto";
+    {
+        ArgumentNullException.ThrowIfNull(material);
+        return ImportOriginStampService.BuildOriginDisplayForOwner(material.Notas, material.ProjectId);
+    }
 
     /// <summary>
     /// Formatea un importe con los decimales indicados y el símbolo de moneda de la

@@ -161,7 +161,7 @@ namespace SOPRO.WinForms.Forms
             }
             else if (colName == "col_Origen" || colName == "colOrigen")
             {
-                e.Value = ImportOriginStampService.BuildOriginDisplay(maq.Notas, maq.Origen == OrigenInsumo.Maestro ? "Maestro" : "Local");
+                e.Value = EtiquetaProcedenciaCatalogoHelper.ParaFila(maq.Notas, maq.ProyectoId);
                 e.FormattingApplied = true;
             }
             else if ((colName == "colCostoHorario" || colName == "col_CostoHorario") && e.Value is decimal ch)

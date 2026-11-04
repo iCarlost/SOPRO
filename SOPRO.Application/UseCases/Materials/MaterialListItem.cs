@@ -13,4 +13,5 @@ public sealed record MaterialListItem(
     string Unidad,
     decimal PrecioUnitario,
     string Notas,
-    OrigenInsumo Origen);
+    OrigenInsumo Origen,
+    int? ProjectId = null);

@@ -156,7 +156,9 @@ namespace SOPRO.WinForms.Forms
             var colName = dgvMateriales.Columns[e.ColumnIndex].Name;
             if (colName == "col_Origen" || colName == "colOrigen")
             {
-                e.Value = ImportOriginStampService.BuildOriginDisplay(mat.Notas, mat.Origen == OrigenInsumo.Maestro ? "Maestro" : "Local");
+                // Procedencia visible: marca en Notas manda; sin marca, la etiqueta
+                // la decide la propia fila por su ProyectoId real (DTO), no Origen.
+                e.Value = EtiquetaProcedenciaCatalogoHelper.ParaFila(mat.Notas, mat.ProjectId);
                 e.FormattingApplied = true;
                 return;
             }

@@ -64,9 +64,12 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            if (seleccion.Any(x => x.Origen == OrigenInsumo.Maestro))
+            // Filtrar por propiedad real (ProyectoId), no por Origen: una copia
+            // importada conserva Origen = Maestro y pertenece al proyecto, por
+            // lo que sí es consolidable.
+            if (seleccion.Any(x => x.ProyectoId != _proyectoId))
             {
-                MessageBox.Show("La consolidación solo admite registros del proyecto actual.\n\nQuite de la selección cualquier insumo del catálogo maestro e intente de nuevo.", "Consolidar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show("La consolidación solo admite registros del proyecto actual.\n\nQuite de la selección cualquier registro fuera del proyecto e intente de nuevo.", "Consolidar", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
