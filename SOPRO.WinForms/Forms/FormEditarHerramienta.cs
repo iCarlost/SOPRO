@@ -54,9 +54,22 @@ namespace SOPRO.WinForms.Forms
             txtClave.Text = _herramienta.Clave;
             txtDescripcion.Text = _herramienta.Descripcion;
             cboUnidad.Text = _herramienta.Unidad;
-            nudPrecio.Value = _herramienta.PrecioUnitario;
-            
+
+            // Cambiar la unidad ajusta el rango del precio; la etiqueta y el rango
+            // deben quedar aplicados antes de asignar el valor heredado.
             ActualizarEtiquetaPrecio();
+            AsignarPrecioUnitario(_herramienta.PrecioUnitario);
+        }
+
+        private void AsignarPrecioUnitario(decimal valor)
+        {
+            // Un registro %MO heredado puede traer un porcentaje fuera del rango
+            // ordinario (0..100). Se amplía el máximo solo para conservar el dato
+            // persistido sin recortarlo ni normalizarlo.
+            if (cboUnidad.Text == "%MO" && valor > nudPrecio.Maximum)
+                nudPrecio.Maximum = valor;
+
+            nudPrecio.Value = valor;
         }
         
         private void cboUnidad_SelectedIndexChanged(object sender, EventArgs e)
@@ -69,10 +82,10 @@ namespace SOPRO.WinForms.Forms
             if (cboUnidad.Text == "%MO")
             {
                 lblPrecio.Text = "Porcentaje (%):";
-                lblHint.Text = "💡 Ejemplo: 0.03 para 3% de la mano de obra total";
+                lblHint.Text = "💡 Ejemplo: 3.00 para 3% de la mano de obra total";
                 lblHint.Visible = true;
                 nudPrecio.DecimalPlaces = 4;
-                nudPrecio.Maximum = 1;  // Máximo 100% = 1.00
+                nudPrecio.Maximum = 100;  // 100%
                 nudPrecio.Minimum = 0;
                 nudPrecio.Increment = 0.01m;
             }
