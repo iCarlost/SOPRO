@@ -195,6 +195,40 @@ namespace SOPRO.WinForms.Forms
         private void btnRefrescar_Click(object sender, EventArgs e) => CargarManoDeObra();
         private void btnCerrar_Click(object sender, EventArgs e) => Close();
 
+        private void btnImportar_Click(object sender, EventArgs e)
+        {
+            if (!_proyectoId.HasValue)
+            {
+                MessageBox.Show("Para importar insumos primero debe existir un proyecto activo.", "Importar",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (CatalogoBatchDeletionHelper.HayCambiosSinGuardar(_context))
+            {
+                MessageBox.Show(CatalogoBatchDeletionHelper.MensajeCambiosSinGuardar,
+                    "Cambios sin guardar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                using var selector = new FormSeleccionarInsumo(
+                    _context, _proyectoId.Value, TipoComponenteMatriz.ManoDeObra, modoCatalogo: true);
+                if (selector.ShowDialog(this) != DialogResult.OK) return;
+
+                OpenFormsRefreshHelper.RefrescarCatalogoPorTipo(TipoComponenteMatriz.ManoDeObra);
+                CargarManoDeObra();
+                MessageBox.Show($"{selector.CantidadImportada} registro(s) de mano de obra importado(s) al catálogo.",
+                    "Importar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error al importar mano de obra:\n{ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void dgvManoObra_SelectionChanged(object sender, EventArgs e)
         {
             var filas = SeleccionGridHelper.FilasSeleccionadas(dgvManoObra);

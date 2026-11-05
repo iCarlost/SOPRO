@@ -31,8 +31,13 @@ namespace SOPRO.WinForms.Forms
                 var recents = _projectIndexService.GetRecentProjects(MaxProjectsInCombo).Where(p => File.Exists(p.FilePath)).ToList();
 
                 cboProyecto.Items.Clear();
-                cboProyecto.Items.Add(new ProyectoComboItem("🔎 Todos", ScopeAllTag, ProyectoComboKind.Scope));
-                cboProyecto.Items.Add(new ProyectoComboItem("📁 Proyecto actual", ScopeCurrentTag, ProyectoComboKind.Scope));
+                // Modo catálogo: el proyecto propio no es una fuente válida, así que
+                // sus ámbitos ni siquiera se ofrecen en el combo Origen.
+                if (!_modoCatalogo)
+                {
+                    cboProyecto.Items.Add(new ProyectoComboItem("🔎 Todos", ScopeAllTag, ProyectoComboKind.Scope));
+                    cboProyecto.Items.Add(new ProyectoComboItem("📁 Proyecto actual", ScopeCurrentTag, ProyectoComboKind.Scope));
+                }
                 cboProyecto.Items.Add(new ProyectoComboItem("🕘 Recientes", ScopeRecentTag, ProyectoComboKind.Scope));
                 cboProyecto.Items.Add(new ProyectoComboItem("⭐ Favoritos", ScopeFavoritesTag, ProyectoComboKind.Scope));
                 cboProyecto.Items.Add(new ProyectoComboItem("────────────────", string.Empty, ProyectoComboKind.Separator));
