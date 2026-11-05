@@ -295,6 +295,40 @@ namespace SOPRO.WinForms.Forms
             EstadoConsolidacionCambiado?.Invoke(this, EventArgs.Empty);
         }
 
+        private void btnImportar_Click(object sender, EventArgs e)
+        {
+            if (!_proyectoId.HasValue)
+            {
+                MessageBox.Show("Para importar insumos primero debe existir un proyecto activo.", "Importar",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (CatalogoBatchDeletionHelper.HayCambiosSinGuardar(_context))
+            {
+                MessageBox.Show(CatalogoBatchDeletionHelper.MensajeCambiosSinGuardar,
+                    "Cambios sin guardar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                using var selector = new FormSeleccionarInsumo(
+                    _context, _proyectoId.Value, TipoComponenteMatriz.Material, modoCatalogo: true);
+                if (selector.ShowDialog(this) != DialogResult.OK) return;
+
+                OpenFormsRefreshHelper.RefrescarCatalogoPorTipo(TipoComponenteMatriz.Material);
+                CargarMateriales();
+                MessageBox.Show($"{selector.CantidadImportada} material(es) importado(s) al catálogo.",
+                    "Importar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error al importar materiales:\n{ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void btnExportarExcel_Click(object sender, EventArgs e) => ExportarCatalogoExcel();
 
         private void btnImportarExcel_Click(object sender, EventArgs e)

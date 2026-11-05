@@ -26,7 +26,7 @@ namespace SOPRO.WinForms.Forms
         {
             try
             {
-                var includeCurrentProject = _searchScopeTag == ScopeAllTag || _searchScopeTag == ScopeCurrentTag;
+                var includeCurrentProject = (_searchScopeTag == ScopeAllTag || _searchScopeTag == ScopeCurrentTag) && !_modoCatalogo;
                 var includeRecentProjects = _searchScopeTag == ScopeAllTag || _searchScopeTag == ScopeRecentTag;
                 var includeFavoriteProjects = _searchScopeTag == ScopeAllTag || _searchScopeTag == ScopeFavoritesTag;
                 IReadOnlyList<InsumoSearchResultDto> results;
@@ -118,7 +118,7 @@ namespace SOPRO.WinForms.Forms
 
         private void btnAceptar_Click(object sender, EventArgs e)
         {
-            if (nudCantidad.Value <= 0)
+            if (!_modoCatalogo && nudCantidad.Value <= 0)
             {
                 MessageBox.Show("La cantidad debe ser mayor a cero.", "Cantidad Inválida", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
@@ -130,6 +130,12 @@ namespace SOPRO.WinForms.Forms
             if (locales.Count == 0 && externos.Count == 0)
             {
                 MessageBox.Show("Seleccione al menos un insumo de la lista.", "Selección Requerida", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (_modoCatalogo)
+            {
+                ImportarEnModoCatalogo(seleccionEfectiva, externos);
                 return;
             }
 
@@ -186,6 +192,55 @@ namespace SOPRO.WinForms.Forms
             Cantidad = nudCantidad.Value;
             DialogResult = DialogResult.OK;
             Close();
+        }
+
+        private void ImportarEnModoCatalogo(
+            IReadOnlyDictionary<string, object> seleccionEfectiva,
+            List<ExternalProjectInsumoOption> externos)
+        {
+            if (externos.Count == 0)
+            {
+                MessageBox.Show("Seleccione al menos un insumo de otro proyecto.", "Selección Requerida", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                var importados = 0;
+                var cancelado = false;
+                foreach (var grupo in externos.GroupBy(x => SelectorUiDefaults.NormalizePath(x.ProjectPath), StringComparer.OrdinalIgnoreCase))
+                {
+                    var grupoItems = grupo.ToList();
+                    var preview = _externalInsumoImportService.BuildPreview(_context, _proyectoId, grupo.Key, grupoItems);
+                    ExternalMatrixImportConflictPolicy policy;
+                    using (var previewForm = new FormPreviewImportacionInsumos(preview))
+                    {
+                        if (previewForm.ShowDialog(this) != DialogResult.OK || !previewForm.SelectedPolicy.HasValue)
+                        {
+                            cancelado = true;
+                            break;
+                        }
+                        policy = previewForm.SelectedPolicy.Value;
+                    }
+                    importados += _externalInsumoImportService.ImportIntoCatalog(_context, _proyectoId, grupo.Key, grupoItems, policy);
+                }
+
+                if (importados == 0)
+                {
+                    if (!cancelado)
+                        MessageBox.Show("No se importó ningún insumo.", "Importar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                RegisterUsageForSelection(seleccionEfectiva);
+                CantidadImportada = importados;
+                DialogResult = DialogResult.OK;
+                Close();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error al importar insumos:\n{ex.Message}", "Importar", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
     }
 }

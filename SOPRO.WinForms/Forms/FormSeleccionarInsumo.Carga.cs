@@ -23,6 +23,12 @@ namespace SOPRO.WinForms.Forms
 
         private void CargarInsumosActuales()
         {
+            if (_modoCatalogo)
+            {
+                ClearGridForEmptyScope(MensajeProyectoOrigenCatalogo);
+                return;
+            }
+
             try
             {
                 RunGridUpdate(() =>

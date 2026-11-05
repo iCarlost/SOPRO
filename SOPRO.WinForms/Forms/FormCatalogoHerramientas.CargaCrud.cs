@@ -247,6 +247,40 @@ namespace SOPRO.WinForms.Forms
 
         private void btnCerrar_Click(object sender, EventArgs e) => Close();
 
+        private void btnImportar_Click(object sender, EventArgs e)
+        {
+            if (!_proyectoId.HasValue)
+            {
+                MessageBox.Show("Para importar insumos primero debe existir un proyecto activo.", "Importar",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (CatalogoBatchDeletionHelper.HayCambiosSinGuardar(_context))
+            {
+                MessageBox.Show(CatalogoBatchDeletionHelper.MensajeCambiosSinGuardar,
+                    "Cambios sin guardar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                using var selector = new FormSeleccionarInsumo(
+                    _context, _proyectoId.Value, TipoComponenteMatriz.Herramienta, modoCatalogo: true);
+                if (selector.ShowDialog(this) != DialogResult.OK) return;
+
+                OpenFormsRefreshHelper.RefrescarCatalogoPorTipo(TipoComponenteMatriz.Herramienta);
+                CargarHerramientas();
+                MessageBox.Show($"{selector.CantidadImportada} herramienta(s) importada(s) al catálogo.",
+                    "Importar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error al importar herramientas:\n{ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void ActualizarEstadoBotones()
         {
             var seleccionados = ObtenerHerramientasSeleccionadas();

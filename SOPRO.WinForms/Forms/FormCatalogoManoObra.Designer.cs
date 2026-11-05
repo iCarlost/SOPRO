@@ -25,6 +25,7 @@ namespace SOPRO.WinForms.Forms
             btnNuevo = new ToolStripButton();
             btnEditar = new ToolStripButton();
             btnEliminar = new ToolStripButton();
+            btnImportar = new ToolStripButton();
             btnConfigColumnas = new ToolStripButton();
             btnRefrescar = new ToolStripButton();
             btnCerrar = new ToolStripButton();
@@ -70,7 +71,7 @@ namespace SOPRO.WinForms.Forms
             // 
             panelToolbar.BackColor = Color.FromArgb(240, 240, 240);
             panelToolbar.GripStyle = ToolStripGripStyle.Hidden;
-            panelToolbar.Items.AddRange(new ToolStripItem[] { btnNuevo, btnEditar, btnEliminar, btnConfigColumnas, btnRefrescar, btnCerrar });
+            panelToolbar.Items.AddRange(new ToolStripItem[] { btnNuevo, btnEditar, btnEliminar, btnImportar, btnConfigColumnas, btnRefrescar, btnCerrar });
             panelToolbar.Location = new Point(0, 60);
             panelToolbar.Name = "panelToolbar";
             panelToolbar.Padding = new Padding(8, 4, 8, 4);
@@ -106,6 +107,16 @@ namespace SOPRO.WinForms.Forms
             btnEliminar.Size = new Size(72, 19);
             btnEliminar.Text = "🗑 Eliminar";
             btnEliminar.Click += btnEliminar_Click;
+            // 
+            // btnImportar
+            // 
+            btnImportar.BackColor = SystemColors.Control;
+            btnImportar.Font = new Font("Microsoft Sans Serif", 8.25F, FontStyle.Bold);
+            btnImportar.ForeColor = Color.Black;
+            btnImportar.Name = "btnImportar";
+            btnImportar.Size = new Size(86, 19);
+            btnImportar.Text = "📥 Importar";
+            btnImportar.Click += btnImportar_Click;
             // 
             // btnConfigColumnas
             // 
@@ -303,6 +314,7 @@ namespace SOPRO.WinForms.Forms
         private System.Windows.Forms.ToolStripButton btnNuevo;
         private System.Windows.Forms.ToolStripButton btnEditar;
         private System.Windows.Forms.ToolStripButton btnEliminar;
+        private System.Windows.Forms.ToolStripButton btnImportar;
         private System.Windows.Forms.ToolStripButton btnRefrescar;
         private System.Windows.Forms.ToolStripButton btnConfigColumnas;
         private System.Windows.Forms.Button btnImportarExcel;

@@ -217,6 +217,40 @@ namespace SOPRO.WinForms.Forms
 
         private void btnRefrescar_Click(object sender, EventArgs e) => CargarMaquinaria();
         private void btnCerrar_Click(object sender, EventArgs e) => Close();
+
+        private void btnImportar_Click(object sender, EventArgs e)
+        {
+            if (!_proyectoId.HasValue)
+            {
+                MessageBox.Show("Para importar insumos primero debe existir un proyecto activo.", "Importar",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (CatalogoBatchDeletionHelper.HayCambiosSinGuardar(_context))
+            {
+                MessageBox.Show(CatalogoBatchDeletionHelper.MensajeCambiosSinGuardar,
+                    "Cambios sin guardar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                using var selector = new FormSeleccionarInsumo(
+                    _context, _proyectoId.Value, TipoComponenteMatriz.Maquinaria, modoCatalogo: true);
+                if (selector.ShowDialog(this) != DialogResult.OK) return;
+
+                OpenFormsRefreshHelper.RefrescarCatalogoPorTipo(TipoComponenteMatriz.Maquinaria);
+                CargarMaquinaria();
+                MessageBox.Show($"{selector.CantidadImportada} maquinaria(s) importada(s) al catálogo.",
+                    "Importar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error al importar maquinaria:\n{ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
         private void btnExportarExcel_Click(object sender, EventArgs e) => ExportarCostoHorario();
         private void btnImportarExcel_Click(object sender, EventArgs e)
         {

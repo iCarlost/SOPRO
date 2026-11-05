@@ -25,10 +25,12 @@ namespace SOPRO.WinForms.Forms
         private const string ExaminarTag = SelectorUiDefaults.ExaminarTag;
         private const int MaxProjectsInCombo = SelectorUiDefaults.MaxProjectsInCombo;
         private const int MaxRowsInGrid = SelectorUiDefaults.MaxRowsInGrid;
+        private const string MensajeProyectoOrigenCatalogo = "Seleccione un proyecto de origen en «Origen» o use «Examinar archivo...».";
 
         private readonly SOPROContext _context;
         private readonly int _proyectoId;
         private readonly TipoComponenteMatriz _tipoComponente;
+        private readonly bool _modoCatalogo;
         private readonly ExternalInsumoImportService _externalInsumoImportService = new(new ProjectDbContextFactory());
         private readonly ProjectIndexService _projectIndexService;
         private readonly InsumoSearchService _insumoSearchService;
@@ -51,13 +53,18 @@ namespace SOPRO.WinForms.Forms
         public decimal Cantidad { get; private set; }
         public decimal PrecioUnitario { get; private set; }
         public decimal Importe { get; private set; }
+        public int CantidadImportada { get; private set; }
+        public bool ModoCatalogo => _modoCatalogo;
 
-        public FormSeleccionarInsumo(SOPROContext context, int proyectoId, TipoComponenteMatriz tipoComponente)
+        public FormSeleccionarInsumo(SOPROContext context, int proyectoId, TipoComponenteMatriz tipoComponente, bool modoCatalogo = false, ProjectWorkspaceService? workspaceService = null)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _proyectoId = proyectoId;
             _tipoComponente = tipoComponente;
-            var workspaceService = new ProjectWorkspaceService();
+            _modoCatalogo = modoCatalogo;
+            if (_modoCatalogo)
+                _searchScopeTag = ScopeRecentTag;
+            workspaceService ??= new ProjectWorkspaceService();
             _projectIndexService = new ProjectIndexService(workspaceService);
             _projectUsageService = new ProjectUsageService(workspaceService);
             _insumoSearchService = new InsumoSearchService(_projectIndexService, _projectUsageService, workspaceService, new ProjectDbContextFactory());
@@ -83,8 +90,10 @@ namespace SOPRO.WinForms.Forms
         }
 
 
-        private bool IncluirManoDeObraIndividual => _tipoComponente != TipoComponenteMatriz.ManoDeObra || rbMOTodos.Checked || rbMOIndividual.Checked;
-        private bool IncluirCuadrillas => _tipoComponente == TipoComponenteMatriz.ManoDeObra && (rbMOTodos.Checked || rbMOCuadrillas.Checked);
+        // El catálogo de mano de obra solo contiene individuos: al importar desde
+        // otro proyecto las cuadrillas quedan fuera para no traer matrices ajenas.
+        private bool IncluirManoDeObraIndividual => _modoCatalogo || _tipoComponente != TipoComponenteMatriz.ManoDeObra || rbMOTodos.Checked || rbMOIndividual.Checked;
+        private bool IncluirCuadrillas => !_modoCatalogo && _tipoComponente == TipoComponenteMatriz.ManoDeObra && (rbMOTodos.Checked || rbMOCuadrillas.Checked);
 
 
 
