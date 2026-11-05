@@ -169,6 +169,10 @@ namespace SOPRO.WinForms.Forms
                     var importResult = _externalInsumoImportService.ImportSelected(_context, _proyectoId, grupo.Key, grupoItems, policy, nudCantidad.Value);
                     ComponentesSeleccionados.AddRange(importResult.ImportedComponents);
                 }
+
+                // Los insumos ya quedaron persistidos; los catálogos abiertos deben
+                // reflejarlos sin depender de un refresco manual.
+                OpenFormsRefreshHelper.RefrescarCatalogosAbiertos();
             }
 
             RegisterUsageForSelection(seleccionEfectiva);

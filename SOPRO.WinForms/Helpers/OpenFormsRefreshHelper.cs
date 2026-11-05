@@ -49,6 +49,19 @@ namespace SOPRO.WinForms.Helpers
             }
         }
 
+        /// <summary>
+        /// Refresca los cuatro catálogos abiertos. Se usa cuando una importación
+        /// externa pudo crear insumos de cualquier tipo, como al importar un árbol
+        /// de matriz o al importar desde el selector de insumos.
+        /// </summary>
+        public static void RefrescarCatalogosAbiertos()
+        {
+            RefrescarCatalogosMaterialesAbiertos();
+            RefrescarCatalogosManoDeObraAbiertos();
+            RefrescarCatalogosMaquinariaAbiertos();
+            RefrescarCatalogosHerramientasAbiertos();
+        }
+
         public static void RefrescarCatalogoPorTipo(SOPRO.Core.Entities.TipoComponenteMatriz tipo)
         {
             switch (tipo)
