@@ -20,6 +20,7 @@ namespace SOPRO.WinForms.Forms
     {
         private readonly ProjectWorkspaceService _workspaceService;
         private readonly ProjectLifecycleService _projectLifecycleService;
+        private readonly ProjectDuplicationService _projectDuplicationService;
         private ProjectSession? _currentSession;
 
         /// <summary>
@@ -56,10 +57,12 @@ namespace SOPRO.WinForms.Forms
         {
             _workspaceService = workspaceService;
             _projectLifecycleService = projectLifecycleService;
+            _projectDuplicationService = new ProjectDuplicationService(_workspaceService);
             _initialProjectPath = initialProjectPath;
 
             InitializeComponent();
             SoproTheme.ApplyFormPrincipal(this);
+            dgvRecientes.CellToolTipTextNeeded += DgvRecientes_CellToolTipTextNeeded;
             LoadRecentProjects();
             var version = GetCurrentApplicationVersion();
 
@@ -179,11 +182,22 @@ namespace SOPRO.WinForms.Forms
 
             dgvRecientes.Columns.Add(new DataGridViewButtonColumn
             {
+                Name = "colDuplicar",
+                HeaderText = string.Empty,
+                Text = "Duplicar",
+                UseColumnTextForButtonValue = true,
+                Width = 50,
+                Resizable = DataGridViewTriState.False
+            });
+
+            dgvRecientes.Columns.Add(new DataGridViewButtonColumn
+            {
                 Name = "colEliminar",
                 HeaderText = string.Empty,
-                Text = "🗑",
+                Text = "Eliminar",
                 UseColumnTextForButtonValue = true,
-                Width = 50
+                Width = 50,
+                Resizable = DataGridViewTriState.False
             });
 
             var recentProjects = _workspaceService.GetRecentProjects();
@@ -192,12 +206,14 @@ namespace SOPRO.WinForms.Forms
                 dgvRecientes.Rows.Add(
                     project.Name,
                     project.LastModified.ToString("dd/MMM/yyyy HH:mm"),
-                    project.FilePath);
+                    project.FilePath,
+                    string.Empty,
+                    string.Empty);
             }
 
             if (dgvRecientes.Rows.Count == 0)
             {
-                dgvRecientes.Rows.Add("(No hay proyectos recientes)", string.Empty, string.Empty, string.Empty);
+                dgvRecientes.Rows.Add("(No hay proyectos recientes)", string.Empty, string.Empty, string.Empty, string.Empty);
             }
         }
 
@@ -252,6 +268,22 @@ namespace SOPRO.WinForms.Forms
             OpenProjectPath(openDialog.FileName);
         }
 
+        /// <summary>
+        /// Tooltip accesible en espanol para las columnas de accion del grid de
+        /// recientes: los glifos se pintan a mano, sin texto visible. La
+        /// etiqueta invisible del boton queda disponible para lectores de pantalla.
+        /// </summary>
+        private void DgvRecientes_CellToolTipTextNeeded(object sender, DataGridViewCellToolTipTextNeededEventArgs e)
+        {
+            if (e.ColumnIndex < 0 || e.RowIndex < 0)
+                return;
+
+            if (EsColumnaAccion(e.ColumnIndex))
+                e.ToolTipText = dgvRecientes.Columns[e.ColumnIndex].Name == "colDuplicar"
+                    ? "Duplicar proyecto"
+                    : "Eliminar proyecto";
+        }
+
         private void dgvRecientes_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
         {
             if (e.RowIndex < 0 || e.RowIndex >= dgvRecientes.Rows.Count)
@@ -261,7 +293,7 @@ namespace SOPRO.WinForms.Forms
             if (string.IsNullOrEmpty(nombreProyecto) || nombreProyecto.Contains("(No hay proyectos"))
                 return;
 
-            if (e.ColumnIndex == dgvRecientes.Columns["colEliminar"].Index)
+            if (EsColumnaAccion(e.ColumnIndex))
                 return;
 
             var projectPath = dgvRecientes.Rows[e.RowIndex].Cells["colRuta"].Value?.ToString();
@@ -271,10 +303,36 @@ namespace SOPRO.WinForms.Forms
             OpenProjectPath(projectPath);
         }
 
+        /// <summary>
+        /// true si la columna es un boton de accion (duplicar/eliminar) gestionado
+        /// por otro manejador: el doble clic no debe abrir el proyecto.
+        /// </summary>
+        private bool EsColumnaAccion(int columnIndex)
+        {
+            if (columnIndex < 0 || columnIndex >= dgvRecientes.Columns.Count)
+                return false;
+
+            var nombre = dgvRecientes.Columns[columnIndex].Name;
+            return nombre is "colDuplicar" or "colEliminar";
+        }
+
         private void dgvRecientes_CellClick(object sender, DataGridViewCellEventArgs e)
         {
             if (e.RowIndex < 0 || e.RowIndex >= dgvRecientes.Rows.Count)
                 return;
+
+            if (e.ColumnIndex == dgvRecientes.Columns["colDuplicar"].Index)
+            {
+                var nombreProyectoParaDuplicar = dgvRecientes.Rows[e.RowIndex].Cells["colNombre"].Value?.ToString();
+                if (string.IsNullOrEmpty(nombreProyectoParaDuplicar) || nombreProyectoParaDuplicar.Contains("(No hay proyectos"))
+                    return;
+
+                var rutaProyecto = dgvRecientes.Rows[e.RowIndex].Cells["colRuta"].Value?.ToString();
+                if (!string.IsNullOrWhiteSpace(rutaProyecto))
+                    DuplicarProyecto(rutaProyecto);
+
+                return;
+            }
 
             if (e.ColumnIndex != dgvRecientes.Columns["colEliminar"].Index)
                 return;
@@ -329,6 +387,97 @@ namespace SOPRO.WinForms.Forms
                     "Error",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
+            }
+        }
+
+        private void DuplicarProyecto(string sourceProjectPath)
+        {
+            string destinationPath;
+            try
+            {
+                using var draft = _projectDuplicationService.PrepareDuplicate(sourceProjectPath);
+                draft.Proyecto.Nombre = SugerirNombreCopia(draft.Proyecto.Nombre);
+
+                using var formDatos = new FormDatosProyecto(
+                    draft.Proyecto,
+                    suppressGlobalFormatUpdates: true);
+
+                if (formDatos.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                destinationPath = draft.Publish(formDatos.Proyecto);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Error al duplicar el proyecto:\n{ex.Message}",
+                    "Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                return;
+            }
+
+            MessageBox.Show(
+                $"Proyecto '{Path.GetFileNameWithoutExtension(destinationPath)}' duplicado exitosamente.",
+                "Proyecto duplicado",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+
+            try
+            {
+                LoadRecentProjects();
+                SeleccionarProyectoReciente(destinationPath);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"El proyecto '{Path.GetFileNameWithoutExtension(destinationPath)}' se creó correctamente en:\n{destinationPath}\n\nNo se pudo actualizar la lista de proyectos recientes:\n{ex.Message}",
+                    "Proyecto creado",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        }
+
+        private string SugerirNombreCopia(string projectName)
+        {
+            var nombreBase = string.IsNullOrWhiteSpace(projectName)
+                ? "Proyecto"
+                : projectName.Trim();
+            var nombresExistentes = ProjectWorkspaceService
+                .EnumerateProjectFiles(_workspaceService.ProjectsFolder)
+                .Select(path => Path.GetFileNameWithoutExtension(path))
+                .ToArray();
+
+            var numeroCopia = 1;
+            while (true)
+            {
+                var sufijo = numeroCopia == 1
+                    ? "(copia)"
+                    : $"(copia {numeroCopia})";
+                var candidato = $"{nombreBase} {sufijo}";
+                var nombreArchivo = Path.GetFileNameWithoutExtension(
+                    _workspaceService.BuildProjectDatabasePath(candidato));
+
+                if (!nombresExistentes.Contains(nombreArchivo, StringComparer.OrdinalIgnoreCase))
+                    return candidato;
+
+                numeroCopia++;
+            }
+        }
+
+        private void SeleccionarProyectoReciente(string projectPath)
+        {
+            dgvRecientes.ClearSelection();
+
+            foreach (DataGridViewRow row in dgvRecientes.Rows)
+            {
+                var rowPath = row.Cells["colRuta"].Value?.ToString();
+                if (!string.Equals(rowPath, projectPath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                row.Selected = true;
+                dgvRecientes.CurrentCell = row.Cells["colNombre"];
+                break;
             }
         }
 

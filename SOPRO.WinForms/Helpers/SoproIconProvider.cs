@@ -84,6 +84,9 @@ namespace SOPRO.WinForms.Helpers
                 case SoproIconType.Carpeta:
                     DrawCarpeta(g, color, size);
                     break;
+                case SoproIconType.Copiar:
+                    DrawCopiar(g, color, size);
+                    break;
                 case SoproIconType.Papelera:
                     DrawPapelera(g, color, size);
                     break;
@@ -543,6 +546,43 @@ namespace SOPRO.WinForms.Helpers
             // Cuerpo de la carpeta.
             g.DrawRectangle(pen, left, top + 2, width, height);
             g.DrawLine(pen, left + 2, top + 5, left + width - 2, top + 5);
+
+            g.SmoothingMode = previousSmoothing;
+            g.InterpolationMode = previousInterpolation;
+            g.PixelOffsetMode = previousPixelOffset;
+        }
+
+        private static void DrawCopiar(Graphics g, Color color, int size)
+        {
+            var previousSmoothing = g.SmoothingMode;
+            var previousInterpolation = g.InterpolationMode;
+            var previousPixelOffset = g.PixelOffsetMode;
+            g.SmoothingMode = SmoothingMode.None;
+            g.InterpolationMode = InterpolationMode.NearestNeighbor;
+            g.PixelOffsetMode = PixelOffsetMode.None;
+
+            using var pen = new Pen(color, 1f);
+            using var soft = new SolidBrush(Color.FromArgb(38, color));
+
+            int frontLeft = size / 2;
+            int frontTop = size / 2;
+            int frontRight = size - 3;
+            int frontBottom = size - 3;
+
+            int backLeft = 2;
+            int backTop = 2;
+            int backRight = Math.Max(frontLeft + 1, size - 6);
+            int backBottom = Math.Max(frontTop + 1, size - 6);
+
+            // Hoja trasera: solo el borde en "L" que queda visible detras de la frontal.
+            g.DrawLine(pen, backLeft, backTop, backRight, backTop);
+            g.DrawLine(pen, backLeft, backTop, backLeft, backBottom);
+            g.DrawLine(pen, backLeft, backBottom, frontLeft - 1, backBottom);
+            g.DrawLine(pen, backRight, backTop, backRight, frontTop - 1);
+
+            // Hoja frontal: relleno tenue + borde completo.
+            g.FillRectangle(soft, frontLeft + 1, frontTop + 1, frontRight - frontLeft - 1, frontBottom - frontTop - 1);
+            g.DrawRectangle(pen, frontLeft, frontTop, frontRight - frontLeft, frontBottom - frontTop);
 
             g.SmoothingMode = previousSmoothing;
             g.InterpolationMode = previousInterpolation;
