@@ -56,6 +56,19 @@ namespace SOPRO.WinForms.Forms
 
         private void ConfigurarFormulario()
         {
+            if (_modoCatalogo)
+            {
+                Text = $"Importar {ObtenerNombreTipo()}";
+                lblTitulo.Text = $"IMPORTAR {ObtenerNombreTipo().ToUpperInvariant()}";
+                btnAceptar.Text = "✓ Importar";
+                nudCantidad.Visible = false;
+                lblCantidadLabel.Visible = false;
+                lblUnidad.Visible = false;
+                btnNuevoInsumo.Visible = false;
+                panelFiltroMO.Visible = false;
+                return;
+            }
+
             Text = $"Seleccionar {ObtenerNombreTipo()}";
             lblTitulo.Text = $"SELECCIONAR {ObtenerNombreTipo().ToUpper()}";
             panelFiltroMO.Visible = (_tipoComponente == TipoComponenteMatriz.ManoDeObra);

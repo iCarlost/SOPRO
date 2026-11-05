@@ -109,6 +109,16 @@ namespace SOPRO.WinForms.Forms
 
         private void ApplyEmptyScopeState(bool forceCurrentReload = false)
         {
+            // En modo catálogo el proyecto propio nunca es fuente: sin un proyecto
+            // externo elegido la lista queda vacía con la indicación de origen.
+            if (_modoCatalogo &&
+                (_searchScopeTag == ScopeAllTag || _searchScopeTag == ScopeCurrentTag ||
+                 _searchScopeTag == ScopeRecentTag || _searchScopeTag == ScopeFavoritesTag))
+            {
+                ClearGridForEmptyScope(MensajeProyectoOrigenCatalogo);
+                return;
+            }
+
             if (_searchScopeTag == ScopeCurrentTag)
             {
                 ShowCurrentProjectBase("Mostrando insumos del proyecto actual.", forceCurrentReload);

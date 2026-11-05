@@ -16,6 +16,7 @@ namespace SOPRO.WinForms.Forms
         private ToolStrip panelBotones;
         private ToolStripButton btnEditar;
         private ToolStripButton btnEliminar;
+        private ToolStripButton btnImportar;
         private ToolStripButton btnCerrar;
         private ToolStripButton btnConfigColumnas;
         private StatusStrip statusStrip;
@@ -48,6 +49,7 @@ namespace SOPRO.WinForms.Forms
             panelBotones = new ToolStrip();
             btnEditar = new ToolStripButton();
             btnEliminar = new ToolStripButton();
+            btnImportar = new ToolStripButton();
             btnConfigColumnas = new ToolStripButton();
             btnCerrar = new ToolStripButton();
             statusStrip = new StatusStrip();
@@ -178,7 +180,7 @@ namespace SOPRO.WinForms.Forms
             // 
             panelBotones.BackColor = Color.WhiteSmoke;
             panelBotones.GripStyle = ToolStripGripStyle.Hidden;
-            panelBotones.Items.AddRange(new ToolStripItem[] { btnNuevo, btnEditar, btnEliminar, btnConfigColumnas, btnCerrar });
+            panelBotones.Items.AddRange(new ToolStripItem[] { btnNuevo, btnEditar, btnEliminar, btnImportar, btnConfigColumnas, btnCerrar });
             panelBotones.Location = new Point(0, 60);
             panelBotones.Name = "panelBotones";
             panelBotones.Padding = new Padding(8, 4, 8, 4);
@@ -206,6 +208,16 @@ namespace SOPRO.WinForms.Forms
             btnEliminar.Size = new Size(85, 19);
             btnEliminar.Text = "🗑️ Eliminar";
             btnEliminar.Click += btnEliminar_Click;
+            // 
+            // btnImportar
+            // 
+            btnImportar.BackColor = SystemColors.Control;
+            btnImportar.Font = new Font("Microsoft Sans Serif", 9F, FontStyle.Bold);
+            btnImportar.ForeColor = Color.Black;
+            btnImportar.Name = "btnImportar";
+            btnImportar.Size = new Size(95, 19);
+            btnImportar.Text = "📥 Importar";
+            btnImportar.Click += btnImportar_Click;
             // 
             // btnConfigColumnas
             // 
