@@ -164,6 +164,12 @@ public class ProjectDuplicationServiceTests
     [TestMethod]
     public void PrepareDuplicate_FuenteAbiertaEnWal_FallaCerradoSinModificarOrigen()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive(
+                "La exclusión mediante FileShare.None es una garantía específica de Windows.");
+        }
+
         var root = NuevaCarpetaTemporal();
         try
         {
