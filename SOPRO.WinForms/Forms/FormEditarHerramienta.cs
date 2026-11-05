@@ -81,9 +81,14 @@ namespace SOPRO.WinForms.Forms
         {
             if (cboUnidad.Text == "%MO")
             {
+                // En una herramienta %MO el porcentaje real vive en la cantidad de
+                // cada matriz; el editor no captura precio ni porcentaje. El rango
+                // se mantiene tolerante para cargar registros heredados sin recortes.
+                lblPrecio.Visible = false;
+                nudPrecio.Visible = false;
+                lblHint.Visible = false;
                 lblPrecio.Text = "Porcentaje (%):";
                 lblHint.Text = "💡 Ejemplo: 3.00 para 3% de la mano de obra total";
-                lblHint.Visible = true;
                 nudPrecio.DecimalPlaces = 4;
                 nudPrecio.Maximum = 100;  // 100%
                 nudPrecio.Minimum = 0;
@@ -91,6 +96,8 @@ namespace SOPRO.WinForms.Forms
             }
             else
             {
+                lblPrecio.Visible = true;
+                nudPrecio.Visible = true;
                 lblPrecio.Text = "Precio Unitario:";
                 lblHint.Text = "";
                 lblHint.Visible = false;
@@ -155,6 +162,9 @@ namespace SOPRO.WinForms.Forms
             
             try
             {
+                var unidad = cboUnidad.Text.Trim();
+                var esPorcentajeMO = string.Equals(unidad, "%MO", StringComparison.OrdinalIgnoreCase);
+
                 if (_esNuevo)
                 {
                     var nueva = new Herramienta
@@ -162,8 +172,10 @@ namespace SOPRO.WinForms.Forms
                         ProyectoId = _proyectoId,
                         Clave = txtClave.Text.Trim(),
                         Descripcion = txtDescripcion.Text.Trim(),
-                        Unidad = cboUnidad.Text.Trim(),
-                        PrecioUnitario = nudPrecio.Value,
+                        Unidad = unidad,
+                        // Una herramienta %MO no captura precio: su porcentaje vive
+                        // en la cantidad de cada matriz.
+                        PrecioUnitario = esPorcentajeMO ? 0m : nudPrecio.Value,
                         FechaCreacion = DateTime.Now
                     };
                     
@@ -173,8 +185,11 @@ namespace SOPRO.WinForms.Forms
                 {
                     _herramienta.Clave = txtClave.Text.Trim();
                     _herramienta.Descripcion = txtDescripcion.Text.Trim();
-                    _herramienta.Unidad = cboUnidad.Text.Trim();
-                    _herramienta.PrecioUnitario = nudPrecio.Value;
+                    _herramienta.Unidad = unidad;
+                    // Al seguir en %MO se conserva el valor persistido (el control
+                    // está oculto); al cambiar de unidad se guarda el precio capturado.
+                    if (!esPorcentajeMO)
+                        _herramienta.PrecioUnitario = nudPrecio.Value;
                     _herramienta.FechaModificacion = DateTime.Now;
                 }
                 

@@ -10,17 +10,17 @@ using SOPRO.WinForms.Forms;
 namespace SOPRO.Tests.WinForms.Catalogos;
 
 /// <summary>
-/// Regresión: en las herramientas con unidad <c>%MO</c> el
-/// <see cref="Herramienta.PrecioUnitario"/> es un porcentaje capturado tal cual
-/// (3.00 = 3%). El editor lo trataba como fracción (0.03 = 3%), con máximo 1,
-/// de modo que un registro persistido con 14.11 no se podía cargar ni editar.
+/// Regresión: en las herramientas con unidad <c>%MO</c> el porcentaje real vive
+/// en la cantidad de cada matriz, así que el editor no captura precio ni
+/// porcentaje. El valor persistido se conserva tal cual y un registro heredado
+/// (por ejemplo 14.11) se abre sin excepción ni recorte.
 /// </summary>
 [STATestClass]
 [DoNotParallelize] // Los forms de WinForms requieren un hilo STA dedicado.
 public class FormEditarHerramientaPorcentajeMOTests
 {
     [TestMethod]
-    public void ConstructorConPorcentajeMO_MuestraPorcentajeDirectoConRangoOrdinario()
+    public void ConstructorConPorcentajeMO_OcultaLaCapturaDePrecioYConservaElValorHeredado()
     {
         var herramienta = CrearPorcentajeMO("HER-001", 14.11m);
 
@@ -31,40 +31,27 @@ public class FormEditarHerramientaPorcentajeMOTests
                 LeerUnidad(form).Text,
                 "El formulario debe conservar la unidad %MO del registro.");
 
-            Assert.AreEqual(
-                "Porcentaje (%):",
-                LeerEtiquetaPrecio(form).Text,
-                "La etiqueta debe indicar que el valor es un porcentaje.");
+            Assert.IsFalse(
+                LeerEtiquetaPrecio(form).Visible,
+                "La etiqueta de precio no aplica a una herramienta %MO.");
+
+            Assert.IsFalse(
+                LeerPrecio(form).Visible,
+                "El control de precio no debe mostrarse para una herramienta %MO.");
+
+            Assert.IsFalse(
+                LeerHint(form).Visible,
+                "La ayuda de captura no aplica cuando no se captura porcentaje.");
 
             Assert.AreEqual(
                 14.11m,
                 LeerPrecio(form).Value,
-                "El porcentaje persistido se muestra tal cual (14.11 = 14.11%), sin convertirlo a fracción.");
-
-            Assert.AreEqual(
-                0m,
-                LeerPrecio(form).Minimum,
-                "El porcentaje debe iniciar en 0.");
+                "El valor heredado debe cargarse sin recorte aunque el control esté oculto.");
 
             Assert.AreEqual(
                 100m,
                 LeerPrecio(form).Maximum,
-                "El rango ordinario de captura del porcentaje debe ser 0..100.");
-
-            Assert.AreEqual(
-                0.01m,
-                LeerPrecio(form).Increment,
-                "El incremento de captura debe ser 0.01.");
-
-            Assert.AreEqual(
-                4,
-                LeerPrecio(form).DecimalPlaces,
-                "La captura del porcentaje debe permitir 4 decimales.");
-
-            StringAssert.Contains(
-                LeerHint(form).Text,
-                "3.00 para 3%",
-                "El texto de ayuda debe indicar que 3.00 equivale a 3%.");
+                "El rango de carga debe seguir siendo tolerante (0..100).");
         });
     }
 
@@ -87,11 +74,53 @@ public class FormEditarHerramientaPorcentajeMOTests
     }
 
     [TestMethod]
-    public void ConstructorConHerramientaNormal_MantieneRangoDePrecioUnitario()
+    public void GuardarPorcentajeMO_ConservaElValorPersistidoSinPisarlo()
+    {
+        var herramienta = CrearPorcentajeMO("HER-003", 14.11m);
+
+        ConFormularioExistente(herramienta, form =>
+        {
+            InvocarGuardado(form);
+
+            Assert.AreEqual(
+                "%MO",
+                herramienta.Unidad,
+                "La unidad debe mantenerse en %MO.");
+            Assert.AreEqual(
+                14.11m,
+                herramienta.PrecioUnitario,
+                "Guardar una herramienta %MO no debe pisar el valor persistido con el control oculto.");
+        });
+    }
+
+    [TestMethod]
+    public void CambiarUnidadAMonetaria_VuelveAMostrarLaCapturaDePrecio()
+    {
+        var herramienta = CrearPorcentajeMO("HER-004", 14.11m);
+
+        ConFormularioExistente(herramienta, form =>
+        {
+            LeerUnidad(form).SelectedItem = "pza";
+
+            Assert.IsTrue(
+                LeerPrecio(form).Visible,
+                "Al cambiar a una unidad monetaria el precio vuelve a capturarse.");
+            Assert.IsTrue(
+                LeerEtiquetaPrecio(form).Visible,
+                "La etiqueta de precio unitario debe reaparecer.");
+            Assert.AreEqual(
+                "Precio Unitario:",
+                LeerEtiquetaPrecio(form).Text,
+                "La etiqueta debe volver al texto de precio unitario.");
+        });
+    }
+
+    [TestMethod]
+    public void ConstructorConHerramientaNormal_MantieneRangoYCapturaDePrecio()
     {
         var herramienta = new Herramienta
         {
-            Clave = "HER-003",
+            Clave = "HER-005",
             Descripcion = "Herramienta de prueba",
             Unidad = "pza",
             PrecioUnitario = 1234.56m
@@ -103,6 +132,10 @@ public class FormEditarHerramientaPorcentajeMOTests
                 "Precio Unitario:",
                 LeerEtiquetaPrecio(form).Text,
                 "Las herramientas normales conservan la etiqueta de precio unitario.");
+
+            Assert.IsTrue(
+                LeerPrecio(form).Visible,
+                "Las herramientas normales conservan la captura de precio.");
 
             Assert.AreEqual(
                 1234.56m,
@@ -132,6 +165,16 @@ public class FormEditarHerramientaPorcentajeMOTests
             PrecioUnitario = porcentaje
         };
 
+    private static void InvocarGuardado(FormEditarHerramienta form)
+    {
+        var metodo = typeof(FormEditarHerramienta).GetMethod(
+            "btnGuardar_Click",
+            BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("No existe 'btnGuardar_Click' en el formulario.");
+
+        metodo.Invoke(form, new object?[] { null, EventArgs.Empty });
+    }
+
     private static void ConFormularioExistente(
         Herramienta herramienta,
         Action<FormEditarHerramienta> verificar)
@@ -145,17 +188,31 @@ public class FormEditarHerramientaPorcentajeMOTests
         try
         {
             contexto = new SOPROContext(dbPath);
+            contexto.Database.EnsureCreated();
             form = new FormEditarHerramienta(contexto, 0, herramienta);
+            // Control.Visible solo refleja el estado real con el formulario mostrado.
+            form.Show();
 
             verificar(form);
         }
         finally
         {
-            form?.Dispose();
+            if (form != null)
+            {
+                form.Close();
+                form.Dispose();
+            }
             contexto?.Dispose();
 
-            if (Directory.Exists(root))
-                Directory.Delete(root, true);
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            try
+            {
+                if (Directory.Exists(root))
+                    Directory.Delete(root, true);
+            }
+            catch (IOException)
+            {
+            }
         }
     }
 
