@@ -117,6 +117,10 @@ namespace SOPRO.WinForms.Forms
                 _projectUsageService.RegisterMatrixSelection(externalMatrix.ProjectPath, externalMatrix.MatrixId);
                 _projectUsageService.RegisterMatrixSelection(_context.DatabasePath, result.RootMatrixId);
 
+                // El árbol importado puede haber creado insumos de los cuatro tipos:
+                // los catálogos abiertos deben reflejarlos sin refresco manual.
+                OpenFormsRefreshHelper.RefrescarCatalogosAbiertos();
+
                 MessageBox.Show(
                     "Importación completada.\n\n" +
                     $"Matrices nuevas: {result.ImportedMatrices}\n" +
