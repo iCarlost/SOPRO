@@ -27,6 +27,7 @@ namespace SOPRO.WinForms.Forms
             
             ConfigurarFormulario();
             CargarUnidades();
+            SeleccionTotalNumericUpDown.Configurar(nudPrecio);
             
             if (!_esNuevo)
                 CargarDatos();
@@ -107,7 +108,26 @@ namespace SOPRO.WinForms.Forms
             }
         }
         
+        private bool _guardando;
+
         private void btnGuardar_Click(object sender, EventArgs e)
+        {
+            if (_guardando) return;
+            _guardando = true;
+            btnGuardar.Enabled = false;
+            try
+            {
+                Guardar();
+            }
+            finally
+            {
+                _guardando = false;
+                if (!IsDisposed && !Disposing)
+                    btnGuardar.Enabled = true;
+            }
+        }
+
+        private void Guardar()
         {
             // Validaciones
             if (string.IsNullOrWhiteSpace(txtClave.Text))

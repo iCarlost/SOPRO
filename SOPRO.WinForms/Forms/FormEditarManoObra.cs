@@ -28,6 +28,7 @@ namespace SOPRO.WinForms.Forms
             _proyecto = proyecto;
             
             ConfigurarFormulario();
+            SeleccionTotalNumericUpDown.Configurar(nudSalarioBase);
             
             if (_esNuevo)
                 txtClave.Text = KeySuggestionService.Generate();
@@ -208,108 +209,122 @@ namespace SOPRO.WinForms.Forms
             }
         }
         
+        private bool _guardando;
+
         private async void btnGuardar_Click(object sender, EventArgs e)
         {
-            // Validaciones
-            if (string.IsNullOrWhiteSpace(txtClave.Text))
+            if (_guardando) return;
+            _guardando = true;
+            btnGuardar.Enabled = false;
+            try
             {
-                MessageBox.Show(
-                    "La clave es requerida.",
-                    "Campo Requerido",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning
-                );
-                txtClave.Focus();
-                return;
-            }
-            
-            if (string.IsNullOrWhiteSpace(txtDescripcion.Text))
-            {
-                MessageBox.Show(
-                    "La descripción es requerida.",
-                    "Campo Requerido",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning
-                );
-                txtDescripcion.Focus();
-                return;
-            }
-            
-            if (string.IsNullOrWhiteSpace(cboUnidad.Text))
-            {
-                MessageBox.Show(
-                    "La unidad es requerida.",
-                    "Campo Requerido",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning
-                );
-                cboUnidad.Focus();
-                return;
-            }
-            
-            if (_proyectoId.HasValue)
-            {
-                var errorClave = KeyValidationService.ValidateUniqueKey(
-                    _context,
-                    txtClave.Text.Trim(),
-                    _proyectoId.Value,
-                    _esNuevo ? null : _manoDeObra.Id,
-                    CatalogItemType.ManoDeObra
-                );
-
-                if (errorClave != null)
+                // Validaciones
+                if (string.IsNullOrWhiteSpace(txtClave.Text))
                 {
                     MessageBox.Show(
-                        errorClave,
-                        "Clave Duplicada",
+                        "La clave es requerida.",
+                        "Campo Requerido",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning
                     );
                     txtClave.Focus();
                     return;
                 }
-            }
-            
-            try
-            {
-                var dto = new ManoDeObraEditDto
+
+                if (string.IsNullOrWhiteSpace(txtDescripcion.Text))
                 {
-                    Clave = txtClave.Text,
-                    Descripcion = txtDescripcion.Text,
-                    Unidad = cboUnidad.Text,
-                    SalarioBase = nudSalarioBase.Value,
-                    FactorSalarioReal = nudFSR.Value,
-                    SalarioReal = nudSalarioReal.Value,
-                    Notas = txtNotas.Text,
-                    GuardarEnMaestro = rbMaestro.Checked,
-                    ProyectoId = _proyectoId
-                };
+                    MessageBox.Show(
+                        "La descripción es requerida.",
+                        "Campo Requerido",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning
+                    );
+                    txtDescripcion.Focus();
+                    return;
+                }
 
-                var result = await CatalogItemService.SaveManoDeObraAsync(_context, dto, _esNuevo ? null : _manoDeObra);
+                if (string.IsNullOrWhiteSpace(cboUnidad.Text))
+                {
+                    MessageBox.Show(
+                        "La unidad es requerida.",
+                        "Campo Requerido",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning
+                    );
+                    cboUnidad.Focus();
+                    return;
+                }
 
-                if (result.TriggeredRecalculation)
-                    OpenFormsRefreshHelper.RefrescarPresupuestosAbiertos();
+                if (_proyectoId.HasValue)
+                {
+                    var errorClave = KeyValidationService.ValidateUniqueKey(
+                        _context,
+                        txtClave.Text.Trim(),
+                        _proyectoId.Value,
+                        _esNuevo ? null : _manoDeObra.Id,
+                        CatalogItemType.ManoDeObra
+                    );
 
-                OpenFormsRefreshHelper.RefrescarCatalogosManoDeObraAbiertos();
+                    if (errorClave != null)
+                    {
+                        MessageBox.Show(
+                            errorClave,
+                            "Clave Duplicada",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning
+                        );
+                        txtClave.Focus();
+                        return;
+                    }
+                }
 
-                MessageBox.Show(
-                    result.IsNew ? "Registro creado exitosamente." : "Registro actualizado exitosamente.",
-                    "Guardado",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information
-                );
-                
-                DialogResult = DialogResult.OK;
-                Close();
+                try
+                {
+                    var dto = new ManoDeObraEditDto
+                    {
+                        Clave = txtClave.Text,
+                        Descripcion = txtDescripcion.Text,
+                        Unidad = cboUnidad.Text,
+                        SalarioBase = nudSalarioBase.Value,
+                        FactorSalarioReal = nudFSR.Value,
+                        SalarioReal = nudSalarioReal.Value,
+                        Notas = txtNotas.Text,
+                        GuardarEnMaestro = rbMaestro.Checked,
+                        ProyectoId = _proyectoId
+                    };
+
+                    var result = await CatalogItemService.SaveManoDeObraAsync(_context, dto, _esNuevo ? null : _manoDeObra);
+
+                    if (result.TriggeredRecalculation)
+                        OpenFormsRefreshHelper.RefrescarPresupuestosAbiertos();
+
+                    OpenFormsRefreshHelper.RefrescarCatalogosManoDeObraAbiertos();
+
+                    MessageBox.Show(
+                        result.IsNew ? "Registro creado exitosamente." : "Registro actualizado exitosamente.",
+                        "Guardado",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information
+                    );
+
+                    DialogResult = DialogResult.OK;
+                    Close();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        $"Error al guardar:\n{ex.Message}",
+                        "Error",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error
+                    );
+                }
             }
-            catch (Exception ex)
+            finally
             {
-                MessageBox.Show(
-                    $"Error al guardar:\n{ex.Message}",
-                    "Error",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error
-                );
+                _guardando = false;
+                if (!IsDisposed && !Disposing)
+                    btnGuardar.Enabled = true;
             }
         }
         

@@ -133,6 +133,7 @@ namespace SOPRO.WinForms.Forms
             txtNotas.Font = new Font("Segoe UI", 9.5F);
             txtNotas.Location = new Point(30, 180);
             txtNotas.Multiline = true;
+            txtNotas.AcceptsReturn = true;
             txtNotas.Name = "txtNotas";
             txtNotas.ScrollBars = ScrollBars.Vertical;
             txtNotas.Size = new Size(570, 80);
@@ -164,6 +165,7 @@ namespace SOPRO.WinForms.Forms
             btnCancelar.Text = "Cancelar";
             btnCancelar.UseVisualStyleBackColor = false;
             btnCancelar.Click += btnCancelar_Click;
+            btnCancelar.DialogResult = DialogResult.Cancel;
             // 
             // grpOrigen
             // 
@@ -202,6 +204,8 @@ namespace SOPRO.WinForms.Forms
             // 
             // FormEditarMaterial
             // 
+            AcceptButton = btnGuardar;
+            CancelButton = btnCancelar;
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             BackColor = Color.White;

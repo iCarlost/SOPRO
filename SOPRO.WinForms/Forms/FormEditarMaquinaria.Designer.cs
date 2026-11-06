@@ -294,6 +294,7 @@ namespace SOPRO.WinForms.Forms
             txtNotas.Font = new Font("Segoe UI", 9.5F);
             txtNotas.Location = new Point(30, 344);
             txtNotas.Multiline = true;
+            txtNotas.AcceptsReturn = true;
             txtNotas.Name = "txtNotas";
             txtNotas.ScrollBars = ScrollBars.Vertical;
             txtNotas.Size = new Size(700, 80);
@@ -325,9 +326,12 @@ namespace SOPRO.WinForms.Forms
             btnCancelar.Text = "Cancelar";
             btnCancelar.UseVisualStyleBackColor = false;
             btnCancelar.Click += btnCancelar_Click;
+            btnCancelar.DialogResult = DialogResult.Cancel;
             // 
             // FormEditarMaquinaria
             // 
+            AcceptButton = btnGuardar;
+            CancelButton = btnCancelar;
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             BackColor = Color.White;

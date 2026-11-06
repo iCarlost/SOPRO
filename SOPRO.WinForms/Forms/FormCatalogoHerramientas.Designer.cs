@@ -147,6 +147,7 @@ namespace SOPRO.WinForms.Forms
             btnNuevo.Name = "btnNuevo";
             btnNuevo.Size = new Size(71, 19);
             btnNuevo.Text = "➕ Nueva";
+            btnNuevo.ToolTipText = "Nueva (Insert)";
             btnNuevo.Click += btnNuevo_Click;
             // 
             // dgvHerramientas
@@ -196,6 +197,7 @@ namespace SOPRO.WinForms.Forms
             btnEditar.Name = "btnEditar";
             btnEditar.Size = new Size(69, 19);
             btnEditar.Text = "✏️ Editar";
+            btnEditar.ToolTipText = "Editar (Enter)";
             btnEditar.Click += btnEditar_Click;
             // 
             // btnEliminar
@@ -207,6 +209,7 @@ namespace SOPRO.WinForms.Forms
             btnEliminar.Name = "btnEliminar";
             btnEliminar.Size = new Size(85, 19);
             btnEliminar.Text = "🗑️ Eliminar";
+            btnEliminar.ToolTipText = "Eliminar (Supr)";
             btnEliminar.Click += btnEliminar_Click;
             // 
             // btnImportar
@@ -217,6 +220,7 @@ namespace SOPRO.WinForms.Forms
             btnImportar.Name = "btnImportar";
             btnImportar.Size = new Size(95, 19);
             btnImportar.Text = "📥 Importar";
+            btnImportar.ToolTipText = "Importar catálogo";
             btnImportar.Click += btnImportar_Click;
             // 
             // btnConfigColumnas
@@ -227,6 +231,7 @@ namespace SOPRO.WinForms.Forms
             btnConfigColumnas.Name = "btnConfigColumnas";
             btnConfigColumnas.Size = new Size(95, 19);
             btnConfigColumnas.Text = "📐 Columnas";
+            btnConfigColumnas.ToolTipText = "Configurar columnas";
             btnConfigColumnas.Click += btnConfigColumnas_Click;
             // 
             // btnCerrar
@@ -238,6 +243,7 @@ namespace SOPRO.WinForms.Forms
             btnCerrar.Name = "btnCerrar";
             btnCerrar.Size = new Size(58, 19);
             btnCerrar.Text = "✖ Cerrar";
+            btnCerrar.ToolTipText = "Cerrar catálogo";
             btnCerrar.Click += btnCerrar_Click;
             // 
             // statusStrip
