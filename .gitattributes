@@ -28,3 +28,6 @@
 *.db     binary
 *.db-wal binary
 *.db-shm binary
+
+# Proyectos SOPRO (contenedor SQLite)
+*.soproproj binary

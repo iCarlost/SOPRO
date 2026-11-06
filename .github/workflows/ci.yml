@@ -43,6 +43,7 @@ jobs:
             '\.db$'
             '\.db-wal$'
             '\.db-shm$'
+            '\.soproproj(-wal|-shm|\.lock)?$'
             '\.pfx$'
             '\.snk$'
             '\.key$'
@@ -59,13 +60,21 @@ jobs:
 
           forbidden="$(IFS='|'; echo "${patterns[*]}")"
 
-          # Exencion exacta: el fixture sintetico es un .db rastreado por diseno
+          # Exenciones exactas: el fixture sintetico es un .db rastreado por diseno
           # (Fase 3.1). Sin el, un clon limpio/CI no ejecuta la suite de regresion.
-          # El resto de .db, goldens Real e instaladores siguen prohibidos hasta
-          # que la purga (Fase 4.2) los retire de todos los refs.
-          exempt="SOPRO.Tests/TestData/proyecto-sintetico-vial-demo.db"
+          # El proyecto de ejemplo es el unico .soproproj distribuible: viaja en el
+          # instalador y se copia a Documentos solo si no existe.
+          # El resto de .db, .soproproj, goldens Real e instaladores siguen prohibidos.
+          exempt=(
+            "SOPRO.Tests/TestData/proyecto-sintetico-vial-demo.db"
+            "installer/assets/proyectos/CATALOGO GENERAL 2026.soproproj"
+          )
+          exempt_args=()
+          for path in "${exempt[@]}"; do
+            exempt_args+=(-e "$path")
+          done
 
-          violations="$(git ls-files | grep -v -x -F -- "$exempt" | grep -E "$forbidden" || true)"
+          violations="$(git ls-files | grep -v -x -F "${exempt_args[@]}" | grep -E "$forbidden" || true)"
 
           if [ -n "$violations" ]; then
             while IFS= read -r file; do
@@ -106,6 +115,7 @@ jobs:
             README.md
             build-release.ps1
             installer/SOPRO-InnoSetup.iss
+            "installer/assets/proyectos/CATALOGO GENERAL 2026.soproproj"
             SOPRO.Calculation/SOPRO.Calculation.csproj
           )
           for path in "${required[@]}"; do
@@ -115,6 +125,38 @@ jobs:
             fi
           done
           echo "OK: archivos requeridos no estan ignorados"
+
+      # Gate estatico del proyecto de ejemplo: debe instalarse en Documentos sin
+      # sobrescribir el archivo existente y sin que el desinstalador lo borre.
+      - name: Verify installer ships the sample project safely
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          iss="installer/SOPRO-InnoSetup.iss"
+          sample="CATALOGO GENERAL 2026.soproproj"
+          section="$(awk '/^\[Files\]/{inside=1;next}/^\[/{inside=0}inside' "$iss")"
+          count="$(printf '%s\n' "$section" | grep -c -F -- "$sample" || true)"
+          entry="$(printf '%s\n' "$section" | grep -F -- "$sample" || true)"
+
+          if [ "$count" -ne 1 ]; then
+            echo "::error file=$iss::El proyecto de ejemplo debe declararse una sola vez en [Files] (encontradas: $count)"
+            exit 1
+          fi
+          if ! printf '%s\n' "$entry" | grep -F -q -- 'DestDir: "{userdocs}\SOPRO\Proyectos"'; then
+            echo "::error file=$iss::El proyecto de ejemplo debe instalarse en {userdocs}\SOPRO\Proyectos"
+            exit 1
+          fi
+          if ! printf '%s\n' "$entry" | grep -F -q -- 'onlyifdoesntexist'; then
+            echo "::error file=$iss::Falta onlyifdoesntexist en la entrada del proyecto de ejemplo"
+            exit 1
+          fi
+          if ! printf '%s\n' "$entry" | grep -F -q -- 'uninsneveruninstall'; then
+            echo "::error file=$iss::Falta uninsneveruninstall en la entrada del proyecto de ejemplo"
+            exit 1
+          fi
+
+          echo "OK: el proyecto de ejemplo se instala sin sobrescribir ni borrarse al desinstalar."
 
   solution-build:
     name: Solution build and tests
