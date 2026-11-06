@@ -230,12 +230,7 @@ namespace SOPRO.WinForms.Forms
             form.TopLevel        = false;
             form.FormBorderStyle = FormBorderStyle.None;
             form.Dock            = DockStyle.Fill;
-            form.FormClosed += (s, ev) =>
-            {
-                for (int i = tabControl.TabPages.Count - 1; i >= 0; i--)
-                    if (tabControl.TabPages[i].Name == nodeName)
-                    { tabControl.TabPages.RemoveAt(i); break; }
-            };
+            form.FormClosed += (s, ev) => QuitarPestana(tab);
 
             tab.Padding = new Padding(0);
             tab.Margin = new Padding(0);
@@ -277,46 +272,74 @@ namespace SOPRO.WinForms.Forms
 
         private void tabControl_MouseClick(object sender, MouseEventArgs e)
         {
-            if (e.Button == MouseButtons.Middle)
+            if (e.Button != MouseButtons.Middle && e.Button != MouseButtons.Right)
+                return;
+
+            for (int i = 0; i < tabControl.TabCount; i++)
             {
-                for (int i = 0; i < tabControl.TabCount; i++)
-                    if (tabControl.GetTabRect(i).Contains(e.Location)) { CerrarPestana(i); break; }
-            }
-            else if (e.Button == MouseButtons.Right)
-            {
-                for (int i = 0; i < tabControl.TabCount; i++)
+                if (!tabControl.GetTabRect(i).Contains(e.Location)) continue;
+
+                TabPage tab = tabControl.TabPages[i];
+                if (e.Button == MouseButtons.Middle)
                 {
-                    if (!tabControl.GetTabRect(i).Contains(e.Location)) continue;
-                    int idx = i;
-                    var menu = new ContextMenuStrip();
-                    menu.Items.Add("X Cerrar",       null, (s, a) => CerrarPestana(idx));
-                    menu.Items.Add("X Cerrar todas", null, (s, a) => CerrarTodasLasPestanas());
-                    menu.Items.Add("X Cerrar otras", null, (s, a) => CerrarOtrasPestanas(idx));
-                    menu.Show(tabControl, e.Location);
-                    break;
+                    CerrarPestana(tab);
+                    return;
                 }
+
+                ContextMenuStrip menu = new ContextMenuStrip();
+                menu.Items.Add("X Cerrar",       null, (s, a) => CerrarPestana(tab));
+                menu.Items.Add("X Cerrar todas", null, (s, a) => CerrarTodasLasPestanas());
+                menu.Items.Add("X Cerrar otras", null, (s, a) => CerrarOtrasPestanas(tab));
+                menu.Show(tabControl, e.Location);
+                return;
             }
         }
 
         private void CerrarTodasLasPestanas()
         {
-            while (tabControl.TabPages.Count > 0) CerrarPestana(0);
+            foreach (TabPage tab in tabControl.TabPages.Cast<TabPage>().ToArray())
+                CerrarPestana(tab);
         }
 
         private sealed record RibbonButtonState(SoproIconType? IconType, bool Active, int IconSize, SoproIconButtonOptions? Options);
 
-        private void CerrarOtrasPestanas(int index)
+        private void CerrarOtrasPestanas(TabPage? tab)
         {
-            for (int i = tabControl.TabPages.Count - 1; i >= 0; i--)
-                if (i != index) CerrarPestana(i);
+            if (tab == null || !tabControl.TabPages.Contains(tab)) return;
+
+            foreach (TabPage otra in tabControl.TabPages.Cast<TabPage>().ToArray())
+                if (!ReferenceEquals(otra, tab))
+                    CerrarPestana(otra);
         }
 
-        private void CerrarPestana(int index)
+        private void CerrarPestana(TabPage? tab)
         {
-            if (index < 0 || index >= tabControl.TabPages.Count) return;
-            var tab = tabControl.TabPages[index];
-            if (tab.Controls.Count > 0 && tab.Controls[0] is Form f) f.Close();
-            tabControl.TabPages.RemoveAt(index);
+            if (tab == null || !tabControl.TabPages.Contains(tab)) return;
+
+            Form? formulario = ObtenerFormularioDePestana(tab);
+            if (formulario != null && !formulario.IsDisposed)
+            {
+                formulario.Close();
+                if (!formulario.IsDisposed)
+                    return;
+            }
+
+            QuitarPestana(tab);
+        }
+
+        private void QuitarPestana(TabPage? tab)
+        {
+            if (tab == null || !tabControl.TabPages.Contains(tab)) return;
+            tabControl.TabPages.Remove(tab);
+        }
+
+        private static Form? ObtenerFormularioDePestana(TabPage tab)
+        {
+            foreach (Control control in tab.Controls)
+                if (control is Form formulario)
+                    return formulario;
+
+            return null;
         }
         private const int WM_SETREDRAW = 0x000B;
 
