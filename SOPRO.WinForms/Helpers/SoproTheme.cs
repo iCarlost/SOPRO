@@ -369,34 +369,43 @@ namespace SOPRO.WinForms.Helpers
             dgv.AlternatingRowsDefaultCellStyle = altStyle;
             dgv.RowHeadersVisible = false;
 
-            StyleDeleteColumn(dgv);
+            StyleActionColumns(dgv);
         }
 
-        private static void StyleDeleteColumn(DataGridView dgv)
+        private static readonly string[] NombresColumnasAccion = { "colDuplicar", "colEliminar" };
+
+        private static bool EsColumnaAccion(string nombreColumna)
+            => Array.IndexOf(NombresColumnasAccion, nombreColumna) >= 0;
+
+        private static bool EsColumnaAccion(DataGridView dgv, int columnIndex)
         {
-            // La columna de eliminar se recrea en cada LoadRecentProjects,
+            if (columnIndex < 0 || columnIndex >= dgv.Columns.Count) return false;
+            return EsColumnaAccion(dgv.Columns[columnIndex].Name);
+        }
+
+        private static SoproIconType IconoDeColumnaAccion(string nombreColumna)
+            => nombreColumna == "colDuplicar" ? SoproIconType.Copiar : SoproIconType.Papelera;
+
+        private static void StyleActionColumns(DataGridView dgv)
+        {
+            // Las columnas de accion se recrean en cada LoadRecentProjects,
             // por eso la configuracion se reaplica al agregarse la columna.
             dgv.ColumnAdded += (_, e) =>
             {
                 if (e.Column == null) return;
-                if (!string.Equals(e.Column.Name, "colEliminar", StringComparison.Ordinal)) return;
-                ConfigureDeleteColumn(e.Column);
+                if (!EsColumnaAccion(e.Column.Name)) return;
+                ConfigureActionColumn(e.Column);
             };
 
-            ConfigureDeleteColumn(dgv.Columns["colEliminar"]);
+            foreach (var nombre in NombresColumnasAccion)
+                ConfigureActionColumn(dgv.Columns[nombre]);
 
             int hoverRow = -1;
             int hoverColumn = -1;
 
-            bool IsDeleteColumn(DataGridView grid, int columnIndex)
-            {
-                var deleteColumn = grid.Columns["colEliminar"];
-                return deleteColumn != null && columnIndex == deleteColumn.Index;
-            }
-
             dgv.CellMouseEnter += (_, e) =>
             {
-                if (e.RowIndex < 0 || !IsDeleteColumn(dgv, e.ColumnIndex)) return;
+                if (e.RowIndex < 0 || !EsColumnaAccion(dgv, e.ColumnIndex)) return;
                 hoverRow = e.RowIndex;
                 hoverColumn = e.ColumnIndex;
                 dgv.InvalidateCell(e.ColumnIndex, e.RowIndex);
@@ -413,7 +422,7 @@ namespace SOPRO.WinForms.Helpers
             dgv.CellPainting += (_, e) =>
             {
                 if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
-                if (!IsDeleteColumn(dgv, e.ColumnIndex)) return;
+                if (!EsColumnaAccion(dgv, e.ColumnIndex)) return;
 
                 var graphics = e.Graphics;
                 if (graphics == null) return;
@@ -445,21 +454,21 @@ namespace SOPRO.WinForms.Helpers
                 int glyphX = e.CellBounds.Left + ((e.CellBounds.Width - glyphSize) / 2);
                 int glyphY = e.CellBounds.Top + ((e.CellBounds.Height - glyphSize) / 2);
 
-                using (var glyph = SoproIconProvider.GetIcon(SoproIconType.Papelera, glyphColor, glyphSize))
+                using (var glyph = SoproIconProvider.GetIcon(IconoDeColumnaAccion(dgv.Columns[e.ColumnIndex].Name), glyphColor, glyphSize))
                     graphics.DrawImage(glyph, new Rectangle(glyphX, glyphY, glyphSize, glyphSize));
 
                 e.Handled = true;
             };
         }
 
-        private static void ConfigureDeleteColumn(DataGridViewColumn? column)
+        private static void ConfigureActionColumn(DataGridViewColumn? column)
         {
             if (column is not DataGridViewButtonColumn buttonColumn) return;
 
-            // Se elimina el emoji: el glifo Papelera se pinta a mano para
-            // poder colorearlo (gris en reposo, azul en hover).
-            buttonColumn.Text = string.Empty;
-            buttonColumn.UseColumnTextForButtonValue = true;
+            // El glifo (Copiar/Papelera) se pinta a mano para poder colorearlo
+            // (gris en reposo, azul en hover). El Text con la etiqueta en
+            // espanol permanece invisible y queda disponible para lectores
+            // de pantalla si el pintado personalizado no llega a ejecutarse.
             buttonColumn.FlatStyle = FlatStyle.Flat;
         }
 

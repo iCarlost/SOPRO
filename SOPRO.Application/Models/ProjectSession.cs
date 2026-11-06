@@ -31,8 +31,21 @@ namespace SOPRO.Application.Models
 
         public void Dispose()
         {
-            _workspaceLock?.Dispose();
-            Context.Dispose();
+            try
+            {
+                Context.Dispose();
+            }
+            finally
+            {
+                try
+                {
+                    SqliteConnectionPool.Clear(DatabasePath ?? Context.DatabasePath);
+                }
+                finally
+                {
+                    _workspaceLock?.Dispose();
+                }
+            }
         }
     }
 }
