@@ -24,55 +24,141 @@ namespace SOPRO.WinForms.Forms
     /// </summary>
     public partial class FormPresupuesto
     {
-        // Política de alto del workspace APU (Panel2 del split). Única fuente de verdad.
+        // Política de tamaño del workspace APU (Panel2 del split). Única fuente de verdad.
         // Valores en píxeles de diseño a 96 DPI; se escalan con EscalarPixelesDiseno.
+        // Modo Abajo se rige por la dimensión de ALTO y el modo Derecha por la de ANCHO.
         private const int AltoMinimoFuncionalApu = 250;    // toolbar (31) + host operativo fuera del modo compacto
         private const int AltoMinimoDegradadoApu = 150;    // piso duro en ventanas pequeñas (modo compacto)
         private const double FactorAlturaWorkspace = 0.42; // crecimiento proporcional sobre el alto del split
+        private const int AnchoMinimoFuncionalApu = 560;   // objetivo por defecto del modo Derecha
+        private const int AnchoMinimoDegradadoApu = 320;   // piso duro del modo Derecha (scroll horizontal aceptado)
+        private const double FactorAnchoWorkspace = 0.35;  // crecimiento proporcional sobre el ancho del split
         private const decimal CantidadMinimaSelector = 0.01m;
         private const decimal CantidadPorDefectoPanel = 1m;
-        private bool _politicaAltoWorkspaceInicializada;
-        private bool _ajustandoAltoWorkspace;
+        private bool _politicaWorkspaceInicializada;
+        private bool _ajustandoDimensionWorkspace;
+        private bool _splitterMovimientoUsuario;
+
+        internal PosicionWorkspace PosicionWorkspaceActual => _posicionWorkspace;
+
+        internal SplitContainer SplitWorkspace => splitContainer!;
+
+        internal string TextoBotonToggleMatrices => btnToggleMatrices.Text!;
+
+        internal string TextoBotonPosicion => btnWorkspacePosicion.Text!;
+
+        private bool EsModoDerecha => _posicionWorkspace == PosicionWorkspace.Derecha;
 
         private void LoadWorkspacePanelState()
         {
             try
             {
-                var dir = Path.GetDirectoryName(WorkspacePanelStatePath);
+                string? dir = Path.GetDirectoryName(WorkspacePanelStatePath);
                 if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+                PresupuestoWorkspaceEstado estado;
                 if (File.Exists(WorkspacePanelStatePath))
                 {
-                    var raw = File.ReadAllText(WorkspacePanelStatePath).Trim();
-                    if (int.TryParse(raw, out var h) && h > 120)
-                        _workspacePanelHeight = h;
+                    estado = PresupuestoWorkspaceEstado.Leer(WorkspacePanelStatePath);
                 }
+                else if (File.Exists(LegacyWorkspacePanelStatePath))
+                {
+                    // La ruta heredada (solo Id) se importa a la nueva (base + Id) una
+                    // sola vez; el archivo heredado NO se borra: otra app o proyecto
+                    // puede seguir usándolo. Desde aquí solo escribe la nueva ruta.
+                    estado = PresupuestoWorkspaceEstado.Leer(LegacyWorkspacePanelStatePath);
+                    estado.Guardar(WorkspacePanelStatePath);
+                }
+                else
+                {
+                    estado = PresupuestoWorkspaceEstado.PorDefecto;
+                }
+
+                _posicionWorkspace = estado.Posicion;
+                _workspacePanelHeight = estado.Alto;
+                _workspacePanelWidth = estado.Ancho;
             }
             catch { }
 
-            InicializarPoliticaAltoWorkspace();
+            InicializarPoliticaWorkspace();
         }
 
         private void SaveWorkspacePanelState()
         {
-            // No persistir alturas fijadas por la política (evita congelar el alto y realimentar Resize).
-            if (_ajustandoAltoWorkspace)
+            // No persistir tamaños fijados por la política (evita congelar la dimensión y realimentar Resize).
+            // Solo escribe las preferencias actuales en memoria: nada recalcula
+            // geometría aquí, así que ningún movimiento interno del split (que
+            // WinForms emite también por DPI y relayout) puede escribir basura.
+            if (_ajustandoDimensionWorkspace)
                 return;
 
             try
             {
-                var dir = Path.GetDirectoryName(WorkspacePanelStatePath);
+                string? dir = Path.GetDirectoryName(WorkspacePanelStatePath);
                 if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
-                if (!splitContainer.Panel2Collapsed)
-                {
-                    int height = splitContainer.Height - splitContainer.SplitterDistance;
-                    if (height > splitContainer.Panel2MinSize)
-                    {
-                        _workspacePanelHeight = height;
-                        File.WriteAllText(WorkspacePanelStatePath, _workspacePanelHeight.ToString());
-                    }
-                }
+
+                new PresupuestoWorkspaceEstado(_posicionWorkspace, _workspacePanelHeight, _workspacePanelWidth)
+                    .Guardar(WorkspacePanelStatePath);
             }
             catch { }
+        }
+
+        /// <summary>
+        /// Movimiento de separador INICIADO por el usuario (ratón o teclado): WinForms
+        /// solo dispara <see cref="SplitContainer.SplitterMoving"/> en esos recorridos.
+        /// Cualquier otro <see cref="SplitContainer.SplitterMoved"/> proviene del propio
+        /// control — mantenimiento de layout (FixedPanel.None) y escalamiento DPI en
+        /// ScaleControl — y resulta en una geometría que NO representa la elección del
+        /// usuario; persistir ahí es lo que hacía crecer el ancho/alto guardado hacia
+        /// el tope del form (reporte del issue #92: al reabrir el módulo el panel
+        /// aparecía al ancho máximo sin respeto al valor persistido).
+        /// </summary>
+        private void SplitContainer_WorkspaceSplitterMoving(object? sender, SplitterCancelEventArgs e)
+            => _splitterMovimientoUsuario = true;
+
+        /// <summary>
+        /// Consumo del movimiento del separador. Solo un movimiento iniciado por el
+        /// usuario actualiza la preferencia con la dimensión REAL de Panel2 en la
+        /// orientación vigente (sin el ancho del separador); los SplitterMoved internos
+        /// del control no tocan las preferencias ni el archivo. La reafirmación de la
+        /// fila visible del presupuesto corre en todos los casos porque es de vista,
+        /// no de preferencia.
+        /// </summary>
+        private void SplitContainer_WorkspaceSplitterMoved(object? sender, SplitterEventArgs e)
+        {
+            bool movimientoUsuario = _splitterMovimientoUsuario && !_ajustandoDimensionWorkspace;
+            _splitterMovimientoUsuario = false;
+
+            if (movimientoUsuario)
+            {
+                RegistrarDimensionWorkspaceDesdeSplit();
+                SaveWorkspacePanelState();
+            }
+
+            if (!splitContainer.Panel2Collapsed)
+                ProgramarAsegurarFilaActualVisibleEnPresupuesto();
+        }
+
+        /// <summary>
+        /// Transfiere a la preferencia la dimensión de trabajo visible de Panel2
+        /// (ancho en Derecha, alto en Abajo) leída de los BOUNDS reales del panel, sin
+        /// derivar del SplitterDistance interno (que WinForms ajusta por su cuenta y
+        /// que además incluía el ancho del separador en el recuento). Una dimensión
+        /// igual al piso Panel2MinSize es válida: solo se descartan valores menores.
+        /// </summary>
+        private void RegistrarDimensionWorkspaceDesdeSplit()
+        {
+            if (splitContainer.Panel2Collapsed)
+                return;
+
+            int dimension = EsModoDerecha ? splitContainer.Panel2.Width : splitContainer.Panel2.Height;
+            if (dimension < splitContainer.Panel2MinSize)
+                return;
+
+            if (EsModoDerecha)
+                _workspacePanelWidth = dimension;
+            else
+                _workspacePanelHeight = dimension;
         }
 
         /// <summary>
@@ -85,43 +171,84 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Configura Panel2MinSize escalado por DPI como piso de degradación compacta,
-        /// nunca como mínimo funcional (eso lo resuelve el tope, no el mínimo duro).
+        /// Configura Panel2MinSize escalado por DPI como piso de degradación compacta
+        /// de la orientación vigente (alto en Abajo, ancho en Derecha), nunca como
+        /// mínimo funcional (eso lo resuelve el tope, no el mínimo duro).
         /// </summary>
         private void AplicarPanel2MinSizeEscaladoDpi()
         {
-            int minimoDegradado = EscalarPixelesDiseno(AltoMinimoDegradadoApu);
+            int minimoDegradado = EscalarPixelesDiseno(
+                EsModoDerecha ? AnchoMinimoDegradadoApu : AltoMinimoDegradadoApu);
             if (splitContainer.Panel2MinSize != minimoDegradado)
                 splitContainer.Panel2MinSize = minimoDegradado;
         }
 
         /// <summary>
-        /// Única fuente de la política de alto del workspace APU. Devuelve el alto
-        /// objetivo (px) de Panel2: mínimo funcional escalado por DPI cuando hay
-        /// espacio, crecimiento proporcional con el alto del split y tope que
-        /// reserva Panel1MinSize al presupuesto. En ventanas demasiado pequeñas
-        /// degrada (nunca impone un mínimo imposible).
+        /// Aplica la posición guardada al split ANTES de suscribir eventos: cambia la
+        /// orientación sin mover controles (el presupuesto sigue en Panel1 y el
+        /// workspace en Panel2 en ambas orientaciones) conservando el estado colapsado.
         /// </summary>
-        private int CalcularAltoObjetivoWorkspace()
+        private void AplicarPosicionGuardadaAlSplit()
         {
-            int alturaSplit = splitContainer.Height;
-            if (alturaSplit <= 0)
-                return EscalarPixelesDiseno(AltoMinimoDegradadoApu);
+            bool guardPrevio = _ajustandoDimensionWorkspace;
+            _ajustandoDimensionWorkspace = true;
+            try
+            {
+                bool colapsado = splitContainer.Panel2Collapsed;
+                splitContainer.Panel2Collapsed = true;
+                splitContainer.Orientation = EsModoDerecha ? Orientation.Vertical : Orientation.Horizontal;
+                AplicarPanel2MinSizeEscaladoDpi();
+                splitContainer.Panel2Collapsed = colapsado;
+            }
+            catch
+            {
+                // Una geometría imposible al abrir degrada al default: Abajo.
+                _posicionWorkspace = PosicionWorkspace.Abajo;
+                try
+                {
+                    splitContainer.Orientation = Orientation.Horizontal;
+                    AplicarPanel2MinSizeEscaladoDpi();
+                }
+                catch { }
+                splitContainer.Panel2Collapsed = true;
+            }
+            finally
+            {
+                _ajustandoDimensionWorkspace = guardPrevio;
+            }
+        }
+
+        /// <summary>
+        /// Única fuente de la política de tamaño del workspace APU. Devuelve el tamaño
+        /// objetivo (px) de Panel2 en la dimensión de trabajo de la orientación vigente
+        /// (alto del split en Abajo, ancho en Derecha): mínimo funcional escalado por
+        /// DPI cuando hay espacio, crecimiento proporcional con la medida disponible y
+        /// tope que reserva Panel1MinSize al presupuesto. En ventanas demasiado
+        /// pequeñas degrada (nunca impone un mínimo imposible).
+        /// </summary>
+        private int CalcularDimensionObjetivoWorkspace()
+        {
+            bool derecha = EsModoDerecha;
+            int medidaSplit = derecha ? splitContainer.Width : splitContainer.Height;
+            if (medidaSplit <= 0)
+                return EscalarPixelesDiseno(derecha ? AnchoMinimoDegradadoApu : AltoMinimoDegradadoApu);
 
             int separador = Math.Max(0, splitContainer.SplitterWidth);
-            int minimoFuncional = EscalarPixelesDiseno(AltoMinimoFuncionalApu);
+            int minimoFuncional = EscalarPixelesDiseno(derecha ? AnchoMinimoFuncionalApu : AltoMinimoFuncionalApu);
             int pisoDegradado = splitContainer.Panel2MinSize > 0
                 ? splitContainer.Panel2MinSize
-                : EscalarPixelesDiseno(AltoMinimoDegradadoApu);
+                : EscalarPixelesDiseno(derecha ? AnchoMinimoDegradadoApu : AltoMinimoDegradadoApu);
 
             // Tope: deja al presupuesto (Panel1) su área mínima.
-            int tope = alturaSplit - splitContainer.Panel1MinSize - separador;
+            int tope = medidaSplit - splitContainer.Panel1MinSize - separador;
 
             // Preferencia del usuario si existe; si no, mínimo funcional con
-            // crecimiento proporcional según el alto disponible.
-            int objetivo = _workspacePanelHeight > 0
-                ? _workspacePanelHeight
-                : Math.Max(minimoFuncional, (int)(alturaSplit * FactorAlturaWorkspace));
+            // crecimiento proporcional según la medida disponible.
+            int guardada = derecha ? _workspacePanelWidth : _workspacePanelHeight;
+            double factor = derecha ? FactorAnchoWorkspace : FactorAlturaWorkspace;
+            int objetivo = guardada > 0
+                ? guardada
+                : Math.Max(minimoFuncional, (int)(medidaSplit * factor));
 
             // No invadir el área mínima del presupuesto.
             if (objetivo > tope)
@@ -136,75 +263,338 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Recalcula y fija el alto del workspace si el panel está expandido,
-        /// sin persistir el valor ni realimentar el evento Resize.
+        /// Recalcula y fija el tamaño del workspace (alto en Abajo, ancho en Derecha)
+        /// si el panel está expandido, sin persistir el valor ni realimentar Resize.
         /// </summary>
-        private void AplicarAltoObjetivoWorkspace()
+        private void AplicarDimensionObjetivoWorkspace()
         {
-            if (splitContainer.Panel2Collapsed || splitContainer.Height <= 0)
+            if (splitContainer.Panel2Collapsed)
+                return;
+
+            bool derecha = EsModoDerecha;
+            int medidaSplit = derecha ? splitContainer.Width : splitContainer.Height;
+            if (medidaSplit <= 0)
                 return;
 
             int minimoCombinado = splitContainer.Panel1MinSize + splitContainer.Panel2MinSize + splitContainer.SplitterWidth;
-            if (splitContainer.Height < minimoCombinado)
+            if (medidaSplit < minimoCombinado)
                 return; // ventana demasiado pequeña: no forzar una geometría imposible
 
-            int alturaObjetivo = CalcularAltoObjetivoWorkspace();
-            int distancia = splitContainer.Height - alturaObjetivo - splitContainer.SplitterWidth;
+            int objetivo = CalcularDimensionObjetivoWorkspace();
+            int distancia = medidaSplit - objetivo - splitContainer.SplitterWidth;
             distancia = Math.Max(splitContainer.Panel1MinSize, distancia);
 
             if (distancia == splitContainer.SplitterDistance)
                 return;
 
-            _ajustandoAltoWorkspace = true;
+            bool guardPrevio = _ajustandoDimensionWorkspace;
+            _ajustandoDimensionWorkspace = true;
             try
             {
                 splitContainer.SplitterDistance = distancia;
             }
             finally
             {
-                _ajustandoAltoWorkspace = false;
+                _ajustandoDimensionWorkspace = guardPrevio;
             }
         }
 
-        private void InicializarPoliticaAltoWorkspace()
+        private void InicializarPoliticaWorkspace()
         {
-            if (_politicaAltoWorkspaceInicializada)
+            if (_politicaWorkspaceInicializada)
                 return;
 
-            _politicaAltoWorkspaceInicializada = true;
-            AplicarPanel2MinSizeEscaladoDpi();
+            _politicaWorkspaceInicializada = true;
+            AplicarPosicionGuardadaAlSplit();
             splitContainer.Resize += SplitContainer_WorkspaceResize;
             this.Load += (_, __) =>
             {
                 AplicarPanel2MinSizeEscaladoDpi();
                 if (!splitContainer.Panel2Collapsed)
-                    AplicarAltoObjetivoWorkspace();
+                    AplicarDimensionObjetivoWorkspace();
             };
             this.DpiChanged += (_, __) =>
             {
                 AplicarPanel2MinSizeEscaladoDpi();
                 if (!splitContainer.Panel2Collapsed)
-                    AplicarAltoObjetivoWorkspace();
+                    AplicarDimensionObjetivoWorkspace();
             };
+
+            ActualizarTextoBotonToggleMatrices();
+            ActualizarTextoBotonPosicion();
         }
 
         private void SplitContainer_WorkspaceResize(object? sender, EventArgs e)
         {
-            if (_ajustandoAltoWorkspace)
+            // Limpieza del marcador de movimiento de usuario: el split solo se
+            // redimensiona con la ventana (nunca durante un arrastre del separador),
+            // así que sanitizar aquí no invalida un arrastre en curso y sí mata un
+            // marcador huérfano de un movimiento cancelado sin SplitterMoved.
+            _splitterMovimientoUsuario = false;
+
+            if (_ajustandoDimensionWorkspace)
                 return;
 
-            AplicarAltoObjetivoWorkspace();
+            AplicarDimensionObjetivoWorkspace();
         }
+
+        /// <summary>
+        /// Texto único del botón de toggling de matrices: la flecha anuncia dónde
+        /// vive el oculto/visible workspace en la orientación vigente.
+        /// </summary>
+        private void ActualizarTextoBotonToggleMatrices()
+        {
+            btnToggleMatrices.Text = EsModoDerecha
+                ? (splitContainer.Panel2Collapsed ? "📐 Matrices ◀" : "📐 Matrices ▶")
+                : (splitContainer.Panel2Collapsed ? "📐 Matrices ▼" : "📐 Matrices ▲");
+        }
+
+        /// <summary>
+        /// Texto y marca del selector compacto de posición en la toolbar del workspace.
+        /// </summary>
+        private void ActualizarTextoBotonPosicion()
+        {
+            bool derecha = EsModoDerecha;
+            btnWorkspacePosicion.Text = derecha ? "Posición: Derecha" : "Posición: Abajo";
+            menuPosicionAbajo.Checked = !derecha;
+            menuPosicionDerecha.Checked = derecha;
+        }
+
+        /// <summary>
+        /// Cambia la posición del workspace entre Abajo y Derecha reutilizando el
+        /// MISMO split, host y panel embebido: colapsa, cambia la orientación, aplica
+        /// mínimos escalados por DPI, restaura el estado colapsado previo y recoloca
+        /// el SplitterDistance con la política vigente. La orientación NO toca el
+        /// panel embebido (mismo contenedor), así que ninguna edición de cabecera se
+        /// descarta ni se resuelve aquí: los guard de cabecera quedan en las rutas de
+        /// cierre y navegación del panel. En ventanas demasiado pequeñas la
+        /// orientación no cambia (sin excepción) y el form queda consistente.
+        /// </summary>
+        private void CambiarPosicionWorkspace(PosicionWorkspace nueva)
+        {
+            if (nueva == _posicionWorkspace)
+                return;
+
+            bool estabaColapsado = splitContainer.Panel2Collapsed;
+            PosicionWorkspace previa = _posicionWorkspace;
+
+            // Aborto determinístico: si la posición pedida no cabe en su mínimo
+            // degradado, no se cambia nada (el setter de SplitContainer degrada
+            // geométricamente sin lanzar; la política evita el estado a medias).
+            if (!CabePosicionEnSplit(nueva))
+            {
+                ActualizarTextoBotonPosicion();
+                return;
+            }
+
+            bool aplicada = false;
+            bool guardPrevio = _ajustandoDimensionWorkspace;
+            _ajustandoDimensionWorkspace = true;
+            try
+            {
+                try
+                {
+                    splitContainer.Panel2Collapsed = true;
+                    splitContainer.Orientation = OrientacionDe(nueva);
+                    _posicionWorkspace = nueva;
+                    AplicarPanel2MinSizeEscaladoDpi();
+                    if (!estabaColapsado)
+                    {
+                        splitContainer.Panel2Collapsed = false;
+                        AplicarDimensionObjetivoWorkspace();
+                    }
+                    aplicada = true;
+                }
+                catch
+                {
+                    // Ventana demasiado pequeña para la nueva orientación: restaurar
+                    // la geometría vigente en lugar de partir el form a medias.
+                    aplicada = false;
+                    _posicionWorkspace = previa;
+                    try
+                    {
+                        splitContainer.Panel2Collapsed = true;
+                        if (splitContainer.Orientation != OrientacionDe(previa))
+                        {
+                            splitContainer.Orientation = OrientacionDe(previa);
+                            AplicarPanel2MinSizeEscaladoDpi();
+                        }
+                    }
+                    catch { }
+                }
+            }
+            finally
+            {
+                // El estado colapsado previo SIEMPRE se restaura: ni un aborto por
+                // ventana pequeña pierde el workspace abierto (o cerrado) al iniciar.
+                bool destinoColapsado = estabaColapsado;
+                if (splitContainer.Panel2Collapsed != destinoColapsado)
+                {
+                    try
+                    {
+                        splitContainer.Panel2Collapsed = destinoColapsado;
+                    }
+                    catch
+                    {
+                        try { splitContainer.Panel2Collapsed = true; } catch { }
+                    }
+                }
+                _ajustandoDimensionWorkspace = guardPrevio;
+            }
+
+            if (aplicada)
+            {
+                SaveWorkspacePanelState();
+                ActualizarTextoBotonToggleMatrices();
+            }
+
+            ActualizarTextoBotonPosicion();
+            ActualizarEstadoWorkspace(_selectorApuEmbebido != null);
+
+            if (!estabaColapsado)
+            {
+                Control? superficie = (Control?)_selectorApuEmbebido ?? _panelMatricesEmbebido;
+                superficie?.Focus();
+                ProgramarAsegurarFilaActualVisibleEnPresupuesto();
+            }
+        }
+
+        private static Orientation OrientacionDe(PosicionWorkspace posicion)
+            => posicion == PosicionWorkspace.Derecha ? Orientation.Vertical : Orientation.Horizontal;
+
+        private void menuPosicionAbajo_Click(object? sender, EventArgs e)
+            => CambiarPosicionWorkspace(PosicionWorkspace.Abajo);
+
+        private void menuPosicionDerecha_Click(object? sender, EventArgs e)
+            => CambiarPosicionWorkspace(PosicionWorkspace.Derecha);
 
         private void EnsureWorkspaceExpanded()
         {
             if (splitContainer.Panel2Collapsed)
-            {
-                splitContainer.Panel2Collapsed = false;
-                AplicarAltoObjetivoWorkspace();
-            }
-            btnToggleMatrices.Text = "📐 Matrices ▲";
+                AbrirWorkspaceSeguro();
+
+            ActualizarTextoBotonToggleMatrices();
             ProgramarAsegurarFilaActualVisibleEnPresupuesto();
+        }
+
+        /// <summary>
+        /// Apertura determinística sin excepción (contrato del issue #92): si Derecha
+        /// no cabe en su mínimo combinado pero Abajo SÍ, cae a Abajo con un flip de
+        /// orientación en colapso (mínimos relajados solo dentro del flip y
+        /// restaurados garantizados en finally) y persiste la caída solo después de
+        /// que la expansión tuvo éxito. Si ni Derecha ni Abajo cabe, el workspace
+        /// permanece colapsado y se conserva por completo la preferencia y el estado
+        /// previos. Nunca deja mínimos de 1px en estado visible y nunca lanza.
+        /// </summary>
+        private void AbrirWorkspaceSeguro()
+        {
+            // 1) Caída a Abajo solo si Derecha no cabe y Abajo cabe (flip en colapso).
+            bool cayo = false;
+            bool guardPrevio = _ajustandoDimensionWorkspace;
+            _ajustandoDimensionWorkspace = true;
+            try
+            {
+                if (EsModoDerecha && !CabePosicionEnSplit(_posicionWorkspace)
+                    && CabePosicionEnSplit(PosicionWorkspace.Abajo))
+                {
+                    cayo = DegradarAPosicionAbajo();
+                }
+            }
+            finally
+            {
+                _ajustandoDimensionWorkspace = guardPrevio;
+            }
+            ActualizarTextoBotonPosicion();
+
+            // 2) Sin superficie viable en ninguna orientación: queda colapsado y
+            //    conserva la preferencia y el estado previos (nada se persiste).
+            if (!CabePosicionEnSplit(_posicionWorkspace))
+            {
+                ActualizarTextoBotonToggleMatrices();
+                return;
+            }
+
+            // 3) Expansión con política, en UNA zona real de guardado bloqueado.
+            guardPrevio = _ajustandoDimensionWorkspace;
+            _ajustandoDimensionWorkspace = true;
+            try
+            {
+                try
+                {
+                    splitContainer.Panel2Collapsed = false;
+                    AplicarDimensionObjetivoWorkspace();
+                }
+                catch
+                {
+                    try { splitContainer.Panel2Collapsed = true; } catch { }
+                }
+            }
+            finally
+            {
+                _ajustandoDimensionWorkspace = guardPrevio;
+            }
+
+            // 4) La caída se persiste solo si la expansión tuvo éxito.
+            if (cayo && !splitContainer.Panel2Collapsed)
+                SaveWorkspacePanelState();
+
+            ActualizarTextoBotonToggleMatrices();
+        }
+
+        /// <summary>
+        /// Ahorro mínimo determinística: cabe (mínimo combinado escalado del PISO de la
+        /// orientación pedida) o no cabe; el setter de SplitContainer degrada por su
+        /// cuenta sin excepción; esta pregunta decide la política (caída/aborto).
+        /// </summary>
+        private bool CabePosicionEnSplit(PosicionWorkspace posicion)
+        {
+            int pisoObjetivo = EscalarPixelesDiseno(posicion == PosicionWorkspace.Derecha
+                ? AnchoMinimoDegradadoApu
+                : AltoMinimoDegradadoApu);
+            int minimoCombinado = splitContainer.Panel1MinSize + pisoObjetivo + splitContainer.SplitterWidth;
+            return posicion == PosicionWorkspace.Derecha
+                ? splitContainer.Width >= minimoCombinado
+                : splitContainer.Height >= minimoCombinado;
+        }
+
+        /// <summary>
+        /// Degradación determinística a Abajo SOLO en colapso: relaja los mínimos a
+        /// 1px únicamente para ejecutar el flip de orientación y los restaura
+        /// GARANTIZADO en finally (nunca quedan 1px en estado visible). Si el flip no
+        /// pudo aplicarse, revierte la posición vigente sin cambios de estado.
+        /// </summary>
+        private bool DegradarAPosicionAbajo()
+        {
+            PosicionWorkspace previa = _posicionWorkspace;
+            int p1MinOriginal = splitContainer.Panel1MinSize;
+            bool aplicada = false;
+            try
+            {
+                splitContainer.Panel2Collapsed = true;
+                // El setter de Orientation valida el SplitterDistance frente a los
+                // mínimos; una split metricamente imposible exige abrir los mínimos
+                // SOLO durante el flip (la misma propiedad ya demuestra aceptar un
+                // mínimo imposible; el estado completo queda colapsado).
+                splitContainer.Panel1MinSize = 1;
+                splitContainer.Panel2MinSize = 1;
+                try
+                {
+                    splitContainer.Orientation = Orientation.Horizontal;
+                    _posicionWorkspace = PosicionWorkspace.Abajo;
+                    aplicada = true;
+                }
+                catch
+                {
+                    _posicionWorkspace = previa;
+                    try { splitContainer.Orientation = Orientation.Vertical; } catch { }
+                }
+                return aplicada;
+            }
+            finally
+            {
+                try { splitContainer.Panel1MinSize = p1MinOriginal; } catch { }
+                try { AplicarPanel2MinSizeEscaladoDpi(); } catch { }
+            }
         }
 
         private void ActualizarEstadoWorkspace(bool mostrandoSelector)
@@ -495,7 +885,7 @@ namespace SOPRO.WinForms.Forms
 
             SaveWorkspacePanelState();
             splitContainer.Panel2Collapsed = true;
-            btnToggleMatrices.Text = "📐 Matrices ▼";
+            ActualizarTextoBotonToggleMatrices();
             btnWorkspaceCerrar.Enabled = false;
             dgvPresupuesto.Focus();
         }

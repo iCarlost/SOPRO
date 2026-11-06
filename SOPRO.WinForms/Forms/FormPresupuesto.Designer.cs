@@ -19,6 +19,9 @@ namespace SOPRO.WinForms.Forms
         private System.Windows.Forms.ToolStripLabel lblWorkspaceTitulo;
         private System.Windows.Forms.ToolStripButton btnWorkspaceMatriz;
         private System.Windows.Forms.ToolStripButton btnWorkspaceSelector;
+        private System.Windows.Forms.ToolStripDropDownButton btnWorkspacePosicion;
+        private System.Windows.Forms.ToolStripMenuItem menuPosicionAbajo;
+        private System.Windows.Forms.ToolStripMenuItem menuPosicionDerecha;
         private System.Windows.Forms.ToolStripButton btnWorkspaceCerrar;
         private System.Windows.Forms.Panel panelMatricesHost;
         private System.Windows.Forms.StatusStrip statusStrip;
@@ -57,6 +60,9 @@ namespace SOPRO.WinForms.Forms
             lblWorkspaceTitulo = new ToolStripLabel();
             btnWorkspaceMatriz = new ToolStripButton();
             btnWorkspaceSelector = new ToolStripButton();
+            btnWorkspacePosicion = new ToolStripDropDownButton();
+            menuPosicionAbajo = new ToolStripMenuItem();
+            menuPosicionDerecha = new ToolStripMenuItem();
             btnWorkspaceCerrar = new ToolStripButton();
             panelMatricesHost = new Panel();
             statusStrip = new StatusStrip();
@@ -193,9 +199,10 @@ namespace SOPRO.WinForms.Forms
             // workspaceToolbar
             // 
             workspaceToolbar.BackColor = Color.FromArgb(240, 244, 248);
+            workspaceToolbar.Dock = DockStyle.Top;
             workspaceToolbar.GripStyle = ToolStripGripStyle.Hidden;
             workspaceToolbar.ImageScalingSize = new Size(20, 20);
-            workspaceToolbar.Items.AddRange(new ToolStripItem[] { lblWorkspaceTitulo, btnWorkspaceCerrar, btnWorkspaceMatriz, btnWorkspaceSelector });
+            workspaceToolbar.Items.AddRange(new ToolStripItem[] { lblWorkspaceTitulo, btnWorkspacePosicion, btnWorkspaceCerrar, btnWorkspaceMatriz, btnWorkspaceSelector });
             workspaceToolbar.Location = new Point(0, 0);
             workspaceToolbar.Name = "workspaceToolbar";
             workspaceToolbar.Padding = new Padding(6, 4, 6, 4);
@@ -210,9 +217,35 @@ namespace SOPRO.WinForms.Forms
             lblWorkspaceTitulo.Name = "lblWorkspaceTitulo";
             lblWorkspaceTitulo.Size = new Size(137, 20);
             lblWorkspaceTitulo.Text = "Área de trabajo: Matriz";
-            // 
+            //
+            // btnWorkspacePosicion
+            //
+            btnWorkspacePosicion.Alignment = ToolStripItemAlignment.Right;
+            btnWorkspacePosicion.AutoToolTip = false;
+            btnWorkspacePosicion.DisplayStyle = ToolStripItemDisplayStyle.Text;
+            btnWorkspacePosicion.DropDown.Items.AddRange(new ToolStripItem[] { menuPosicionAbajo, menuPosicionDerecha });
+            btnWorkspacePosicion.Font = new Font("Segoe UI", 9F);
+            btnWorkspacePosicion.ForeColor = Color.FromArgb(31, 78, 121);
+            btnWorkspacePosicion.Name = "btnWorkspacePosicion";
+            btnWorkspacePosicion.Size = new Size(104, 20);
+            btnWorkspacePosicion.Text = "Posición: Abajo";
+            //
+            // menuPosicionAbajo
+            //
+            menuPosicionAbajo.Name = "menuPosicionAbajo";
+            menuPosicionAbajo.Size = new Size(110, 22);
+            menuPosicionAbajo.Text = "Abajo";
+            menuPosicionAbajo.Click += menuPosicionAbajo_Click;
+            //
+            // menuPosicionDerecha
+            //
+            menuPosicionDerecha.Name = "menuPosicionDerecha";
+            menuPosicionDerecha.Size = new Size(110, 22);
+            menuPosicionDerecha.Text = "Derecha";
+            menuPosicionDerecha.Click += menuPosicionDerecha_Click;
+            //
             // btnWorkspaceMatriz
-            // 
+            //
             btnWorkspaceMatriz.Alignment = ToolStripItemAlignment.Right;
             btnWorkspaceMatriz.BackColor = Color.FromArgb(221, 235, 247);
             btnWorkspaceMatriz.DisplayStyle = ToolStripItemDisplayStyle.Text;
