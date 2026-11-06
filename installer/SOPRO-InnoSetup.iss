@@ -1,5 +1,5 @@
 #define MyAppName "SOPRO"
-#define MyAppVersion "1.14.1"
+#define MyAppVersion "1.15.0"
 #define MyAppPublisher "CEPM"
 #define MyAppExeName "SOPRO.WinForms.exe"
 #define MyAppId "SOPRO.WinForms"
@@ -43,6 +43,11 @@ Name: "desktopicon"; Description: "Crear acceso directo en el escritorio"; Group
 
 [Files]
 Source: "{#MyPublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Proyecto de ejemplo entregado con la aplicacion. Se copia a
+; Documentos\SOPRO\Proyectos solo si no existe (nunca sobrescribe el archivo
+; del usuario) y el desinstalador nunca lo elimina (uninsneveruninstall).
+; No se instala una segunda copia bajo {app} para no confundirla con datos del usuario.
+Source: "assets\proyectos\CATALOGO GENERAL 2026.soproproj"; DestDir: "{userdocs}\SOPRO\Proyectos"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

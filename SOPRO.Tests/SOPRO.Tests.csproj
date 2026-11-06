@@ -29,6 +29,10 @@
     <None Update="TestData\proyecto-sintetico-vial-demo.db">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\installer\assets\proyectos\CATALOGO GENERAL 2026.soproproj"
+          Link="TestData\CATALOGO GENERAL 2026.soproproj">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>
