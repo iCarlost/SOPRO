@@ -87,6 +87,7 @@ namespace SOPRO.WinForms.Forms
             btnNuevo.Name = "btnNuevo";
             btnNuevo.Size = new Size(65, 19);
             btnNuevo.Text = "➕ Nuevo";
+            btnNuevo.ToolTipText = "Nuevo (Insert)";
             btnNuevo.Click += btnNuevo_Click;
             // 
             // btnEditar
@@ -97,6 +98,7 @@ namespace SOPRO.WinForms.Forms
             btnEditar.Name = "btnEditar";
             btnEditar.Size = new Size(61, 19);
             btnEditar.Text = "✏ Editar";
+            btnEditar.ToolTipText = "Editar (Enter)";
             btnEditar.Click += btnEditar_Click;
             // 
             // btnEliminar
@@ -107,6 +109,7 @@ namespace SOPRO.WinForms.Forms
             btnEliminar.Name = "btnEliminar";
             btnEliminar.Size = new Size(72, 19);
             btnEliminar.Text = "🗑 Eliminar";
+            btnEliminar.ToolTipText = "Eliminar (Supr)";
             btnEliminar.Click += btnEliminar_Click;
             // 
             // btnImportar
@@ -117,6 +120,7 @@ namespace SOPRO.WinForms.Forms
             btnImportar.Name = "btnImportar";
             btnImportar.Size = new Size(86, 19);
             btnImportar.Text = "📥 Importar";
+            btnImportar.ToolTipText = "Importar catálogo";
             btnImportar.Click += btnImportar_Click;
             // 
             // btnCalcularCosto
@@ -127,6 +131,7 @@ namespace SOPRO.WinForms.Forms
             btnCalcularCosto.Name = "btnCalcularCosto";
             btnCalcularCosto.Size = new Size(110, 19);
             btnCalcularCosto.Text = "\U0001f9ee Calcular Costo";
+            btnCalcularCosto.ToolTipText = "Calcular costo horario";
             btnCalcularCosto.Click += btnCalcularCosto_Click;
             // 
             // btnConfigColumnas
@@ -137,6 +142,7 @@ namespace SOPRO.WinForms.Forms
             btnConfigColumnas.Name = "btnConfigColumnas";
             btnConfigColumnas.Size = new Size(82, 19);
             btnConfigColumnas.Text = "📐 Columnas";
+            btnConfigColumnas.ToolTipText = "Configurar columnas";
             btnConfigColumnas.Click += btnConfigColumnas_Click;
             // 
             // btnRefrescar
@@ -148,6 +154,7 @@ namespace SOPRO.WinForms.Forms
             btnRefrescar.Visible = false;
             btnRefrescar.Size = new Size(83, 19);
             btnRefrescar.Text = "🔄 Refrescar";
+            btnRefrescar.ToolTipText = "Refrescar catálogo";
             btnRefrescar.Click += btnRefrescar_Click;
             // 
             // btnCerrar
@@ -158,6 +165,7 @@ namespace SOPRO.WinForms.Forms
             btnCerrar.Name = "btnCerrar";
             btnCerrar.Size = new Size(58, 19);
             btnCerrar.Text = "✖ Cerrar";
+            btnCerrar.ToolTipText = "Cerrar catálogo";
             btnCerrar.Click += btnCerrar_Click;
             // 
             // btnImportarExcel

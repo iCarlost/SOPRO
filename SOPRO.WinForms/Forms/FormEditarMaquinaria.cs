@@ -26,6 +26,7 @@ namespace SOPRO.WinForms.Forms
             _esNuevo = maquinaria == null;
             
             ConfigurarFormulario();
+            SeleccionTotalNumericUpDown.Configurar(nudCostoHorario);
             
             if (_esNuevo)
                 txtClave.Text = KeySuggestionService.Generate();
@@ -199,51 +200,65 @@ namespace SOPRO.WinForms.Forms
             }
         }
         
+        private bool _guardando;
+
         private async void btnGuardar_Click(object sender, EventArgs e)
         {
-            if (ValidarYGuardar())
+            if (_guardando) return;
+            _guardando = true;
+            btnGuardar.Enabled = false;
+            try
             {
-                try
+                if (ValidarYGuardar())
                 {
-                    var dto = new MaquinariaEditDto
+                    try
                     {
-                        Clave = txtClave.Text,
-                        Descripcion = txtDescripcion.Text,
-                        PotenciaNominal = nudPotencia.Value,
-                        TipoCombustible = (TipoCombustible)cboTipoCombustible.SelectedItem,
-                        CostoHorario = rbCostoManual.Checked ? nudCostoHorario.Value : _maquinaria?.CostoHorario ?? nudCostoHorario.Value,
-                        EsCostoCalculado = rbCostoCalculado.Checked,
-                        Notas = txtNotas.Text,
-                        GuardarEnMaestro = rbMaestro.Checked,
-                        ProyectoId = _proyectoId
-                    };
+                        var dto = new MaquinariaEditDto
+                        {
+                            Clave = txtClave.Text,
+                            Descripcion = txtDescripcion.Text,
+                            PotenciaNominal = nudPotencia.Value,
+                            TipoCombustible = (TipoCombustible)cboTipoCombustible.SelectedItem,
+                            CostoHorario = rbCostoManual.Checked ? nudCostoHorario.Value : _maquinaria?.CostoHorario ?? nudCostoHorario.Value,
+                            EsCostoCalculado = rbCostoCalculado.Checked,
+                            Notas = txtNotas.Text,
+                            GuardarEnMaestro = rbMaestro.Checked,
+                            ProyectoId = _proyectoId
+                        };
 
-                    var result = await CatalogItemService.SaveMaquinariaAsync(_context, dto, _esNuevo ? null : _maquinaria);
+                        var result = await CatalogItemService.SaveMaquinariaAsync(_context, dto, _esNuevo ? null : _maquinaria);
 
-                    if (result.TriggeredRecalculation)
-                        OpenFormsRefreshHelper.RefrescarPresupuestosAbiertos();
+                        if (result.TriggeredRecalculation)
+                            OpenFormsRefreshHelper.RefrescarPresupuestosAbiertos();
 
-                    OpenFormsRefreshHelper.RefrescarCatalogosMaquinariaAbiertos();
+                        OpenFormsRefreshHelper.RefrescarCatalogosMaquinariaAbiertos();
 
-                    MessageBox.Show(
-                        result.IsNew ? "Registro creado exitosamente." : "Registro actualizado exitosamente.",
-                        "Guardado",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information
-                    );
-                    
-                    DialogResult = DialogResult.OK;
-                    Close();
+                        MessageBox.Show(
+                            result.IsNew ? "Registro creado exitosamente." : "Registro actualizado exitosamente.",
+                            "Guardado",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information
+                        );
+
+                        DialogResult = DialogResult.OK;
+                        Close();
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(
+                            $"Error al guardar:\n{ex.Message}",
+                            "Error",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error
+                        );
+                    }
                 }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(
-                        $"Error al guardar:\n{ex.Message}",
-                        "Error",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error
-                    );
-                }
+            }
+            finally
+            {
+                _guardando = false;
+                if (!IsDisposed && !Disposing)
+                    btnGuardar.Enabled = true;
             }
         }
         

@@ -394,7 +394,7 @@ namespace SOPRO.WinForms.Forms
             btnRecalcularRibbon.TabIndex = 15;
             btnRecalcularRibbon.Text = "Recalcular";
             btnRecalcularRibbon.TextImageRelation = TextImageRelation.ImageBeforeText;
-            toolTipRibbon.SetToolTip(btnRecalcularRibbon, "Recalcular el módulo activo");
+            toolTipRibbon.SetToolTip(btnRecalcularRibbon, "Recalcular el módulo activo (F9)");
             btnRecalcularRibbon.UseVisualStyleBackColor = false;
             btnRecalcularRibbon.Click += btnRecalcularRibbon_Click;
             // 

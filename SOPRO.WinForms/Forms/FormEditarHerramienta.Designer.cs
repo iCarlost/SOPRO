@@ -104,6 +104,7 @@ namespace SOPRO.WinForms.Forms
             this.txtDescripcion.Location = new System.Drawing.Point(30, 172);
             this.txtDescripcion.MaxLength = 500;
             this.txtDescripcion.Multiline = true;
+            this.txtDescripcion.AcceptsReturn = true;
             this.txtDescripcion.Name = "txtDescripcion";
             this.txtDescripcion.Size = new System.Drawing.Size(540, 60);
             this.txtDescripcion.TabIndex = 4;

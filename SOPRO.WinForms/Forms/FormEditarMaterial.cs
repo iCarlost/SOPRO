@@ -37,6 +37,7 @@ namespace SOPRO.WinForms.Forms
             _factory = factory ?? new ProjectDbContextFactory();
 
             ConfigurarFormulario();
+            SeleccionTotalNumericUpDown.Configurar(nudPrecio);
 
             if (_esNuevo)
                 txtClave.Text = KeySuggestionService.Generate();
@@ -141,8 +142,13 @@ namespace SOPRO.WinForms.Forms
             }
         }
 
+        private bool _guardando;
+
         private async void btnGuardar_Click(object sender, EventArgs e)
         {
+            if (_guardando) return;
+            _guardando = true;
+            btnGuardar.Enabled = false;
             try
             {
                 // Validaciones y persistencia viven en el caso de uso SaveMaterial
@@ -196,6 +202,12 @@ namespace SOPRO.WinForms.Forms
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error
                 );
+            }
+            finally
+            {
+                _guardando = false;
+                if (!IsDisposed && !Disposing)
+                    btnGuardar.Enabled = true;
             }
         }
 
