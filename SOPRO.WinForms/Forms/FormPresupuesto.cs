@@ -67,12 +67,38 @@ namespace SOPRO.WinForms.Forms
         private TextBox? _txtApuPreviewComponentes;
         private readonly Dictionary<string, MatrixPreviewInfo> _cachePreviewApu = new();
         private int _workspacePanelHeight = 0;
+        private int _workspacePanelWidth = 0;
+        private PosicionWorkspace _posicionWorkspace = PosicionWorkspace.Abajo;
         /// <summary>
-        /// Ruta del estado del panel de workspace. Vive en la carpeta de datos
-        /// locales del workspace inyectado (por defecto <c>%LOCALAPPDATA%\SOPRO</c>),
-        /// de modo que una prueba pueda apuntarla a una carpeta temporal.
+        /// Ruta del estado del panel de workspace: determinística por BASE + Id de
+        /// proyecto (bases distintas de .soproproj suelen tener Id=1 y NO deben
+        /// compartir estado), bajo la carpeta de datos locales del workspace
+        /// inyectado (por defecto <c>%LOCALAPPDATA%\SOPRO</c>).
         /// </summary>
-        internal string WorkspacePanelStatePath => Path.Combine(_workspaceService.LocalDataFolder, $"presupuesto_workspace_{_proyecto.Id}.txt");
+        internal string WorkspacePanelStatePath
+            => Path.Combine(_workspaceService.LocalDataFolder,
+                $"presupuesto_workspace_{_proyecto.Id}_{NombreArchivoEstadoPorDb(_context.DatabasePath)}.txt");
+
+        /// <summary>
+        /// Ruta heredada del estado (solo Id, formato anterior); únicamente se lee
+        /// para migrar el estado a la ruta de base + Id y nunca se escribe ni borra.
+        /// </summary>
+        internal string LegacyWorkspacePanelStatePath
+            => Path.Combine(_workspaceService.LocalDataFolder, $"presupuesto_workspace_{_proyecto.Id}.txt");
+
+        /// <summary>
+        /// Huella corta y estable (12 hex de SHA-256) de la ruta absoluta normalizada
+        /// de la base del proyecto: determinística mientras conserve la misma ruta local.
+        /// </summary>
+        internal static string NombreArchivoEstadoPorDb(string? databasePath)
+        {
+            string normalizada = string.IsNullOrWhiteSpace(databasePath)
+                ? string.Empty
+                : Path.GetFullPath(databasePath).ToLowerInvariant();
+            using System.Security.Cryptography.SHA256 sha256 = System.Security.Cryptography.SHA256.Create();
+            byte[] huella = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(normalizada));
+            return Convert.ToHexString(huella, 0, 6);
+        }
         private readonly UndoManager _undoManager = new();
         private bool _isUndoRedo;
         private int _undoBudgetRowIndex = -1;
@@ -577,12 +603,8 @@ namespace SOPRO.WinForms.Forms
             InitializeComponent();
             InicializarBotonReajustarCosto();
             LoadWorkspacePanelState();
-            splitContainer.SplitterMoved += (_, __) =>
-            {
-                SaveWorkspacePanelState();
-                if (!splitContainer.Panel2Collapsed)
-                    ProgramarAsegurarFilaActualVisibleEnPresupuesto();
-            };
+            splitContainer.SplitterMoving += SplitContainer_WorkspaceSplitterMoving;
+            splitContainer.SplitterMoved += SplitContainer_WorkspaceSplitterMoved;
             InicializarAutocompleteApu();
             InicializarPreviewApu();
 
@@ -1225,29 +1247,24 @@ namespace SOPRO.WinForms.Forms
 
         private void btnToggleMatrices_Click(object sender, EventArgs e)
         {
-            if (!splitContainer.Panel2Collapsed)
-            {
-                if (_panelMatricesEmbebido != null
-                    && !_panelMatricesEmbebido.IntentarSalirDeCabeceraActual())
-                {
-                    return;
-                }
-
-                SaveWorkspacePanelState();
-            }
-
-            splitContainer.Panel2Collapsed = !splitContainer.Panel2Collapsed;
-
             if (splitContainer.Panel2Collapsed)
             {
-                btnToggleMatrices.Text = "📐 Matrices ▼";
+                // Apertura por la misma política segura del workspace: nunca lanza.
+                AbrirWorkspaceSeguro();
+                if (!splitContainer.Panel2Collapsed)
+                    ProgramarAsegurarFilaActualVisibleEnPresupuesto();
+                return;
             }
-            else
+
+            if (_panelMatricesEmbebido != null
+                && !_panelMatricesEmbebido.IntentarSalirDeCabeceraActual())
             {
-                btnToggleMatrices.Text = "📐 Matrices ▲";
-                AplicarAltoObjetivoWorkspace();
-                ProgramarAsegurarFilaActualVisibleEnPresupuesto();
+                return;
             }
+
+            SaveWorkspacePanelState();
+            splitContainer.Panel2Collapsed = true;
+            ActualizarTextoBotonToggleMatrices();
         }
 
         private void btnExportar_Click(object sender, EventArgs e)

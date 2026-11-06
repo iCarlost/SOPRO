@@ -93,11 +93,13 @@ public class FormPresupuestoWorkspaceIsolationTests
                 $"El índice de proyectos debe vivir en el workspace temporal: {indexPath}");
             StringAssert.StartsWith(indexPath, root);
 
-            // Estado del panel de workspace: misma raíz (antes estaba hardcodeado a %LOCALAPPDATA%).
+            // Estado del panel de workspace: misma raíz, nombrado por base + Id
+            // (bases distintas con el mismo Id no comparten estado).
             Assert.AreEqual(
-                Path.Combine(localDataFolder, $"presupuesto_workspace_{proyectoId}.txt"),
+                Path.Combine(localDataFolder,
+                    $"presupuesto_workspace_{proyectoId}_{FormPresupuesto.NombreArchivoEstadoPorDb(dbPath)}.txt"),
                 form.WorkspacePanelStatePath,
-                "El estado del panel debe resolverse desde el LocalDataFolder del workspace.");
+                "El estado del panel debe resolverse por base + Id desde el LocalDataFolder del workspace.");
             StringAssert.StartsWith(form.WorkspacePanelStatePath, localDataFolder);
             Assert.IsTrue(Directory.Exists(localDataFolder),
                 "LoadWorkspacePanelState debe crear la carpeta del workspace temporal.");
