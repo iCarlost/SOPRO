@@ -29,6 +29,9 @@ namespace SOPRO.Application.Services
         public static void PropagarMaquinaria(SOPROContext ctx, int maquinariaId, int? proyectoId = null)
             => Propagar(ctx, TipoComponenteMatriz.Maquinaria, maquinariaId, proyectoId);
 
+        internal static void PropagarMaquinariaSinGuardar(SOPROContext ctx, int maquinariaId, int? proyectoId = null)
+            => Propagar(ctx, TipoComponenteMatriz.Maquinaria, maquinariaId, proyectoId, guardar: false);
+
         public static void PropagarEliminacion(SOPROContext ctx, List<int> matrizIdsAfectadas, int? proyectoId = null)
         {
             var matrices = RecalcularCierreAuxiliarSinGuardar(ctx, matrizIdsAfectadas, proyectoId);
@@ -81,7 +84,7 @@ namespace SOPRO.Application.Services
             return matrices;
         }
 
-        private static void Propagar(SOPROContext ctx, TipoComponenteMatriz tipo, int insumoId, int? proyectoId = null)
+        private static void Propagar(SOPROContext ctx, TipoComponenteMatriz tipo, int insumoId, int? proyectoId = null, bool guardar = true)
         {
             IQueryable<ComponenteMatriz> query = ctx.ComponentesMatriz
                 .Include(c => c.Material)
@@ -137,7 +140,7 @@ namespace SOPRO.Application.Services
 
             var todasIds = matrices.Select(m => m.Id).ToList();
             ActualizarConceptos(ctx, matrices, todasIds);
-            ctx.SaveChanges();
+            if (guardar) ctx.SaveChanges();
         }
 
         /// <summary>

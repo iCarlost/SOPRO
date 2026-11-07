@@ -13,5 +13,8 @@ namespace SOPRO.Application.DTOs.Catalog
         public string Notas { get; set; } = string.Empty;
         public bool GuardarEnMaestro { get; set; }
         public int? ProyectoId { get; set; }
+        public int? MaterialCombustibleId { get; set; }
+        public int? MaterialAceiteId { get; set; }
+        public int? ManoDeObraOperadorId { get; set; }
     }
 }

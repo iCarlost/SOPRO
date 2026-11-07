@@ -1,5 +1,8 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using SOPRO.Application.DTOs.Catalog;
 using SOPRO.Application.Models;
 using SOPRO.Core.Entities;
@@ -12,6 +15,9 @@ namespace SOPRO.Application.Services
     {
         public static async Task<CatalogSaveResult> SaveMaterialAsync(SOPROContext context, MaterialEditDto dto, Material? material = null)
         {
+            await using IDbContextTransaction? transaction = context.Database.CurrentTransaction == null
+                ? await context.Database.BeginTransactionAsync()
+                : null;
             var repository = new Repository<Material>(context);
             var isNew = material == null;
 
@@ -30,7 +36,14 @@ namespace SOPRO.Application.Services
 
             await repository.SaveChangesAsync();
 
-            var recalculated = !isNew && RecalculationCoordinatorService.RecalculateAfterMaterialUpdate(context, material!.Id, material.ProyectoId);
+            var recalculated = false;
+            if (!isNew)
+            {
+                recalculated = RecalculationCoordinatorService.RefreshLinkedMachineryAfterMaterialUpdate(context, material!.Id, material.ProyectoId);
+                recalculated |= RecalculationCoordinatorService.RecalculateAfterMaterialUpdate(context, material.Id, material.ProyectoId);
+            }
+            await context.SaveChangesAsync();
+            if (transaction != null) await transaction.CommitAsync();
 
             return new CatalogSaveResult
             {
@@ -42,6 +55,9 @@ namespace SOPRO.Application.Services
 
         public static async Task<CatalogSaveResult> SaveManoDeObraAsync(SOPROContext context, ManoDeObraEditDto dto, ManoDeObra? manoDeObra = null)
         {
+            await using IDbContextTransaction? transaction = context.Database.CurrentTransaction == null
+                ? await context.Database.BeginTransactionAsync()
+                : null;
             var repository = new Repository<ManoDeObra>(context);
             var isNew = manoDeObra == null;
 
@@ -60,7 +76,14 @@ namespace SOPRO.Application.Services
 
             await repository.SaveChangesAsync();
 
-            var recalculated = !isNew && RecalculationCoordinatorService.RecalculateAfterManoDeObraUpdate(context, manoDeObra!.Id, manoDeObra.ProyectoId);
+            var recalculated = false;
+            if (!isNew)
+            {
+                recalculated = RecalculationCoordinatorService.RefreshLinkedMachineryAfterManoDeObraUpdate(context, manoDeObra!.Id, manoDeObra.ProyectoId);
+                recalculated |= RecalculationCoordinatorService.RecalculateAfterManoDeObraUpdate(context, manoDeObra.Id, manoDeObra.ProyectoId);
+            }
+            await context.SaveChangesAsync();
+            if (transaction != null) await transaction.CommitAsync();
 
             return new CatalogSaveResult
             {
@@ -72,8 +95,19 @@ namespace SOPRO.Application.Services
 
         public static async Task<CatalogSaveResult> SaveMaquinariaAsync(SOPROContext context, MaquinariaEditDto dto, Maquinaria? maquinaria = null)
         {
+            if (!dto.EsCostoCalculado && (dto.MaterialCombustibleId.HasValue || dto.MaterialAceiteId.HasValue || dto.ManoDeObraOperadorId.HasValue))
+                throw new InvalidOperationException("Elimine los vínculos de combustible, aceite y operador antes de guardar maquinaria con costo manual.");
+            await using IDbContextTransaction? transaction = context.Database.CurrentTransaction == null
+                ? await context.Database.BeginTransactionAsync()
+                : null;
             var repository = new Repository<Maquinaria>(context);
             var isNew = maquinaria == null;
+            if (!isNew && dto.ProyectoId.HasValue && dto.ProyectoId != maquinaria!.ProyectoId)
+                throw new InvalidOperationException("La maquinaria pertenece a otro proyecto y no puede modificarse desde este contexto.");
+            int? ownerProjectId = isNew ? dto.ProyectoId : maquinaria!.ProyectoId;
+            ValidateLinkOwnership(context, dto.MaterialCombustibleId, ownerProjectId, "combustible");
+            ValidateLinkOwnership(context, dto.MaterialAceiteId, ownerProjectId, "aceite");
+            ValidateLinkOwnership(context, dto.ManoDeObraOperadorId, ownerProjectId, "mano de obra");
 
             if (isNew)
             {
@@ -88,9 +122,12 @@ namespace SOPRO.Application.Services
                 await repository.UpdateAsync(maquinaria);
             }
 
+            ApplyLinksAndCalculate(context, maquinaria!, dto);
             await repository.SaveChangesAsync();
-
-            var recalculated = !isNew && RecalculationCoordinatorService.RecalculateAfterMaquinariaUpdate(context, maquinaria!.Id, maquinaria.ProyectoId);
+            PricePropagationService.PropagarMaquinariaSinGuardar(context, maquinaria!.Id, maquinaria.ProyectoId);
+            await context.SaveChangesAsync();
+            if (transaction != null) await transaction.CommitAsync();
+            bool recalculated = !isNew;
 
             return new CatalogSaveResult
             {
@@ -98,6 +135,34 @@ namespace SOPRO.Application.Services
                 IsNew = isNew,
                 TriggeredRecalculation = recalculated
             };
+        }
+
+        private static void ValidateLinkOwnership(SOPROContext context, int? id, int? projectId, string role)
+        {
+            if (!id.HasValue) return;
+            bool valid = context.Materiales.Any(m => m.Id == id && m.ProyectoId == projectId);
+            if (role == "mano de obra") valid = context.ManoDeObra.Any(m => m.Id == id && m.ProyectoId == projectId);
+            if (!valid)
+                throw new InvalidOperationException($"El insumo vinculado de {role} debe pertenecer exactamente al mismo proyecto (o ser maestro cuando la maquinaria es maestra).");
+        }
+
+        private static void ApplyLinksAndCalculate(SOPROContext context, Maquinaria machine, MaquinariaEditDto dto)
+        {
+            machine.MaterialCombustibleId = dto.MaterialCombustibleId;
+            machine.MaterialAceiteId = dto.MaterialAceiteId;
+            machine.ManoDeObraOperadorId = dto.ManoDeObraOperadorId;
+            if (!dto.EsCostoCalculado) return;
+            if (dto.MaterialCombustibleId.HasValue)
+                machine.PrecioCombustible = context.Materiales.Single(m => m.Id == dto.MaterialCombustibleId).PrecioUnitario;
+            if (dto.MaterialAceiteId.HasValue)
+                machine.PrecioAceite = context.Materiales.Single(m => m.Id == dto.MaterialAceiteId).PrecioUnitario;
+            if (dto.ManoDeObraOperadorId.HasValue)
+            {
+                ManoDeObra operatorSource = context.ManoDeObra.Single(m => m.Id == dto.ManoDeObraOperadorId);
+                machine.SalarioOperador = operatorSource.SalarioBase;
+                machine.FactorSalarioReal = operatorSource.FactorSalarioReal;
+            }
+            machine.CalcularCostoHorario();
         }
 
         private static void Apply(MaterialEditDto dto, Material material, bool isNew)
