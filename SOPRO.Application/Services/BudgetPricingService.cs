@@ -142,11 +142,10 @@ namespace SOPRO.Application.Services
             return new BudgetHeaderInfo
             {
                 ProyectoNombre = proyecto.Nombre ?? string.Empty,
-                UbicacionTexto = $"📍 {proyecto.Ubicacion}",
                 FactorPrecioUnitario = factor,
                 TienePorcentajesActivos = hayPorc,
                 PorcentajesTexto = hayPorc
-                    ? $"📊  Ind.OC {proyecto.PorcentajeIndirectosCentral:N2}%  Campo {proyecto.PorcentajeIndirectosCampo:N2}%  Fin {proyecto.PorcentajeFinanciamiento:N2}%  Util {proyecto.PorcentajeUtilidad:N2}%  → Factor {factor:N6}×"
+                    ? $"📊  Ind.OC {proyecto.PorcentajeIndirectosCentral:N2}%  Campo {proyecto.PorcentajeIndirectosCampo:N2}%  Fin {proyecto.PorcentajeFinanciamiento:N2}%  Util {proyecto.PorcentajeUtilidad:N2}%"
                     : "⚠️  Sin porcentajes configurados  (usa Porcentajes o Módulo Indirectos)"
             };
         }

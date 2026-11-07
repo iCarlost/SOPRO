@@ -1081,7 +1081,6 @@ namespace SOPRO.WinForms.Forms
         {
             var info = BudgetPricingService.BuildHeaderInfo(_proyecto);
             lblProyecto.Text = info.ProyectoNombre;
-            lblUbicacion.Text = info.UbicacionTexto;
             ActualizarInfoPorcentajes();
         }
 
