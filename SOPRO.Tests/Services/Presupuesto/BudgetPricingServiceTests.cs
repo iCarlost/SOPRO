@@ -180,6 +180,47 @@ public class BudgetPricingServiceTests
         Assert.AreEqual(1.28m, BudgetPricingService.CalculateFactor(proyecto));
     }
 
+    // ── Texto del encabezado (BuildHeaderInfo) ─────────────────────────────────
+
+    [TestMethod]
+    public void BuildHeaderInfo_PorcentajesActivos_ConservaLosCuatroPorcentajes()
+    {
+        Proyecto proyecto = CrearProyecto(2, 2, 4);
+        proyecto.PorcentajeIndirectosCentral = 10.1234m;
+        proyecto.PorcentajeIndirectosCampo = 5m;
+        proyecto.PorcentajeFinanciamiento = 2m;
+        proyecto.PorcentajeUtilidad = 10m;
+        proyecto.ModoCalculoPorcentajes = Acumulables;
+
+        BudgetHeaderInfo info = BudgetPricingService.BuildHeaderInfo(proyecto);
+
+        Assert.IsTrue(info.TienePorcentajesActivos);
+        StringAssert.Contains(info.PorcentajesTexto, "Ind.OC 10.12%");
+        StringAssert.Contains(info.PorcentajesTexto, "Campo 5.00%");
+        StringAssert.Contains(info.PorcentajesTexto, "Fin 2.00%");
+        StringAssert.Contains(info.PorcentajesTexto, "Util 10.00%");
+        Assert.IsFalse(info.PorcentajesTexto.Contains("Factor"));
+        Assert.IsFalse(info.PorcentajesTexto.Contains("FSR"));
+    }
+
+    [TestMethod]
+    public void BuildHeaderInfo_SinPorcentajes_TextoDeAdvertenciaSinCambios()
+    {
+        Proyecto proyecto = CrearProyecto(2, 2, 4);
+        proyecto.PorcentajeIndirectosCentral = 0m;
+        proyecto.PorcentajeIndirectosCampo = 0m;
+        proyecto.PorcentajeFinanciamiento = 0m;
+        proyecto.PorcentajeUtilidad = 0m;
+        proyecto.PorcentajeCargosAdicionales = 0m;
+
+        BudgetHeaderInfo info = BudgetPricingService.BuildHeaderInfo(proyecto);
+
+        Assert.IsFalse(info.TienePorcentajesActivos);
+        Assert.AreEqual(
+            "⚠️  Sin porcentajes configurados  (usa Porcentajes o Módulo Indirectos)",
+            info.PorcentajesTexto);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static BudgetPercentageInput CrearInput(decimal indCentral, decimal indCampo,

@@ -70,7 +70,6 @@ namespace SOPRO.WinForms.Forms
             lblCostoDirecto = new ToolStripStatusLabel();
             lblTitulo = new Label();
             lblProyecto = new Label();
-            lblUbicacion = new Label();
             panelTop = new Panel();
             lblPorcentajesInfo = new Label();
             panelToolbar.SuspendLayout();
@@ -328,23 +327,11 @@ namespace SOPRO.WinForms.Forms
             lblProyecto.Size = new Size(54, 15);
             lblProyecto.TabIndex = 1;
             lblProyecto.Text = "Proyecto";
-            // 
-            // lblUbicacion
-            // 
-            lblUbicacion.AutoSize = true;
-            lblUbicacion.Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point, 0);
-            lblUbicacion.ForeColor = Color.White;
-            lblUbicacion.Location = new Point(300, 42);
-            lblUbicacion.Name = "lblUbicacion";
-            lblUbicacion.Size = new Size(60, 15);
-            lblUbicacion.TabIndex = 2;
-            lblUbicacion.Text = "Ubicación";
-            // 
+            //
             // panelTop
-            // 
+            //
             panelTop.BackColor = Color.FromArgb(51, 51, 76);
             panelTop.Controls.Add(lblPorcentajesInfo);
-            panelTop.Controls.Add(lblUbicacion);
             panelTop.Controls.Add(lblProyecto);
             panelTop.Controls.Add(lblTitulo);
             panelTop.Dock = DockStyle.Top;
@@ -400,7 +387,6 @@ namespace SOPRO.WinForms.Forms
 
         private Label lblTitulo;
         private Label lblProyecto;
-        private Label lblUbicacion;
         private Panel panelTop;
         private Label lblPorcentajesInfo;
     }
