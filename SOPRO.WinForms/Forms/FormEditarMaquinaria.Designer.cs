@@ -240,7 +240,7 @@ namespace SOPRO.WinForms.Forms
             rbCostoCalculado.Size = new Size(157, 23);
             rbCostoCalculado.TabIndex = 0;
             rbCostoCalculado.TabStop = true;
-            rbCostoCalculado.Text = "\U0001f9ee Calculado (OPUS)";
+            rbCostoCalculado.Text = "\U0001f9ee Calculado";
             rbCostoCalculado.UseVisualStyleBackColor = true;
             rbCostoCalculado.CheckedChanged += rbCostoCalculado_CheckedChanged;
             // 
