@@ -98,7 +98,7 @@ namespace SOPRO.WinForms.Forms
                     }
                     break;
                 case TipoComponenteMatriz.Auxiliar:
-                    using (var form = new FormEditarMatriz(_context, _proyectoId))
+                    using (var form = new FormEditarMatriz(_context, _proyectoId, tipoInicial: TipoMatriz.Basico))
                     {
                         if (form.ShowDialog(this) == DialogResult.OK)
                             nuevoId = _context.Matrices.Where(m => m.ProyectoId == _proyectoId && m.Tipo == TipoMatriz.Basico).OrderByDescending(m => m.Id).Select(m => (int?)m.Id).FirstOrDefault();
