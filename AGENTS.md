@@ -22,7 +22,7 @@ dotnet test SOPRO.Tests/SOPRO.Tests.csproj -c Release --filter "FullyQualifiedNa
   `dotnet pack SOPRO.Calculation/SOPRO.Calculation.csproj -c Release --output .artifacts/packages` luego `dotnet run --project consumers/Sopro.Calculation.Consumer -c Release`. CI exige versión exacta `0.1.0`, cero dependencias runtime y README+CHANGELOG dentro del `.nupkg` (`ci.yml` job `calculation-package`).
 
 ## Esquema de BD (versionado INDEPENDiente del producto)
-- Versión propia `AAAA.MM.revision` en `VersionActual` de `SOPRO.Application/Services/SchemaManager.cs` (hoy `2026.04.4`). NO confundir con la versión del producto.
+- Versión propia `AAAA.MM.revision` en `VersionActual` de `SOPRO.Application/Services/SchemaManager.cs` (hoy `2026.04.5`). NO confundir con la versión del producto.
 - Todo cambio de esquema toca 3 artefactos en orden: entidad (`SOPRO.Core/Entities/`) → mapeo (`SOPRO.Data/Context/SOPROContext.cs`) → método `M0XX_*` en `SchemaManager` + bump de `VersionActual` + registro en `EnsureCurrentSchema`. Omisión = DBs viejos fallan al abrir (`no such column`). Detalle: `SCHEMA_MANTENIMIENTO.md`.
 - Proyecto = archivo SQLite `.soproproj` (alias `.db`/`.sopro` legacy se abren sin renombrar); catálogos maestros siguen en `.db`.
 

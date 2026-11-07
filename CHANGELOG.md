@@ -6,6 +6,9 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 
 ## [No publicado]
 
+### Agregado
+- Migracion M015 (esquema `2026.04.5`): columnas `MaterialCombustibleId`, `MaterialAceiteId` y `ManoDeObraOperadorId` en `Maquinaria` para vincular insumos locales del costo horario.
+
 ## [1.10.0] - 2026-10-21
 
 ### Agregado

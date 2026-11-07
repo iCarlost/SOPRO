@@ -93,6 +93,15 @@ namespace SOPRO.Core.Entities
         public OrigenInsumo Origen { get; set; }
         public int? MaquinariaMaestraId { get; set; }
         
+        // Vínculos locales con insumos del proyecto para el costo horario
+        public int? MaterialCombustibleId { get; set; }
+        public int? MaterialAceiteId { get; set; }
+        public int? ManoDeObraOperadorId { get; set; }
+
+        public virtual Material? MaterialCombustible { get; set; }
+        public virtual Material? MaterialAceite { get; set; }
+        public virtual ManoDeObra? ManoDeObraOperador { get; set; }
+
         // Relación con el proyecto
         public int? ProyectoId { get; set; }
         public virtual Proyecto Proyecto { get; set; }

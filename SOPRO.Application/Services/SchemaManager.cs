@@ -42,7 +42,7 @@ namespace SOPRO.Application.Services
         /// Versión actual del schema. Incrementar cuando se agreguen nuevas migraciones.
         /// Formato: AAAA.MM.revision
         /// </summary>
-        public const string VersionActual = "2026.04.4";
+        public const string VersionActual = "2026.04.5";
 
         /// <summary>
         /// Aplica todas las migraciones sobre el contexto dado.
@@ -88,6 +88,7 @@ namespace SOPRO.Application.Services
                         M012_DisenadorEncabezadoPdf(conn, tx);
                         M013_TablasIndirectosVistas(conn, tx);
                         M014_TablasFormatoReporte(conn, tx);
+                        M015_VinculosCostoHorarioMaquinaria(conn, tx);
                         RegistrarVersion(conn, tx);
                         tx.Commit();
                     }
@@ -1019,6 +1020,30 @@ namespace SOPRO.Application.Services
                     FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE
                 );", tx);
             TryExec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_ConfiguracionesEstiloFilaReporte_ProyectoId_TipoReporte_RolFila ON ConfiguracionesEstiloFilaReporte(ProyectoId, TipoReporte, RolFila);", tx);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // M015 — Vínculos locales de Maquinaria con insumos del costo horario
+        //
+        // Columnas nullable: NULL significa "sin vínculo" (sin combustible, sin
+        // aceite o sin operador). La pertenencia al proyecto (ProyectoId exacto
+        // o catálogo maestro) se valida en Application, no por FK.
+        // ON DELETE RESTRICT evita borrar un material/mano de obra en uso.
+        // ═══════════════════════════════════════════════════════════════════════
+        private static void M015_VinculosCostoHorarioMaquinaria(DbConnection conn, DbTransaction tx)
+        {
+            if (!TablaExiste(conn, "Maquinaria", tx)) return;
+
+            AgregarColumna(conn, "Maquinaria", "MaterialCombustibleId",
+                "INTEGER NULL REFERENCES Materiales(Id) ON DELETE RESTRICT", tx);
+            AgregarColumna(conn, "Maquinaria", "MaterialAceiteId",
+                "INTEGER NULL REFERENCES Materiales(Id) ON DELETE RESTRICT", tx);
+            AgregarColumna(conn, "Maquinaria", "ManoDeObraOperadorId",
+                "INTEGER NULL REFERENCES ManoDeObra(Id) ON DELETE RESTRICT", tx);
+
+            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_Maquinaria_MaterialCombustibleId ON Maquinaria(MaterialCombustibleId);", tx);
+            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_Maquinaria_MaterialAceiteId ON Maquinaria(MaterialAceiteId);", tx);
+            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_Maquinaria_ManoDeObraOperadorId ON Maquinaria(ManoDeObraOperadorId);", tx);
         }
     }
 }

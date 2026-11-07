@@ -195,8 +195,8 @@ public class SchemaManagerMigrationTests
                 Assert.IsTrue(TablaExiste(ctx, "ConfiguracionesEstiloFilaReporte"),
                     "ConfiguracionesEstiloFilaReporte debe existir tras M014.");
 
-                Assert.AreEqual("2026.04.4", SchemaManager.GetVersionRegistrada(ctx),
-                    "M014 debe registrar la versión 2026.04.4 (bump de VersionActual).");
+                Assert.AreEqual("2026.04.5", SchemaManager.GetVersionRegistrada(ctx),
+                    "M015 debe registrar la versión 2026.04.5 (bump de VersionActual).");
                 Assert.AreEqual(SchemaManager.VersionActual,
                     SchemaManager.GetVersionRegistrada(ctx),
                     "La versión registrada debe coincidir con VersionActual.");
@@ -569,6 +569,188 @@ public class SchemaManagerMigrationTests
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // M015 — Vínculos locales de Maquinaria con insumos del costo horario
+    //        (MaterialCombustibleId, MaterialAceiteId, ManoDeObraOperadorId)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    [TestMethod]
+    public void Migracion015_CreacionDesdeBaseVacia_AgregaColumnasEIndices()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"sopro_schema_{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var ctx = new SOPROContext(dbPath))
+            {
+                ctx.Database.EnsureCreated();
+                SchemaManager.EnsureCurrentSchema(ctx);
+
+                foreach (var columna in new[]
+                         {
+                             "MaterialCombustibleId",
+                             "MaterialAceiteId",
+                             "ManoDeObraOperadorId"
+                         })
+                {
+                    Assert.IsTrue(ColumnaExiste(ctx, "Maquinaria", columna),
+                        $"Falta la columna Maquinaria.{columna} tras M015.");
+                    Assert.IsTrue(EsColumnaNullable(ctx, "Maquinaria", columna),
+                        $"Maquinaria.{columna} debe ser nullable (NULL = sin vínculo).");
+                    Assert.AreEqual(1, ContarObjeto(ctx, "index", $"IX_Maquinaria_{columna}"),
+                        $"Falta el índice IX_Maquinaria_{columna}.");
+                }
+
+                Assert.AreEqual(SchemaManager.VersionActual, SchemaManager.GetVersionRegistrada(ctx));
+                Assert.AreEqual("2026.04.5", SchemaManager.GetVersionRegistrada(ctx),
+                    "M015 debe registrar la versión 2026.04.5.");
+
+                // El DDL del modelo EF (EnsureCreated) debe declarar las mismas FK que M015.
+                var clavesForaneas = LeerClavesForaneas(ctx, "Maquinaria");
+                Assert.IsTrue(clavesForaneas.Contains(("Materiales", "MaterialCombustibleId", "RESTRICT")));
+                Assert.IsTrue(clavesForaneas.Contains(("Materiales", "MaterialAceiteId", "RESTRICT")));
+                Assert.IsTrue(clavesForaneas.Contains(("ManoDeObra", "ManoDeObraOperadorId", "RESTRICT")));
+            }
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void Migracion015_UpgradeDesdeMaquinariaSinVinculos_AgregaColumnasYConservaDatos()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"sopro_schema_{Guid.NewGuid():N}.db");
+        try
+        {
+            int proyectoId;
+            int maquinariaId;
+            using (var ctx = new SOPROContext(dbPath))
+            {
+                ctx.Database.EnsureCreated();
+
+                var proyecto = CrearProyecto("Proyecto M014");
+                ctx.Proyectos.Add(proyecto);
+                ctx.SaveChanges();
+                proyectoId = proyecto.Id;
+
+                var maquinariaLegacy = new Maquinaria
+                {
+                    ProyectoId = proyectoId,
+                    Clave = "M015-LEGACY",
+                    Descripcion = "Maquinaria legacy",
+                    Notas = string.Empty
+                };
+                ctx.Maquinaria.Add(maquinariaLegacy);
+                ctx.SaveChanges();
+                maquinariaId = maquinariaLegacy.Id;
+
+                // Simular una DB creada antes de M015: Maquinaria sin las columnas nuevas.
+                RecrearMaquinariaSinVinculos(ctx);
+            }
+
+            using (var ctx = new SOPROContext(dbPath))
+            {
+                Assert.IsFalse(ColumnaExiste(ctx, "Maquinaria", "MaterialCombustibleId"),
+                    "El escenario legacy no debe tener las columnas de M015 antes de migrar.");
+
+                SchemaManager.EnsureCurrentSchema(ctx);
+
+                foreach (var columna in new[]
+                         {
+                             "MaterialCombustibleId",
+                             "MaterialAceiteId",
+                             "ManoDeObraOperadorId"
+                         })
+                {
+                    Assert.IsTrue(ColumnaExiste(ctx, "Maquinaria", columna),
+                        $"M015 no agregó Maquinaria.{columna} en la DB legacy.");
+                    Assert.IsTrue(EsColumnaNullable(ctx, "Maquinaria", columna));
+                }
+
+                Assert.AreEqual(SchemaManager.VersionActual, SchemaManager.GetVersionRegistrada(ctx));
+
+                var clavesForaneas = LeerClavesForaneas(ctx, "Maquinaria");
+                Assert.IsTrue(clavesForaneas.Contains(("Materiales", "MaterialCombustibleId", "RESTRICT")),
+                    "M015 debe declarar FK MaterialCombustibleId → Materiales con ON DELETE RESTRICT.");
+                Assert.IsTrue(clavesForaneas.Contains(("Materiales", "MaterialAceiteId", "RESTRICT")),
+                    "M015 debe declarar FK MaterialAceiteId → Materiales con ON DELETE RESTRICT.");
+                Assert.IsTrue(clavesForaneas.Contains(("ManoDeObra", "ManoDeObraOperadorId", "RESTRICT")),
+                    "M015 debe declarar FK ManoDeObraOperadorId → ManoDeObra con ON DELETE RESTRICT.");
+
+                var maquinaria = ctx.Maquinaria.Single(m => m.Id == maquinariaId);
+                Assert.AreEqual(proyectoId, maquinaria.ProyectoId);
+                Assert.AreEqual("Maquinaria legacy", maquinaria.Descripcion,
+                    "Los datos previos deben conservarse.");
+                Assert.IsNull(maquinaria.MaterialCombustibleId);
+                Assert.IsNull(maquinaria.MaterialAceiteId);
+                Assert.IsNull(maquinaria.ManoDeObraOperadorId);
+
+                // Segunda pasada: idempotente, sin columnas ni índices duplicados.
+                SchemaManager.EnsureCurrentSchema(ctx);
+                foreach (var columna in new[]
+                         {
+                             "MaterialCombustibleId",
+                             "MaterialAceiteId",
+                             "ManoDeObraOperadorId"
+                         })
+                {
+                    Assert.AreEqual(1, ContarObjeto(ctx, "index", $"IX_Maquinaria_{columna}"),
+                        $"El índice IX_Maquinaria_{columna} no debe duplicarse.");
+                }
+            }
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void ModeloEf_Maquinaria_VinculosOpcionalesConRestrictEIndices()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"sopro_schema_{Guid.NewGuid():N}.db");
+        using var ctx = new SOPROContext(dbPath);
+
+        var entidad = ctx.Model.FindEntityType(typeof(Maquinaria));
+        if (entidad is null) throw new InvalidOperationException("Maquinaria no está en el modelo EF.");
+
+        var vinculos = new (string Propiedad, Type Principal)[]
+        {
+            ("MaterialCombustibleId", typeof(Material)),
+            ("MaterialAceiteId", typeof(Material)),
+            ("ManoDeObraOperadorId", typeof(ManoDeObra))
+        };
+
+        foreach (var (propiedad, principal) in vinculos)
+        {
+            var propiedadEf = entidad.FindProperty(propiedad);
+            Assert.IsNotNull(propiedadEf, $"Falta la propiedad {propiedad} en el modelo EF.");
+            Assert.IsTrue(propiedadEf.IsNullable, $"{propiedad} debe ser nullable.");
+
+            var fk = entidad.GetForeignKeys()
+                .SingleOrDefault(f => f.Properties.Count == 1 && f.Properties[0].Name == propiedad);
+            Assert.IsNotNull(fk, $"Falta la relación opcional de {propiedad}.");
+            Assert.AreEqual(principal, fk.PrincipalEntityType.ClrType,
+                $"{propiedad} debe apuntar a {principal.Name}.");
+            Assert.IsFalse(fk.IsRequired, $"{propiedad} debe ser una relación opcional.");
+            Assert.AreEqual(DeleteBehavior.Restrict, fk.DeleteBehavior,
+                $"{propiedad} debe usar DeleteBehavior.Restrict.");
+            Assert.IsNull(fk.PrincipalToDependent,
+                $"{propiedad} debe mapearse con WithMany() sin colección inversa.");
+
+            Assert.IsTrue(entidad.GetIndexes()
+                    .Any(i => i.Properties.Count == 1 && i.Properties[0].Name == propiedad),
+                $"Falta el índice de {propiedad}.");
+        }
+
+        Assert.IsTrue(
+            entidad.GetForeignKeys().All(f => f.Properties.All(p => p.Name != nameof(Maquinaria.MaquinariaMaestraId))),
+            "MaquinariaMaestraId no debe reutilizarse para los vínculos de costo horario.");
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────
 
     private static Proyecto CrearProyecto(string nombre) => new()
@@ -623,5 +805,97 @@ public class SchemaManagerMigrationTests
         if (cmd.Connection!.State != System.Data.ConnectionState.Open)
             cmd.Connection.Open();
         return cmd.ExecuteScalar() != null;
+    }
+
+    private static bool ColumnaExiste(SOPROContext ctx, string tabla, string columna)
+    {
+        using var cmd = ctx.Database.GetDbConnection().CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info($1) WHERE name=$2";
+        var p1 = cmd.CreateParameter(); p1.ParameterName = "$1"; p1.Value = tabla; cmd.Parameters.Add(p1);
+        var p2 = cmd.CreateParameter(); p2.ParameterName = "$2"; p2.Value = columna; cmd.Parameters.Add(p2);
+        if (cmd.Connection!.State != System.Data.ConnectionState.Open)
+            cmd.Connection.Open();
+        return Convert.ToInt32(cmd.ExecuteScalar()) > 0;
+    }
+
+    private static bool EsColumnaNullable(SOPROContext ctx, string tabla, string columna)
+    {
+        using var cmd = ctx.Database.GetDbConnection().CreateCommand();
+        cmd.CommandText = "SELECT [notnull] FROM pragma_table_info($1) WHERE name=$2";
+        var p1 = cmd.CreateParameter(); p1.ParameterName = "$1"; p1.Value = tabla; cmd.Parameters.Add(p1);
+        var p2 = cmd.CreateParameter(); p2.ParameterName = "$2"; p2.Value = columna; cmd.Parameters.Add(p2);
+        if (cmd.Connection!.State != System.Data.ConnectionState.Open)
+            cmd.Connection.Open();
+        var valor = cmd.ExecuteScalar();
+        return valor is not null && Convert.ToInt32(valor) == 0;
+    }
+
+    private static List<(string Tabla, string Columna, string OnDelete)> LeerClavesForaneas(
+        SOPROContext ctx, string tabla)
+    {
+        var claves = new List<(string Tabla, string Columna, string OnDelete)>();
+        using var cmd = ctx.Database.GetDbConnection().CreateCommand();
+        cmd.CommandText = "SELECT [table], [from], on_delete FROM pragma_foreign_key_list($1)";
+        var p = cmd.CreateParameter(); p.ParameterName = "$1"; p.Value = tabla; cmd.Parameters.Add(p);
+        if (cmd.Connection!.State != System.Data.ConnectionState.Open)
+            cmd.Connection.Open();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            claves.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2)));
+        return claves;
+    }
+
+    private static void RecrearMaquinariaSinVinculos(SOPROContext ctx)
+    {
+        var conn = ctx.Database.GetDbConnection();
+        var abrir = conn.State != System.Data.ConnectionState.Open;
+        if (abrir) conn.Open();
+
+        try
+        {
+            using (var pragma = conn.CreateCommand())
+            {
+                pragma.CommandText = "PRAGMA foreign_keys = OFF;";
+                pragma.ExecuteNonQuery();
+            }
+
+            var columnas = new List<string>();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT name FROM pragma_table_info('Maquinaria') ORDER BY cid";
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var nombre = reader.GetString(0);
+                    if (nombre is "MaterialCombustibleId" or "MaterialAceiteId" or "ManoDeObraOperadorId")
+                        continue;
+                    columnas.Add($"[{nombre}]");
+                }
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = $@"
+                    DROP TABLE IF EXISTS Maquinaria_SIN_VINCULOS;
+                    CREATE TABLE Maquinaria_SIN_VINCULOS AS
+                        SELECT {string.Join(", ", columnas)} FROM Maquinaria;
+                    DROP TABLE Maquinaria;
+                    ALTER TABLE Maquinaria_SIN_VINCULOS RENAME TO Maquinaria;";
+                cmd.ExecuteNonQuery();
+            }
+        }
+        finally
+        {
+            try
+            {
+                using var pragmaOn = conn.CreateCommand();
+                pragmaOn.CommandText = "PRAGMA foreign_keys = ON;";
+                pragmaOn.ExecuteNonQuery();
+            }
+            finally
+            {
+                if (abrir) conn.Close();
+            }
+        }
     }
 }

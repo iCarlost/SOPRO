@@ -31,7 +31,7 @@ Si tocas (1) y (2) sin tocar (3), los DBs viejos fallarán al abrirse con errore
 
 3. **Incrementar** `VersionActual`:
    ```csharp
-   public const string VersionActual = "2026.04.4";  // de .3 a .4
+   public const string VersionActual = "2026.04.5";  // de .4 a .5
    ```
 
 4. **Regla para columnas string NOT NULL nuevas**: si agregas una columna `string`
@@ -75,7 +75,7 @@ EnsureCurrentSchema(context)
 
 ```csharp
 string? version = SchemaManager.GetVersionRegistrada(context);
-// "2026.04.4" si ya pasó por SchemaManager
+// "2026.04.5" si ya pasó por SchemaManager
 // null si es un DB muy viejo (antes del SchemaManager)
 ```
 
