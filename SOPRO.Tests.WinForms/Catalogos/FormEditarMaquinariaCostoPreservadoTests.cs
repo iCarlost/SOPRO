@@ -23,7 +23,7 @@ public class FormEditarMaquinariaCostoPreservadoTests
     [TestMethod]
     public void ConstructorConRegistroCalculado_ConservaCostoYFlagCalculado()
     {
-        var maquinaria = new Maquinaria
+        Maquinaria maquinaria = new Maquinaria
         {
             Clave = "MAQ-001",
             Descripcion = "Retroexcavadora de prueba",
@@ -94,6 +94,39 @@ public class FormEditarMaquinariaCostoPreservadoTests
             Assert.IsTrue(
                 LeerCostoHorario(form).Enabled,
                 "En modo manual el costo horario debe quedar editable.");
+        });
+    }
+
+    [TestMethod]
+    public void ConstructorConRegistroCalculado_RadioCalculadoNoMencionaOpus()
+    {
+        var maquinaria = new Maquinaria
+        {
+            Clave = "MAQ-0097",
+            Descripcion = "Maquinaria con etiqueta sin OPUS",
+            PotenciaNominal = 150m,
+            TipoCombustible = TipoCombustible.Diesel,
+            CostoHorario = 987.6543m,
+            EsCostoCalculado = true,
+            Origen = OrigenInsumo.Maestro,
+            Notas = string.Empty
+        };
+
+        ConFormularioExistente(maquinaria, form =>
+        {
+            string textoCalculado = LeerCostoCalculado(form).Text;
+
+            Assert.IsFalse(
+                textoCalculado.Contains("OPUS", StringComparison.OrdinalIgnoreCase),
+                "La opción calculada no debe anunciar la referencia OPUS.");
+
+            Assert.IsTrue(
+                textoCalculado.Contains("Calculado", StringComparison.OrdinalIgnoreCase),
+                "La opción calculada debe conservar su etiqueta funcional.");
+
+            Assert.IsTrue(
+                LeerCostoCalculado(form).Checked,
+                "El cambio de etiqueta no debe alterar la selección del modo calculado.");
         });
     }
 

@@ -2,6 +2,7 @@ using SOPRO.Core.Entities;
 using SOPRO.Core.Services;
 using SOPRO.Data.Context;
 using SOPRO.Data.Repositories;
+using SOPRO.WinForms.Helpers;
 using Sopro.Calculation.Equipment;
 using System;
 using System.Windows.Forms;
@@ -31,6 +32,7 @@ namespace SOPRO.WinForms.Forms
             _repository = new Repository<Maquinaria>(_context);
             _maquinaria = maquinaria ?? throw new ArgumentNullException(nameof(maquinaria));
 
+            ConfigurarSeleccionTotal();
             CargarDatos();
             SuscribirEventos();
         }
@@ -73,6 +75,34 @@ namespace SOPRO.WinForms.Forms
 
             // Calcular con los datos cargados
             Recalcular();
+        }
+
+        private void ConfigurarSeleccionTotal()
+        {
+            // Tab A — Cargos Fijos
+            SeleccionTotalNumericUpDown.Configurar(nudValorAdquisicion);
+            SeleccionTotalNumericUpDown.Configurar(nudValorLlantas);
+            SeleccionTotalNumericUpDown.Configurar(nudValorPiezasEsp);
+            SeleccionTotalNumericUpDown.Configurar(nudFactorRescate);
+            SeleccionTotalNumericUpDown.Configurar(nudVidaEconomica);
+            SeleccionTotalNumericUpDown.Configurar(nudTasaInteres);
+            SeleccionTotalNumericUpDown.Configurar(nudHorasAnio);
+            SeleccionTotalNumericUpDown.Configurar(nudPrimaSeguro);
+            SeleccionTotalNumericUpDown.Configurar(nudFactorManten);
+
+            // Tab B — Consumos
+            SeleccionTotalNumericUpDown.Configurar(nudCantCombustible);
+            SeleccionTotalNumericUpDown.Configurar(nudPrecioCombustible);
+            SeleccionTotalNumericUpDown.Configurar(nudCantAceite);
+            SeleccionTotalNumericUpDown.Configurar(nudPrecioAceite);
+            SeleccionTotalNumericUpDown.Configurar(nudNumLlantas);
+            SeleccionTotalNumericUpDown.Configurar(nudVidaLlantas);
+            SeleccionTotalNumericUpDown.Configurar(nudVidaPiezasEsp);
+
+            // Tab C — Operación
+            SeleccionTotalNumericUpDown.Configurar(nudSalarioOperador);
+            SeleccionTotalNumericUpDown.Configurar(nudFSR);
+            SeleccionTotalNumericUpDown.Configurar(nudHorasTurno);
         }
 
         private void SuscribirEventos()
