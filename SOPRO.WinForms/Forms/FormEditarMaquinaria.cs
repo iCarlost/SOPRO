@@ -124,7 +124,10 @@ namespace SOPRO.WinForms.Forms
                         EsCostoCalculado = true,
                         Notas = txtNotas.Text,
                         GuardarEnMaestro = rbMaestro.Checked,
-                        ProyectoId = _proyectoId
+                        ProyectoId = _proyectoId,
+                        MaterialCombustibleId = _maquinaria?.MaterialCombustibleId,
+                        MaterialAceiteId = _maquinaria?.MaterialAceiteId,
+                        ManoDeObraOperadorId = _maquinaria?.ManoDeObraOperadorId
                     };
 
                     var result = await CatalogItemService.SaveMaquinariaAsync(_context, dto);
@@ -223,7 +226,10 @@ namespace SOPRO.WinForms.Forms
                             EsCostoCalculado = rbCostoCalculado.Checked,
                             Notas = txtNotas.Text,
                             GuardarEnMaestro = rbMaestro.Checked,
-                            ProyectoId = _proyectoId
+                            ProyectoId = _proyectoId,
+                            MaterialCombustibleId = _maquinaria?.MaterialCombustibleId,
+                            MaterialAceiteId = _maquinaria?.MaterialAceiteId,
+                            ManoDeObraOperadorId = _maquinaria?.ManoDeObraOperadorId
                         };
 
                         var result = await CatalogItemService.SaveMaquinariaAsync(_context, dto, _esNuevo ? null : _maquinaria);

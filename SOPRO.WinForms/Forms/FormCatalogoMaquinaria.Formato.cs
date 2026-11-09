@@ -126,6 +126,8 @@ namespace SOPRO.WinForms.Forms
             ConfigurarFormatoCeldas();
             this.Load += (s, e) => CargarMaquinaria();
 
+            SuscribirBusInsumos();
+
             dgvMaquinaria.ColumnHeaderMouseClick += (s, e) =>
             {
                 _formatoCeldas.SeleccionPorEncabezado = true;

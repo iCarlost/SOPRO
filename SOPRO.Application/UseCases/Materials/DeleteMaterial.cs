@@ -76,6 +76,21 @@ public sealed class DeleteMaterial
                     "No se puede eliminar el material: está referenciado en matrices de otro proyecto.");
             }
 
+            var maquinariaVinculada = await context.Maquinaria.AsNoTracking()
+                .Where(m => m.MaterialCombustibleId == request.MaterialId || m.MaterialAceiteId == request.MaterialId)
+                .Select(m => new { m.Clave, m.Descripcion, m.MaterialCombustibleId, m.MaterialAceiteId })
+                .ToListAsync(cancellationToken);
+            if (maquinariaVinculada.Count > 0)
+            {
+                string detalle = string.Join("; ", maquinariaVinculada.SelectMany(m => new[]
+                {
+                    m.MaterialCombustibleId == request.MaterialId ? $"{m.Clave} - {m.Descripcion} (combustible)" : null,
+                    m.MaterialAceiteId == request.MaterialId ? $"{m.Clave} - {m.Descripcion} (lubricante)" : null
+                }).Where(x => x is not null));
+                return Result<DeleteMaterialResult>.Fail(AppErrorCode.Conflict,
+                    $"No se puede eliminar el material: está vinculado a maquinaria: {detalle}.");
+            }
+
             if (componentesEnUso.Count > 0)
                 context.ComponentesMatriz.RemoveRange(componentesEnUso);
 

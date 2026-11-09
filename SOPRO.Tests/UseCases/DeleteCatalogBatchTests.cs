@@ -25,6 +25,68 @@ public class DeleteCatalogBatchTests
 {
     private static readonly IProjectDbContextFactory Fabrica = new ProjectDbContextFactory();
 
+    [TestMethod]
+    public async Task DeleteCatalogBatch_VinculosSoloMaquinaria_ExponeRolesBloqueaYDetectaHuellaObsoleta()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+        Material combustible = NuevoMaterial(scenario.Proyecto.Id, "MAT-COMB");
+        Material aceite = NuevoMaterial(scenario.Proyecto.Id, "MAT-ACEITE");
+        ManoDeObra operador = new()
+        {
+            ProyectoId = scenario.Proyecto.Id, Clave = "MO-OP", Descripcion = "Operador",
+            Unidad = "jor", SalarioReal = 1m, Notas = string.Empty, Origen = OrigenInsumo.Proyecto
+        };
+        context.Materiales.AddRange(combustible, aceite);
+        context.ManoDeObra.Add(operador);
+        context.SaveChanges();
+        Maquinaria maquina = NuevaMaquinaria(scenario.Proyecto.Id, "EQ-LINK");
+        maquina.MaterialCombustibleId = combustible.Id;
+        maquina.MaterialAceiteId = combustible.Id;
+        maquina.ManoDeObraOperadorId = operador.Id;
+        context.Maquinaria.Add(maquina);
+        context.SaveChanges();
+        ProjectSessionInfo session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+
+        Result<CatalogBatchDeletionPreview> preview = await new PreviewCatalogBatchDeletion(Fabrica).Execute(
+            session, new PreviewCatalogBatchDeletionRequest(CatalogItemKind.Material, new[] { combustible.Id }));
+        Assert.IsTrue(preview.IsSuccess, preview.Error?.Message);
+        CollectionAssert.AreEquivalent(new[] { "combustible", "lubricante" },
+            preview.Value!.LinkedMachinery.Select(x => x.Rol).ToArray());
+        Assert.AreEqual(0, preview.Value.AffectedComponentCount);
+        Result<DeleteCatalogBatchResult> blocked = await new DeleteCatalogBatch(Fabrica).Execute(session,
+            new DeleteCatalogBatchRequest(CatalogItemKind.Material, new[] { combustible.Id }, preview.Value.Fingerprint));
+        Assert.IsFalse(blocked.IsSuccess);
+        StringAssert.Contains(blocked.Error!.Message, "EQ-LINK");
+        StringAssert.Contains(blocked.Error.Message, "combustible");
+        StringAssert.Contains(blocked.Error.Message, "lubricante");
+
+        Result<CatalogBatchDeletionPreview> laborPreview = await new PreviewCatalogBatchDeletion(Fabrica).Execute(
+            session, new PreviewCatalogBatchDeletionRequest(CatalogItemKind.ManoDeObra, new[] { operador.Id }));
+        Assert.IsTrue(laborPreview.IsSuccess, laborPreview.Error?.Message);
+        Assert.AreEqual("operador", laborPreview.Value!.LinkedMachinery.Single().Rol);
+        Result<DeleteCatalogBatchResult> laborBlocked = await new DeleteCatalogBatch(Fabrica).Execute(session,
+            new DeleteCatalogBatchRequest(CatalogItemKind.ManoDeObra, new[] { operador.Id }, laborPreview.Value.Fingerprint));
+        Assert.IsFalse(laborBlocked.IsSuccess);
+        StringAssert.Contains(laborBlocked.Error!.Message, "operador");
+
+        Maquinaria addedMachine = NuevaMaquinaria(scenario.Proyecto.Id, "EQ-NEW");
+        addedMachine.MaterialCombustibleId = combustible.Id;
+        context.Maquinaria.Add(addedMachine);
+        context.SaveChanges();
+        Result<DeleteCatalogBatchResult> stale = await new DeleteCatalogBatch(Fabrica).Execute(session,
+            new DeleteCatalogBatchRequest(CatalogItemKind.Material, new[] { combustible.Id }, preview.Value.Fingerprint));
+        Assert.IsFalse(stale.IsSuccess);
+        Assert.AreEqual(AppErrorCode.Conflict, stale.Error!.Code);
+        StringAssert.Contains(stale.Error.Message, "cambiaron");
+    }
+
+    private static Maquinaria NuevaMaquinaria(int proyectoId, string clave) => new()
+    {
+        ProyectoId = proyectoId, Clave = clave, Descripcion = "Equipo vinculado", Notas = string.Empty,
+        CostoHorario = 1m, EsCostoCalculado = false, Origen = OrigenInsumo.Proyecto
+    };
+
     // ---------- Materiales ----------
 
     [TestMethod]

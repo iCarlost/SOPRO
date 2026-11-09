@@ -123,6 +123,9 @@ namespace SOPRO.Application.Services
             target.ProyectoId = currentProjectId;
             target.Origen = OrigenInsumo.Proyecto;
             target.MaquinariaMaestraId = null;
+            target.MaterialCombustibleId = null;
+            target.MaterialAceiteId = null;
+            target.ManoDeObraOperadorId = null;
             target.Notas = ImportOriginStampService.AppendStamp(source.Notas, projectName);
             target.FechaModificacion = DateTime.Now;
             target.FechaCalculoCosto = source.FechaCalculoCosto;

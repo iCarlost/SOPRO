@@ -50,6 +50,7 @@ public sealed class PreviewCatalogBatchDeletion
             planificado.ClosureMatrixIds.Count,
             planificado.AffectedConceptIds.Count,
             planificado.AffectedAggregatorCount,
-            planificado.Fingerprint));
+            planificado.Fingerprint,
+            planificado.MachineryLinks));
     }
 }

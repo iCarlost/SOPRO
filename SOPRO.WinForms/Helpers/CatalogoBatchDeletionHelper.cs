@@ -102,6 +102,33 @@ namespace SOPRO.WinForms.Helpers
                    "Esta acción no se puede deshacer.";
         }
 
+        public static bool BloqueadaPorMaquinaria(CatalogBatchDeletionPreview preview)
+        {
+            ArgumentNullException.ThrowIfNull(preview);
+            return preview.LinkedMachinery.Count > 0;
+        }
+
+        public static string ConstruirAvisoMaquinariaVinculada(IEnumerable<MachineryCatalogLink> links)
+        {
+            ArgumentNullException.ThrowIfNull(links);
+            List<MachineryCatalogLink> afectados = links
+                .Where(link => link is not null)
+                .DistinctBy(link => new { link.MaquinariaId, link.Rol })
+                .OrderBy(link => link.Clave, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(link => link.Descripcion, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(link => link.Rol, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(link => link.MaquinariaId)
+                .ToList();
+
+            string detalle = afectados.Count == 0
+                ? "No se puede eliminar mientras existan vínculos con maquinaria."
+                : "No se puede eliminar porque está vinculado a la siguiente maquinaria:\n\n" +
+                  string.Join("\n", afectados.Select(link =>
+                      $"• {link.Clave} — {link.Descripcion} ({link.Rol})"));
+
+            return detalle;
+        }
+
         /// <summary>
         /// Decide si la tecla Supr debe despachar la eliminación. Vale tanto Supr
         /// como Ctrl+Supr; no se despacha mientras la celda está en edición (el

@@ -64,9 +64,22 @@ public sealed class PreviewMaterialDeletion
                     && c.Matriz.ProyectoId != session.Project.ProjectId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
+            var maquinaria = await context.Maquinaria.AsNoTracking()
+                .Where(m => m.MaterialCombustibleId == request.MaterialId || m.MaterialAceiteId == request.MaterialId)
+                .Select(m => new { m.Id, m.Clave, m.Descripcion, m.MaterialCombustibleId, m.MaterialAceiteId })
+                .ToListAsync(cancellationToken);
+            var usosMaquinaria = maquinaria.SelectMany(m => new[]
+            {
+                m.MaterialCombustibleId == request.MaterialId
+                    ? new MaterialMachineryUsage(m.Id, m.Clave, m.Descripcion ?? string.Empty, "combustible") : null,
+                m.MaterialAceiteId == request.MaterialId
+                    ? new MaterialMachineryUsage(m.Id, m.Clave, m.Descripcion ?? string.Empty, "lubricante") : null
+            }).Where(x => x is not null).Cast<MaterialMachineryUsage>().ToList();
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (componentes.Count == 0)
                 return Result<MaterialDeletionPreview>.Ok(
-                    new MaterialDeletionPreview(0, Array.Empty<MaterialUsageInMatrix>(), referenciasExternas));
+                    new MaterialDeletionPreview(0, Array.Empty<MaterialUsageInMatrix>(), referenciasExternas, usosMaquinaria));
 
             var matrizIds = componentes.Select(c => c.MatrizId).Distinct().ToList();
 
@@ -80,7 +93,7 @@ public sealed class PreviewMaterialDeletion
             cancellationToken.ThrowIfCancellationRequested();
 
             return Result<MaterialDeletionPreview>.Ok(
-                new MaterialDeletionPreview(componentes.Count, matrices, referenciasExternas));
+                new MaterialDeletionPreview(componentes.Count, matrices, referenciasExternas, usosMaquinaria));
         }
         catch (OperationCanceledException)
         {

@@ -241,6 +241,25 @@ namespace SOPRO.Data.Context
                     .HasForeignKey(e => e.ProyectoId)
                     .OnDelete(DeleteBehavior.Cascade);
 
+                entity.HasOne(e => e.MaterialCombustible)
+                    .WithMany()
+                    .HasForeignKey(e => e.MaterialCombustibleId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.MaterialAceite)
+                    .WithMany()
+                    .HasForeignKey(e => e.MaterialAceiteId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.ManoDeObraOperador)
+                    .WithMany()
+                    .HasForeignKey(e => e.ManoDeObraOperadorId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(e => e.MaterialCombustibleId);
+                entity.HasIndex(e => e.MaterialAceiteId);
+                entity.HasIndex(e => e.ManoDeObraOperadorId);
+
                 entity.HasIndex(e => new { e.ProyectoId, e.Clave }).IsUnique();
             });
 

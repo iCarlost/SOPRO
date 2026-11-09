@@ -491,6 +491,9 @@ namespace SOPRO.WinForms.Forms
                         Notas = maq.Notas,
                         Origen = OrigenInsumo.Maestro,
                         MaquinariaMaestraId = maq.Id,
+                        MaterialCombustibleId = null,
+                        MaterialAceiteId = null,
+                        ManoDeObraOperadorId = null,
                         ProyectoId = _proyectoId
                     };
                     

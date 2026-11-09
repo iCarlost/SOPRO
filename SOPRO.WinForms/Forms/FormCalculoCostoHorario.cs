@@ -1,18 +1,19 @@
 using SOPRO.Core.Entities;
 using SOPRO.Core.Services;
 using SOPRO.Data.Context;
-using SOPRO.Data.Repositories;
 using SOPRO.WinForms.Helpers;
 using Sopro.Calculation.Equipment;
 using System;
 using System.Windows.Forms;
+using SOPRO.Application.DTOs.Catalog;
+using SOPRO.Application.Models;
+using SOPRO.Application.Services;
 
 namespace SOPRO.WinForms.Forms
 {
     public partial class FormCalculoCostoHorario : Form
     {
         private readonly SOPROContext _context;
-        private readonly Repository<Maquinaria> _repository;
         private readonly Maquinaria _maquinaria;
 
         // Resultados intermedios y finales
@@ -23,18 +24,222 @@ namespace SOPRO.WinForms.Forms
         private decimal _totalConsumos = 0;
         private decimal _salarioReal = 0, _operacion = 0;
         private decimal _costoHorarioTotal = 0;
+        private readonly Button btnVincularCombustible = new() { Text = "Vincular…", Size = new System.Drawing.Size(76, 22) };
+        private readonly Button btnQuitarCombustible = new() { Text = "Quitar", Size = new System.Drawing.Size(64, 22) };
+        private readonly Label lblVinculoCombustible = new() { Text = "Sin vínculo", AutoSize = true, ForeColor = System.Drawing.Color.DarkSlateGray };
+        private readonly Button btnVincularAceite = new() { Text = "Vincular…", Size = new System.Drawing.Size(76, 22) };
+        private readonly Button btnQuitarAceite = new() { Text = "Quitar", Size = new System.Drawing.Size(64, 22) };
+        private readonly Label lblVinculoAceite = new() { Text = "Sin vínculo", AutoSize = true, ForeColor = System.Drawing.Color.DarkSlateGray };
+        private readonly Button btnVincularOperador = new() { Text = "Vincular…", Size = new System.Drawing.Size(76, 22) };
+        private readonly Button btnQuitarOperador = new() { Text = "Quitar", Size = new System.Drawing.Size(64, 22) };
+        private readonly Label lblVinculoOperador = new() { Text = "Sin vínculo", AutoSize = true, ForeColor = System.Drawing.Color.DarkSlateGray };
+        private readonly ToolTip _vinculoToolTip = new();
+        private int? _materialCombustibleIdPendiente;
+        private int? _materialAceiteIdPendiente;
+        private int? _operadorIdPendiente;
 
         public FormCalculoCostoHorario(SOPROContext context, Maquinaria maquinaria)
         {
             InitializeComponent();
 
             _context    = context    ?? throw new ArgumentNullException(nameof(context));
-            _repository = new Repository<Maquinaria>(_context);
             _maquinaria = maquinaria ?? throw new ArgumentNullException(nameof(maquinaria));
 
             ConfigurarSeleccionTotal();
             CargarDatos();
             SuscribirEventos();
+            ConfigurarVinculos();
+        }
+
+        private void ConfigurarVinculos()
+        {
+            btnVincularCombustible.Location = new System.Drawing.Point(225, 91);
+            btnQuitarCombustible.Location = new System.Drawing.Point(305, 91);
+            lblVinculoCombustible.Location = new System.Drawing.Point(10, 94);
+            btnVincularAceite.Location = new System.Drawing.Point(225, 89);
+            btnQuitarAceite.Location = new System.Drawing.Point(305, 89);
+            lblVinculoAceite.Location = new System.Drawing.Point(10, 92);
+            btnVincularOperador.Location = new System.Drawing.Point(248, 150);
+            btnQuitarOperador.Location = new System.Drawing.Point(328, 150);
+            lblVinculoOperador.Location = new System.Drawing.Point(10, 153);
+            grpCombustible.Controls.AddRange(new Control[] { btnVincularCombustible, btnQuitarCombustible, lblVinculoCombustible });
+            grpLubricantes.Controls.AddRange(new Control[] { btnVincularAceite, btnQuitarAceite, lblVinculoAceite });
+            grpOperacion.Controls.AddRange(new Control[] { btnVincularOperador, btnQuitarOperador, lblVinculoOperador });
+            btnVincularCombustible.Click += btnVincularCombustible_Click;
+            btnVincularAceite.Click += btnVincularAceite_Click;
+            btnVincularOperador.Click += btnVincularOperador_Click;
+            btnQuitarCombustible.Click += (s, e) => Desvincular(() => _materialCombustibleIdPendiente = null, nudPrecioCombustible, null, lblVinculoCombustible);
+            btnQuitarAceite.Click += (s, e) => Desvincular(() => _materialAceiteIdPendiente = null, nudPrecioAceite, null, lblVinculoAceite);
+            btnQuitarOperador.Click += (s, e) => Desvincular(() => _operadorIdPendiente = null, nudSalarioOperador, nudFSR, lblVinculoOperador);
+            _vinculoToolTip.SetToolTip(lblVinculoCombustible, "El precio se toma del material mientras esté vinculado.");
+            _vinculoToolTip.SetToolTip(lblVinculoAceite, "El precio se toma del material mientras esté vinculado.");
+            _vinculoToolTip.SetToolTip(lblVinculoOperador, "Salario base y FSR se toman de esta persona mientras esté vinculada.");
+            bool linked = _maquinaria.EsCostoCalculado;
+            _materialCombustibleIdPendiente = _maquinaria.MaterialCombustibleId;
+            _materialAceiteIdPendiente = _maquinaria.MaterialAceiteId;
+            _operadorIdPendiente = _maquinaria.ManoDeObraOperadorId;
+            btnVincularCombustible.Enabled = linked;
+            btnVincularAceite.Enabled = linked;
+            btnVincularOperador.Enabled = linked;
+            if (!linked)
+            {
+                btnQuitarCombustible.Enabled = btnQuitarAceite.Enabled = btnQuitarOperador.Enabled = false;
+                return;
+            }
+            if (_materialCombustibleIdPendiente.HasValue)
+            {
+                Material? item = _context.Materiales.FirstOrDefault(x => x.Id == _materialCombustibleIdPendiente && x.ProyectoId == _maquinaria.ProyectoId);
+                if (item != null)
+                {
+                    nudPrecioCombustible.Value = Clamp(nudPrecioCombustible, item.PrecioUnitario);
+                    lblVinculoCombustible.Text = item.Clave;
+                    nudPrecioCombustible.Enabled = false;
+                }
+                else
+                {
+                    lblVinculoCombustible.Text = "Vínculo no disponible";
+                    nudPrecioCombustible.Enabled = false;
+                }
+            }
+            if (_materialAceiteIdPendiente.HasValue)
+            {
+                Material? item = _context.Materiales.FirstOrDefault(x => x.Id == _materialAceiteIdPendiente && x.ProyectoId == _maquinaria.ProyectoId);
+                if (item != null)
+                {
+                    nudPrecioAceite.Value = Clamp(nudPrecioAceite, item.PrecioUnitario);
+                    lblVinculoAceite.Text = item.Clave;
+                    nudPrecioAceite.Enabled = false;
+                }
+                else
+                {
+                    lblVinculoAceite.Text = "Vínculo no disponible";
+                    nudPrecioAceite.Enabled = false;
+                }
+            }
+            if (_operadorIdPendiente.HasValue)
+            {
+                ManoDeObra? item = _context.ManoDeObra.FirstOrDefault(x => x.Id == _operadorIdPendiente && x.ProyectoId == _maquinaria.ProyectoId);
+                if (item != null)
+                {
+                    nudSalarioOperador.Value = Clamp(nudSalarioOperador, item.SalarioBase);
+                    nudFSR.Value = Clamp(nudFSR, item.FactorSalarioReal);
+                    lblVinculoOperador.Text = item.Clave;
+                    nudSalarioOperador.Enabled = false;
+                    nudFSR.Enabled = false;
+                }
+                else
+                {
+                    lblVinculoOperador.Text = "Vínculo no disponible";
+                    nudSalarioOperador.Enabled = false;
+                    nudFSR.Enabled = false;
+                }
+            }
+            btnQuitarCombustible.Enabled = _materialCombustibleIdPendiente.HasValue && linked;
+            btnQuitarAceite.Enabled = _materialAceiteIdPendiente.HasValue && linked;
+            btnQuitarOperador.Enabled = _operadorIdPendiente.HasValue && linked;
+            Recalcular();
+        }
+
+        private static decimal Clamp(NumericUpDown control, decimal value) => Math.Max(control.Minimum, Math.Min(control.Maximum, value));
+
+        internal static IQueryable<Material> ConsultarMaterialesDelPropietario(IQueryable<Material> materiales, int? proyectoId)
+        {
+            return materiales.Where(x => x.ProyectoId == proyectoId).OrderBy(x => x.Clave);
+        }
+
+        internal static IQueryable<ManoDeObra> ConsultarOperadoresDelPropietario(IQueryable<ManoDeObra> personal, int? proyectoId)
+        {
+            return personal.Where(x => x.ProyectoId == proyectoId).OrderBy(x => x.Clave);
+        }
+
+        private void SeleccionarVinculo<T>(IQueryable<T> source, Func<T, string> label, Action<T> apply, string titulo) where T : class
+        {
+            using var dialog = new Form { Text = titulo, Width = 520, Height = 390, StartPosition = FormStartPosition.CenterParent };
+            ListBox list = new ListBox { Dock = DockStyle.Fill, DisplayMember = "Text" };
+            List<T> rows = source.ToList();
+            foreach (T row in rows) list.Items.Add(new VinculoOpcion<T>(label(row), row));
+            list.DisplayMember = nameof(VinculoOpcion<T>.Text);
+            FlowLayoutPanel footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 42, FlowDirection = FlowDirection.RightToLeft };
+            Button cancel = new Button { Text = "Cancelar", Width = 90, DialogResult = DialogResult.Cancel };
+            Button ok = new Button { Text = "Vincular", Width = 90, DialogResult = DialogResult.OK, Enabled = rows.Count > 0 };
+            Label empty = new Label { Text = rows.Count == 0 ? "No hay elementos disponibles en este alcance." : string.Empty, Dock = DockStyle.Top, Height = 28, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
+            footer.Controls.Add(cancel);
+            footer.Controls.Add(ok);
+            dialog.Controls.Add(list);
+            dialog.Controls.Add(empty);
+            dialog.Controls.Add(footer);
+            dialog.CancelButton = cancel;
+            dialog.AcceptButton = ok;
+            if (dialog.ShowDialog(this) == DialogResult.OK && list.SelectedItem is VinculoOpcion<T> selected)
+                apply(selected.Value);
+        }
+
+        private sealed record VinculoOpcion<T>(string Text, T Value);
+
+        private void btnVincularCombustible_Click(object? sender, EventArgs e)
+        {
+            SeleccionarVinculo(
+                ConsultarMaterialesDelPropietario(_context.Materiales, _maquinaria.ProyectoId),
+                material => $"{material.Clave} — {material.Descripcion} (${material.PrecioUnitario:N4})",
+                material =>
+                {
+                    _materialCombustibleIdPendiente = material.Id;
+                    nudPrecioCombustible.Value = Clamp(nudPrecioCombustible, material.PrecioUnitario);
+                    nudPrecioCombustible.Enabled = false;
+                    lblVinculoCombustible.Text = material.Clave;
+                    btnQuitarCombustible.Enabled = true;
+                    Recalcular();
+                },
+                "Vincular combustible");
+        }
+        private void btnVincularAceite_Click(object? sender, EventArgs e)
+        {
+            SeleccionarVinculo(
+                ConsultarMaterialesDelPropietario(_context.Materiales, _maquinaria.ProyectoId),
+                material => $"{material.Clave} — {material.Descripcion} (${material.PrecioUnitario:N4})",
+                material =>
+                {
+                    _materialAceiteIdPendiente = material.Id;
+                    nudPrecioAceite.Value = Clamp(nudPrecioAceite, material.PrecioUnitario);
+                    nudPrecioAceite.Enabled = false;
+                    lblVinculoAceite.Text = material.Clave;
+                    btnQuitarAceite.Enabled = true;
+                    Recalcular();
+                },
+                "Vincular lubricante");
+        }
+        private void btnVincularOperador_Click(object? sender, EventArgs e)
+        {
+            SeleccionarVinculo(
+                ConsultarOperadoresDelPropietario(_context.ManoDeObra, _maquinaria.ProyectoId),
+                operador => $"{operador.Clave} — {operador.Descripcion} (${operador.SalarioBase:N2}; FSR {operador.FactorSalarioReal:N4})",
+                operador =>
+                {
+                    _operadorIdPendiente = operador.Id;
+                    nudSalarioOperador.Value = Clamp(nudSalarioOperador, operador.SalarioBase);
+                    nudFSR.Value = Clamp(nudFSR, operador.FactorSalarioReal);
+                    nudSalarioOperador.Enabled = false;
+                    nudFSR.Enabled = false;
+                    lblVinculoOperador.Text = operador.Clave;
+                    btnQuitarOperador.Enabled = true;
+                    Recalcular();
+                },
+                "Vincular operador");
+        }
+        private void Desvincular(Action clear, NumericUpDown first, NumericUpDown? second, Label status)
+        {
+            clear();
+            first.Enabled = true;
+            if (second != null)
+                second.Enabled = true;
+            status.Text = "Sin vínculo";
+            if (first == nudPrecioCombustible)
+                btnQuitarCombustible.Enabled = false;
+            else if (first == nudPrecioAceite)
+                btnQuitarAceite.Enabled = false;
+            else
+                btnQuitarOperador.Enabled = false;
+            Recalcular();
         }
 
         // ──────────────────────────────────────────────────────────────────────
@@ -319,36 +524,7 @@ namespace SOPRO.WinForms.Forms
         {
             try
             {
-                // Persistir todos los parámetros de cálculo en la entidad
-                _maquinaria.ValorAdquisicion       = nudValorAdquisicion.Value;
-                _maquinaria.ValorLlantas           = nudValorLlantas.Value;
-                _maquinaria.ValorPiezasEspeciales  = nudValorPiezasEsp.Value;
-                _maquinaria.FactorRescate          = nudFactorRescate.Value;
-                _maquinaria.VidaEconomica          = nudVidaEconomica.Value;
-                _maquinaria.TasaInteres            = nudTasaInteres.Value;
-                _maquinaria.HorasEfectivasAnio     = nudHorasAnio.Value;
-                _maquinaria.PrimaSeguro            = nudPrimaSeguro.Value;
-                _maquinaria.FactorMantenimiento    = nudFactorManten.Value;
-
-                _maquinaria.CantidadCombustible    = nudCantCombustible.Value;
-                _maquinaria.PrecioCombustible      = nudPrecioCombustible.Value;
-                _maquinaria.CantidadAceite         = nudCantAceite.Value;
-                _maquinaria.PrecioAceite           = nudPrecioAceite.Value;
-                _maquinaria.NumeroLlantas          = (int)nudNumLlantas.Value;
-                _maquinaria.VidaEconomicaLlantas   = nudVidaLlantas.Value;
-                _maquinaria.VidaPiezasEspeciales   = nudVidaPiezasEsp.Value;
-
-                _maquinaria.SalarioOperador        = nudSalarioOperador.Value;
-                _maquinaria.FactorSalarioReal      = nudFSR.Value;
-                _maquinaria.HorasEfectivasTurno    = nudHorasTurno.Value;
-
-                _maquinaria.CostoHorario           = _costoHorarioTotal;
-                _maquinaria.EsCostoCalculado       = true;
-                _maquinaria.FechaCalculoCosto      = DateTime.Now;
-                _maquinaria.FechaModificacion      = DateTime.Now;
-
-                await _repository.UpdateAsync(_maquinaria);
-                await _repository.SaveChangesAsync();
+                await GuardarYNotificarAsync();
 
                 MessageBox.Show(
                     $"Costo horario calculado y guardado:\n\n" +
@@ -369,6 +545,83 @@ namespace SOPRO.WinForms.Forms
                 MessageBox.Show($"Error al guardar:\n{ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        /// <summary>
+        /// Persiste la maquinaria con el guardado atómico de vínculos (maquinaria,
+        /// matrices y presupuesto) y, una vez confirmado el commit, notifica el
+        /// cambio por el bus estático del catálogo. No recalcula ni vuelve a
+        /// guardar aquí: los catálogos abiertos (maquinaria y matrices) se
+        /// refrescan por evento y el refresco por diseño no vuelve a escribir.
+        /// El equipo ya está persistido antes de abrir la calculadora (catálogo
+        /// o alta previa del editor), así que esta ruta nunca es un alta nueva.
+        /// </summary>
+        internal async Task<CatalogSaveResult> GuardarYNotificarAsync()
+        {
+            // Persistir todos los parámetros de cálculo en la entidad
+            _maquinaria.ValorAdquisicion       = nudValorAdquisicion.Value;
+            _maquinaria.ValorLlantas           = nudValorLlantas.Value;
+            _maquinaria.ValorPiezasEspeciales  = nudValorPiezasEsp.Value;
+            _maquinaria.FactorRescate          = nudFactorRescate.Value;
+            _maquinaria.VidaEconomica          = nudVidaEconomica.Value;
+            _maquinaria.TasaInteres            = nudTasaInteres.Value;
+            _maquinaria.HorasEfectivasAnio     = nudHorasAnio.Value;
+            _maquinaria.PrimaSeguro            = nudPrimaSeguro.Value;
+            _maquinaria.FactorMantenimiento    = nudFactorManten.Value;
+
+            _maquinaria.CantidadCombustible    = nudCantCombustible.Value;
+            AplicarPrecioManualSiEstaDesvinculado(_maquinaria, _materialCombustibleIdPendiente, true, nudPrecioCombustible.Value);
+            _maquinaria.CantidadAceite         = nudCantAceite.Value;
+            AplicarPrecioManualSiEstaDesvinculado(_maquinaria, _materialAceiteIdPendiente, false, nudPrecioAceite.Value);
+            _maquinaria.NumeroLlantas          = (int)nudNumLlantas.Value;
+            _maquinaria.VidaEconomicaLlantas   = nudVidaLlantas.Value;
+            _maquinaria.VidaPiezasEspeciales   = nudVidaPiezasEsp.Value;
+
+            AplicarOperadorManualSiEstaDesvinculado(_maquinaria, _operadorIdPendiente, nudSalarioOperador.Value, nudFSR.Value);
+            _maquinaria.HorasEfectivasTurno    = nudHorasTurno.Value;
+
+            _maquinaria.CostoHorario           = _costoHorarioTotal;
+            _maquinaria.EsCostoCalculado       = true;
+            _maquinaria.FechaCalculoCosto      = DateTime.Now;
+            _maquinaria.FechaModificacion      = DateTime.Now;
+
+            var dto = new MaquinariaEditDto
+            {
+                Clave = _maquinaria.Clave,
+                Descripcion = _maquinaria.Descripcion,
+                PotenciaNominal = _maquinaria.PotenciaNominal,
+                TipoCombustible = _maquinaria.TipoCombustible,
+                CostoHorario = _maquinaria.CostoHorario,
+                EsCostoCalculado = true,
+                Notas = _maquinaria.Notas ?? string.Empty,
+                GuardarEnMaestro = !_maquinaria.ProyectoId.HasValue,
+                ProyectoId = _maquinaria.ProyectoId,
+                MaterialCombustibleId = _materialCombustibleIdPendiente,
+                MaterialAceiteId = _materialAceiteIdPendiente,
+                ManoDeObraOperadorId = _operadorIdPendiente
+            };
+
+            CatalogSaveResult resultado = await CatalogItemService.SaveMaquinariaAsync(_context, dto, _maquinaria);
+            FormCatalogoMaquinaria.NotificarInsumosModificados();
+            return resultado;
+        }
+
+        internal static void AplicarPrecioManualSiEstaDesvinculado(Maquinaria maquinaria, int? materialIdPendiente, bool combustible, decimal precio)
+        {
+            if (materialIdPendiente.HasValue)
+                return;
+            if (combustible)
+                maquinaria.PrecioCombustible = precio;
+            else
+                maquinaria.PrecioAceite = precio;
+        }
+
+        internal static void AplicarOperadorManualSiEstaDesvinculado(Maquinaria maquinaria, int? operadorIdPendiente, decimal salario, decimal fsr)
+        {
+            if (operadorIdPendiente.HasValue)
+                return;
+            maquinaria.SalarioOperador = salario;
+            maquinaria.FactorSalarioReal = fsr;
         }
 
         // ──────────────────────────────────────────────────────────────────────

@@ -38,6 +38,7 @@ namespace SOPRO.Application.Services
         {
             var ids = NormalizarSeleccion(idsSeleccionados, insumoBaseId);
             var idsAReemplazar = ids.Where(x => x != insumoBaseId).ToList();
+            ValidarVinculosMaquinaria(context, proyectoId, tipo, idsAReemplazar);
             var q = QueryComponentesDelProyecto(context, proyectoId, tipo, idsAReemplazar);
             var matrizIds = q.Select(c => c.MatrizId).Distinct().ToList();
             var conceptos = matrizIds.Count == 0
@@ -63,6 +64,7 @@ namespace SOPRO.Application.Services
 
             ValidarSeleccion(context, proyectoId, tipo, ids);
             ValidarReferenciasAjenas(context, proyectoId, tipo, idsAReemplazar);
+            ValidarVinculosMaquinaria(context, proyectoId, tipo, idsAReemplazar);
 
             var componentes = QueryComponentesDelProyecto(context, proyectoId, tipo, idsAReemplazar).ToList();
             var matrizIds = componentes.Select(c => c.MatrizId).Distinct().ToList();
@@ -108,6 +110,25 @@ namespace SOPRO.Application.Services
                 MatricesAfectadas = matrizIds.Count,
                 ConceptosAfectados = conceptosAfectados
             };
+        }
+
+        private static void ValidarVinculosMaquinaria(
+            SOPROContext context, int proyectoId, ConsolidacionInsumoTipo tipo, IReadOnlyCollection<int> ids)
+        {
+            if (ids.Count == 0 || tipo is not (ConsolidacionInsumoTipo.Material or ConsolidacionInsumoTipo.ManoDeObra))
+                return;
+
+            var links = context.Maquinaria.AsNoTracking()
+                .Where(m => tipo == ConsolidacionInsumoTipo.Material
+                    ? (m.MaterialCombustibleId.HasValue && ids.Contains(m.MaterialCombustibleId.Value))
+                        || (m.MaterialAceiteId.HasValue && ids.Contains(m.MaterialAceiteId.Value))
+                    : m.ManoDeObraOperadorId.HasValue && ids.Contains(m.ManoDeObraOperadorId.Value))
+                .Select(m => new { m.Clave, m.Descripcion })
+                .ToList();
+            if (links.Count > 0)
+                throw new InvalidOperationException(
+                    "No se puede consolidar ni eliminar el insumo sustituto: está vinculado al costo horario de maquinaria (" +
+                    string.Join(", ", links.Select(m => $"{m.Clave} - {m.Descripcion}")) + "). Desvincúlelo manualmente primero.");
         }
 
         private static List<int> NormalizarSeleccion(IReadOnlyCollection<int> idsSeleccionados, int insumoBaseId)

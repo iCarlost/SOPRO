@@ -7,8 +7,9 @@ sobrescribe el proyecto del usuario y el desinstalador nunca lo elimina
 
 - Archivo: `CATALOGO GENERAL 2026.soproproj`
 - Proyecto: `CATALOGO GENERAL 2026`
-- Esquema: `2026.04.4` (`SOPRO.Application/Services/SchemaManager.cs`)
-- SHA-256: `B3AEE2DCAB232BDC1099CCF9D3C235153D3695B56119CABD7C5000C320A0F584`
+- Esquema: `2026.04.5` (`SOPRO.Application/Services/SchemaManager.cs`)
+- Tamaño: `1,327,104` bytes
+- SHA-256: `EAB40565BE4E86616C1D96F78981924475156EE7C1EB572BB455D10E70A04E4A`
 - Origen: instantánea provista por el mantenedor para distribución pública.
 
 ## Mantenimiento

@@ -66,7 +66,7 @@ La aplicacion consulta actualizaciones desde `iCarlost/SOPRO-Releases`. Cada ver
 ## Persistencia
 
 - Base de datos: SQLite, un archivo por proyecto (extension `.soproproj`; ver [Formato de proyecto](#formato-de-proyecto)).
-- Esquema gestionado por `SchemaManager` (version actual de esquema: `2026.04.4`).
+- Esquema gestionado por `SchemaManager` (version actual de esquema: `2026.04.5`).
 
 ## Formato de proyecto
 

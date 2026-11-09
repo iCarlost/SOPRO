@@ -23,6 +23,77 @@ namespace SOPRO.Tests.Services.Importacion;
 public class ExternalImportEntityMapperParityTests
 {
     [TestMethod]
+    public void CloneMaquinaria_NoConservaIdsDeVinculosAunqueColisionenEnDestino()
+    {
+        var source = new Maquinaria
+        {
+            MaterialCombustibleId = 41,
+            MaterialAceiteId = 42,
+            ManoDeObraOperadorId = 43,
+            CantidadCombustible = 10m,
+            PrecioCombustible = 12m,
+            CantidadAceite = 2m,
+            PrecioAceite = 8m,
+            SalarioOperador = 25m,
+            FactorSalarioReal = 1.6m,
+            CostoHorario = 345.67m
+        };
+        // Los IDs pueden existir en el destino y seguir siendo entidades distintas.
+        var destinationIds = new[] { 41, 42, 43 };
+
+        var clone = ExternalImportEntityMapper.CloneMaquinaria(source, 9, "Origen");
+
+        Assert.IsTrue(destinationIds.Contains(source.MaterialCombustibleId!.Value));
+        Assert.IsNull(clone.MaterialCombustibleId);
+        Assert.IsNull(clone.MaterialAceiteId);
+        Assert.IsNull(clone.ManoDeObraOperadorId);
+        Assert.AreEqual(10m, clone.CantidadCombustible);
+        Assert.AreEqual(12m, clone.PrecioCombustible);
+        Assert.AreEqual(2m, clone.CantidadAceite);
+        Assert.AreEqual(8m, clone.PrecioAceite);
+        Assert.AreEqual(25m, clone.SalarioOperador);
+        Assert.AreEqual(1.6m, clone.FactorSalarioReal);
+        Assert.AreEqual(345.67m, clone.CostoHorario);
+    }
+
+    [TestMethod]
+    public void ApplyMaquinaria_SobrescribirLimpiaVinculosYPreservaValoresEfectivosEntrantes()
+    {
+        var target = new Maquinaria
+        {
+            MaterialCombustibleId = 1,
+            MaterialAceiteId = 2,
+            ManoDeObraOperadorId = 3
+        };
+        var source = new Maquinaria
+        {
+            MaterialCombustibleId = 11,
+            MaterialAceiteId = 12,
+            ManoDeObraOperadorId = 13,
+            CantidadCombustible = 10m,
+            PrecioCombustible = 12m,
+            CantidadAceite = 2m,
+            PrecioAceite = 8m,
+            SalarioOperador = 25m,
+            FactorSalarioReal = 1.6m,
+            CostoHorario = 345.67m
+        };
+
+        ExternalImportEntityMapper.ApplyMaquinaria(target, source, 9, "Origen");
+
+        Assert.IsNull(target.MaterialCombustibleId);
+        Assert.IsNull(target.MaterialAceiteId);
+        Assert.IsNull(target.ManoDeObraOperadorId);
+        Assert.AreEqual(10m, target.CantidadCombustible);
+        Assert.AreEqual(12m, target.PrecioCombustible);
+        Assert.AreEqual(2m, target.CantidadAceite);
+        Assert.AreEqual(8m, target.PrecioAceite);
+        Assert.AreEqual(25m, target.SalarioOperador);
+        Assert.AreEqual(1.6m, target.FactorSalarioReal);
+        Assert.AreEqual(345.67m, target.CostoHorario);
+    }
+
+    [TestMethod]
     public void ImportarMismoInsumoPorAmbasRutas_ProduceMismosCampos()
     {
         using var currentA = TestDbFactory.CreateContext();

@@ -1,5 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
-using SOPRO.Core.Entities;
+﻿using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
@@ -24,6 +23,28 @@ namespace SOPRO.WinForms.Forms
     {
 
         public void RecargarCatalogo() => CargarMaquinaria();
+
+        /// <summary>
+        /// Recarga el catálogo después de un aviso del bus propio (el guardado de
+        /// la calculadora de costo horario, la consolidación u otra instancia del
+        /// catálogo escribió por el MISMO contexto compartido). Solo rebindea el
+        /// grid: la consulta con seguimiento devuelve las mismas instancias
+        /// rastreadas ya actualizadas por <c>CatalogItemService
+        /// .SaveMaquinariaAsync</c>, sin crear segundas instancias ni romper la
+        /// identidad que un editor abierto conserva en su referencia.
+        /// Con trabajo pendiente no se recarga: nunca se guarda ni se limpia el
+        /// tracker ajeno.
+        /// </summary>
+        internal void RecargarTrasCambioDeInsumos()
+        {
+            if (_context.ChangeTracker.HasChanges())
+            {
+                lblStatus.Text = "Hay cambios sin guardar; no se recargó el catálogo de maquinaria.";
+                return;
+            }
+
+            CargarMaquinaria();
+        }
 
         private async void CargarMaquinaria()
         {
@@ -111,7 +132,10 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
             using var form = new FormCalculoCostoHorario(_context, _maquinariaSeleccionada);
-            if (form.ShowDialog() == DialogResult.OK) CargarMaquinaria();
+            form.ShowDialog();
+            // Si la calculadora guardó, avisó por el bus InsumosModificados y esta
+            // instancia ya se recargó por su suscripción; recargar aquí duplicaría
+            // el llenado. Cancelar no muta nada y no necesita recarga.
         }
 
         private async void btnEliminar_Click(object sender, EventArgs e)
@@ -184,7 +208,8 @@ namespace SOPRO.WinForms.Forms
                 InsumosModificados?.Invoke(null, EventArgs.Empty);
                 MessageBox.Show("Registro(s) eliminado(s) exitosamente.", "Eliminado",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
-                CargarMaquinaria();
+                // No se recarga aquí: el aviso ya llena esta propia instancia por
+                // su suscripción al bus y así se evita el llenado doble.
             }
             catch (OperationCanceledException)
             {

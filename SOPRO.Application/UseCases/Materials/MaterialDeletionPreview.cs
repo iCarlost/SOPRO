@@ -11,7 +11,11 @@ namespace SOPRO.Application.UseCases.Materials;
 public sealed record MaterialDeletionPreview(
     int ComponentCount,
     IReadOnlyList<MaterialUsageInMatrix> Matrices,
-    int CrossProjectReferenceCount = 0)
+    int CrossProjectReferenceCount = 0,
+    IReadOnlyList<MaterialMachineryUsage>? MachineryUsages = null)
 {
     public int AffectedMatrixCount => Matrices.Count;
+    public IReadOnlyList<MaterialMachineryUsage> LinkedMachinery => MachineryUsages ?? Array.Empty<MaterialMachineryUsage>();
 }
+
+public sealed record MaterialMachineryUsage(int MaquinariaId, string Clave, string Descripcion, string Rol);

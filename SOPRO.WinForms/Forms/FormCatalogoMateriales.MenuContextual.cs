@@ -119,7 +119,7 @@ namespace SOPRO.WinForms.Forms
         {
             itemDonde.DropDownItems.Clear();
 
-            var result = await new FindMatricesUsingMaterial(_factory).Execute(
+            var result = await new FindMatricesUsingMaterial(_factory).ExecuteDetailed(
                 _sessionInfo, new FindMatricesUsingMaterialRequest(materialId));
 
             if (!result.IsSuccess)
@@ -129,19 +129,21 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            var matrices = result.Value!;
-            if (matrices.Count == 0)
+            var detail = result.Value!;
+            var matricesMenu = new ToolStripMenuItem("Matrices");
+            var machineryMenu = new ToolStripMenuItem("Maquinaria (costo horario)");
+            itemDonde.DropDownItems.Add(matricesMenu);
+            itemDonde.DropDownItems.Add(machineryMenu);
+            if (detail.Matrices.Count == 0)
             {
-                var sinUso = itemDonde.DropDownItems.Add("(Sin uso en ninguna matriz)");
+                var sinUso = matricesMenu.DropDownItems.Add("(Sin uso en matrices)");
                 sinUso.Enabled = false;
-                return;
             }
-
-            foreach (var uso in matrices)
+            foreach (var uso in detail.Matrices)
             {
                 string label = uso.Clave + " — " + (uso.Descripcion?.Length > 50
                     ? uso.Descripcion[..50] + "…" : uso.Descripcion ?? "");
-                var item = itemDonde.DropDownItems.Add(label);
+                var item = matricesMenu.DropDownItems.Add(label);
                 int matrizId = uso.MatrizId;
                 item.Click += (_, __) =>
                 {
@@ -150,6 +152,22 @@ namespace SOPRO.WinForms.Forms
                         AbrirEditorMatriz(matriz);
                 };
             }
+
+            if (detail.MachineryUsages.Count == 0)
+            {
+                var sinUso = machineryMenu.DropDownItems.Add("(Sin vínculo con maquinaria)");
+                sinUso.Enabled = false;
+            }
+            foreach (string label in CrearEtiquetasMaquinaria(detail.MachineryUsages))
+            {
+                ToolStripItem item = machineryMenu.DropDownItems.Add(label);
+                item.Enabled = false;
+            }
+        }
+
+        internal static IReadOnlyList<string> CrearEtiquetasMaquinaria(IEnumerable<MaterialMachineryUsage> usages)
+        {
+            return usages.Select(uso => $"{uso.Clave} — {uso.Descripcion} · {uso.Rol}").ToList();
         }
 
         private void AbrirEditorMatriz(Matriz matriz)

@@ -65,23 +65,47 @@ namespace SOPRO.WinForms.Forms
 
             menu.Items.Add(new ToolStripSeparator());
 
-            var itemDonde = new ToolStripMenuItem("📋  Dónde se usa");
-            var matrices = BuscarMatricesDondeSeUsa_ManoDeObra(_manoDeObraSeleccionada.Id);
-
-            if (matrices.Count == 0)
+            ToolStripMenuItem itemDonde = new ToolStripMenuItem("📋  Dónde se usa");
+            List<Matriz> matrices = BuscarMatricesDondeSeUsa_ManoDeObra(_manoDeObraSeleccionada.Id);
+            List<Maquinaria> maquinariaUso = ConsultarMaquinariaOperador(_context.Maquinaria, _manoDeObraSeleccionada.Id, _proyectoId)
+                .OrderBy(x => x.Clave)
+                .ToList();
+            if (matrices.Count == 0 && maquinariaUso.Count == 0)
             {
-                var sinUso = itemDonde.DropDownItems.Add("(Sin uso en ninguna matriz)");
-                sinUso.Enabled = false;
+                ToolStripItem sinUsoGeneral = itemDonde.DropDownItems.Add("Sin uso");
+                sinUsoGeneral.Enabled = false;
             }
             else
             {
-                foreach (var m in matrices)
+                ToolStripMenuItem matricesMenu = new ToolStripMenuItem("Matrices");
+                ToolStripMenuItem maquinariaMenu = new ToolStripMenuItem("Maquinaria (costo horario)");
+                itemDonde.DropDownItems.Add(matricesMenu);
+                itemDonde.DropDownItems.Add(maquinariaMenu);
+
+                if (matrices.Count == 0)
                 {
-                    string label = m.Clave + " — " + (m.Descripcion?.Length > 50
-                        ? m.Descripcion[..50] + "…" : m.Descripcion ?? "");
-                    var item = itemDonde.DropDownItems.Add(label);
-                    var cap = m;
-                    item.Click += (_, __) => AbrirEditorMatriz_ManoDeObra(cap);
+                    ToolStripItem sinUso = matricesMenu.DropDownItems.Add("(Sin uso en matrices)");
+                    sinUso.Enabled = false;
+                }
+                else
+                {
+                    foreach (Matriz matriz in matrices)
+                    {
+                        string label = matriz.Clave + " — " + (matriz.Descripcion?.Length > 50
+                            ? matriz.Descripcion[..50] + "…" : matriz.Descripcion ?? "");
+                        ToolStripItem item = matricesMenu.DropDownItems.Add(label);
+                        item.Click += (_, __) => AbrirEditorMatriz_ManoDeObra(matriz);
+                    }
+                }
+                if (maquinariaUso.Count == 0)
+                {
+                    ToolStripItem sinUso = maquinariaMenu.DropDownItems.Add("(Sin vínculo con maquinaria)");
+                    sinUso.Enabled = false;
+                }
+                foreach (Maquinaria equipo in maquinariaUso)
+                {
+                    ToolStripItem item = maquinariaMenu.DropDownItems.Add($"{equipo.Clave} — {equipo.Descripcion} · operador");
+                    item.Enabled = false;
                 }
             }
             menu.Items.Add(itemDonde);
@@ -124,6 +148,14 @@ namespace SOPRO.WinForms.Forms
                 .Where(m => matrizIds.Contains(m.Id) && (_proyectoId == null || m.ProyectoId == _proyectoId))
                 .OrderBy(m => m.Clave)
                 .ToList();
+        }
+
+        internal static IQueryable<Maquinaria> ConsultarMaquinariaOperador(
+            IQueryable<Maquinaria> maquinaria,
+            int manoDeObraId,
+            int? proyectoId)
+        {
+            return maquinaria.Where(x => x.ManoDeObraOperadorId == manoDeObraId && x.ProyectoId == proyectoId);
         }
 
         private void AbrirEditorMatriz_ManoDeObra(Matriz matriz)
