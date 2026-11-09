@@ -30,6 +30,39 @@ namespace SOPRO.WinForms.Forms
                 BeginInvoke(new Action(() => { if (!IsDisposed) dgvMaquinaria.Refresh(); }));
         }
 
+        // ───────────────────────── Suscripción al bus propio ──────────────────
+
+        private void SuscribirBusInsumos()
+        {
+            _onInsumos = OnInsumosModificados;
+            InsumosModificados += _onInsumos;
+            this.Disposed += (s, e) => LiberarSuscripcionPropia();
+        }
+
+        private void OnInsumosModificados(object? sender, EventArgs e) => RecargarTrasCambioDeInsumos();
+
+        /// <summary>
+        /// Desuscribe el evento ESTÁTICO propio. Idempotente y seguro de invocar
+        /// tanto desde <see cref="OnFormClosed"/> como desde <c>Disposed</c>: el
+        /// catálogo puede embeberse en una pestaña y descartarse con el proyecto
+        /// sin que se dispare <c>FormClosed</c>, y el evento estático retendría
+        /// esta instancia con su contexto ya liberado.
+        /// </summary>
+        private void LiberarSuscripcionPropia()
+        {
+            if (_suscripcionLiberada)
+                return;
+
+            _suscripcionLiberada = true;
+            InsumosModificados -= _onInsumos;
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            LiberarSuscripcionPropia();
+            base.OnFormClosed(e);
+        }
+
         private void DgvMaquinaria_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Insert && !e.Control && !e.Shift && !e.Alt)

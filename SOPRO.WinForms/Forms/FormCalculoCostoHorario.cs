@@ -6,6 +6,7 @@ using Sopro.Calculation.Equipment;
 using System;
 using System.Windows.Forms;
 using SOPRO.Application.DTOs.Catalog;
+using SOPRO.Application.Models;
 using SOPRO.Application.Services;
 
 namespace SOPRO.WinForms.Forms
@@ -523,49 +524,7 @@ namespace SOPRO.WinForms.Forms
         {
             try
             {
-                // Persistir todos los parámetros de cálculo en la entidad
-                _maquinaria.ValorAdquisicion       = nudValorAdquisicion.Value;
-                _maquinaria.ValorLlantas           = nudValorLlantas.Value;
-                _maquinaria.ValorPiezasEspeciales  = nudValorPiezasEsp.Value;
-                _maquinaria.FactorRescate          = nudFactorRescate.Value;
-                _maquinaria.VidaEconomica          = nudVidaEconomica.Value;
-                _maquinaria.TasaInteres            = nudTasaInteres.Value;
-                _maquinaria.HorasEfectivasAnio     = nudHorasAnio.Value;
-                _maquinaria.PrimaSeguro            = nudPrimaSeguro.Value;
-                _maquinaria.FactorMantenimiento    = nudFactorManten.Value;
-
-                _maquinaria.CantidadCombustible    = nudCantCombustible.Value;
-                AplicarPrecioManualSiEstaDesvinculado(_maquinaria, _materialCombustibleIdPendiente, true, nudPrecioCombustible.Value);
-                _maquinaria.CantidadAceite         = nudCantAceite.Value;
-                AplicarPrecioManualSiEstaDesvinculado(_maquinaria, _materialAceiteIdPendiente, false, nudPrecioAceite.Value);
-                _maquinaria.NumeroLlantas          = (int)nudNumLlantas.Value;
-                _maquinaria.VidaEconomicaLlantas   = nudVidaLlantas.Value;
-                _maquinaria.VidaPiezasEspeciales   = nudVidaPiezasEsp.Value;
-
-                AplicarOperadorManualSiEstaDesvinculado(_maquinaria, _operadorIdPendiente, nudSalarioOperador.Value, nudFSR.Value);
-                _maquinaria.HorasEfectivasTurno    = nudHorasTurno.Value;
-
-                _maquinaria.CostoHorario           = _costoHorarioTotal;
-                _maquinaria.EsCostoCalculado       = true;
-                _maquinaria.FechaCalculoCosto      = DateTime.Now;
-                _maquinaria.FechaModificacion      = DateTime.Now;
-
-                var dto = new MaquinariaEditDto
-                {
-                    Clave = _maquinaria.Clave,
-                    Descripcion = _maquinaria.Descripcion,
-                    PotenciaNominal = _maquinaria.PotenciaNominal,
-                    TipoCombustible = _maquinaria.TipoCombustible,
-                    CostoHorario = _maquinaria.CostoHorario,
-                    EsCostoCalculado = true,
-                    Notas = _maquinaria.Notas ?? string.Empty,
-                    GuardarEnMaestro = !_maquinaria.ProyectoId.HasValue,
-                    ProyectoId = _maquinaria.ProyectoId,
-                    MaterialCombustibleId = _materialCombustibleIdPendiente,
-                    MaterialAceiteId = _materialAceiteIdPendiente,
-                    ManoDeObraOperadorId = _operadorIdPendiente
-                };
-                await CatalogItemService.SaveMaquinariaAsync(_context, dto, _maquinaria);
+                await GuardarYNotificarAsync();
 
                 MessageBox.Show(
                     $"Costo horario calculado y guardado:\n\n" +
@@ -586,6 +545,65 @@ namespace SOPRO.WinForms.Forms
                 MessageBox.Show($"Error al guardar:\n{ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        /// <summary>
+        /// Persiste la maquinaria con el guardado atómico de vínculos (maquinaria,
+        /// matrices y presupuesto) y, una vez confirmado el commit, notifica el
+        /// cambio por el bus estático del catálogo. No recalcula ni vuelve a
+        /// guardar aquí: los catálogos abiertos (maquinaria y matrices) se
+        /// refrescan por evento y el refresco por diseño no vuelve a escribir.
+        /// El equipo ya está persistido antes de abrir la calculadora (catálogo
+        /// o alta previa del editor), así que esta ruta nunca es un alta nueva.
+        /// </summary>
+        internal async Task<CatalogSaveResult> GuardarYNotificarAsync()
+        {
+            // Persistir todos los parámetros de cálculo en la entidad
+            _maquinaria.ValorAdquisicion       = nudValorAdquisicion.Value;
+            _maquinaria.ValorLlantas           = nudValorLlantas.Value;
+            _maquinaria.ValorPiezasEspeciales  = nudValorPiezasEsp.Value;
+            _maquinaria.FactorRescate          = nudFactorRescate.Value;
+            _maquinaria.VidaEconomica          = nudVidaEconomica.Value;
+            _maquinaria.TasaInteres            = nudTasaInteres.Value;
+            _maquinaria.HorasEfectivasAnio     = nudHorasAnio.Value;
+            _maquinaria.PrimaSeguro            = nudPrimaSeguro.Value;
+            _maquinaria.FactorMantenimiento    = nudFactorManten.Value;
+
+            _maquinaria.CantidadCombustible    = nudCantCombustible.Value;
+            AplicarPrecioManualSiEstaDesvinculado(_maquinaria, _materialCombustibleIdPendiente, true, nudPrecioCombustible.Value);
+            _maquinaria.CantidadAceite         = nudCantAceite.Value;
+            AplicarPrecioManualSiEstaDesvinculado(_maquinaria, _materialAceiteIdPendiente, false, nudPrecioAceite.Value);
+            _maquinaria.NumeroLlantas          = (int)nudNumLlantas.Value;
+            _maquinaria.VidaEconomicaLlantas   = nudVidaLlantas.Value;
+            _maquinaria.VidaPiezasEspeciales   = nudVidaPiezasEsp.Value;
+
+            AplicarOperadorManualSiEstaDesvinculado(_maquinaria, _operadorIdPendiente, nudSalarioOperador.Value, nudFSR.Value);
+            _maquinaria.HorasEfectivasTurno    = nudHorasTurno.Value;
+
+            _maquinaria.CostoHorario           = _costoHorarioTotal;
+            _maquinaria.EsCostoCalculado       = true;
+            _maquinaria.FechaCalculoCosto      = DateTime.Now;
+            _maquinaria.FechaModificacion      = DateTime.Now;
+
+            var dto = new MaquinariaEditDto
+            {
+                Clave = _maquinaria.Clave,
+                Descripcion = _maquinaria.Descripcion,
+                PotenciaNominal = _maquinaria.PotenciaNominal,
+                TipoCombustible = _maquinaria.TipoCombustible,
+                CostoHorario = _maquinaria.CostoHorario,
+                EsCostoCalculado = true,
+                Notas = _maquinaria.Notas ?? string.Empty,
+                GuardarEnMaestro = !_maquinaria.ProyectoId.HasValue,
+                ProyectoId = _maquinaria.ProyectoId,
+                MaterialCombustibleId = _materialCombustibleIdPendiente,
+                MaterialAceiteId = _materialAceiteIdPendiente,
+                ManoDeObraOperadorId = _operadorIdPendiente
+            };
+
+            CatalogSaveResult resultado = await CatalogItemService.SaveMaquinariaAsync(_context, dto, _maquinaria);
+            FormCatalogoMaquinaria.NotificarInsumosModificados();
+            return resultado;
         }
 
         internal static void AplicarPrecioManualSiEstaDesvinculado(Maquinaria maquinaria, int? materialIdPendiente, bool combustible, decimal precio)

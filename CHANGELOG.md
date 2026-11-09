@@ -15,6 +15,9 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 - Eliminación, depuración, consolidación y «Dónde se usa» reconocen los vínculos de costo horario e identifican la maquinaria y el rol afectados.
 - Las importaciones de maquinaria conservan sus valores efectivos, pero descartan IDs de vínculos locales; explosión y programación mantienen los consumos internos fuera del desglose para evitar doble conteo.
 
+### Corregido
+- Los grids de maquinaria y matrices reflejan inmediatamente los costos propagados al guardar el cálculo horario, sin requerir cambiar de pestaña ni recalcular la matriz.
+
 ## [1.10.0] - 2026-10-21
 
 ### Agregado

@@ -39,6 +39,13 @@ namespace SOPRO.WinForms.Forms
         public event EventHandler EstadoConsolidacionCambiado;
         private List<Maquinaria> _listaActual = new List<Maquinaria>();
 
+        // Suscripción propia al bus estático: una calculadora o editor en otra
+        // ventana del catálogo puede modificar la maquinaria y esta instancia
+        // debe refrescar su grid aunque no participe del diálogo (los forms
+        // embebidos no aparecen en Application.OpenForms).
+        private EventHandler _onInsumos;
+        private bool _suscripcionLiberada;
+
         public DataGridView GridPrincipal => dgvMaquinaria;
         public DataGridView GridBusqueda => dgvMaquinaria;
 
@@ -52,6 +59,16 @@ namespace SOPRO.WinForms.Forms
 
         public bool ConsolidacionDisponible => _proyectoId.HasValue && SeleccionGridHelper.FilasSeleccionadas(dgvMaquinaria).Count >= 2;
         public string NombreTipoConsolidacion => "Maquinaria / Equipo";
+
+        /// <summary>
+        /// Punto de entrada interno al bus estático <see cref="InsumosModificados"/>.
+        /// Un evento no puede invocarse desde fuera de la clase y la propagación de
+        /// cambios de maquinaria nace en ventanas que no comparten instancia con
+        /// los catálogos interesados (la calculadora de costo horario), así que el
+        /// emisor lo dispara aquí sin acoplarse a los suscriptores.
+        /// </summary>
+        internal static void NotificarInsumosModificados()
+            => InsumosModificados?.Invoke(null, EventArgs.Empty);
 
 
 
