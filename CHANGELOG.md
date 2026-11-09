@@ -6,6 +6,8 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 
 ## [No publicado]
 
+## [1.17.0] - 2026-11-09
+
 ### Agregado
 - Migración M015 (esquema `2026.04.5`): columnas `MaterialCombustibleId`, `MaterialAceiteId` y `ManoDeObraOperadorId` en `Maquinaria` para vincular insumos locales del costo horario.
 - Selectores de combustible, lubricante y operador en el cálculo de costo horario, con cambio o desvinculación sin perder el último valor efectivo.
