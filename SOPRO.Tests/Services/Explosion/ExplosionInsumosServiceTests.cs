@@ -1,4 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System.Linq;
 using SOPRO.Application.Services;
 using SOPRO.Tests.TestInfrastructure;
 
@@ -7,6 +8,43 @@ namespace SOPRO.Tests.Services.Explosion;
 [TestClass]
 public class ExplosionInsumosServiceTests
 {
+    [TestMethod]
+    public void Calculate_VinculosInternosDeMaquinariaNoSonInsumosSeparados()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+        var componentesNoDirectos = scenario.MatrizApu.Componentes
+            .Where(c => c.MaterialId != scenario.Cemento.Id
+                && c.ManoDeObraId != scenario.Oficial.Id
+                && c.MaquinariaId != scenario.Revolvedora.Id)
+            .ToList();
+        context.ComponentesMatriz.RemoveRange(componentesNoDirectos);
+        foreach (var component in componentesNoDirectos)
+            scenario.MatrizApu.Componentes.Remove(component);
+        scenario.MatrizApu.Componentes.Single(c => c.MaterialId == scenario.Cemento.Id).Cantidad = 0.5m;
+        var totals = MatrixComponentCalculationService.Recalculate(scenario.MatrizApu.Componentes.ToList(), scenario.Proyecto.DecimalesImporte);
+        scenario.MatrizApu.CostoDirecto = totals.CostoDirectoTotal;
+        scenario.Concepto.CostoDirectoUnitario = totals.CostoDirectoTotal;
+        scenario.Concepto.CostoDirectoTotal = scenario.Concepto.Cantidad * totals.CostoDirectoTotal;
+        scenario.Revolvedora.CantidadCombustible = 10m;
+        scenario.Revolvedora.MaterialCombustibleId = scenario.Cemento.Id;
+        scenario.Revolvedora.MaterialAceiteId = scenario.Cemento.Id;
+        scenario.Revolvedora.ManoDeObraOperadorId = scenario.Oficial.Id;
+        context.SaveChanges();
+
+        var result = new ExplosionInsumosService().Calculate(context, scenario.Proyecto.Id, "Todos");
+
+        Assert.AreEqual(5m, result.Materiales[scenario.Cemento.Id].CantidadFisica);
+        Assert.AreEqual(300m, result.Materiales[scenario.Cemento.Id].Cantidad);
+        Assert.AreEqual(10m, result.ManoObra[scenario.Oficial.Id].CantidadFisica);
+        Assert.AreEqual(1, result.Materiales.Count);
+        Assert.AreEqual(1, result.ManoObra.Count);
+        Assert.AreEqual(1, result.Maquinaria.Count);
+        Assert.IsFalse(result.Materiales.Values.Any(i => i.Cantidad == 0m));
+        Assert.IsFalse(result.Maquinaria.Values.Any(i => i.Cantidad == 0m));
+        Assert.IsFalse(result.Herramientas.Values.Any(i => i.Cantidad == 0m));
+    }
+
     [TestMethod]
     public void Calculate_DebeReconciliarExplosionContraCostoDirectoDelPresupuesto()
     {
