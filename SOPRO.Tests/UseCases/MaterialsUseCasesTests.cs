@@ -30,6 +30,41 @@ public class MaterialsUseCasesTests
 {
     private static readonly IProjectDbContextFactory Fabrica = new ProjectDbContextFactory();
 
+    [TestMethod]
+    public async Task MaterialVinculadoAMaquinaria_PreviewYEliminacionBloqueanSinComponentes()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+        Material linkedMaterial = new()
+        {
+            ProyectoId = scenario.Proyecto.Id, Clave = "MAT-EQ", Descripcion = "Combustible de equipo",
+            Unidad = "L", PrecioUnitario = 1m, Notas = string.Empty, Origen = OrigenInsumo.Proyecto
+        };
+        context.Materiales.Add(linkedMaterial);
+        context.SaveChanges();
+        Maquinaria maquina = new()
+        {
+            ProyectoId = scenario.Proyecto.Id, Clave = "EQ-MAT", Descripcion = "Equipo de prueba",
+            Notas = string.Empty, MaterialCombustibleId = linkedMaterial.Id
+        };
+        context.Maquinaria.Add(maquina);
+        context.SaveChanges();
+        ProjectSessionInfo session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+
+        Result<MaterialDeletionPreview> preview = await new PreviewMaterialDeletion(Fabrica).Execute(
+            session, new PreviewMaterialDeletionRequest(linkedMaterial.Id));
+        Assert.IsTrue(preview.IsSuccess, preview.Error?.Message);
+        Assert.AreEqual(0, preview.Value!.ComponentCount);
+        Assert.AreEqual("combustible", preview.Value.LinkedMachinery.Single().Rol);
+        Assert.AreEqual("EQ-MAT", preview.Value.LinkedMachinery.Single().Clave);
+
+        Result<DeleteMaterialResult> deletion = await new DeleteMaterial(Fabrica).Execute(
+            session, new DeleteMaterialRequest(linkedMaterial.Id));
+        Assert.IsFalse(deletion.IsSuccess);
+        StringAssert.Contains(deletion.Error!.Message, "EQ-MAT");
+        Assert.IsTrue(context.Materiales.Any(m => m.Id == linkedMaterial.Id));
+    }
+
     private static ProjectSessionInfo CrearSession(int? proyectoId, string databasePath, string? masterDatabasePath = null)
     {
         if (proyectoId.HasValue)
@@ -1380,6 +1415,67 @@ public class MaterialsUseCasesTests
     }
 
     // ---------- FindMatricesUsingMaterial ----------
+
+    [TestMethod]
+    public async Task FindMatricesUsingMaterial_DetailedIncluyeMaquinariaSinSimularMatrizYFiltraAlcance()
+    {
+        using var context = TestDbFactory.CreateContext();
+        var scenario = SoproCalculationScenarioBuilder.CreateBaseBudgetScenario(context);
+        Proyecto otroProyecto = CrearOtroProyecto(context);
+        Material material = new()
+        {
+            ProyectoId = scenario.Proyecto.Id, Clave = "MAT-DET", Descripcion = "Material detallado",
+            Unidad = "L", PrecioUnitario = 1m, Notas = string.Empty, Origen = OrigenInsumo.Proyecto
+        };
+        context.Materiales.Add(material);
+        context.SaveChanges();
+        context.Maquinaria.Add(new Maquinaria
+        {
+            ProyectoId = scenario.Proyecto.Id, Clave = "EQ-LOCAL", Descripcion = "Equipo local",
+            MaterialAceiteId = material.Id, Notas = string.Empty
+        });
+        context.Maquinaria.Add(new Maquinaria
+        {
+            ProyectoId = otroProyecto.Id, Clave = "EQ-EXTERNO", Descripcion = "Equipo externo",
+            MaterialCombustibleId = material.Id, Notas = string.Empty
+        });
+        context.SaveChanges();
+
+        ProjectSessionInfo session = CrearSession(scenario.Proyecto.Id, context.DatabasePath);
+        Result<MaterialUsageDetail> result = await new FindMatricesUsingMaterial(Fabrica).ExecuteDetailed(
+            session, new FindMatricesUsingMaterialRequest(material.Id));
+
+        Assert.IsTrue(result.IsSuccess, result.Error?.Message);
+        Assert.AreEqual(0, result.Value!.Matrices.Count);
+        Assert.AreEqual(1, result.Value.MachineryUsages.Count);
+        Assert.AreEqual("EQ-LOCAL", result.Value.MachineryUsages[0].Clave);
+        Assert.AreEqual("lubricante", result.Value.MachineryUsages[0].Rol);
+
+        Material masterMaterial = new()
+        {
+            ProyectoId = null, Clave = "MAT-MASTER-DET", Descripcion = "Material maestro",
+            Unidad = "L", PrecioUnitario = 1m, Notas = string.Empty, Origen = OrigenInsumo.Maestro
+        };
+        context.Materiales.Add(masterMaterial);
+        context.SaveChanges();
+        context.Maquinaria.Add(new Maquinaria
+        {
+            ProyectoId = null, Clave = "EQ-MASTER", Descripcion = "Equipo maestro",
+            MaterialCombustibleId = masterMaterial.Id, Notas = string.Empty
+        });
+        context.Maquinaria.Add(new Maquinaria
+        {
+            ProyectoId = scenario.Proyecto.Id, Clave = "EQ-PROJECT", Descripcion = "Equipo de proyecto",
+            MaterialCombustibleId = masterMaterial.Id, Notas = string.Empty
+        });
+        context.SaveChanges();
+        ProjectSessionInfo masterSession = CrearSession(null, context.DatabasePath, TestDbFactory.CreateTempDbPath());
+        Result<MaterialUsageDetail> masterResult = await new FindMatricesUsingMaterial(Fabrica).ExecuteDetailed(
+            masterSession, new FindMatricesUsingMaterialRequest(masterMaterial.Id));
+        Assert.IsTrue(masterResult.IsSuccess, masterResult.Error?.Message);
+        Assert.AreEqual("EQ-MASTER", masterResult.Value!.MachineryUsages.Single().Clave);
+        Assert.AreEqual("combustible", masterResult.Value.MachineryUsages.Single().Rol);
+    }
 
     [TestMethod]
     public async Task FindMatricesUsingMaterial_ImportadoEnUso_DevuelveMatricesDelProyecto()

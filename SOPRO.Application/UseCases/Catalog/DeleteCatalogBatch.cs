@@ -103,6 +103,14 @@ public sealed class DeleteCatalogBatch
                     "Vuelva a previsualizar antes de eliminar.");
             }
 
+            if (planificado.MachineryLinks.Count > 0)
+            {
+                string detalle = string.Join("; ", planificado.MachineryLinks
+                    .Select(x => $"{x.Clave} - {x.Descripcion} ({x.Rol})"));
+                return Fail(AppErrorCode.Conflict,
+                    $"No se pueden eliminar los insumos: están vinculados a maquinaria: {detalle}.");
+            }
+
             var eliminarFilas = await CargarEliminacionAsync(
                 context, request.Kind, planificado.Ids, cancellationToken);
 

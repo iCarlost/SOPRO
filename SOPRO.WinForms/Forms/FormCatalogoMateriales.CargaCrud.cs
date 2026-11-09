@@ -166,6 +166,14 @@ namespace SOPRO.WinForms.Forms
 
                 var preview = previewResult.Value!;
 
+                if (CatalogoBatchDeletionHelper.BloqueadaPorMaquinaria(preview))
+                {
+                    MessageBox.Show(
+                        CatalogoBatchDeletionHelper.ConstruirAvisoMaquinariaVinculada(preview.LinkedMachinery),
+                        "Insumo vinculado", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
                 var confirmar = MessageBox.Show(
                     CatalogoBatchDeletionHelper.ConstruirConfirmacion(preview),
                     "Confirmar Eliminación", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,

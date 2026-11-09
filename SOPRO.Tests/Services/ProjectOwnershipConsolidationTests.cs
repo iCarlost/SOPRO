@@ -270,6 +270,89 @@ public class ProjectOwnershipConsolidationTests
     // ---------- Consolidación de insumos ----------
 
     [TestMethod]
+    public void InsumoConsolidation_RechazaMaterialSustitutoVinculadoAMaquinaria()
+    {
+        using var context = TestDbFactory.CreateContext();
+        Proyecto proyecto = CrearProyecto(context, "Proyecto propio");
+        Material baseInsumo = CrearMaterial(context, proyecto.Id, "MAT-BASE", OrigenInsumo.Proyecto);
+        Material sustituido = CrearMaterial(context, proyecto.Id, "MAT-SUST", OrigenInsumo.Proyecto);
+        Maquinaria maquinaria = new()
+        {
+            ProyectoId = proyecto.Id, Clave = "EQ-SUST", Descripcion = "Equipo que lo consume",
+            Notas = string.Empty, MaterialAceiteId = sustituido.Id
+        };
+        context.Maquinaria.Add(maquinaria);
+        context.SaveChanges();
+
+        InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
+            new InsumoConsolidationService().Consolidar(context, proyecto.Id, ConsolidacionInsumoTipo.Material,
+                baseInsumo.Id, new[] { baseInsumo.Id, sustituido.Id }));
+
+        StringAssert.Contains(ex.Message, "EQ-SUST");
+        StringAssert.Contains(ex.Message, "Desvincúlelo manualmente");
+        Assert.IsTrue(context.Materiales.AsNoTracking().Any(m => m.Id == sustituido.Id));
+        Assert.AreEqual(sustituido.Id,
+            context.Maquinaria.AsNoTracking().Single(m => m.Id == maquinaria.Id).MaterialAceiteId);
+    }
+
+    [TestMethod]
+    public void InsumoConsolidation_RechazaManoDeObraSustitutaVinculadaComoOperador()
+    {
+        using var context = TestDbFactory.CreateContext();
+        Proyecto proyecto = CrearProyecto(context, "Proyecto propio");
+        ManoDeObra baseInsumo = new ManoDeObra
+        {
+            ProyectoId = proyecto.Id,
+            Clave = "MO-BASE",
+            Descripcion = "Operador base",
+            Unidad = "jor",
+            SalarioBase = 100m,
+            FactorSalarioReal = 1.5m,
+            SalarioReal = 150m,
+            Notas = string.Empty,
+            Origen = OrigenInsumo.Proyecto
+        };
+        ManoDeObra sustituido = new ManoDeObra
+        {
+            ProyectoId = proyecto.Id,
+            Clave = "MO-SUST",
+            Descripcion = "Operador sustituido",
+            Unidad = "jor",
+            SalarioBase = 120m,
+            FactorSalarioReal = 1.6m,
+            SalarioReal = 192m,
+            Notas = string.Empty,
+            Origen = OrigenInsumo.Proyecto
+        };
+        context.ManoDeObra.AddRange(baseInsumo, sustituido);
+        context.SaveChanges();
+        Maquinaria maquinaria = new Maquinaria
+        {
+            ProyectoId = proyecto.Id,
+            Clave = "EQ-OP",
+            Descripcion = "Equipo con operador",
+            Notas = string.Empty,
+            ManoDeObraOperadorId = sustituido.Id
+        };
+        context.Maquinaria.Add(maquinaria);
+        context.SaveChanges();
+
+        InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
+            new InsumoConsolidationService().Consolidar(
+                context,
+                proyecto.Id,
+                ConsolidacionInsumoTipo.ManoDeObra,
+                baseInsumo.Id,
+                new[] { baseInsumo.Id, sustituido.Id }));
+
+        StringAssert.Contains(ex.Message, "EQ-OP");
+        StringAssert.Contains(ex.Message, "Desvincúlelo manualmente");
+        Assert.IsTrue(context.ManoDeObra.AsNoTracking().Any(m => m.Id == sustituido.Id));
+        Assert.AreEqual(sustituido.Id,
+            context.Maquinaria.AsNoTracking().Single(m => m.Id == maquinaria.Id).ManoDeObraOperadorId);
+    }
+
+    [TestMethod]
     public void InsumoConsolidation_ConsolidaInsumosDelProyectoConOrigenMaestro()
     {
         using var context = TestDbFactory.CreateContext();

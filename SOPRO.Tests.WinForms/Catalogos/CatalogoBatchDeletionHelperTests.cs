@@ -160,6 +160,38 @@ public class CatalogoBatchDeletionHelperTests
         StringAssert.Contains(mensaje, "no se puede deshacer");
     }
 
+    [TestMethod]
+    public void AvisoMaquinariaVinculada_ListaClaveDescripcionYRol_DeduplicadoYOrdenado()
+    {
+        MachineryCatalogLink[] links =
+        {
+            new(2, "M-02", "Rodillo", "lubricante"),
+            new(1, "M-01", "Excavadora", "combustible"),
+            new(1, "M-01", "Excavadora", "combustible")
+        };
+
+        string mensaje = CatalogoBatchDeletionHelper.ConstruirAvisoMaquinariaVinculada(links);
+
+        StringAssert.Contains(mensaje, "M-01 — Excavadora (combustible)");
+        StringAssert.Contains(mensaje, "M-02 — Rodillo (lubricante)");
+        Assert.AreEqual(1, mensaje.Split("M-01 —").Length - 1);
+        Assert.IsTrue(mensaje.IndexOf("M-01", StringComparison.Ordinal) < mensaje.IndexOf("M-02", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void BloqueadaPorMaquinaria_ImpideConfirmacionCuandoPreviewTieneVinculos()
+    {
+        CatalogBatchDeletionPreview sinVinculos = new(
+            CatalogItemKind.Material, new[] { 1 }, 1, 0, 0, 0, 0, 0, "sin-vinculos");
+        CatalogBatchDeletionPreview conVinculo = sinVinculos with
+        {
+            MachineryLinks = new[] { new MachineryCatalogLink(7, "EQ-07", "Camión", "combustible") }
+        };
+
+        Assert.IsFalse(CatalogoBatchDeletionHelper.BloqueadaPorMaquinaria(sinVinculos));
+        Assert.IsTrue(CatalogoBatchDeletionHelper.BloqueadaPorMaquinaria(conVinculo));
+    }
+
     // ═════════════════════ Guarda de teclado ═════════════════════
 
     [TestMethod]

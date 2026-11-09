@@ -25,6 +25,7 @@ internal sealed class CatalogBatchDeletionPlan
         List<int> closureMatrixIds,
         List<int> affectedConceptIds,
         int affectedAggregatorCount,
+        List<MachineryCatalogLink> machineryLinks,
         string fingerprint)
     {
         Kind = kind;
@@ -34,6 +35,7 @@ internal sealed class CatalogBatchDeletionPlan
         ClosureMatrixIds = closureMatrixIds;
         AffectedConceptIds = affectedConceptIds;
         AffectedAggregatorCount = affectedAggregatorCount;
+        MachineryLinks = machineryLinks;
         Fingerprint = fingerprint;
     }
 
@@ -51,6 +53,8 @@ internal sealed class CatalogBatchDeletionPlan
 
     public int AffectedAggregatorCount { get; }
 
+    public List<MachineryCatalogLink> MachineryLinks { get; }
+
     /// <summary>
     /// Huella estable de la selección y de TODO su conjunto de dependencias. La
     /// previsualización la entrega a la UI y la escritura la revalida dentro de su
@@ -58,6 +62,8 @@ internal sealed class CatalogBatchDeletionPlan
     /// </summary>
     public string Fingerprint { get; }
 }
+
+public sealed record MachineryCatalogLink(int MaquinariaId, string Clave, string Descripcion, string Rol);
 
 /// <summary>
 /// Estado canónico de una fila del presupuesto que puede alterar el recálculo
@@ -222,6 +228,30 @@ internal static class CatalogBatchDeletionPlanner
             .ToListAsync(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
 
+        var maquinariaLinks = new List<MachineryCatalogLink>();
+        if (kind is CatalogItemKind.Material or CatalogItemKind.ManoDeObra)
+        {
+            var maquinas = await context.Maquinaria.AsNoTracking()
+                .Where(m => kind == CatalogItemKind.Material
+                    ? (m.MaterialCombustibleId.HasValue && idsNormalizados.Contains(m.MaterialCombustibleId.Value))
+                        || (m.MaterialAceiteId.HasValue && idsNormalizados.Contains(m.MaterialAceiteId.Value))
+                    : m.ManoDeObraOperadorId.HasValue && idsNormalizados.Contains(m.ManoDeObraOperadorId.Value))
+                .Select(m => new { m.Id, m.Clave, m.Descripcion, m.MaterialCombustibleId, m.MaterialAceiteId, m.ManoDeObraOperadorId })
+                .ToListAsync(cancellationToken);
+            foreach (var m in maquinas.OrderBy(m => m.Clave).ThenBy(m => m.Id))
+            {
+                if (kind == CatalogItemKind.Material)
+                {
+                    if (m.MaterialCombustibleId.HasValue && idsNormalizados.Contains(m.MaterialCombustibleId.Value))
+                        maquinariaLinks.Add(new MachineryCatalogLink(m.Id, m.Clave, m.Descripcion ?? string.Empty, "combustible"));
+                    if (m.MaterialAceiteId.HasValue && idsNormalizados.Contains(m.MaterialAceiteId.Value))
+                        maquinariaLinks.Add(new MachineryCatalogLink(m.Id, m.Clave, m.Descripcion ?? string.Empty, "lubricante"));
+                }
+                else if (m.ManoDeObraOperadorId.HasValue && idsNormalizados.Contains(m.ManoDeObraOperadorId.Value))
+                    maquinariaLinks.Add(new MachineryCatalogLink(m.Id, m.Clave, m.Descripcion ?? string.Empty, "operador"));
+            }
+        }
+
         bool referenciasExternas = proyectoId.HasValue
             ? componentesCrudos.Any(c => c.ProyectoId != proyectoId.Value)
             : componentesCrudos.Any(c => c.ProyectoId != null);
@@ -355,7 +385,7 @@ internal static class CatalogBatchDeletionPlanner
 
         var fingerprint = CrearHuella(
             proyectoId, kind, idsNormalizados, componenteIds, matricesDirectas, cierreIds,
-            filasPresupuesto, proyectosAfectados, estadoCalculo);
+            filasPresupuesto, proyectosAfectados, estadoCalculo, maquinariaLinks);
 
         return (null, new CatalogBatchDeletionPlan(
             kind,
@@ -365,6 +395,7 @@ internal static class CatalogBatchDeletionPlanner
             cierreIds,
             conceptos,
             agrupadores,
+            maquinariaLinks,
             fingerprint));
     }
 
@@ -627,7 +658,8 @@ internal static class CatalogBatchDeletionPlanner
         IReadOnlyList<int> cierre,
         IReadOnlyList<FilaPresupuestoFingerprint> filasPresupuesto,
         IReadOnlyList<Proyecto> proyectos,
-        string estadoCalculo)
+        string estadoCalculo,
+        IReadOnlyList<MachineryCatalogLink> maquinariaLinks)
     {
         var texto = new StringBuilder();
 
@@ -646,6 +678,10 @@ internal static class CatalogBatchDeletionPlanner
         texto.Append("|q").Append(proyectos.Count == 0 ? "maestro" : SerializarParametrosProyecto(proyectos));
 
         texto.Append("|s").Append(estadoCalculo);
+        texto.Append("|links");
+        foreach (var link in maquinariaLinks)
+            texto.Append('\n').Append(link.MaquinariaId).Append(';').Append(link.Clave).Append(';')
+                .Append(link.Descripcion).Append(';').Append(link.Rol);
 
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(texto.ToString())));
     }

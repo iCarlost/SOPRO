@@ -31,11 +31,14 @@ public sealed record CatalogBatchDeletionPreview(
     int RecalculatedMatrixCount,
     int AffectedConceptCount,
     int AffectedAggregatorCount,
-    string Fingerprint)
+    string Fingerprint,
+    IReadOnlyList<MachineryCatalogLink>? MachineryLinks = null)
 {
     /// <summary>True si el lote está en uso y su eliminación exige recálculo.</summary>
     public bool IsInUse => AffectedComponentCount > 0;
 
     /// <summary>True si se propagaría el recálculo a matrices y presupuesto.</summary>
     public bool TriggeredRecalculation => RecalculatedMatrixCount > 0;
+
+    public IReadOnlyList<MachineryCatalogLink> LinkedMachinery => MachineryLinks ?? Array.Empty<MachineryCatalogLink>();
 }

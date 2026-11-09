@@ -84,4 +84,38 @@ public sealed class FindMatricesUsingMaterial
                 ex.Message);
         }
     }
+
+    public async Task<Result<MaterialUsageDetail>> ExecuteDetailed(
+        ProjectSessionInfo session,
+        FindMatricesUsingMaterialRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        Result<IReadOnlyList<MaterialUsageInMatrix>> matricesResult = await Execute(session, request, cancellationToken);
+        if (!matricesResult.IsSuccess)
+            return Result<MaterialUsageDetail>.Fail(matricesResult.Error!);
+
+        await using var context = await _factory.CreateAsync(session.DatabasePath, cancellationToken);
+        try
+        {
+            var linkedMachinery = await context.Maquinaria.AsNoTracking()
+                .Where(m => m.ProyectoId == session.Project.ProjectId
+                    && (m.MaterialCombustibleId == request.MaterialId || m.MaterialAceiteId == request.MaterialId))
+                .Select(m => new { m.Id, m.Clave, m.Descripcion, Combustible = m.MaterialCombustibleId == request.MaterialId,
+                    Lubricante = m.MaterialAceiteId == request.MaterialId })
+                .OrderBy(m => m.Clave)
+                .ToListAsync(cancellationToken);
+            List<MaterialMachineryUsage> machineryUsages = linkedMachinery.SelectMany(m => new[]
+            {
+                m.Combustible ? new MaterialMachineryUsage(m.Id, m.Clave, m.Descripcion ?? string.Empty, "combustible") : null,
+                m.Lubricante ? new MaterialMachineryUsage(m.Id, m.Clave, m.Descripcion ?? string.Empty, "lubricante") : null
+            }).Where(x => x is not null).Cast<MaterialMachineryUsage>().ToList();
+            return Result<MaterialUsageDetail>.Ok(new MaterialUsageDetail(matricesResult.Value!, machineryUsages));
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return Result<MaterialUsageDetail>.Fail(AppErrorCode.Database,
+                "No se pudo consultar dónde se usa el material.", ex.Message);
+        }
+    }
 }

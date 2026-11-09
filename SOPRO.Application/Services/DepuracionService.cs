@@ -42,18 +42,17 @@ namespace SOPRO.Application.Services
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
 
-            var snapshot = CargarSnapshot(context, proyectoId);
-            var candidatos = CalcularCandidatos(snapshot);
+            var plan = CrearPlan(context, proyectoId);
 
             return new DepuracionPreview
             {
-                MatricesApuCandidatas = candidatos.Count(m => m.Tipo == TipoMatriz.APU),
-                MatricesBasicasCandidatas = candidatos.Count(m => m.Tipo == TipoMatriz.Basico),
-                CuadrillasCandidatas = candidatos.Count(m => m.Tipo == TipoMatriz.Cuadrilla),
-                MaterialesCandidatos = ContarMaterialesSinUso(context, proyectoId),
-                ManoDeObraCandidata = ContarManoDeObraSinUso(context, proyectoId),
-                HerramientasCandidatas = ContarHerramientasSinUso(context, proyectoId),
-                MaquinariaCandidata = ContarMaquinariaSinUso(context, proyectoId)
+                MatricesApuCandidatas = plan.Matrices.Count(m => m.Tipo == TipoMatriz.APU),
+                MatricesBasicasCandidatas = plan.Matrices.Count(m => m.Tipo == TipoMatriz.Basico),
+                CuadrillasCandidatas = plan.Matrices.Count(m => m.Tipo == TipoMatriz.Cuadrilla),
+                MaterialesCandidatos = plan.MaterialIds.Count,
+                ManoDeObraCandidata = plan.ManoDeObraIds.Count,
+                HerramientasCandidatas = plan.HerramientaIds.Count,
+                MaquinariaCandidata = plan.MaquinariaIds.Count
             };
         }
 
@@ -61,10 +60,9 @@ namespace SOPRO.Application.Services
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
 
-            var snapshot = CargarSnapshot(context, proyectoId);
-            var candidatos = CalcularCandidatos(snapshot);
+            var plan = CrearPlan(context, proyectoId);
 
-            var ids = candidatos.Select(x => x.Id).ToHashSet();
+            var ids = plan.Matrices.Select(x => x.Id).ToHashSet();
 
             var componentes = ids.Count == 0
                 ? new List<ComponenteMatriz>()
@@ -86,35 +84,93 @@ namespace SOPRO.Application.Services
 
             context.SaveChanges();
 
-            var materiales = ObtenerMaterialesSinUso(context, proyectoId);
+            var maquinaria = plan.MaquinariaIds.Count == 0 ? new List<Maquinaria>() :
+                context.Maquinaria.Where(m => plan.MaquinariaIds.Contains(m.Id)).ToList();
+            if (maquinaria.Count > 0)
+                context.Maquinaria.RemoveRange(maquinaria);
+            if (maquinaria.Count > 0)
+                context.SaveChanges();
+
+            var materiales = plan.MaterialIds.Count == 0 ? new List<Material>() :
+                context.Materiales.Where(m => plan.MaterialIds.Contains(m.Id)).ToList();
             if (materiales.Count > 0)
                 context.Materiales.RemoveRange(materiales);
 
-            var manoDeObra = ObtenerManoDeObraSinUso(context, proyectoId);
+            var manoDeObra = plan.ManoDeObraIds.Count == 0 ? new List<ManoDeObra>() :
+                context.ManoDeObra.Where(m => plan.ManoDeObraIds.Contains(m.Id)).ToList();
             if (manoDeObra.Count > 0)
                 context.ManoDeObra.RemoveRange(manoDeObra);
 
-            var herramientas = ObtenerHerramientasSinUso(context, proyectoId);
+            var herramientas = plan.HerramientaIds.Count == 0 ? new List<Herramienta>() :
+                context.Herramientas.Where(h => plan.HerramientaIds.Contains(h.Id)).ToList();
             if (herramientas.Count > 0)
                 context.Herramientas.RemoveRange(herramientas);
-
-            var maquinaria = ObtenerMaquinariaSinUso(context, proyectoId);
-            if (maquinaria.Count > 0)
-                context.Maquinaria.RemoveRange(maquinaria);
 
             context.SaveChanges();
 
             return new DepuracionResultado
             {
-                MatricesApuEliminadas = candidatos.Count(m => m.Tipo == TipoMatriz.APU),
-                MatricesBasicasEliminadas = candidatos.Count(m => m.Tipo == TipoMatriz.Basico),
-                CuadrillasEliminadas = candidatos.Count(m => m.Tipo == TipoMatriz.Cuadrilla),
+                MatricesApuEliminadas = plan.Matrices.Count(m => m.Tipo == TipoMatriz.APU),
+                MatricesBasicasEliminadas = plan.Matrices.Count(m => m.Tipo == TipoMatriz.Basico),
+                CuadrillasEliminadas = plan.Matrices.Count(m => m.Tipo == TipoMatriz.Cuadrilla),
                 MaterialesEliminados = materiales.Count,
                 ManoDeObraEliminada = manoDeObra.Count,
                 HerramientasEliminadas = herramientas.Count,
                 MaquinariaEliminada = maquinaria.Count
             };
         }
+
+        private static CleanupPlan CrearPlan(SOPROContext context, int proyectoId)
+        {
+            List<MatrixNode> matrices = CalcularCandidatos(CargarSnapshot(context, proyectoId));
+            HashSet<int> matrixIds = matrices.Select(m => m.Id).ToHashSet();
+            List<ComponenteMatriz> componentesRestantes = context.ComponentesMatriz.AsNoTracking()
+                .Where(c => !matrixIds.Contains(c.MatrizId)).ToList();
+
+            HashSet<int> maquinariaEnUso = componentesRestantes.Where(c => c.MaquinariaId.HasValue)
+                .Select(c => c.MaquinariaId!.Value).ToHashSet();
+            List<int> maquinariaIds = context.Maquinaria.AsNoTracking()
+                .Where(m => m.ProyectoId == proyectoId && !maquinariaEnUso.Contains(m.Id))
+                .Select(m => m.Id).ToList();
+            HashSet<int> maquinariaCandidataIds = maquinariaIds.ToHashSet();
+
+            HashSet<int> materialEnUso = componentesRestantes.Where(c => c.MaterialId.HasValue)
+                .Select(c => c.MaterialId!.Value).ToHashSet();
+            HashSet<int> manoDeObraEnUso = componentesRestantes.Where(c => c.ManoDeObraId.HasValue)
+                .Select(c => c.ManoDeObraId!.Value).ToHashSet();
+            List<Maquinaria> maquinariaRetenida = context.Maquinaria.AsNoTracking()
+                .Where(m => m.ProyectoId == proyectoId && !maquinariaCandidataIds.Contains(m.Id)).ToList();
+            foreach (Maquinaria maquinaria in maquinariaRetenida)
+            {
+                if (maquinaria.MaterialCombustibleId.HasValue)
+                    materialEnUso.Add(maquinaria.MaterialCombustibleId.Value);
+                if (maquinaria.MaterialAceiteId.HasValue)
+                    materialEnUso.Add(maquinaria.MaterialAceiteId.Value);
+                if (maquinaria.ManoDeObraOperadorId.HasValue)
+                    manoDeObraEnUso.Add(maquinaria.ManoDeObraOperadorId.Value);
+            }
+
+            List<int> materialIds = context.Materiales.AsNoTracking()
+                .Where(m => m.ProyectoId == proyectoId && !materialEnUso.Contains(m.Id))
+                .Select(m => m.Id).ToList();
+            List<int> manoDeObraIds = context.ManoDeObra.AsNoTracking()
+                .Where(m => m.ProyectoId == proyectoId && !manoDeObraEnUso.Contains(m.Id))
+                .Select(m => m.Id).ToList();
+            HashSet<int> herramientaEnUso = componentesRestantes.Where(c => c.HerramientaId.HasValue)
+                .Select(c => c.HerramientaId!.Value).ToHashSet();
+            List<int> herramientaIds = context.Herramientas.AsNoTracking()
+                .Where(h => h.ProyectoId == proyectoId && !herramientaEnUso.Contains(h.Id))
+                .Select(h => h.Id).ToList();
+
+            return new CleanupPlan(matrices, maquinariaIds, materialIds, manoDeObraIds, herramientaIds);
+        }
+
+        private sealed record CleanupPlan(
+            List<MatrixNode> Matrices,
+            List<int> MaquinariaIds,
+            List<int> MaterialIds,
+            List<int> ManoDeObraIds,
+            List<int> HerramientaIds);
 
         private static Snapshot CargarSnapshot(SOPROContext context, int proyectoId)
         {
@@ -219,72 +275,5 @@ namespace SOPRO.Application.Services
             public int AuxiliarId { get; set; }
         }
 
-        private static int ContarMaterialesSinUso(SOPROContext context, int proyectoId)
-            => ObtenerMaterialesSinUso(context, proyectoId).Count;
-
-        private static int ContarManoDeObraSinUso(SOPROContext context, int proyectoId)
-            => ObtenerManoDeObraSinUso(context, proyectoId).Count;
-
-        private static int ContarHerramientasSinUso(SOPROContext context, int proyectoId)
-            => ObtenerHerramientasSinUso(context, proyectoId).Count;
-
-        private static int ContarMaquinariaSinUso(SOPROContext context, int proyectoId)
-            => ObtenerMaquinariaSinUso(context, proyectoId).Count;
-
-        private static List<Material> ObtenerMaterialesSinUso(SOPROContext context, int proyectoId)
-        {
-            var usados = context.ComponentesMatriz
-                .AsNoTracking()
-                .Where(c => c.MaterialId.HasValue)
-                .Select(c => c.MaterialId!.Value)
-                .Distinct()
-                .ToHashSet();
-
-            return context.Materiales
-                .Where(m => m.ProyectoId == proyectoId && !usados.Contains(m.Id))
-                .ToList();
-        }
-
-        private static List<ManoDeObra> ObtenerManoDeObraSinUso(SOPROContext context, int proyectoId)
-        {
-            var usados = context.ComponentesMatriz
-                .AsNoTracking()
-                .Where(c => c.ManoDeObraId.HasValue)
-                .Select(c => c.ManoDeObraId!.Value)
-                .Distinct()
-                .ToHashSet();
-
-            return context.ManoDeObra
-                .Where(m => m.ProyectoId == proyectoId && !usados.Contains(m.Id))
-                .ToList();
-        }
-
-        private static List<Herramienta> ObtenerHerramientasSinUso(SOPROContext context, int proyectoId)
-        {
-            var usados = context.ComponentesMatriz
-                .AsNoTracking()
-                .Where(c => c.HerramientaId.HasValue)
-                .Select(c => c.HerramientaId!.Value)
-                .Distinct()
-                .ToHashSet();
-
-            return context.Herramientas
-                .Where(h => h.ProyectoId == proyectoId && !usados.Contains(h.Id))
-                .ToList();
-        }
-
-        private static List<Maquinaria> ObtenerMaquinariaSinUso(SOPROContext context, int proyectoId)
-        {
-            var usados = context.ComponentesMatriz
-                .AsNoTracking()
-                .Where(c => c.MaquinariaId.HasValue)
-                .Select(c => c.MaquinariaId!.Value)
-                .Distinct()
-                .ToHashSet();
-
-            return context.Maquinaria
-                .Where(m => m.ProyectoId == proyectoId && !usados.Contains(m.Id))
-                .ToList();
-        }
     }
 }
