@@ -369,7 +369,7 @@ namespace SOPRO.WinForms.Forms
             this.grpCombustible.Text     = "B1 — Combustible";
             this.grpCombustible.Font     = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
             this.grpCombustible.Location = new System.Drawing.Point(12, 10);
-            this.grpCombustible.Size     = new System.Drawing.Size(440, 105);
+            this.grpCombustible.Size     = new System.Drawing.Size(440, 124);
 
             this.label14.Text = "Cantidad Gh (lts/hr):"; this.label14.Location = new System.Drawing.Point(10, 28); this.label14.Size = new System.Drawing.Size(210, 20); this.label14.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.nudCantCombustible.Location = new System.Drawing.Point(225, 25); this.nudCantCombustible.Size = new System.Drawing.Size(150, 24);
@@ -396,8 +396,8 @@ namespace SOPRO.WinForms.Forms
 
             this.grpLubricantes.Text     = "B2 — Lubricantes";
             this.grpLubricantes.Font     = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
-            this.grpLubricantes.Location = new System.Drawing.Point(12, 123);
-            this.grpLubricantes.Size     = new System.Drawing.Size(440, 95);
+            this.grpLubricantes.Location = new System.Drawing.Point(12, 146);
+            this.grpLubricantes.Size     = new System.Drawing.Size(440, 124);
 
             this.label16.Text = "Cantidad Ah (lts/hr):"; this.label16.Location = new System.Drawing.Point(10, 28); this.label16.Size = new System.Drawing.Size(210, 20); this.label16.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.nudCantAceite.Location = new System.Drawing.Point(225, 25); this.nudCantAceite.Size = new System.Drawing.Size(190, 24);
@@ -410,12 +410,12 @@ namespace SOPRO.WinForms.Forms
             this.grpLubricantes.Controls.AddRange(new System.Windows.Forms.Control[]
             { this.label16, this.nudCantAceite, this.label17, this.nudPrecioAceite });
 
-            this.lblLubricantesTxt.Text = "Lb = Ah × Precio ($/hr):"; this.lblLubricantesTxt.Location = new System.Drawing.Point(470, 133); this.lblLubricantesTxt.Size = new System.Drawing.Size(220, 20); this.lblLubricantesTxt.Font = new System.Drawing.Font("Segoe UI", 9F);
-            this.lblLubricantes.Text    = "$0.00"; this.lblLubricantes.Location = new System.Drawing.Point(470, 155); this.lblLubricantes.AutoSize = true; this.lblLubricantes.Font = new System.Drawing.Font("Segoe UI", 15F, System.Drawing.FontStyle.Bold); this.lblLubricantes.ForeColor = System.Drawing.Color.FromArgb(27, 94, 32);
+            this.lblLubricantesTxt.Text = "Lb = Ah × Precio ($/hr):"; this.lblLubricantesTxt.Location = new System.Drawing.Point(470, 156); this.lblLubricantesTxt.Size = new System.Drawing.Size(220, 20); this.lblLubricantesTxt.Font = new System.Drawing.Font("Segoe UI", 9F);
+            this.lblLubricantes.Text    = "$0.00"; this.lblLubricantes.Location = new System.Drawing.Point(470, 178); this.lblLubricantes.AutoSize = true; this.lblLubricantes.Font = new System.Drawing.Font("Segoe UI", 15F, System.Drawing.FontStyle.Bold); this.lblLubricantes.ForeColor = System.Drawing.Color.FromArgb(27, 94, 32);
 
             this.grpLlantas.Text     = "B3 — Llantas";
             this.grpLlantas.Font     = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
-            this.grpLlantas.Location = new System.Drawing.Point(12, 226);
+            this.grpLlantas.Location = new System.Drawing.Point(12, 280);
             this.grpLlantas.Size     = new System.Drawing.Size(440, 95);
 
             this.label18.Text = "Número de llantas:"; this.label18.Location = new System.Drawing.Point(10, 28); this.label18.Size = new System.Drawing.Size(210, 20); this.label18.Font = new System.Drawing.Font("Segoe UI", 9F);
@@ -429,12 +429,12 @@ namespace SOPRO.WinForms.Forms
             this.grpLlantas.Controls.AddRange(new System.Windows.Forms.Control[]
             { this.label18, this.nudNumLlantas, this.label19, this.nudVidaLlantas });
 
-            this.lblLlantasTxt.Text = "Nt = ValLlantas / VidaLlantas ($/hr):"; this.lblLlantasTxt.Location = new System.Drawing.Point(470, 238); this.lblLlantasTxt.Size = new System.Drawing.Size(280, 20); this.lblLlantasTxt.Font = new System.Drawing.Font("Segoe UI", 9F);
-            this.lblLlantas.Text    = "$0.00"; this.lblLlantas.Location = new System.Drawing.Point(470, 260); this.lblLlantas.AutoSize = true; this.lblLlantas.Font = new System.Drawing.Font("Segoe UI", 15F, System.Drawing.FontStyle.Bold); this.lblLlantas.ForeColor = System.Drawing.Color.FromArgb(27, 94, 32);
+            this.lblLlantasTxt.Text = "Nt = ValLlantas / VidaLlantas ($/hr):"; this.lblLlantasTxt.Location = new System.Drawing.Point(470, 292); this.lblLlantasTxt.Size = new System.Drawing.Size(280, 20); this.lblLlantasTxt.Font = new System.Drawing.Font("Segoe UI", 9F);
+            this.lblLlantas.Text    = "$0.00"; this.lblLlantas.Location = new System.Drawing.Point(470, 314); this.lblLlantas.AutoSize = true; this.lblLlantas.Font = new System.Drawing.Font("Segoe UI", 15F, System.Drawing.FontStyle.Bold); this.lblLlantas.ForeColor = System.Drawing.Color.FromArgb(27, 94, 32);
 
             this.grpPiezasEsp.Text     = "B4 — Piezas Especiales";
             this.grpPiezasEsp.Font     = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
-            this.grpPiezasEsp.Location = new System.Drawing.Point(12, 329);
+            this.grpPiezasEsp.Location = new System.Drawing.Point(12, 385);
             this.grpPiezasEsp.Size     = new System.Drawing.Size(440, 62);
 
             this.label20.Text = "Vida económica piezas (hrs):"; this.label20.Location = new System.Drawing.Point(10, 28); this.label20.Size = new System.Drawing.Size(210, 20); this.label20.Font = new System.Drawing.Font("Segoe UI", 9F);
@@ -443,13 +443,13 @@ namespace SOPRO.WinForms.Forms
 
             this.grpPiezasEsp.Controls.AddRange(new System.Windows.Forms.Control[] { this.label20, this.nudVidaPiezasEsp });
 
-            this.lblPiezasEspTxt.Text = "Ae = ValPiezas / VidaPiezas ($/hr):"; this.lblPiezasEspTxt.Location = new System.Drawing.Point(470, 341); this.lblPiezasEspTxt.Size = new System.Drawing.Size(280, 20); this.lblPiezasEspTxt.Font = new System.Drawing.Font("Segoe UI", 9F);
-            this.lblPiezasEsp.Text    = "$0.00"; this.lblPiezasEsp.Location = new System.Drawing.Point(470, 363); this.lblPiezasEsp.AutoSize = true; this.lblPiezasEsp.Font = new System.Drawing.Font("Segoe UI", 15F, System.Drawing.FontStyle.Bold); this.lblPiezasEsp.ForeColor = System.Drawing.Color.FromArgb(27, 94, 32);
+            this.lblPiezasEspTxt.Text = "Ae = ValPiezas / VidaPiezas ($/hr):"; this.lblPiezasEspTxt.Location = new System.Drawing.Point(470, 406); this.lblPiezasEspTxt.Size = new System.Drawing.Size(280, 20); this.lblPiezasEspTxt.Font = new System.Drawing.Font("Segoe UI", 9F);
+            this.lblPiezasEsp.Text    = "$0.00"; this.lblPiezasEsp.Location = new System.Drawing.Point(470, 428); this.lblPiezasEsp.AutoSize = true; this.lblPiezasEsp.Font = new System.Drawing.Font("Segoe UI", 15F, System.Drawing.FontStyle.Bold); this.lblPiezasEsp.ForeColor = System.Drawing.Color.FromArgb(27, 94, 32);
 
             this.grpTotalCon.Text     = "TOTAL CONSUMOS  (B = Co + Lb + Nt + Ae)";
             this.grpTotalCon.Font     = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
             this.grpTotalCon.ForeColor= System.Drawing.Color.FromArgb(191, 54, 12);
-            this.grpTotalCon.Location = new System.Drawing.Point(12, 399);
+            this.grpTotalCon.Location = new System.Drawing.Point(12, 457);
             this.grpTotalCon.Size     = new System.Drawing.Size(1040, 50);
             this.lblTotalConsumos.Text      = "$0.00 / hr";
             this.lblTotalConsumos.Font      = new System.Drawing.Font("Segoe UI", 16F, System.Drawing.FontStyle.Bold);
@@ -476,7 +476,7 @@ namespace SOPRO.WinForms.Forms
             this.grpOperacion.Text     = "C — Operación del equipo";
             this.grpOperacion.Font     = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
             this.grpOperacion.Location = new System.Drawing.Point(12, 10);
-            this.grpOperacion.Size     = new System.Drawing.Size(440, 152);
+            this.grpOperacion.Size     = new System.Drawing.Size(440, 184);
 
             this.label21.Text = "Salario nominal Sn ($/turno):"; this.label21.Location = new System.Drawing.Point(10, 28); this.label21.Size = new System.Drawing.Size(230, 20); this.label21.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.nudSalarioOperador.Location = new System.Drawing.Point(248, 25); this.nudSalarioOperador.Size = new System.Drawing.Size(167, 24);
@@ -503,7 +503,7 @@ namespace SOPRO.WinForms.Forms
             this.lblNotaOperacion.Text      = "Art. 206 RLOPSRM: Po cubre el salario real del operador por hora efectiva de trabajo.\r\n" +
                                               "Si el operador realiza otra actividad en el mismo concepto del APU, puede excluirse de\r\n" +
                                               "este cálculo siempre que el rendimiento del APU no incluya su tiempo de operación del equipo.";
-            this.lblNotaOperacion.Location  = new System.Drawing.Point(12, 175);
+            this.lblNotaOperacion.Location  = new System.Drawing.Point(12, 210);
             this.lblNotaOperacion.Size      = new System.Drawing.Size(1020, 60);
             this.lblNotaOperacion.Font      = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Italic);
             this.lblNotaOperacion.ForeColor = System.Drawing.Color.FromArgb(120, 120, 120);
