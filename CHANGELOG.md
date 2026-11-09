@@ -7,7 +7,13 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 ## [No publicado]
 
 ### Agregado
-- Migracion M015 (esquema `2026.04.5`): columnas `MaterialCombustibleId`, `MaterialAceiteId` y `ManoDeObraOperadorId` en `Maquinaria` para vincular insumos locales del costo horario.
+- Migración M015 (esquema `2026.04.5`): columnas `MaterialCombustibleId`, `MaterialAceiteId` y `ManoDeObraOperadorId` en `Maquinaria` para vincular insumos locales del costo horario.
+- Selectores de combustible, lubricante y operador en el cálculo de costo horario, con cambio o desvinculación sin perder el último valor efectivo.
+
+### Cambiado
+- Los cambios de precio de materiales y salario/FSR de mano de obra actualizan de forma atómica la maquinaria vinculada, sus matrices y el presupuesto.
+- Eliminación, depuración, consolidación y «Dónde se usa» reconocen los vínculos de costo horario e identifican la maquinaria y el rol afectados.
+- Las importaciones de maquinaria conservan sus valores efectivos, pero descartan IDs de vínculos locales; explosión y programación mantienen los consumos internos fuera del desglose para evitar doble conteo.
 
 ## [1.10.0] - 2026-10-21
 
