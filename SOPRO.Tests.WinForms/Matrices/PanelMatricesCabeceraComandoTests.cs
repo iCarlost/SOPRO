@@ -638,10 +638,8 @@ public class PanelMatricesCabeceraComandoTests
             Matriz? creada = null;
             panel.BeginCreateMatrix(TipoMatriz.APU, m => creada = m);
 
-            Assert.IsFalse(panel.BotonGuardarVisibleParaPrueba,
-                "El borrador de matriz nueva no ofrece Guardar.");
-            Assert.IsFalse(panel.BotonCancelarVisibleParaPrueba,
-                "El borrador de matriz nueva no ofrece Cancelar; sale con Esc/cierre.");
+            Assert.IsFalse(panel.ExisteBotonGuardarCancelarVisibleParaPrueba,
+                "El header compacto no ofrece Guardar/Cancelar en ningún estado (autoguardado).");
 
             panel.EstablecerCabeceraParaPrueba("NUEVA-001", "Matriz nueva", "m2", TipoMatriz.APU);
             panel.AgregarComponenteTemporalParaPrueba(new ComponenteMatriz
