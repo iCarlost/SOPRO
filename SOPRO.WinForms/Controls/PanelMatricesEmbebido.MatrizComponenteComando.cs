@@ -489,7 +489,7 @@ namespace SOPRO.WinForms.Controls
                     }
                 }
 
-                PintarComponentesEnGrid(_matrizActual.Componentes);
+                ActualizarComponentesEnGridEnSitio(_matrizActual.Componentes);
             }
 
             CantidadComponenteConfirmada?.Invoke(this, snapshot);

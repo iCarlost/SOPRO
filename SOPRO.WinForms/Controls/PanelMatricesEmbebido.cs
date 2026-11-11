@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.DTOs.Matrices;
+using SOPRO.Application.Models.Matrices;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
@@ -582,11 +583,7 @@ private void PintarComponentesEnGrid(System.Collections.Generic.IEnumerable<Comp
             string.Empty);
     }
 
-    _lblMat.Text = $"Mat: {totales.TotalMaterial.ToStringImporte()}";
-    _lblMO.Text = $"M.O.: {totales.TotalManoObraResumen.ToStringImporte()}";
-    _lblMaq.Text = $"Maq.: {totales.TotalMaquinaria.ToStringImporte()}";
-    _lblBas.Text = $"Bas.: {totales.TotalBasicos.ToStringImporte()}";
-    _lblDir.Text = $"Costo Directo: {totales.CostoDirectoTotal.ToStringImporte()}";
+    ActualizarTotalesVista(totales);
 
     try
     {
@@ -604,6 +601,73 @@ private void PintarComponentesEnGrid(System.Collections.Generic.IEnumerable<Comp
         }
     }
     catch { }
+}
+
+/// <summary>
+/// Actualiza las filas YA pintadas sin tocar la colección del grid. Se usa desde
+/// <c>CellEndEdit</c>: <see cref="DataGridViewRowCollection.Clear"/> dentro de ese
+/// evento reentra en <c>SetCurrentCellAddressCore</c> y cierra la aplicación (#105).
+/// La instantánea de cantidad solo cambia valores de componentes existentes; si la
+/// vista no coincide fila a fila por <c>ColId</c>, el repintado destructivo se
+/// difiere al bucle de mensajes, fuera de la transición de celda.
+/// </summary>
+private void ActualizarComponentesEnGridEnSitio(System.Collections.Generic.IEnumerable<ComponenteMatriz> componentes)
+{
+    System.Collections.Generic.List<ComponenteMatriz> lista =
+        componentes?.ToList() ?? new System.Collections.Generic.List<ComponenteMatriz>();
+    MatrixComponentTotals totales =
+        MatrixComponentCalculationService.RecalculateParaVista(lista, FormatoHelper.DecimalesImporte);
+    System.Collections.Generic.IReadOnlyList<MatrixComponentRowDisplayModel> rows =
+        MatrixComponentPresentationService.BuildRows(lista, totales.BaseManoObra);
+
+    bool coincide = _dgvComponentes.Rows.Count == lista.Count && rows.Count == lista.Count;
+    for (int i = 0; coincide && i < lista.Count; i++)
+    {
+        object? idCelda = _dgvComponentes.Rows[i].Cells["ColId"].Value;
+        coincide = idCelda != null
+            && int.TryParse(idCelda.ToString(), out int idFila)
+            && idFila == lista[i].Id;
+    }
+
+    if (!coincide)
+    {
+        if (IsDisposed)
+            return;
+
+        if (!IsHandleCreated)
+            return;
+
+        BeginInvoke(new Action(() =>
+        {
+            if (!IsDisposed && _matrizActual != null)
+                PintarComponentesEnGrid(_matrizActual.Componentes);
+        }));
+        return;
+    }
+
+    for (int i = 0; i < lista.Count; i++)
+    {
+        DataGridViewRow fila = _dgvComponentes.Rows[i];
+        MatrixComponentRowDisplayModel row = rows[i];
+        fila.Cells["ColTipo"].Value = row.Tipo;
+        fila.Cells["ColClave"].Value = row.Clave;
+        fila.Cells["ColDesc"].Value = row.Descripcion;
+        fila.Cells["ColUnidad"].Value = row.Unidad;
+        fila.Cells["ColCantidad"].Value = row.Cantidad.ToStringCantidad();
+        fila.Cells["ColPU"].Value = row.PrecioUnitario.ToStringImporte();
+        fila.Cells["ColImporte"].Value = row.Importe.ToStringImporte();
+    }
+
+    ActualizarTotalesVista(totales);
+}
+
+private void ActualizarTotalesVista(MatrixComponentTotals totales)
+{
+    _lblMat.Text = $"Mat: {totales.TotalMaterial.ToStringImporte()}";
+    _lblMO.Text = $"M.O.: {totales.TotalManoObraResumen.ToStringImporte()}";
+    _lblMaq.Text = $"Maq.: {totales.TotalMaquinaria.ToStringImporte()}";
+    _lblBas.Text = $"Bas.: {totales.TotalBasicos.ToStringImporte()}";
+    _lblDir.Text = $"Costo Directo: {totales.CostoDirectoTotal.ToStringImporte()}";
 }
 
 private void RefrescarVistaTemporal()

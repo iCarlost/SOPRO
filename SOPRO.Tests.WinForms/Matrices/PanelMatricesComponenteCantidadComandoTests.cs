@@ -939,6 +939,241 @@ public class PanelMatricesComponenteCantidadComandoTests
         }
     }
 
+    [TestMethod]
+    public void SalidaCantidadCelda_SinCambio_PorTransicionDeCelda_NoReconstruyeLaFila()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"sopro_cantidad_salida_igual_{Guid.NewGuid():N}");
+        string dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        Proyecto? proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        System.Collections.Generic.List<string> avisos = new();
+        PanelMatricesEmbebido.MostrarAvisoCantidadComponente = (_, mensaje, _) => avisos.Add(mensaje);
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            EscenarioPanel escenario = CrearEscenarioDosHojas(ctx);
+            form = CrearFormConWorkspaceMostrado(ctx, escenario.Proyecto, root);
+            DataGridView grid = form.GridPrincipal;
+            PanelMatricesEmbebido panel = form.PanelMatricesInterno!;
+            DataGridView dgvComp = panel.DgvComponentesInterno;
+
+            CargarConceptoEnPanel(grid, panel, escenario.Hoja1.Id);
+
+            ComponenteMatriz comp = escenario.MatrizApu.Componentes
+                .Single(c => c.TipoComponente == TipoComponenteMatriz.Material);
+            int filaComp = BuscarFilaComponente(dgvComp, comp.Id);
+            Assert.IsTrue(filaComp >= 0, "El componente material debe estar pintado en el panel.");
+
+            DataGridViewRow filaAntes = dgvComp.Rows[filaComp];
+            int filasAntes = dgvComp.Rows.Count;
+            int filaDestino = filaComp == 0 ? 1 : 0;
+
+            dgvComp.CurrentCell = filaAntes.Cells["ColCantidad"];
+            Assert.IsTrue(dgvComp.BeginEdit(true), "La celda Cantidad debe entrar en edición.");
+            System.Windows.Forms.Application.DoEvents();
+
+            // Salida real de la celda sin cambiar el valor: mover CurrentCell dispara
+            // CellEndEdit dentro de SetCurrentCellAddressCore. Reconstruir las filas en
+            // ese punto reentra en el mismo método y cierra la aplicación (#105).
+            dgvComp.CurrentCell = dgvComp.Rows[filaDestino].Cells["ColDesc"];
+            System.Windows.Forms.Application.DoEvents();
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, panel.UltimoEstadoEdicionCantidadComponente,
+                panel.UltimaRazonSinDespachar);
+            Assert.IsNull(panel.IntentoCantidadPendiente, "Sin pendiente tras el commit.");
+            Assert.AreSame(filaAntes, dgvComp.Rows[filaComp],
+                "La salida sin cambio no puede destruir y recrear la fila del componente.");
+            Assert.AreEqual(filasAntes, dgvComp.Rows.Count);
+            Assert.AreEqual(2m.ToStringCantidad(), dgvComp.Rows[filaComp].Cells["ColCantidad"].Value?.ToString());
+            Assert.AreEqual(120m.ToStringImporte(), dgvComp.Rows[filaComp].Cells["ColImporte"].Value?.ToString());
+            StringAssert.Contains(panel.LblDirInterno.Text, 150m.ToStringImporte());
+            Assert.AreEqual(0, avisos.Count, "La salida sin cambio no muestra avisos.");
+        }
+        finally
+        {
+            PanelMatricesEmbebido.MostrarAvisoCantidadComponente = AvisoPorDefecto;
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void SalidaCantidadCelda_ConCambio_PorTransicionDeCelda_ActualizaEnSitioYConfirma()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"sopro_cantidad_salida_cambio_{Guid.NewGuid():N}");
+        string dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        Proyecto? proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        System.Collections.Generic.List<string> avisos = new();
+        PanelMatricesEmbebido.MostrarAvisoCantidadComponente = (_, mensaje, _) => avisos.Add(mensaje);
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            EscenarioPanel escenario = CrearEscenarioDosHojas(ctx);
+            form = CrearFormConWorkspaceMostrado(ctx, escenario.Proyecto, root);
+            DataGridView grid = form.GridPrincipal;
+            PanelMatricesEmbebido panel = form.PanelMatricesInterno!;
+            DataGridView dgvComp = panel.DgvComponentesInterno;
+
+            CargarConceptoEnPanel(grid, panel, escenario.Hoja1.Id);
+
+            ComponenteMatriz comp = escenario.MatrizApu.Componentes
+                .Single(c => c.TipoComponente == TipoComponenteMatriz.Material);
+            int filaComp = BuscarFilaComponente(dgvComp, comp.Id);
+            Assert.IsTrue(filaComp >= 0);
+            DataGridViewRow filaAntes = dgvComp.Rows[filaComp];
+            int filaDestino = filaComp == 0 ? 1 : 0;
+
+            bool eventoEmitido = false;
+            panel.CantidadComponenteConfirmada += (_, __) => eventoEmitido = true;
+
+            dgvComp.CurrentCell = filaAntes.Cells["ColCantidad"];
+            Assert.IsTrue(dgvComp.BeginEdit(true));
+            Assert.IsNotNull(dgvComp.EditingControl, "La edición real debe tener control de edición.");
+            dgvComp.EditingControl.Text = "3";
+
+            // Salida real con cambio: el commit se despacha desde CellEndEdit y la
+            // fila debe actualizarse en sitio, sin destruir la colección del grid.
+            dgvComp.CurrentCell = dgvComp.Rows[filaDestino].Cells["ColDesc"];
+            System.Windows.Forms.Application.DoEvents();
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, panel.UltimoEstadoEdicionCantidadComponente,
+                panel.UltimaRazonSinDespachar);
+            Assert.IsTrue(eventoEmitido, "El formulario debe recibir la instantánea confirmada.");
+            Assert.IsNull(panel.IntentoCantidadPendiente);
+            Assert.AreSame(filaAntes, dgvComp.Rows[filaComp],
+                "La salida con cambio no puede destruir y recrear la fila del componente.");
+            Assert.AreEqual(3m.ToStringCantidad(), dgvComp.Rows[filaComp].Cells["ColCantidad"].Value?.ToString());
+            Assert.AreEqual(180m.ToStringImporte(), dgvComp.Rows[filaComp].Cells["ColImporte"].Value?.ToString());
+            StringAssert.Contains(panel.LblDirInterno.Text, 210m.ToStringImporte());
+            Assert.AreEqual(0, avisos.Count, "La ruta confirmada no muestra avisos.");
+
+            using (SOPROContext verificacion = new SOPROContext(dbPath))
+            {
+                ComponenteMatriz compDb = verificacion.ComponentesMatriz.AsNoTracking()
+                    .Single(c => c.Id == comp.Id);
+                Assert.AreEqual(3m, compDb.Cantidad);
+                Assert.AreEqual(180m, compDb.Importe);
+
+                Matriz matrizDb = verificacion.Matrices.AsNoTracking()
+                    .Single(m => m.Id == escenario.MatrizApu.Id);
+                Assert.AreEqual(210m, matrizDb.CostoDirecto);
+
+                ConceptoPresupuesto hojaDb = verificacion.ConceptosPresupuesto.AsNoTracking()
+                    .Single(c => c.Id == escenario.Hoja1.Id);
+                Assert.AreEqual(2100m, hojaDb.ImporteTotal,
+                    "La hoja del presupuesto se sincroniza desde la instantánea.");
+            }
+        }
+        finally
+        {
+            PanelMatricesEmbebido.MostrarAvisoCantidadComponente = AvisoPorDefecto;
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void SalidaCantidadCelda_ComponenteAuxiliarBasico_PorTransicionDeCelda_ConfirmaSinReconstruir()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"sopro_cantidad_salida_aux_{Guid.NewGuid():N}");
+        string dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
+        Directory.CreateDirectory(root);
+
+        Proyecto? proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        System.Collections.Generic.List<string> avisos = new();
+        PanelMatricesEmbebido.MostrarAvisoCantidadComponente = (_, mensaje, _) => avisos.Add(mensaje);
+
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = new SOPROContext(dbPath);
+            ctx.Database.EnsureDeleted();
+            ctx.Database.EnsureCreated();
+
+            EscenarioPanel escenario = CrearEscenarioConAuxiliarBasico(ctx);
+            form = CrearFormConWorkspaceMostrado(ctx, escenario.Proyecto, root);
+            DataGridView grid = form.GridPrincipal;
+            PanelMatricesEmbebido panel = form.PanelMatricesInterno!;
+            DataGridView dgvComp = panel.DgvComponentesInterno;
+
+            CargarConceptoEnPanel(grid, panel, escenario.Hoja1.Id);
+
+            int filaComp = BuscarFilaComponente(dgvComp, escenario.ComponenteAuxiliarId!.Value);
+            Assert.IsTrue(filaComp >= 0, "El componente auxiliar Básico debe estar pintado en el panel.");
+            Assert.AreEqual(1m.ToStringCantidad(), dgvComp.Rows[filaComp].Cells["ColCantidad"].Value?.ToString());
+            Assert.AreEqual(50m.ToStringImporte(), dgvComp.Rows[filaComp].Cells["ColImporte"].Value?.ToString());
+
+            DataGridViewRow filaAntes = dgvComp.Rows[filaComp];
+            int filaDestino = filaComp == 0 ? 1 : 0;
+
+            dgvComp.CurrentCell = filaAntes.Cells["ColCantidad"];
+            Assert.IsTrue(dgvComp.BeginEdit(true));
+            dgvComp.EditingControl!.Text = "3";
+
+            dgvComp.CurrentCell = dgvComp.Rows[filaDestino].Cells["ColDesc"];
+            System.Windows.Forms.Application.DoEvents();
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, panel.UltimoEstadoEdicionCantidadComponente,
+                panel.UltimaRazonSinDespachar);
+            Assert.AreSame(filaAntes, dgvComp.Rows[filaComp],
+                "La salida del auxiliar no puede destruir y recrear la fila del componente.");
+            Assert.AreEqual(3m.ToStringCantidad(), dgvComp.Rows[filaComp].Cells["ColCantidad"].Value?.ToString());
+            Assert.AreEqual(150m.ToStringImporte(), dgvComp.Rows[filaComp].Cells["ColImporte"].Value?.ToString());
+            StringAssert.Contains(panel.LblDirInterno.Text, 300m.ToStringImporte());
+            Assert.AreEqual(0, avisos.Count, "La ruta confirmada no muestra avisos.");
+
+            using (SOPROContext verificacion = new SOPROContext(dbPath))
+            {
+                ComponenteMatriz auxDb = verificacion.ComponentesMatriz.AsNoTracking()
+                    .Single(c => c.Id == escenario.ComponenteAuxiliarId!.Value);
+                Assert.AreEqual(3m, auxDb.Cantidad);
+                Assert.AreEqual(150m, auxDb.Importe, "3 x costo directo 50 del Básico.");
+
+                Matriz basicoDb = verificacion.Matrices.AsNoTracking()
+                    .Single(m => m.Id == escenario.MatrizBasicoId!.Value);
+                Assert.AreEqual(50m, basicoDb.CostoDirecto,
+                    "El Básico referenciado no se recalcula: se consume su costo almacenado.");
+
+                Matriz padreDb = verificacion.Matrices.AsNoTracking()
+                    .Single(m => m.Id == escenario.MatrizApu.Id);
+                Assert.AreEqual(300m, padreDb.CostoDirecto,
+                    "120 material + 30 MO + 150 auxiliar: la ascendencia APU se recalcula.");
+
+                ConceptoPresupuesto hojaDb = verificacion.ConceptosPresupuesto.AsNoTracking()
+                    .Single(c => c.Id == escenario.Hoja1.Id);
+                Assert.AreEqual(3000m, hojaDb.ImporteTotal);
+            }
+        }
+        finally
+        {
+            PanelMatricesEmbebido.MostrarAvisoCantidadComponente = AvisoPorDefecto;
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
     // ═════════════════════════════ Infraestructura ═════════════════════════════
 
     private sealed class EscenarioPanel
@@ -950,6 +1185,8 @@ public class PanelMatricesComponenteCantidadComandoTests
         public ConceptoPresupuesto Agrupador { get; init; } = null!;
         public int? Hijo { get; init; }
         public int? ComponenteMaquinariaId { get; init; }
+        public int? MatrizBasicoId { get; init; }
+        public int? ComponenteAuxiliarId { get; init; }
     }
 
     private static EscenarioPanel CrearEscenarioDosHojas(SOPROContext ctx)
@@ -1173,6 +1410,86 @@ public class PanelMatricesComponenteCantidadComandoTests
         };
     }
 
+    private static EscenarioPanel CrearEscenarioConAuxiliarBasico(SOPROContext ctx)
+    {
+        EscenarioPanel base1 = CrearEscenarioDosHojas(ctx);
+
+        Material arena = new Material
+        {
+            ProyectoId = base1.Proyecto.Id,
+            Clave = "MAT-ARE",
+            Descripcion = "Arena",
+            Unidad = "m3",
+            PrecioUnitario = 25m,
+            Notas = string.Empty,
+        };
+        ctx.Materiales.Add(arena);
+        ctx.SaveChanges();
+
+        Matriz basico = new Matriz
+        {
+            ProyectoId = base1.Proyecto.Id,
+            Clave = "BAS-001",
+            Descripcion = "Mortero",
+            Unidad = "m3",
+            Tipo = TipoMatriz.Basico,
+            Notas = string.Empty,
+        };
+        ctx.Matrices.Add(basico);
+        ctx.SaveChanges();
+
+        ComponenteMatriz compArena = new ComponenteMatriz
+        {
+            MatrizId = basico.Id,
+            TipoComponente = TipoComponenteMatriz.Material,
+            MaterialId = arena.Id,
+            Material = arena,
+            Cantidad = 2m,
+            Importe = 50m,
+            Orden = 1,
+            Notas = string.Empty,
+        };
+        ctx.ComponentesMatriz.Add(compArena);
+        basico.CostoDirecto = 50m;
+        ctx.SaveChanges();
+
+        ComponenteMatriz auxiliar = new ComponenteMatriz
+        {
+            MatrizId = base1.MatrizApu.Id,
+            TipoComponente = TipoComponenteMatriz.Auxiliar,
+            AuxiliarId = basico.Id,
+            Auxiliar = basico,
+            Cantidad = 1m,
+            Importe = 50m,
+            Orden = 3,
+            Notas = string.Empty,
+        };
+        ctx.ComponentesMatriz.Add(auxiliar);
+        base1.MatrizApu.CostoDirecto = 200m;
+
+        foreach (ConceptoPresupuesto hoja in new[] { base1.Hoja1, base1.Hoja2 })
+        {
+            hoja.CostoDirectoUnitario = 200m;
+            hoja.PrecioUnitario = 200m;
+            hoja.CostoDirectoTotal = hoja.Cantidad * 200m;
+            hoja.ImporteTotal = hoja.Cantidad * 200m;
+        }
+        base1.Agrupador.CostoDirectoTotal = 3000m;
+        base1.Agrupador.ImporteTotal = 3000m;
+        ctx.SaveChanges();
+
+        return new EscenarioPanel
+        {
+            Proyecto = base1.Proyecto,
+            MatrizApu = base1.MatrizApu,
+            Hoja1 = base1.Hoja1,
+            Hoja2 = base1.Hoja2,
+            Agrupador = base1.Agrupador,
+            MatrizBasicoId = basico.Id,
+            ComponenteAuxiliarId = auxiliar.Id,
+        };
+    }
+
     private static ConceptoPresupuesto AgregarConceptoAjeno(
         SOPROContext ctx, EscenarioPanel escenario)
     {
@@ -1211,6 +1528,26 @@ public class PanelMatricesComponenteCantidadComandoTests
     {
         using var admin = new SOPROContext(dbPath);
         admin.Database.ExecuteSqlRaw(sql);
+    }
+
+    private static FormPresupuesto CrearFormConWorkspaceMostrado(
+        SOPROContext ctx, Proyecto proyecto, string root)
+    {
+        FormPresupuesto form = new FormPresupuesto(ctx, proyecto, new ProjectWorkspaceService(
+            Path.Combine(root, "sopro"), Path.Combine(root, "local")));
+        form.Show();
+        form.ExpandirWorkspaceParaPrueba();
+        System.Windows.Forms.Application.DoEvents();
+        return form;
+    }
+
+    private static void CargarConceptoEnPanel(
+        DataGridView grid, PanelMatricesEmbebido panel, int conceptoId)
+    {
+        int fila = BuscarFilaPorConcepto(grid, conceptoId);
+        Assert.AreNotEqual(-1, fila, "La prueba necesita la fila del concepto en el presupuesto.");
+        panel.NotificarFilaCambiada(fila);
+        System.Windows.Forms.Application.DoEvents();
     }
 
     private static int BuscarFilaComponente(DataGridView dgv, int componenteId)
