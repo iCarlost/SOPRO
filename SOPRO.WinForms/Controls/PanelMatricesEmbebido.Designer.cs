@@ -41,6 +41,18 @@ namespace SOPRO.WinForms.Controls
         private TableLayoutPanel _rootLayout;
         private bool _modoCompacto;
         private bool _camposApilados;
+        // Transición visual atómica del cambio de concepto: WM_SETREDRAW OFF sobre el
+        // subárbol durante la ráfaga de estado, liberado hijos→raíz cuando se agotan
+        // los pases diferidos de ReprogramarLayoutVertical (nunca queda activo).
+        // _profundidadSupresion: bursts activos (reentrancia/bombeo modal dentro de
+        // la ráfaga); sólo se libera al salir del burst externo y agotar los pases.
+        // _generacionLayout: token de ciclo de handle; los callbacks en cola de una
+        // generación vieja no tocan el estado nuevo tras un recreate.
+        private bool _redibujoSuprimido;
+        private int _pasesReprogramacionPendientes;
+        private bool _reprogramacionPendiente;
+        private int _profundidadSupresion;
+        private int _generacionLayout;
         private Label _lblAgregar;
         private TableLayoutPanel _tlpCampos;
         private FlowLayoutPanel _panelChipsTipo;
@@ -1020,23 +1032,153 @@ namespace SOPRO.WinForms.Controls
                 AplicarModoScroll();
                 return;
             }
+
+            // Coalescencia fuera de la supresión: un pase ya agendado verá el estado
+            // acumulado y basta. Con supresión activa cada pase se agenda y se cuenta,
+            // para liberar el redibujado exactamente cuando se agoten.
+            if (_reprogramacionPendiente && !_redibujoSuprimido)
+                return;
+
+            _reprogramacionPendiente = true;
+            int generacion = _generacionLayout;
+            _pasesReprogramacionPendientes++;
             try
             {
-                BeginInvoke(new Action(() =>
-                {
-                    if (IsDisposed) return;
-                    ApilarCamposSegunAncho();
-                    AjustarNavegacionSegunAncho();
-                    AplicarModoCompacto();
-                    RecalibrarAlturasCromo();
-                    AplicarModoScroll();
-                    PerformLayout();
-                }));
+                BeginInvoke(new Action(() => EjecutarPaseReprogramacion(generacion)));
             }
-            catch (ObjectDisposedException)
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
             {
                 // El panel se cerró antes del re-agendado: no es parte del contrato.
+                _reprogramacionPendiente = false;
+                _pasesReprogramacionPendientes--;
+                if (_redibujoSuprimido && _profundidadSupresion == 0 && _pasesReprogramacionPendientes == 0)
+                    RestaurarRedibujoSubarbol();
             }
+        }
+
+        private void EjecutarPaseReprogramacion(int generacion)
+        {
+            // Un callback de una generación vieja (handle destruido/recreado) NO toca
+            // el estado de la generación nueva: ni flag, ni contadores, ni trabajo.
+            bool vigente = generacion == _generacionLayout;
+            if (vigente)
+                _reprogramacionPendiente = false;
+
+            try
+            {
+                if (IsDisposed || !vigente)
+                    return;
+
+                ApilarCamposSegunAncho();
+                AjustarNavegacionSegunAncho();
+                AplicarModoCompacto();
+                RecalibrarAlturasCromo();
+                AplicarModoScroll();
+                PerformLayout();
+            }
+            finally
+            {
+                if (vigente)
+                {
+                    _pasesReprogramacionPendientes--;
+                    if (_redibujoSuprimido && _profundidadSupresion == 0 && _pasesReprogramacionPendientes == 0)
+                        RestaurarRedibujoSubarbol();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Adquiere un turno de supresión de redibujado del panel y TODOS sus
+        /// descendientes (WM_SETREDRAW) para que la ráfaga de cambio de concepto se
+        /// presente en una sola pintura final. Llamadas anidadas (transición dentro de
+        /// transición, bombeo de un aviso dentro de la ráfaga) sólo suben la
+        /// profundidad: el redibujado se restaura al salir del burst externo con los
+        /// pases agotados. Es no-op (y no toma turno) sin handle. Devuelve true si el
+        /// llamador adquirió un turno que debe liberar en su finally.
+        /// </summary>
+        private bool SuprimirRedibujoSubarbol()
+        {
+            if (!IsHandleCreated)
+                return false;
+
+            _profundidadSupresion++;
+            if (_redibujoSuprimido)
+                return true;
+
+            _redibujoSuprimido = true;
+            bool completo;
+            try
+            {
+                completo = GridRedrawHelper.SetRedrawArbol(this, habilitar: false);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"PanelMatricesEmbebido.SuprimirRedibujoSubarbol: {ex.Message}");
+                completo = false;
+            }
+            if (!completo)
+            {
+                // Fallo parcial: mejor soltar la supresión (re-habilita best-effort y
+                // limpia el flag) que dejar controles congelados.
+                RestaurarRedibujoSubarbol();
+                _profundidadSupresion = Math.Max(0, _profundidadSupresion - 1);
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Restablece el redibujado del subárbol (hijos → raíz), invalida y repinta el
+        /// estado final. Idempotente: el flag se limpia SIEMPRE en finally, ante
+        /// fallo, disposición o ausencia de handle.
+        /// </summary>
+        private void RestaurarRedibujoSubarbol()
+        {
+            if (!_redibujoSuprimido)
+                return;
+
+            try
+            {
+                if (!IsDisposed)
+                    GridRedrawHelper.SetRedrawArbol(this, habilitar: true);
+                if (!IsDisposed && IsHandleCreated)
+                {
+                    Invalidate(true);
+                    Update();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"PanelMatricesEmbebido.RestaurarRedibujoSubarbol: {ex.Message}");
+            }
+            finally
+            {
+                _redibujoSuprimido = false;
+            }
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            // Tras un recreate el chrome puede quedar con alturas de la generación
+            // anterior: agendar un pase final de reasentado.
+            ReprogramarLayoutVertical();
+        }
+
+        protected override void OnHandleDestroyed(EventArgs e)
+        {
+            // Fin del ciclo de handle: un recreate no debe heredar supresión,
+            // profundidad, contadores ni callbacks de una generación vieja. El
+            // re-habilitado es best-effort (hijos que aún conserven handle).
+            if (_redibujoSuprimido)
+                RestaurarRedibujoSubarbol();
+            _generacionLayout++;
+            _profundidadSupresion = 0;
+            _pasesReprogramacionPendientes = 0;
+            _reprogramacionPendiente = false;
+            base.OnHandleDestroyed(e);
         }
 
         // Iguala la altura de la fila "Agregar" midiendo en tiempo de ejecución la

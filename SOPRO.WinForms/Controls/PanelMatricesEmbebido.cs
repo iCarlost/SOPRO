@@ -295,6 +295,24 @@ namespace SOPRO.WinForms.Controls
             => _nuevaMatrizPendienteReconciliacion = true;
         internal void CancelarCabeceraParaPrueba() => CancelarEdicionCabecera();
 
+        /// <summary>Entrada reproducible de la tecla Escape sobre el panel (misma
+        /// ruta que el mensaje de teclado real) para las pruebas del ensamblado.</summary>
+        internal bool EnviarEscapeParaPrueba()
+        {
+            var mensaje = new Message();
+            return ProcessCmdKey(ref mensaje, Keys.Escape);
+        }
+
+        /// <summary>Indica si el redibujado del subárbol está suprimido (transición
+        /// atómica en curso). Las pruebas verifican que nunca queda activo.</summary>
+        internal bool RedibujoSuprimidoParaPrueba => _redibujoSuprimido;
+
+        /// <summary>Pases diferidos de ReprogramarLayoutVertical agendados sin ejecutar.</summary>
+        internal int PasesReprogramacionPendientesParaPrueba => _pasesReprogramacionPendientes;
+
+        /// <summary>Bursts de supresión activos (reentrancia/bombeo dentro de la ráfaga).</summary>
+        internal int ProfundidadSupresionParaPrueba => _profundidadSupresion;
+
         /// <summary>
         /// Indica si la cabecera que el panel está editando tiene cambios sin guardar.
         /// Las rutas externas la usan para no reemplazar la matriz visible ni descartar
@@ -1522,6 +1540,36 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 return false;
 
             _filaActual = fila;
+
+            // Transición visual atómica: la transición ya fue aceptada (los diálogos
+            // de confirmación de la navegación ocurren ANTES de suprimir). Los avisos
+            // que pueden surgir DENTRO de la ráfaga bombean mensajes: la profundidad
+            // de supresión impide que un pase diferido durante ese bombeo (o una
+            // transición anidada) restaure el redibujado antes de que el burst
+            // externo termine y se agoten los pases.
+            bool suprimio = SuprimirRedibujoSubarbol();
+            try
+            {
+                return AplicarCargaMatrizDeFila(fila, forceReload);
+            }
+            finally
+            {
+                // Carga que retorna temprano sin pases agendados: no dejar jamás la
+                // supresión activa. Con pases pendientes, el último pase libera.
+                if (suprimio)
+                    _profundidadSupresion = Math.Max(0, _profundidadSupresion - 1);
+                if (_redibujoSuprimido && _profundidadSupresion == 0 && _pasesReprogramacionPendientes == 0)
+                    RestaurarRedibujoSubarbol();
+            }
+        }
+
+        /// <summary>
+        /// Aplica el estado de destino de la fila indicada sobre el panel. Se ejecuta
+        /// con el redibujado del subárbol suprimido; la geometría, los estados y la
+        /// persistencia son EXACTAMENTE los de la ruta histórica.
+        /// </summary>
+        private bool AplicarCargaMatrizDeFila(int fila, bool forceReload)
+        {
             var concepto = _dgvPresupuesto.Rows[fila].Tag as ConceptoPresupuesto;
 
             if (concepto == null)
@@ -2391,7 +2439,16 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             var keyCode = keyData & Keys.KeyCode;
             if (keyCode == Keys.Escape)
             {
-                if (_panelDatos != null && _panelDatos.Visible)
+                // Escape cierra el workspace SOLO cuando no hay contexto de edición
+                // que proteger: creación, subedición o borrador de cabecera usan la
+                // salida segura existente (autoguardar, pedir descarte o reconciliar).
+                // En vista normal el panel no se reconstruye: el Escape pertenece al
+                // host (el modo edición está activo también al solo consultar).
+                bool hayContextoEdicion = _modoCreacionMatriz
+                    || _modoSubedicionComponente
+                    || TieneCambiosPendientesCabecera();
+
+                if (_panelDatos != null && _panelDatos.Visible && hayContextoEdicion)
                 {
                     CancelarEdicionCabecera();
                     return true;
@@ -2713,8 +2770,17 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             {
                 // Desuscribirse del evento
                 FormatoHelper.ConfiguracionCambiada -= OnConfiguracionCambiada;
+                // Los hijos aún conservan handle aquí: re-habilitar el redibujado
+                // antes de que la disposición destruya la cadena.
+                if (_redibujoSuprimido)
+                    RestaurarRedibujoSubarbol();
                 _contenedorComponentes?.Dispose();
             }
+            _redibujoSuprimido = false;
+            _profundidadSupresion = 0;
+            _pasesReprogramacionPendientes = 0;
+            _reprogramacionPendiente = false;
+            _generacionLayout++;
             base.Dispose(disposing);
         }
     }
