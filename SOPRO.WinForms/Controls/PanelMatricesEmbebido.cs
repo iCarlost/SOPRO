@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.DTOs.Matrices;
 using SOPRO.Application.Models.Matrices;
 using SOPRO.Application.Models.Presupuesto;
@@ -52,13 +52,19 @@ namespace SOPRO.WinForms.Controls
         private RadioButton  _rbTipoApu;
         private RadioButton  _rbTipoBasico;
         private RadioButton  _rbTipoCuadrilla;
-        private Button       _btnGuardarMatriz;
-        private Button       _btnCancelarMatriz;
         private bool         _modoEdicionCabecera;
         private bool         _modoCreacionMatriz;
         private int?         _matrizEditandoId;
         private Action<Matriz>? _onMatrixHeaderSaved;
         private Action?         _onMatrixHeaderCancelled;
+        // Indicadores del header compacto:
+        // _sincronizandoCabecera: los cinco sitios de sincronización (carga, confirmación
+        // de comando, inicio de edición, creación y pruebas) marcan/limpan al escribir
+        // los chips; evita que el CheckedChanged programático dispare autoguardado.
+        // _tipoFijoApu: creación por asignación del presupuesto (soloApu) no permite
+        // seleccionar Básico/Cuadrilla.
+        private bool         _sincronizandoCabecera;
+        private bool         _tipoFijoApu;
         private readonly Color  _headerColorNormal = ColorHeaderOscuro;
         private readonly Color  _headerColorSubedicion = ColorHeaderSubedicion;
         private ContextMenuStrip _menuContextualComponentes;
@@ -69,6 +75,20 @@ namespace SOPRO.WinForms.Controls
         private int? _filaPadreSubedicion;
         private bool _huboEdicionEnSubedicion;
         private bool _subedicionCabeceraConfirmadaPorComando;
+
+        /// <summary>
+        /// Presentaciones mutuamente excluyentes del header. La banda de campos, los
+        /// chips de tipo y el acceso "Nueva matriz" se escriben SIEMPRE juntos desde
+        /// <see cref="AplicarPresentacionCabecera"/>: ningún pase diferido ni ruta de
+        /// navegación puede resucitar una parte de la presentación anterior.
+        /// </summary>
+        private enum PresentacionCabecera
+        {
+            SinSeleccion,
+            SinApu,
+            Matriz,
+            Captura
+        }
         private readonly UndoManager _undoManager = new();
         private bool _isUndoRedo;
         private int _undoPanelRowIndex = -1;
@@ -98,13 +118,91 @@ namespace SOPRO.WinForms.Controls
             _txtClaveMatriz.Validated += Cabecera_Validated;
             _txtDescripcionMatriz.Validated += Cabecera_Validated;
             _txtUnidadMatriz.Validated += Cabecera_Validated;
-            _rbTipoApu.Validated += Cabecera_Validated;
-            _rbTipoBasico.Validated += Cabecera_Validated;
-            _rbTipoCuadrilla.Validated += Cabecera_Validated;
+            // Chips de tipo (semántica de radio, aspecto de botón): el autoguardado del
+            // tipo ocurre SOLO cuando el usuario confirma el cambio con el teclado o
+            // el ratón (el chip marcado tiene el foco); la sincronización programática
+            // nunca dispara el comando.
+            _rbTipoApu.CheckedChanged += ChipTipo_CheckedChanged;
+            _rbTipoBasico.CheckedChanged += ChipTipo_CheckedChanged;
+            _rbTipoCuadrilla.CheckedChanged += ChipTipo_CheckedChanged;
+            _rbTipoApu.EnabledChanged += (s, e) => AplicarEstiloChipsTipo();
+            _rbTipoBasico.EnabledChanged += (s, e) => AplicarEstiloChipsTipo();
+            _rbTipoCuadrilla.EnabledChanged += (s, e) => AplicarEstiloChipsTipo();
             ConfigurarMenuContextualComponentes();
             MostrarSinSeleccion();
         }
 
+        /// <summary>
+        /// Respuesta al cambio de un chip de tipo. Repinta el segmento y, si la
+        /// selección fue interactiva (el chip marcado tiene el foco) y la cabecera
+        /// editada tiene cambios pendientes, ejecuta la ruta de autoguardado EXACTA
+        /// una sola vez (guard flag anti-reentrada).
+        /// </summary>
+        private void ChipTipo_CheckedChanged(object? sender, EventArgs e)
+        {
+            AplicarEstiloChipsTipo();
+
+            // Sólo la selección del chip marcado dispara el guardado; el evento del
+            // chip desmarcado previo no cuenta como gesto. La selección programática
+            // (cinco sitios de sincronización) nunca tiene el foco ni el flag propio.
+            if (sender is RadioButton chip && !chip.Checked) return;
+            if (!(_rbTipoApu.Focused || _rbTipoBasico.Focused || _rbTipoCuadrilla.Focused)) return;
+            if (_sincronizandoCabecera) return;
+            if (_modoCreacionMatriz || !_modoEdicionCabecera || !_matrizEditandoId.HasValue) return;
+            if (!TieneCambiosPendientesCabecera()) return;
+
+            ConfirmarTipoSeleccionPorChip();
+        }
+
+        /// <summary>
+        /// Confirma la selección de tipo capturada en los chips: un único paso por la
+        /// ruta de autoguardado existente (<see cref="GuardarCabeceraEdicionActual"/>).
+        /// </summary>
+        private void ConfirmarTipoSeleccionPorChip()
+        {
+            if (_guardandoCabeceraAutomaticamente) return;
+            _guardandoCabeceraAutomaticamente = true;
+            try
+            {
+                GuardarCabeceraEdicionActual();
+            }
+            finally
+            {
+                _guardandoCabeceraAutomaticamente = false;
+            }
+        }
+
+        /// <summary>
+        /// Cambia el tipo seleccionado en los chips y ejecuta la confirmación del
+        /// usuario (sin requerir foco real) — punto de entrada de pruebas y del
+        /// event handler del chip; respeta el tipo fijo APU de la creación por asignación.
+        /// </summary>
+        internal bool CambiarTipoCabeceraDesdeChipParaPrueba(TipoMatriz tipo)
+        {
+            if (_tipoFijoApu)
+                return tipo == TipoMatriz.APU;
+            if (_modoCreacionMatriz || !_modoEdicionCabecera || !_matrizEditandoId.HasValue)
+                return false;
+
+            bool aceptado = tipo switch
+            {
+                TipoMatriz.APU => true,
+                TipoMatriz.Basico => _rbTipoBasico.Enabled,
+                TipoMatriz.Cuadrilla => _rbTipoCuadrilla.Enabled,
+                _ => false
+            };
+            if (!aceptado) return false;
+
+            switch (tipo)
+            {
+                case TipoMatriz.APU: _rbTipoApu.Checked = true; break;
+                case TipoMatriz.Basico: _rbTipoBasico.Checked = true; break;
+                case TipoMatriz.Cuadrilla: _rbTipoCuadrilla.Checked = true; break;
+            }
+
+            ConfirmarTipoSeleccionPorChip();
+            return true;
+        }
         private void Cabecera_Validated(object? sender, EventArgs e)
         {
             if (_guardandoCabeceraAutomaticamente
@@ -145,13 +243,101 @@ namespace SOPRO.WinForms.Controls
         internal int FilaConceptoActual => _filaActual;
         internal string TituloCabeceraParaPrueba => _lblTituloMatriz.Text;
         internal bool CabeceraDatosVisiblesParaPrueba => _panelDatos.Visible;
+        /// <summary>Banda de campos real para observar cambios de visibilidad en pruebas.</summary>
+        internal Control CabeceraDatosParaPrueba => _panelDatos;
         internal bool AccesoNuevaMatrizVisible => _btnNuevaMatriz != null && _btnNuevaMatriz.Visible;
         internal Button AccesoNuevaMatrizParaPrueba => _btnNuevaMatriz;
-        internal bool BotonGuardarVisibleParaPrueba => _btnGuardarMatriz.Visible;
-        internal bool BotonCancelarVisibleParaPrueba => _btnCancelarMatriz.Visible;
+        /// <summary>El header compacto no ofrece Guardar/Cancelar: la superficie
+        /// siempre sigue el modelo de autoguardado. Útil para reflejarlo en pruebas.</summary>
+        internal bool ExisteBotonGuardarCancelarVisibleParaPrueba
+        {
+            get
+            {
+                bool encontrado = false;
+                VisitarTodoElArbol(this, c => { if (c is Button b && b.Visible && (b.Text == "Guardar" || b.Text == "Cancelar")) encontrado = true; });
+                return encontrado;
+            }
+        }
+        private static void VisitarTodoElArbol(Control raiz, Action<Control> accion)
+        {
+            accion(raiz);
+            foreach (Control hijo in raiz.Controls)
+                VisitarTodoElArbol(hijo, accion);
+        }
+
+        // ── Geometría para pruebas (relacionales, sin pixeles exactos) ──
+        internal int AlturaGridParaPrueba => _dgvComponentes.Height;
+        /// <summary>Acceso real del grid para verificaciones de scroll (bounds de la
+        /// barra, rectángulos de columna, offsets): sin abstracción engañosa.</summary>
+        internal DataGridView GridComponentesParaPrueba => _dgvComponentes;
+        internal int AlturaFilaGridParaPrueba => _dgvComponentes.RowTemplate.Height;
+        internal int AlturaEncabezadoGridParaPrueba => _dgvComponentes.ColumnHeadersHeight;
+        internal bool ScrollPisoActivoParaPrueba => _scrollHost != null && _scrollHost.VerticalScroll.Visible;
+        /// <summary>El fallback del panel es SOLO vertical: una barra horizontal del
+        /// host es siempre un defecto (el grid gestiona la suya).</summary>
+        internal bool ScrollHorizontalHostVisibleParaPrueba
+            => _scrollHost != null && _scrollHost.HorizontalScroll.Visible;
+        internal int AlturaContenidoRaizParaPrueba => _rootLayout.Height;
+        internal bool CamposApiladosParaPrueba => _camposApilados;
+        internal int AnchoDescripcionParaPrueba => _txtDescripcionMatriz.Width;
+        internal bool TipoQuedaFijoApuParaPrueba => _tipoFijoApu;
+        internal bool EstadoHeaderVisibleParaPrueba => _lblInfoMatriz.Visible;
+
+        // ── Presentación de los chips de tipo (lock de creación forzada/estados) ──
+        internal bool ChipsTipoVisiblesParaPrueba => _panelChipsTipo != null && _panelChipsTipo.Visible;
+        /// <summary>Contenedor real de chips para verificar visibilidad nativa Win32.</summary>
+        internal Control ChipsTipoParaPrueba => _panelChipsTipo;
+        internal Control? ChipApuParaPrueba => _rbTipoApu;
+        internal Control? ChipBasicoParaPrueba => _rbTipoBasico;
+        internal Control? ChipCuadrillaParaPrueba => _rbTipoCuadrilla;
+        internal bool ChipApuVisibleParaPrueba => _rbTipoApu.Visible;
+        internal bool ChipApuHabilitadoParaPrueba => _rbTipoApu.Enabled;
+        internal bool ChipBasicoVisibleParaPrueba => _rbTipoBasico.Visible;
+        internal bool ChipCuadrillaVisibleParaPrueba => _rbTipoCuadrilla.Visible;
+
+        // ── Viewport y desglose a ancho estrecho ──
+        internal bool DesgloseTotalesVisibleParaPrueba => _lblMat != null && _lblMat.Visible;
+        internal bool CostoDirectoVisibleParaPrueba => _lblDir != null && _lblDir.Visible;
+        /// <summary>El grid puede necesitar scroll horizontal a 478/320 (los anchos
+        /// mínimos de columna suman más que el ancho): detecta la barra del propio
+        /// DataGridView (controles hijos internos).</summary>
+        internal bool ScrollHorizontalGridVisibleParaPrueba
+            => _dgvComponentes.Controls.OfType<HScrollBar>().Any(h => h.Visible);
+        internal bool TodoAgregarDentroViewportParaPrueba
+        {
+            get
+            {
+                foreach (var b in new[] { _btnAgregarMaterial, _btnAgregarMO, _btnAgregarMaquinaria, _btnAgregarHerramienta, _btnAgregarBasico })
+                {
+                    if (b == null) continue;
+                    var enPantalla = RectangleToClient(b.Parent!.RectangleToScreen(b.Bounds));
+                    if (enPantalla.Bottom > ClientSize.Height + 1 || enPantalla.Top < -1)
+                        return false;
+                }
+                return true;
+            }
+        }
         internal void SimularNuevaMatrizPendienteReconciliacionParaPrueba()
             => _nuevaMatrizPendienteReconciliacion = true;
-        internal void CancelarCabeceraParaPrueba() => BtnCancelarMatriz_Click(this, EventArgs.Empty);
+        internal void CancelarCabeceraParaPrueba() => CancelarEdicionCabecera();
+
+        /// <summary>Entrada reproducible de la tecla Escape sobre el panel (misma
+        /// ruta que el mensaje de teclado real) para las pruebas del ensamblado.</summary>
+        internal bool EnviarEscapeParaPrueba()
+        {
+            var mensaje = new Message();
+            return ProcessCmdKey(ref mensaje, Keys.Escape);
+        }
+
+        /// <summary>Indica si el redibujado del subárbol está suprimido (transición
+        /// atómica en curso). Las pruebas verifican que nunca queda activo.</summary>
+        internal bool RedibujoSuprimidoParaPrueba => _redibujoSuprimido;
+
+        /// <summary>Pases diferidos de ReprogramarLayoutVertical agendados sin ejecutar.</summary>
+        internal int PasesReprogramacionPendientesParaPrueba => _pasesReprogramacionPendientes;
+
+        /// <summary>Bursts de supresión activos (reentrancia/bombeo dentro de la ráfaga).</summary>
+        internal int ProfundidadSupresionParaPrueba => _profundidadSupresion;
 
         /// <summary>
         /// Indica si la cabecera que el panel está editando tiene cambios sin guardar.
@@ -213,15 +399,50 @@ namespace SOPRO.WinForms.Controls
         /// <summary>Indicador interno para las pruebas del bloqueo por resultado incierto.</summary>
         internal bool BloqueoCabeceraActivo => _cabeceraEdicionBloqueadaPorResultadoIncierto;
 
+        /// <summary>
+        /// Escribe el tipo en los chips sin disparar el autoguardado por CheckedChanged
+        /// y asienta la presentación del grupo:
+        /// <list type="bullet">
+        /// <item>creación por asignación (ocultarNoApu): SOLO el chip APU es visible,
+        /// marcado y deshabilitado (tipo fijo; tooltip/descripción de accesibilidad lo
+        /// declaran); Básico/Cuadrilla no se muestran porque no son seleccionables;</item>
+        /// <item>edición/creación libre: los tres chips visibles; los de tipo cambiable
+        /// habilitados;</item>
+        /// </list>
+        /// Fija además <c>_tipoFijoApu</c> según <paramref name="ocultarNoApu"/>.
+        /// </summary>
+        private void SincronizarChipsTipo(TipoMatriz tipo, bool basicoHabilitado = true, bool cuadrillaHabilitado = true, bool ocultarNoApu = false)
+        {
+            _sincronizandoCabecera = true;
+            try
+            {
+                _tipoFijoApu = ocultarNoApu;
+                _rbTipoApu.Checked = tipo == TipoMatriz.APU;
+                _rbTipoApu.Enabled = !ocultarNoApu;
+                _rbTipoBasico.Checked = tipo == TipoMatriz.Basico;
+                _rbTipoBasico.Enabled = basicoHabilitado && !ocultarNoApu;
+                _rbTipoBasico.Visible = !ocultarNoApu;
+                _rbTipoCuadrilla.Checked = tipo == TipoMatriz.Cuadrilla;
+                _rbTipoCuadrilla.Enabled = cuadrillaHabilitado && !ocultarNoApu;
+                _rbTipoCuadrilla.Visible = !ocultarNoApu;
+            }
+            finally
+            {
+                _sincronizandoCabecera = false;
+            }
+            AplicarEstiloChipsTipo();
+        }
+
         /// <summary>Fija los campos de cabecera como lo haría el usuario, para las pruebas.</summary>
         internal void EstablecerCabeceraParaPrueba(string? clave, string? descripcion, string? unidad, TipoMatriz tipo)
         {
             _txtClaveMatriz.Text = clave ?? string.Empty;
             _txtDescripcionMatriz.Text = descripcion ?? string.Empty;
             _txtUnidadMatriz.Text = unidad ?? string.Empty;
-            _rbTipoApu.Checked = tipo == TipoMatriz.APU;
-            _rbTipoBasico.Checked = tipo == TipoMatriz.Basico;
-            _rbTipoCuadrilla.Checked = tipo == TipoMatriz.Cuadrilla;
+            // Conserva la fijación vigente (una prueba que captura cabecera sobre una
+            // creación forzada no debe deshacer el tipo fijo APU).
+            bool fija = _tipoFijoApu;
+            SincronizarChipsTipo(tipo, basicoHabilitado: !fija, cuadrillaHabilitado: !fija, ocultarNoApu: fija);
         }
 
         internal string ClaveCabeceraParaPrueba => _txtClaveMatriz.Text ?? string.Empty;
@@ -238,7 +459,41 @@ namespace SOPRO.WinForms.Controls
 
         internal void ValidarCabeceraParaPrueba() => Cabecera_Validated(this, EventArgs.Empty);
 
-        internal void GuardarCabeceraExplicitaParaPrueba() => BtnGuardarMatriz_Click(this, EventArgs.Empty);
+        /// <summary>
+        /// Puente de pruebas/patrones para el guardado EXPLÍCITO de cabecera (antes
+        /// era el botón Guardar, hoy la misma secuencia la aplica el host). Conserva
+        /// el contrato del callback <c>onMatrixHeaderSaved</c> tras el commit (la
+        /// subedición depende de él para volver al padre) y el aviso del borrador de
+        /// matriz nueva (no hay guardado explícito en creación).
+        /// </summary>
+        internal bool GuardarCabeceraExplicitaParaPrueba()
+        {
+            if (_modoCreacionMatriz || !_matrizEditandoId.HasValue)
+            {
+                MostrarEstadoHeader(
+                    "La matriz nueva se guarda al agregar el primer lote de componentes.",
+                    ColorTextoSobreOscuro);
+                MostrarAvisoCabeceraMatriz(
+                    "Matriz nueva",
+                    "La matriz nueva se guarda automáticamente al agregar el primer lote de componentes válido. " +
+                    "Agregue al menos un componente para crearla.",
+                    MessageBoxIcon.Information);
+                return false;
+            }
+
+            if (!GuardarCabeceraEdicionActual())
+                return false;
+
+            _panelBotonesAgregar.Enabled = true;
+            AplicarPresentacionCabecera(PresentacionCabecera.Matriz);
+
+            if (_matrizActual != null)
+            {
+                MostrarMatriz(_matrizActual, null);
+                _onMatrixHeaderSaved?.Invoke(_matrizActual);
+            }
+            return true;
+        }
 
         /// <summary>Entrada reproducible a la carga normal de una fila para las pruebas.</summary>
         internal bool CargarMatrizDeFilaParaPrueba(int fila, bool forceReload)
@@ -562,6 +817,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             if (_cabeceraEdicionBloqueadaPorResultadoIncierto)
             {
                 UltimaRazonSinDespacharCabecera = "Edición bloqueada: resultado incierto pendiente de reconciliar";
+                MostrarEstadoHeader("Sin guardar: recargue la matriz para reconciliar.", EstadoAdvertencia);
                 MostrarAvisoCabeceraMatriz(
                     "Matriz",
                     "La cabecera no se guardó: hay una operación previa cuyo resultado no se sabe si quedó " +
@@ -582,6 +838,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 || string.IsNullOrWhiteSpace(descripcionCruda)
                 || string.IsNullOrWhiteSpace(unidadCruda))
             {
+                MostrarEstadoHeader("Faltan Clave, Descripción o Unidad para guardar.", EstadoAdvertencia);
                 MostrarAvisoCabeceraMatriz(
                     "Matriz",
                     "Clave, Descripción y Unidad son obligatorios.",
@@ -654,6 +911,9 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 if (resultado.Status == BudgetOperationStatus.OutcomeUnknown)
                 {
                     ActivarBloqueoCabeceraPorResultadoIncierto();
+                    MostrarEstadoHeader(
+                        "Sin guardar: recargue la matriz para reconciliar la vista.",
+                        EstadoError);
                     MostrarAvisoCabeceraMatriz(
                         "Matriz",
                         "No se sabe si la cabecera quedó guardada. Recargue la matriz o vuelva a abrir " +
@@ -662,6 +922,11 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 }
                 else
                 {
+                    MostrarEstadoHeader(
+                        resultado.Status == BudgetOperationStatus.Conflict
+                            ? "Sin guardar: la matriz cambió en la base o está referenciada. Confirme en el aviso."
+                            : "Sin guardar: revise el mensaje del aviso e inténtélo de nuevo.",
+                        EstadoAdvertencia);
                     MostrarAvisoCabeceraMatriz(
                         "Matriz",
                         resultado.Message ?? "La cabecera no se guardó.",
@@ -675,6 +940,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             if (_modoSubedicionComponente)
                 _subedicionCabeceraConfirmadaPorComando = true;
 
+            MostrarEstadoHeader("✓ Guardado", EstadoExito);
             AplicarCabeceraConfirmada(resultado.Confirmed);
             return true;
         }
@@ -713,9 +979,11 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _txtClaveMatriz.Text = confirmada.Clave;
             _txtDescripcionMatriz.Text = confirmada.Descripcion;
             _txtUnidadMatriz.Text = confirmada.Unidad;
-            _rbTipoApu.Checked = confirmada.Tipo == TipoMatriz.APU;
-            _rbTipoBasico.Checked = confirmada.Tipo == TipoMatriz.Basico;
-            _rbTipoCuadrilla.Checked = confirmada.Tipo == TipoMatriz.Cuadrilla;
+            SincronizarChipsTipo(
+                confirmada.Tipo,
+                basicoHabilitado: !_tipoFijoApu,
+                cuadrillaHabilitado: !_tipoFijoApu,
+                ocultarNoApu: _tipoFijoApu);
 
             _cabeceraBaseClave = confirmada.Clave;
             _cabeceraBaseDescripcion = confirmada.Descripcion;
@@ -803,7 +1071,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             }
         }
 
-        private void LimpiarEstadoEdicionParaCambioExterno()
+        private void LimpiarEstadoEdicionParaCambioExterno(bool ocultarCabecera = true)
         {
             _modoSubedicionComponente = false;
             _matrizPadreIdSubedicion = null;
@@ -812,6 +1080,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _subedicionSoloCantidadConfirmada = false;
             _subedicionCabeceraConfirmadaPorComando = false;
             _modoCreacionMatriz = false;
+            _tipoFijoApu = false;
             _modoEdicionCabecera = false;
             _matrizEditandoId = null;
             _onMatrixHeaderSaved = null;
@@ -820,8 +1089,12 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _cabeceraBaseDescripcion = string.Empty;
             _cabeceraBaseUnidad = string.Empty;
             _cabeceraBaseTipo = TipoMatriz.APU;
-            MostrarDatosCabecera(false);
-            _panelHeader.BackColor = _headerColorNormal;
+            // En una navegación la vista destino decide la presentación del header:
+            // ocultarlo aquí y volverlo a mostrar en MostrarMatriz producía el
+            // parpadeo de la banda de campos en cada cambio de concepto. La salida
+            // real del contexto (cerrar workspace/selector) sí lo oculta.
+            if (ocultarCabecera)
+                AplicarPresentacionCabecera(PresentacionCabecera.SinSeleccion);
             _filaContextualComponentes = -1;
         }
 
@@ -941,7 +1214,15 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             }
 
             if (!estaEnSubedicion && !hayPendientes)
+            {
+                // Navegación libre: sin subedición y sin borrador pendiente, el estado
+                // de edición de la matriz anterior se libera aquí (no en la carga del
+                // destino). Sin esto, llegar a un concepto sin APU tras editar una
+                // matriz filtraba _modoEdicionCabecera y el acceso "Nueva matriz"
+                // permanecía oculto.
+                LimpiarEstadoEdicionParaCambioExterno(ocultarCabecera: false);
                 return true;
+            }
 
             if (_modoCreacionMatriz)
             {
@@ -955,7 +1236,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
 
                 if (rCrear == DialogResult.Yes)
                 {
-                    LimpiarEstadoEdicionParaCambioExterno();
+                    LimpiarEstadoEdicionParaCambioExterno(ocultarCabecera: false);
                     return true;
                 }
 
@@ -978,7 +1259,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                     return false;
                 }
 
-                LimpiarEstadoEdicionParaCambioExterno();
+                LimpiarEstadoEdicionParaCambioExterno(ocultarCabecera: false);
                 return true;
             }
 
@@ -1004,7 +1285,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 return false;
             }
 
-            LimpiarEstadoEdicionParaCambioExterno();
+            LimpiarEstadoEdicionParaCambioExterno(ocultarCabecera: false);
             return true;
         }
         
@@ -1258,7 +1539,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
 
             _matrizActual = matrizPadre;
             _matrizEditandoId = matrizPadreId;
-            MostrarDatosCabecera(true);
+            AplicarPresentacionCabecera(PresentacionCabecera.Matriz);
             MostrarMatriz(matrizPadre, null);
             _panelBotonesAgregar.Enabled = true;
 
@@ -1352,6 +1633,36 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 return false;
 
             _filaActual = fila;
+
+            // Transición visual atómica: la transición ya fue aceptada (los diálogos
+            // de confirmación de la navegación ocurren ANTES de suprimir). Los avisos
+            // que pueden surgir DENTRO de la ráfaga bombean mensajes: la profundidad
+            // de supresión impide que un pase diferido durante ese bombeo (o una
+            // transición anidada) restaure el redibujado antes de que el burst
+            // externo termine y se agoten los pases.
+            bool suprimio = SuprimirRedibujoSubarbol();
+            try
+            {
+                return AplicarCargaMatrizDeFila(fila, forceReload);
+            }
+            finally
+            {
+                // Carga que retorna temprano sin pases agendados: no dejar jamás la
+                // supresión activa. Con pases pendientes, el último pase libera.
+                if (suprimio)
+                    _profundidadSupresion = Math.Max(0, _profundidadSupresion - 1);
+                if (_redibujoSuprimido && _profundidadSupresion == 0 && _pasesReprogramacionPendientes == 0)
+                    RestaurarRedibujoSubarbol();
+            }
+        }
+
+        /// <summary>
+        /// Aplica el estado de destino de la fila indicada sobre el panel. Se ejecuta
+        /// con el redibujado del subárbol suprimido; la geometría, los estados y la
+        /// persistencia son EXACTAMENTE los de la ruta histórica.
+        /// </summary>
+        private bool AplicarCargaMatrizDeFila(int fila, bool forceReload)
+        {
             var concepto = _dgvPresupuesto.Rows[fila].Tag as ConceptoPresupuesto;
 
             if (concepto == null)
@@ -1368,8 +1679,10 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
 
             if (concepto.MatrizId == null)
             {
-                MostrarSinSeleccion("Concepto sin APU asignada", "Usa la columna P.U. o la búsqueda inteligente en Descripción para vincular una matriz. También puedes crear una matriz nueva desde aquí.");
-                MostrarAccesoNuevaMatriz(true);
+                MostrarSinSeleccion(
+                    "Concepto sin APU asignada",
+                    "Usa la columna P.U. o la búsqueda inteligente en Descripción para vincular una matriz. También puedes crear una matriz nueva desde aquí.",
+                    mostrarAccesoNuevaMatriz: true);
                 return false;
             }
 
@@ -1384,7 +1697,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 && mismaMatriz
                 && _matrizActual != null)
             {
-                ActualizarInfoConcepto(concepto);
+                OcultarEstadoHeader();
                 ActualizarNavegacion();
                 return _matrizActual.Id == concepto.MatrizId.Value;
             }
@@ -1427,61 +1740,63 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _matrizEditandoId = matriz?.Id;
             _modoCreacionMatriz = false;
             _modoEdicionCabecera = true;
+            _tipoFijoApu = false;
 
-            string tipoTexto = matriz.Tipo == TipoMatriz.Cuadrilla ? "Cuadrilla" : (matriz.Tipo == TipoMatriz.Basico ? "Básico" : "APU");
             if (_modoSubedicionComponente && _matrizPadreIdSubedicion.HasValue)
             {
                 _panelHeader.BackColor = _headerColorSubedicion;
                 var padre = _context.Matrices.AsNoTracking().FirstOrDefault(m => m.Id == _matrizPadreIdSubedicion.Value);
                 string padreClave = string.IsNullOrWhiteSpace(padre?.Clave) ? "(sin clave)" : padre!.Clave;
-                _lblTituloMatriz.Text = $"Matriz: {padreClave} → {tipoTexto}: {matriz.Clave}";
-                _lblInfoMatriz.Text = string.IsNullOrWhiteSpace(matriz.Descripcion)
-                    ? "Subedición de matriz componente dentro del panel."
-                    : matriz.Descripcion;
+                _lblTituloMatriz.Text = $"Matriz: {padreClave} → {tipoTexto(matriz)}: {matriz.Clave}";
+                MostrarEstadoHeader(
+                    $"Subedición de matriz componente dentro del panel: {matriz.Descripcion}",
+                    ColorTextoSobreOscuro);
             }
             else
             {
                 _panelHeader.BackColor = _headerColorNormal;
+                // Identidad compacta de una línea: tipo visible en los chips del header,
+                // descripción observable en su propio campo de la banda; sin línea de
+                // info duplicada en vista normal.
                 _lblTituloMatriz.Text = $"Matriz: {matriz.Clave}";
-                if (concepto != null) ActualizarInfoConcepto(concepto, matriz);
-                else _lblInfoMatriz.Text = string.IsNullOrWhiteSpace(matriz.Descripcion)
-                    ? $"{tipoTexto} lista para edición."
-                    : $"{tipoTexto}: {matriz.Descripcion}";
+                OcultarEstadoHeader();
             }
             _txtClaveMatriz.Text = matriz.Clave ?? string.Empty;
             _txtDescripcionMatriz.Text = matriz.Descripcion ?? string.Empty;
             _txtUnidadMatriz.Text = matriz.Unidad ?? string.Empty;
-            _rbTipoApu.Checked = matriz.Tipo == TipoMatriz.APU;
-            _rbTipoBasico.Checked = matriz.Tipo == TipoMatriz.Basico;
-            _rbTipoCuadrilla.Checked = matriz.Tipo == TipoMatriz.Cuadrilla;
+            SincronizarChipsTipo(matriz.Tipo, basicoHabilitado: true, cuadrillaHabilitado: true, ocultarNoApu: false);
             CapturarEstadoBaseCabeceraDesdeMatriz(matriz);
             _panelBotonesAgregar.Enabled = true;
-            MostrarDatosCabecera(true);
+            AplicarPresentacionCabecera(PresentacionCabecera.Matriz);
 
             PintarComponentesEnGrid(matriz.Componentes);
         }
 
-        private void ActualizarInfoConcepto(ConceptoPresupuesto concepto, Matriz matriz = null)
-        {
-            var matrizInfo = matriz ?? _matrizActual;
-            string unidad = matrizInfo?.Unidad ?? concepto?.Unidad ?? "—";
-            string claveConcepto = string.IsNullOrWhiteSpace(concepto?.Clave) ? "(sin clave)" : concepto.Clave;
-            string descripcionConcepto = string.IsNullOrWhiteSpace(concepto?.Descripcion) ? "(sin descripción)" : concepto.Descripcion;
-            _lblInfoMatriz.Text = $"Unidad: {unidad}   |   Concepto en presupuesto: {claveConcepto} - {descripcionConcepto}";
-        }
+        private static string tipoTexto(Matriz matriz)
+            => matriz.Tipo == TipoMatriz.Cuadrilla ? "Cuadrilla" : (matriz.Tipo == TipoMatriz.Basico ? "Básico" : "APU");
 
-        private void MostrarSinSeleccion(string titulo = "Selecciona un concepto en el presupuesto para ver y editar su APU", string info = "")
+        private void MostrarSinSeleccion(
+            string titulo = "Selecciona un concepto en el presupuesto para ver y editar su APU",
+            string info = "",
+            bool mostrarAccesoNuevaMatriz = false)
         {
             _matrizActual = null;
             _ultimaFilaCargada = -1;
             _ultimoConceptoId = null;
             _ultimaMatrizId = null;
+            _tipoFijoApu = false;
+            // Sin matriz visible no queda un tipo válido seleccionado: se restablece
+            // el grupo completo (APU marcado, los tres habilitados) para que un estado
+            // latente no reaparezca si otra ruta vuelve a mostrar los chips sin pasar
+            // por SincronizarChipsTipo.
+            SincronizarChipsTipo(TipoMatriz.APU, basicoHabilitado: true, cuadrillaHabilitado: true, ocultarNoApu: false);
             _panelHeader.BackColor = _headerColorNormal;
             _lblTituloMatriz.Text = titulo;
-            _lblInfoMatriz.Text   = info;
+            MostrarEstadoHeader(info, ColorTextoSobreOscuro);
             _panelBotonesAgregar.Enabled = false;
-            MostrarDatosCabecera(false);
-            _btnNuevaMatriz.Visible = false;
+            AplicarPresentacionCabecera(mostrarAccesoNuevaMatriz
+                ? PresentacionCabecera.SinApu
+                : PresentacionCabecera.SinSeleccion);
             _dgvComponentes.Rows.Clear();
             _lblMat.Text = "Mat: —"; _lblMO.Text = "M.O.: —";
             _lblMaq.Text = "Maq.: —"; _lblBas.Text = "Bas.: —";
@@ -1826,20 +2141,6 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             SolicitudNuevaMatriz?.Invoke(this, EventArgs.Empty);
         }
 
-        /// <summary>
-        /// Muestra u oculta la acción primaria "Nueva matriz" del header. Se usa para el
-        /// contexto "concepto sin APU asignada" del presupuesto: es la única vía de
-        /// creación visible en la vista de matrices.
-        /// </summary>
-        internal void MostrarAccesoNuevaMatriz(bool visible)
-        {
-            if (_btnNuevaMatriz == null) return;
-            if (visible && (_modoCreacionMatriz || _modoEdicionCabecera || _modoSubedicionComponente))
-                return;
-            _btnNuevaMatriz.Enabled = true;
-            _btnNuevaMatriz.Visible = visible;
-        }
-
         public void BeginCreateMatrix(
             TipoMatriz tipo,
             Action<Matriz>? onSaved = null,
@@ -1861,6 +2162,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _modoCreacionMatriz = true;
             _modoEdicionCabecera = true;
             _matrizEditandoId = null;
+            _panelHeader.BackColor = _headerColorNormal;
             _firmaUltimaSeleccionRechazada = null;
             _cantidadNuevaMatriz = cantidad;
             _conceptoOrigenIdNuevaMatriz = conceptoOrigenId;
@@ -1873,19 +2175,21 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _txtClaveMatriz.Text = string.Empty;
             _txtDescripcionMatriz.Text = string.Empty;
             _txtUnidadMatriz.Text = string.Empty;
-            _rbTipoApu.Checked = tipo == TipoMatriz.APU;
-            _rbTipoBasico.Checked = tipo == TipoMatriz.Basico;
-            _rbTipoCuadrilla.Checked = tipo == TipoMatriz.Cuadrilla;
             // El comando de asignación del presupuesto solo admite APU: cuando la
-            // creación nace de la asignación, los demás tipos no deben poder elegirse
-            // para no crear una matriz que luego no se pueda asignar.
-            _rbTipoBasico.Enabled = !soloApu;
-            _rbTipoCuadrilla.Enabled = !soloApu;
+            // creación nace de la asignación, los demás tipos NO se muestran (chips
+            // ocultos) y el chip APU queda fijo (deshabilitado, con tooltip y
+            // descripción de accesibilidad de tipo fijo).
+            _tipoFijoApu = soloApu;
+            SincronizarChipsTipo(tipo, basicoHabilitado: !soloApu, cuadrillaHabilitado: !soloApu, ocultarNoApu: soloApu);
             _lblTituloMatriz.Text = tipo == TipoMatriz.Cuadrilla ? "Nueva cuadrilla" : (tipo == TipoMatriz.Basico ? "Nueva matriz básica" : "Nueva APU");
-            _lblInfoMatriz.Text = "Captura los datos generales y agrega el primer lote de componentes. La matriz se guarda al agregar el primer lote válido.";
+            MostrarEstadoHeader(
+                tipo == TipoMatriz.APU && soloApu
+                    ? "Captura los datos generales y agrega el primer lote de componentes. La matriz APU se guarda al agregar el primer lote válido."
+                    : "Captura los datos generales y agrega el primer lote de componentes. La matriz se guarda al agregar el primer lote válido.",
+                ColorTextoSobreOscuro);
             _lblMat.Text = "Mat: 0.00"; _lblMO.Text = "M.O.: 0.00"; _lblMaq.Text = "Maq.: 0.00"; _lblBas.Text = "Bas.: 0.00"; _lblDir.Text = "Costo Directo: 0.00";
             CapturarEstadoBaseCabeceraDesdeUI();
-            MostrarDatosCabecera(true);
+            AplicarPresentacionCabecera(PresentacionCabecera.Captura);
             _txtClaveMatriz.Focus();
         }
 
@@ -1930,14 +2234,11 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 _txtClaveMatriz.Text = matriz.Clave ?? string.Empty;
                 _txtDescripcionMatriz.Text = matriz.Descripcion ?? string.Empty;
                 _txtUnidadMatriz.Text = matriz.Unidad ?? string.Empty;
-                _rbTipoApu.Checked = matriz.Tipo == TipoMatriz.APU;
-                _rbTipoBasico.Checked = matriz.Tipo == TipoMatriz.Basico;
-                _rbTipoCuadrilla.Checked = matriz.Tipo == TipoMatriz.Cuadrilla;
                 // La restricción de tipo es exclusiva de la creación por asignación:
-                // editar una matriz existente vuelve a habilitar todos los tipos.
-                _rbTipoBasico.Enabled = true;
-                _rbTipoCuadrilla.Enabled = true;
-                MostrarDatosCabecera(true);
+                // editar una matriz existente re-habilita y re-muestra los tres chips.
+                _tipoFijoApu = false;
+                SincronizarChipsTipo(matriz.Tipo, basicoHabilitado: true, cuadrillaHabilitado: true, ocultarNoApu: false);
+                AplicarPresentacionCabecera(PresentacionCabecera.Matriz);
                 MostrarMatriz(matriz, null);
                 _panelBotonesAgregar.Enabled = true;
                 _txtClaveMatriz.Focus();
@@ -2013,14 +2314,78 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             MostrarSinSeleccion("No se pudo reconciliar la cabecera", mensaje);
         }
 
-        private void MostrarDatosCabecera(bool visible)
+        /// <summary>
+        /// Escribe de una sola vez las tres salidas mutuamente excluyentes del header:
+        /// banda de campos, chips de tipo y acceso "Nueva matriz". Es el ÚNICO punto que
+        /// decide visibilidad de esas piezas; las rutas de navegación sólo eligen el
+        /// estado destino, y los pases diferidos únicamente miden.
+        /// </summary>
+        private void AplicarPresentacionCabecera(PresentacionCabecera presentacion)
         {
-            _panelDatos.Visible = visible;
-            // La cabecera también sigue el modelo de autoguardado: Guardar/Cancelar
-            // no forman parte de la superficie del panel en ningún estado.
-            _btnGuardarMatriz.Visible = false;
-            _btnCancelarMatriz.Visible = false;
-            if (visible) _btnNuevaMatriz.Visible = false;
+            if (_panelDatos == null) return;
+
+            bool mostrarCampos = presentacion is PresentacionCabecera.Matriz or PresentacionCabecera.Captura;
+            bool mostrarAcceso = presentacion == PresentacionCabecera.SinApu;
+
+            bool cambio = _panelDatos.Visible != mostrarCampos
+                || (_panelChipsTipo != null && _panelChipsTipo.Visible != mostrarCampos)
+                || (_btnNuevaMatriz != null && _btnNuevaMatriz.Visible != mostrarAcceso);
+
+            FijarVisibilidadCabecera(_panelDatos, mostrarCampos);
+            // Los chips de tipo solo pertenecen a estados con matriz o en captura:
+            // sin selección/agrupador/concepto sin APU el header queda reservado para
+            // la acción "Nueva matriz" y el mensaje contextual.
+            if (_panelChipsTipo != null)
+            {
+                FijarVisibilidadCabecera(_panelChipsTipo, mostrarCampos);
+                // El contenedor pudo estar oculto cuando SincronizarChipsTipo fijó el
+                // tipo: reafirma el estado por chip con el panel ya visible.
+                if (mostrarCampos)
+                    ReafirmarVisibilidadChips();
+            }
+            // La cabecera sigue el modelo de autoguardado: no hay botones Guardar/Cancelar.
+            if (_btnNuevaMatriz != null)
+            {
+                _btnNuevaMatriz.Enabled = true;
+                FijarVisibilidadCabecera(_btnNuevaMatriz, mostrarAcceso);
+            }
+            if (mostrarAcceso)
+                _tipoFijoApu = false;
+
+            // Solo el cambio real de chrome altera alturas; en navegación entre
+            // matrices la banda ya estaba visible y no debe re-medirse.
+            if (!cambio) return;
+            RecalibrarAlturasCromo();
+            ReprogramarLayoutVertical();
+        }
+
+        /// <summary>
+        /// Asigna visibilidad administrada. WinForms descarta la asignación cuando la
+        /// visibilidad efectiva ya coincide (padre oculto): el estado deseado queda
+        /// viejo y la ventana reaparece al mostrarse el padre. Al ocultar, una segunda
+        /// pasada fija el estado deseado aunque el valor efectivo ya fuera falso.
+        /// </summary>
+        private static void FijarVisibilidadCabecera(Control? control, bool visible)
+        {
+            if (control == null) return;
+            control.Visible = visible;
+            if (!visible)
+                control.Visible = false;
+        }
+
+        /// <summary>
+        /// Reafirma la visibilidad de cada chip con el contenedor ya visible: Básico y
+        /// Cuadrilla solo existen en edición libre; APU es el único tipo en captura
+        /// fija. No toca Enabled/Checked (los fija SincronizarChipsTipo).
+        /// </summary>
+        private void ReafirmarVisibilidadChips()
+        {
+            if (_rbTipoApu != null)
+                _rbTipoApu.Visible = true;
+            if (_rbTipoBasico != null)
+                _rbTipoBasico.Visible = !_tipoFijoApu;
+            if (_rbTipoCuadrilla != null)
+                _rbTipoCuadrilla.Visible = !_tipoFijoApu;
         }
 
         private TipoMatriz GetTipoCabeceraSeleccionado()
@@ -2030,49 +2395,13 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             return TipoMatriz.APU;
         }
 
-
-private async void BtnGuardarMatriz_Click(object sender, EventArgs e)
-{
-    string clave = (_txtClaveMatriz.Text ?? string.Empty).Trim();
-    string descripcion = (_txtDescripcionMatriz.Text ?? string.Empty).Trim();
-    string unidad = (_txtUnidadMatriz.Text ?? string.Empty).Trim();
-    if (string.IsNullOrWhiteSpace(clave) || string.IsNullOrWhiteSpace(descripcion) || string.IsNullOrWhiteSpace(unidad))
-    {
-        MessageBox.Show("Clave, Descripción y Unidad son obligatorios.", "Matriz", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        return;
-    }
-
-    try
-    {
-        if (_modoCreacionMatriz || !_matrizEditandoId.HasValue)
-        {
-            MostrarAvisoCabeceraMatriz(
-                "Matriz nueva",
-                "La matriz nueva se guarda automáticamente al agregar el primer lote de componentes válido. " +
-                "Agregue al menos un componente para crearla.",
-                MessageBoxIcon.Information);
-            return;
-        }
-
-            if (!GuardarCabeceraEdicionActual())
-                return;
-
-            _panelBotonesAgregar.Enabled = true;
-            MostrarDatosCabecera(true);
-
-            if (_matrizActual != null)
-            {
-                MostrarMatriz(_matrizActual, null);
-                _onMatrixHeaderSaved?.Invoke(_matrizActual);
-            }
-        }
-    catch (Exception ex)
-    {
-        MessageBox.Show($"Error al guardar la matriz: {ex.Message}", "Matriz", MessageBoxButtons.OK, MessageBoxIcon.Error);
-    }
-}
-
-private void BtnCancelarMatriz_Click(object sender, EventArgs e)
+        /// <summary>
+        /// Cancelar de la cabecera (antes era el botón Cancelar, hoy la ruta de
+        /// descarte directo llamada por la salida segura/Escape del host con la misma
+        /// semántica: el borrador de matriz nueva pide descarte explícito; una
+        /// cabecera persistida con cambios intenta autoguardar antes de restaurar).
+        /// </summary>
+        private void CancelarEdicionCabecera()
         {
             if (_modoSubedicionComponente)
             {
@@ -2109,7 +2438,6 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
                 }
                 else
                 {
-                    MostrarDatosCabecera(false);
                     MostrarSinSeleccion();
                 }
 
@@ -2259,9 +2587,18 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
             var keyCode = keyData & Keys.KeyCode;
             if (keyCode == Keys.Escape)
             {
-                if (_panelDatos != null && _panelDatos.Visible)
+                // Escape cierra el workspace SOLO cuando no hay contexto de edición
+                // que proteger: creación, subedición o borrador de cabecera usan la
+                // salida segura existente (autoguardar, pedir descarte o reconciliar).
+                // En vista normal el panel no se reconstruye: el Escape pertenece al
+                // host (el modo edición está activo también al solo consultar).
+                bool hayContextoEdicion = _modoCreacionMatriz
+                    || _modoSubedicionComponente
+                    || TieneCambiosPendientesCabecera();
+
+                if (_panelDatos != null && _panelDatos.Visible && hayContextoEdicion)
                 {
-                    BtnCancelarMatriz_Click(this, EventArgs.Empty);
+                    CancelarEdicionCabecera();
                     return true;
                 }
 
@@ -2581,7 +2918,17 @@ private void BtnCancelarMatriz_Click(object sender, EventArgs e)
             {
                 // Desuscribirse del evento
                 FormatoHelper.ConfiguracionCambiada -= OnConfiguracionCambiada;
+                // Los hijos aún conservan handle aquí: re-habilitar el redibujado
+                // antes de que la disposición destruya la cadena.
+                if (_redibujoSuprimido)
+                    RestaurarRedibujoSubarbol();
+                _contenedorComponentes?.Dispose();
             }
+            _redibujoSuprimido = false;
+            _profundidadSupresion = 0;
+            _pasesReprogramacionPendientes = 0;
+            _reprogramacionPendiente = false;
+            _generacionLayout++;
             base.Dispose(disposing);
         }
     }
