@@ -634,6 +634,10 @@ public class PanelMatricesEscapeYTransicionTests
                 "El acceso Nueva matriz es la única acción del estado sin APU.");
             Assert.IsFalse(panel.TipoQuedaFijoApuParaPrueba,
                 "El tipo fijo APU solo existe durante la creación por asignación.");
+            Assert.IsFalse(GridRedrawHelper.EsVisibleNativo(panel.ChipsTipoParaPrueba),
+                "El contenedor de chips oculto no puede quedar visible en Win32 (reaparecería sobre Nueva matriz).");
+            Assert.IsTrue(GridRedrawHelper.EsVisibleNativo(panel.AccesoNuevaMatrizParaPrueba),
+                "El acceso Nueva matriz debe quedar realmente visible tras la transición.");
         }
         finally
         {
@@ -837,6 +841,14 @@ public class PanelMatricesEscapeYTransicionTests
             Assert.IsTrue(panel.TipoQuedaFijoApuParaPrueba,
                 "La creación desde el selector fija APU como único tipo.");
             Assert.AreEqual("Nueva APU", panel.TituloCabeceraParaPrueba);
+            Assert.IsTrue(GridRedrawHelper.EsVisibleNativo(panel.ChipApuParaPrueba),
+                "El chip APU fijo es la única opción de tipo y debe verse.");
+            Assert.IsFalse(GridRedrawHelper.EsVisibleNativo(panel.ChipBasicoParaPrueba),
+                "Básico no debe quedar visible nativamente en captura APU fija.");
+            Assert.IsFalse(GridRedrawHelper.EsVisibleNativo(panel.ChipCuadrillaParaPrueba),
+                "Cuadrilla no debe quedar visible nativamente en captura APU fija.");
+            Assert.IsFalse(GridRedrawHelper.EsVisibleNativo(panel.AccesoNuevaMatrizParaPrueba),
+                "El acceso Nueva matriz no convive con la captura.");
         }
         finally
         {

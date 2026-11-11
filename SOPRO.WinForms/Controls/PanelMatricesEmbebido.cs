@@ -284,6 +284,11 @@ namespace SOPRO.WinForms.Controls
 
         // ── Presentación de los chips de tipo (lock de creación forzada/estados) ──
         internal bool ChipsTipoVisiblesParaPrueba => _panelChipsTipo != null && _panelChipsTipo.Visible;
+        /// <summary>Contenedor real de chips para verificar visibilidad nativa Win32.</summary>
+        internal Control ChipsTipoParaPrueba => _panelChipsTipo;
+        internal Control? ChipApuParaPrueba => _rbTipoApu;
+        internal Control? ChipBasicoParaPrueba => _rbTipoBasico;
+        internal Control? ChipCuadrillaParaPrueba => _rbTipoCuadrilla;
         internal bool ChipApuVisibleParaPrueba => _rbTipoApu.Visible;
         internal bool ChipApuHabilitadoParaPrueba => _rbTipoApu.Enabled;
         internal bool ChipBasicoVisibleParaPrueba => _rbTipoBasico.Visible;
@@ -2262,17 +2267,23 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 || (_panelChipsTipo != null && _panelChipsTipo.Visible != mostrarCampos)
                 || (_btnNuevaMatriz != null && _btnNuevaMatriz.Visible != mostrarAcceso);
 
-            _panelDatos.Visible = mostrarCampos;
+            FijarVisibilidadCabecera(_panelDatos, mostrarCampos);
             // Los chips de tipo solo pertenecen a estados con matriz o en captura:
             // sin selección/agrupador/concepto sin APU el header queda reservado para
             // la acción "Nueva matriz" y el mensaje contextual.
             if (_panelChipsTipo != null)
-                _panelChipsTipo.Visible = mostrarCampos;
+            {
+                FijarVisibilidadCabecera(_panelChipsTipo, mostrarCampos);
+                // El contenedor pudo estar oculto cuando SincronizarChipsTipo fijó el
+                // tipo: reafirma el estado por chip con el panel ya visible.
+                if (mostrarCampos)
+                    ReafirmarVisibilidadChips();
+            }
             // La cabecera sigue el modelo de autoguardado: no hay botones Guardar/Cancelar.
             if (_btnNuevaMatriz != null)
             {
                 _btnNuevaMatriz.Enabled = true;
-                _btnNuevaMatriz.Visible = mostrarAcceso;
+                FijarVisibilidadCabecera(_btnNuevaMatriz, mostrarAcceso);
             }
             if (mostrarAcceso)
                 _tipoFijoApu = false;
@@ -2282,6 +2293,35 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             if (!cambio) return;
             RecalibrarAlturasCromo();
             ReprogramarLayoutVertical();
+        }
+
+        /// <summary>
+        /// Asigna visibilidad administrada. WinForms descarta la asignación cuando la
+        /// visibilidad efectiva ya coincide (padre oculto): el estado deseado queda
+        /// viejo y la ventana reaparece al mostrarse el padre. Al ocultar, una segunda
+        /// pasada fija el estado deseado aunque el valor efectivo ya fuera falso.
+        /// </summary>
+        private static void FijarVisibilidadCabecera(Control? control, bool visible)
+        {
+            if (control == null) return;
+            control.Visible = visible;
+            if (!visible)
+                control.Visible = false;
+        }
+
+        /// <summary>
+        /// Reafirma la visibilidad de cada chip con el contenedor ya visible: Básico y
+        /// Cuadrilla solo existen en edición libre; APU es el único tipo en captura
+        /// fija. No toca Enabled/Checked (los fija SincronizarChipsTipo).
+        /// </summary>
+        private void ReafirmarVisibilidadChips()
+        {
+            if (_rbTipoApu != null)
+                _rbTipoApu.Visible = true;
+            if (_rbTipoBasico != null)
+                _rbTipoBasico.Visible = !_tipoFijoApu;
+            if (_rbTipoCuadrilla != null)
+                _rbTipoCuadrilla.Visible = !_tipoFijoApu;
         }
 
         private TipoMatriz GetTipoCabeceraSeleccionado()

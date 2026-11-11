@@ -1123,6 +1123,11 @@ namespace SOPRO.WinForms.Controls
                 RecalibrarAlturasCromo();
                 AplicarModoScroll();
                 PerformLayout();
+                // Los pases diferidos son el último punto donde la geometría ya está
+                // asentada: reafirma la visibilidad nativa de lo que la presentación
+                // dejó oculto (WinForms puede retener el bit WS_VISIBLE de un control
+                // ocultado mientras un ancestro aún no tenía handle o estaba oculto).
+                GridRedrawHelper.SincronizarVisibilidadNativa(this);
             }
             finally
             {
@@ -1192,8 +1197,12 @@ namespace SOPRO.WinForms.Controls
                     GridRedrawHelper.SetRedrawArbol(this, habilitar: true);
                 if (!IsDisposed && IsHandleCreated)
                 {
-                    Invalidate(true);
-                    Update();
+                    // Sincroniza el bit nativo de los controles ocultos durante la
+                    // ráfaga y repinta el subárbol completo en una sola pasada: un
+                    // Update() de la raíz pinta su fondo y deja un frame en blanco
+                    // hasta que los hijos reciben sus WM_PAINT.
+                    GridRedrawHelper.SincronizarVisibilidadNativa(this);
+                    GridRedrawHelper.RedibujarArbol(this);
                 }
             }
             catch (Exception ex)
