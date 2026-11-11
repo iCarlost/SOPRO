@@ -251,7 +251,7 @@ public class PanelMatricesEscapeYTransicionTests
     }
 
     [TestMethod]
-    public void CambioConcepto_EntreMatrices_SupresionSeAplicaYSeLiberaAlAgotarPases()
+    public void CambioConcepto_EntreMatrices_SinCambioDeChrome_NoAgendaPases()
     {
         var root = CrearRaiz("transicion_matrices");
         var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
@@ -273,23 +273,19 @@ public class PanelMatricesEscapeYTransicionTests
                 BuscarFilaPorConcepto(grid, escenario.HojaB.Id), false);
 
             Assert.IsTrue(resultado);
-            Assert.IsTrue(panel.RedibujoSuprimidoParaPrueba,
-                "Durante la ráfaga el redibujado del subárbol está suprimido.");
-            Assert.IsTrue(panel.PasesReprogramacionPendientesParaPrueba >= 1,
-                "La ráfaga agenda los pases que aplicarán el re-asentado.");
-            Assert.AreEqual(0, panel.ProfundidadSupresionParaPrueba,
-                "El burst externo libera su turno al retornar; la supresión queda a cargo de los pases.");
+            // Matriz→matriz no cambia el chrome: no hay pase diferido que agende y la
+            // supresión se libera al terminar la ráfaga, sin repintado intermedio.
+            Assert.IsFalse(panel.RedibujoSuprimidoParaPrueba,
+                "Sin cambio de chrome no queda trabajo de layout pendiente.");
+            Assert.AreEqual(0, panel.PasesReprogramacionPendientesParaPrueba);
+            Assert.AreEqual(0, panel.ProfundidadSupresionParaPrueba);
             Assert.AreEqual(escenario.MatrizB.Id, panel.MatrizVisibleEnPanel?.Id,
                 "El estado destino se aplicó por completo dentro de la ventana suprimida.");
 
             System.Windows.Forms.Application.DoEvents();
-            var d1 = $"DoEvents1: flag={panel.RedibujoSuprimidoParaPrueba} depth={panel.ProfundidadSupresionParaPrueba} pases={panel.PasesReprogramacionPendientesParaPrueba}";
-            System.Windows.Forms.Application.DoEvents();
-            var d2 = $"DoEvents2: flag={panel.RedibujoSuprimidoParaPrueba} depth={panel.ProfundidadSupresionParaPrueba} pases={panel.PasesReprogramacionPendientesParaPrueba}";
+            Assert.IsFalse(panel.RedibujoSuprimidoParaPrueba);
+            Assert.AreEqual(0, panel.PasesReprogramacionPendientesParaPrueba);
 
-            Assert.IsFalse(panel.RedibujoSuprimidoParaPrueba,
-                "La supresión se libera al agotarse los pases diferidos.");
-            Assert.AreEqual(0, panel.PasesReprogramacionPendientesParaPrueba, $"{d1} | {d2}");
             Assert.AreEqual(0, panel.ProfundidadSupresionParaPrueba);
             Assert.AreEqual($"Matriz: {escenario.MatrizB.Clave}", panel.TituloCabeceraParaPrueba);
         }
@@ -415,7 +411,7 @@ public class PanelMatricesEscapeYTransicionTests
             NavegarYDrenar(grid, panel, BuscarFilaPorConcepto(grid, escenario.HojaA.Id));
 
             panel.CargarMatrizDeFilaParaPrueba(
-                BuscarFilaPorConcepto(grid, escenario.HojaB.Id), false);
+                BuscarFilaPorConcepto(grid, escenario.HojaSinMatriz.Id), false);
             Assert.IsTrue(panel.RedibujoSuprimidoParaPrueba);
 
             // Disposición del control con un pase diferido aún pendiente.
@@ -535,8 +531,8 @@ public class PanelMatricesEscapeYTransicionTests
             NavegarYDrenar(grid, panel, BuscarFilaPorConcepto(grid, escenario.HojaA.Id));
 
             bool resultado = panel.CargarMatrizDeFilaParaPrueba(
-                BuscarFilaPorConcepto(grid, escenario.HojaB.Id), false);
-            Assert.IsTrue(resultado);
+                BuscarFilaPorConcepto(grid, escenario.HojaSinMatriz.Id), false);
+            Assert.IsFalse(resultado);
             Assert.IsTrue(panel.RedibujoSuprimidoParaPrueba);
 
             // Destroy+create del handle con un pase en cola: la generación vieja no
@@ -595,6 +591,252 @@ public class PanelMatricesEscapeYTransicionTests
                 "El subárbol completo queda suprimido sin abortar el recorrido.");
             Assert.IsTrue(GridRedrawHelper.SetRedrawArbol(panel, habilitar: true),
                 "El subárbol completo queda re-habilitado.");
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void CambioConcepto_ConMatrizASinApu_MuestraSoloAccesoNuevaMatriz()
+    {
+        var root = CrearRaiz("sin_apu_acceso");
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = CrearContexto(Path.Combine(root, "proyecto-temporal.soproproj"));
+            var escenario = CrearEscenario(ctx);
+            form = CrearFormConWorkspaceExpandido(ctx, escenario, root);
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+
+            NavegarYDrenar(grid, panel, BuscarFilaPorConcepto(grid, escenario.HojaA.Id));
+            Assert.IsTrue(panel.CabeceraDatosVisiblesParaPrueba);
+            Assert.IsTrue(panel.ChipsTipoVisiblesParaPrueba);
+            Assert.IsFalse(panel.AccesoNuevaMatrizVisible);
+
+            bool resultado = panel.CargarMatrizDeFilaParaPrueba(
+                BuscarFilaPorConcepto(grid, escenario.HojaSinMatriz.Id), false);
+            System.Windows.Forms.Application.DoEvents();
+
+            Assert.IsFalse(resultado);
+            Assert.IsFalse(panel.CabeceraDatosVisiblesParaPrueba,
+                "Sin APU la banda de campos no pertenece a este estado.");
+            Assert.IsFalse(panel.ChipsTipoVisiblesParaPrueba,
+                "Sin APU los chips de tipo quedan fuera; no deben quedar restos del concepto anterior.");
+            Assert.IsTrue(panel.AccesoNuevaMatrizVisible,
+                "El acceso Nueva matriz es la única acción del estado sin APU.");
+            Assert.IsFalse(panel.TipoQuedaFijoApuParaPrueba,
+                "El tipo fijo APU solo existe durante la creación por asignación.");
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void CambioConcepto_EntreMatrices_NoOcultaLaBandaDeCampos()
+    {
+        var root = CrearRaiz("sin_parpadeo_campos");
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = CrearContexto(Path.Combine(root, "proyecto-temporal.soproproj"));
+            var escenario = CrearEscenario(ctx);
+            form = CrearFormConWorkspaceExpandido(ctx, escenario, root);
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+
+            NavegarYDrenar(grid, panel, BuscarFilaPorConcepto(grid, escenario.HojaA.Id));
+            int cambiosVisibilidad = 0;
+            panel.CabeceraDatosParaPrueba.VisibleChanged += (_, __) => cambiosVisibilidad++;
+
+            bool resultado = panel.CargarMatrizDeFilaParaPrueba(
+                BuscarFilaPorConcepto(grid, escenario.HojaB.Id), false);
+
+            Assert.IsTrue(resultado);
+            Assert.AreEqual(0, cambiosVisibilidad,
+                "Entre matrices la banda de campos permanece visible: no hay ocultar/mostrar intermedio.");
+            Assert.AreEqual(escenario.MatrizB.Id, panel.MatrizVisibleEnPanel?.Id);
+            Assert.IsTrue(panel.CabeceraDatosVisiblesParaPrueba);
+            Assert.IsTrue(panel.ChipsTipoVisiblesParaPrueba);
+            Assert.IsFalse(panel.AccesoNuevaMatrizVisible);
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void SinApu_EditarMatriz_ReemplazaAccesoPorBandaYMuestraChips()
+    {
+        var root = CrearRaiz("sin_apu_editar");
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = CrearContexto(Path.Combine(root, "proyecto-temporal.soproproj"));
+            var escenario = CrearEscenario(ctx);
+            form = CrearFormConWorkspaceExpandido(ctx, escenario, root);
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+
+            NavegarYDrenar(grid, panel, BuscarFilaPorConcepto(grid, escenario.HojaSinMatriz.Id));
+            Assert.IsTrue(panel.AccesoNuevaMatrizVisible);
+            Assert.IsFalse(panel.ChipsTipoVisiblesParaPrueba);
+
+            panel.BeginEditMatrix(escenario.MatrizA.Id);
+            System.Windows.Forms.Application.DoEvents();
+
+            Assert.IsFalse(panel.AccesoNuevaMatrizVisible,
+                "Con una matriz cargada el acceso Nueva matriz no convive con los chips.");
+            Assert.IsTrue(panel.CabeceraDatosVisiblesParaPrueba);
+            Assert.IsTrue(panel.ChipsTipoVisiblesParaPrueba);
+            Assert.IsTrue(panel.ChipApuVisibleParaPrueba && panel.ChipApuHabilitadoParaPrueba,
+                "El chip APU reaparece habilitado (sin residuo del tipo fijo de la captura).");
+            Assert.IsTrue(panel.ChipBasicoVisibleParaPrueba && panel.ChipCuadrillaVisibleParaPrueba,
+                "Básico y Cuadrilla vuelven a mostrarse al editar una matriz existente.");
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void MismaFila_ConceptoPierdeMatriz_MuestraAccesoAunqueQuedeModoEdicion()
+    {
+        var root = CrearRaiz("sin_apu_misma_fila");
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = CrearContexto(Path.Combine(root, "proyecto-temporal.soproproj"));
+            var escenario = CrearEscenario(ctx);
+            form = CrearFormConWorkspaceExpandido(ctx, escenario, root);
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+
+            int filaA = BuscarFilaPorConcepto(grid, escenario.HojaA.Id);
+            NavegarYDrenar(grid, panel, filaA);
+            Assert.IsTrue(panel.CabeceraDatosVisiblesParaPrueba);
+
+            // La fila no cambia (misma fila); el estado de edición de la vista
+            // anterior sigue activo y antes bloqueaba el acceso "Nueva matriz".
+            ((ConceptoPresupuesto)grid.Rows[filaA].Tag!).MatrizId = null;
+            bool resultado = panel.CargarMatrizDeFilaParaPrueba(filaA, true);
+            System.Windows.Forms.Application.DoEvents();
+
+            Assert.IsFalse(resultado);
+            Assert.IsFalse(panel.CabeceraDatosVisiblesParaPrueba);
+            Assert.IsFalse(panel.ChipsTipoVisiblesParaPrueba);
+            Assert.IsTrue(panel.AccesoNuevaMatrizVisible,
+                "Sin matriz el acceso debe mostrarse aunque la vista anterior siguiera en modo edición.");
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void SinApu_CrearMatriz_SustituyeAccesoPorChipsDeCaptura()
+    {
+        var root = CrearRaiz("sin_apu_crear");
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = CrearContexto(Path.Combine(root, "proyecto-temporal.soproproj"));
+            var escenario = CrearEscenario(ctx);
+            form = CrearFormConWorkspaceExpandido(ctx, escenario, root);
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+
+            NavegarYDrenar(grid, panel, BuscarFilaPorConcepto(grid, escenario.HojaSinMatriz.Id));
+            Assert.IsTrue(panel.AccesoNuevaMatrizVisible);
+            Assert.IsFalse(panel.ChipsTipoVisiblesParaPrueba);
+
+            panel.BeginCreateMatrix(
+                TipoMatriz.APU,
+                soloApu: true,
+                cantidad: 1m,
+                conceptoOrigenId: escenario.HojaSinMatriz.Id);
+            System.Windows.Forms.Application.DoEvents();
+
+            Assert.IsFalse(panel.AccesoNuevaMatrizVisible,
+                "En captura el acceso Nueva matriz no comparte header con los chips de tipo.");
+            Assert.IsTrue(panel.CabeceraDatosVisiblesParaPrueba);
+            Assert.IsTrue(panel.ChipsTipoVisiblesParaPrueba);
+            Assert.IsTrue(panel.TipoQuedaFijoApuParaPrueba,
+                "La creación por asignación mantiene el tipo APU fijo.");
+        }
+        finally
+        {
+            form?.Dispose();
+            ctx?.Dispose();
+            RestaurarProyectoGlobalFormato(proyectoGlobalPrevio);
+            EliminarDirectorio(root);
+        }
+    }
+
+    [TestMethod]
+    public void SinApu_CrearDesdeSelector_NoDejaAccesoBajoElChipApu()
+    {
+        var root = CrearRaiz("sin_apu_selector");
+        var proyectoGlobalPrevio = LeerProyectoGlobalFormato();
+        SOPROContext? ctx = null;
+        FormPresupuesto? form = null;
+        try
+        {
+            ctx = CrearContexto(Path.Combine(root, "proyecto-temporal.soproproj"));
+            var escenario = CrearEscenario(ctx);
+            form = CrearFormConWorkspaceExpandido(ctx, escenario, root);
+            var grid = form.GridPrincipal;
+            var panel = form.PanelMatricesInterno!;
+
+            int fila = BuscarFilaPorConcepto(grid, escenario.HojaSinMatriz.Id);
+            NavegarYDrenar(grid, panel, fila);
+            Assert.IsTrue(panel.AccesoNuevaMatrizVisible);
+
+            // Ruta real del selector: MostrarPanelMatrizEmbebido + BeginCreateMatrix
+            // sobre el mismo concepto sin APU.
+            form.IniciarCreacionMatrizDesdeSelectorParaPrueba(
+                fila, TipoMatriz.APU, 1m, escenario.HojaSinMatriz.Id);
+            System.Windows.Forms.Application.DoEvents();
+
+            Assert.IsFalse(panel.AccesoNuevaMatrizVisible,
+                "La captura reemplaza el acceso: no quedan botón y chip APU en el mismo espacio.");
+            Assert.IsTrue(panel.ChipsTipoVisiblesParaPrueba);
+            Assert.IsTrue(panel.ChipApuVisibleParaPrueba);
+            Assert.IsTrue(panel.TipoQuedaFijoApuParaPrueba,
+                "La creación desde el selector fija APU como único tipo.");
+            Assert.AreEqual("Nueva APU", panel.TituloCabeceraParaPrueba);
         }
         finally
         {

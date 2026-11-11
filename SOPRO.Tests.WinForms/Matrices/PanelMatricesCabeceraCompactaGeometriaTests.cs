@@ -95,6 +95,8 @@ public class PanelMatricesCabeceraCompactaGeometriaTests
         var rectElim = grid.GetColumnDisplayRectangle(grid.Columns["ColEliminar"].Index, false);
         Assert.IsTrue(grid.ClientRectangle.IntersectsWith(new Rectangle(rectElim.X + 2, rectElim.Y, rectElim.Width - 4, 8)),
             $"ColEliminar debe quedar alcanzable con el scroll al fondo (rect={rectElim}, cliente={grid.ClientRectangle}).");
+        Assert.IsFalse(panel.ScrollHorizontalHostVisibleParaPrueba,
+            "A 478 px la barra horizontal es la del grid, nunca una del host.");
     }
 
     [TestMethod]
@@ -110,6 +112,35 @@ public class PanelMatricesCabeceraCompactaGeometriaTests
             "En el piso degradado el panel debe ofrecer desplazamiento para alcanzar el grid.");
         Assert.IsTrue(panel.AlturaContenidoRaizParaPrueba > panel.Height,
             "El contenido debe exceder el viewport; el scroll es el fallback explícito.");
+        Assert.IsFalse(panel.ScrollHorizontalHostVisibleParaPrueba,
+            "El fallback del panel es solo vertical: nunca una barra horizontal del host.");
+    }
+
+    [TestMethod]
+    public void PisoDegradado478_ConScrollHorizontalDelGrid_NoTapaLaPrimeraFila()
+    {
+        using var escenario = new EscenarioGeometria();
+        var panel = escenario.Panel;
+        escenario.Redimensionar(478, 119);
+        escenario.CargarMatrizConComponentes();
+
+        AssertVerificarSinSolapes(panel);
+        Assert.IsTrue(panel.ScrollPisoActivoParaPrueba,
+            "El piso degradado con ancho estrecho mantiene el fallback vertical.");
+        Assert.IsFalse(panel.ScrollHorizontalHostVisibleParaPrueba,
+            "La barra horizontal del host no debe existir.");
+
+        var grid = panel.GridComponentesParaPrueba;
+        var hbar = grid.Controls.OfType<HScrollBar>().FirstOrDefault();
+        Assert.IsNotNull(hbar, "El grid estrecho conserva su barra horizontal propia.");
+        Assert.IsTrue(hbar.Visible, "La barra horizontal del grid debe estar materializada.");
+        Assert.IsTrue(grid.Rows.Count > 0, "El escenario carga una matriz con componentes.");
+
+        var fila0 = grid.GetRowDisplayRectangle(0, false);
+        Assert.IsTrue(fila0.Height > 0,
+            $"La primera fila debe tener alto visible (fila={fila0}).");
+        Assert.IsTrue(fila0.Bottom <= hbar.Bounds.Top,
+            $"La primera fila no puede quedar debajo de la barra horizontal del grid (fila={fila0}, barra={hbar.Bounds}).");
     }
 
     [TestMethod]
@@ -129,6 +160,8 @@ public class PanelMatricesCabeceraCompactaGeometriaTests
             "A 320 px todas las acciones Agregar deben caber (envueltas, no recortadas).");
         Assert.IsTrue(panel.CostoDirectoVisibleParaPrueba,
             "El Costo Directo también permanece visible a 320 px.");
+        Assert.IsFalse(panel.ScrollHorizontalHostVisibleParaPrueba,
+            "A 320 px el host sigue siendo solo vertical.");
     }
 
     [TestMethod]

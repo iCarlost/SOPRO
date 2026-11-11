@@ -691,6 +691,14 @@ namespace SOPRO.WinForms.Controls
         private void OcultarEstadoHeader()
         {
             if (_lblInfoMatriz == null) return;
+            // Navegar entre matrices vuelve a pedir el estado normal en cada carga; si
+            // ya está oculto no hay cambio de chrome que medir ni pase que agendar.
+            if (!_lblInfoMatriz.Visible
+                && string.IsNullOrEmpty(_lblInfoMatriz.Text)
+                && _lblInfoMatriz.Height == 0)
+            {
+                return;
+            }
             _lblInfoMatriz.Text = string.Empty;
             _lblInfoMatriz.Visible = false;
             _lblInfoMatriz.Height = 0;
@@ -1003,18 +1011,58 @@ namespace SOPRO.WinForms.Controls
         private void AplicarModoScroll()
         {
             if (_scrollHost == null || _rootLayout == null) return;
-            int altoDisponible = this.Height;
+            int altoDisponible = this.ClientSize.Height;
+            if (altoDisponible <= 0) altoDisponible = this.Height;
             if (altoDisponible <= 0) return;
 
             int cromo = AlturaCromoCalculada();
-            int totalMinimoGrid = _dgvComponentes.ColumnHeadersHeight + _dgvComponentes.RowTemplate.Height;
+            // Una fila útil exige encabezado + alto real de fila + la barra horizontal
+            // del propio grid (obligatoria a 320/478 px) + bordes. Sin la barra en el
+            // mínimo, el grid queda de "encabezado + una fila" y la barra se dibuja
+            // sobre la primera fila, tapando la columna Clave.
+            int altoFila = _dgvComponentes.Rows.Count > 0
+                ? _dgvComponentes.Rows[0].Height
+                : _dgvComponentes.RowTemplate.Height;
+            int anchoMinimoColumnas = 0;
+            foreach (DataGridViewColumn columna in _dgvComponentes.Columns)
+            {
+                if (columna.Visible)
+                    anchoMinimoColumnas += columna.MinimumWidth;
+            }
+            // La barra horizontal del grid depende de los mínimos de columna, no solo
+            // de su visibilidad actual: en el primer pase aún no está materializada.
+            bool necesitaBarraHorizontalGrid = ScrollHorizontalGridVisibleParaPrueba
+                || (_dgvComponentes.ClientSize.Width > 0
+                    && anchoMinimoColumnas > _dgvComponentes.ClientSize.Width);
+            int altoBarraHorizontalGrid = necesitaBarraHorizontalGrid
+                ? SystemInformation.HorizontalScrollBarHeight
+                : 0;
+            int totalMinimoGrid = _dgvComponentes.ColumnHeadersHeight
+                + altoFila
+                + altoBarraHorizontalGrid
+                + 2;
             bool desborda = cromo + totalMinimoGrid > altoDisponible;
             int altoContenido = desborda ? cromo + totalMinimoGrid : altoDisponible;
 
             if (_scrollHost.AutoScroll != desborda)
                 _scrollHost.AutoScroll = desborda;
+
+            // El fallback del panel es SOLO vertical: sin extensión horizontal en
+            // AutoScrollMinSize, el host no dibuja una barra propia sobre el grid.
+            var minimoScroll = desborda ? new Size(0, altoContenido) : Size.Empty;
+            if (_scrollHost.AutoScrollMinSize != minimoScroll)
+                _scrollHost.AutoScrollMinSize = minimoScroll;
+
             if (_rootLayout.Height != altoContenido)
                 _rootLayout.Height = altoContenido;
+
+            // Cinturón: si un re-layout transitorio dejó la barra del host visible,
+            // se retira; el grid conserva la suya para alcanzar todas las columnas.
+            if (_scrollHost.HorizontalScroll.Visible)
+            {
+                _scrollHost.HorizontalScroll.Enabled = false;
+                _scrollHost.HorizontalScroll.Visible = false;
+            }
         }
 
         /// <summary>

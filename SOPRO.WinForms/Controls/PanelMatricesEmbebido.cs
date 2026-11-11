@@ -74,6 +74,20 @@ namespace SOPRO.WinForms.Controls
         private int? _filaPadreSubedicion;
         private bool _huboEdicionEnSubedicion;
         private bool _subedicionCabeceraConfirmadaPorComando;
+
+        /// <summary>
+        /// Presentaciones mutuamente excluyentes del header. La banda de campos, los
+        /// chips de tipo y el acceso "Nueva matriz" se escriben SIEMPRE juntos desde
+        /// <see cref="AplicarPresentacionCabecera"/>: ningún pase diferido ni ruta de
+        /// navegación puede resucitar una parte de la presentación anterior.
+        /// </summary>
+        private enum PresentacionCabecera
+        {
+            SinSeleccion,
+            SinApu,
+            Matriz,
+            Captura
+        }
         private readonly UndoManager _undoManager = new();
         private bool _isUndoRedo;
         private int _undoPanelRowIndex = -1;
@@ -228,6 +242,8 @@ namespace SOPRO.WinForms.Controls
         internal int FilaConceptoActual => _filaActual;
         internal string TituloCabeceraParaPrueba => _lblTituloMatriz.Text;
         internal bool CabeceraDatosVisiblesParaPrueba => _panelDatos.Visible;
+        /// <summary>Banda de campos real para observar cambios de visibilidad en pruebas.</summary>
+        internal Control CabeceraDatosParaPrueba => _panelDatos;
         internal bool AccesoNuevaMatrizVisible => _btnNuevaMatriz != null && _btnNuevaMatriz.Visible;
         internal Button AccesoNuevaMatrizParaPrueba => _btnNuevaMatriz;
         /// <summary>El header compacto no ofrece Guardar/Cancelar: la superficie
@@ -256,6 +272,10 @@ namespace SOPRO.WinForms.Controls
         internal int AlturaFilaGridParaPrueba => _dgvComponentes.RowTemplate.Height;
         internal int AlturaEncabezadoGridParaPrueba => _dgvComponentes.ColumnHeadersHeight;
         internal bool ScrollPisoActivoParaPrueba => _scrollHost != null && _scrollHost.VerticalScroll.Visible;
+        /// <summary>El fallback del panel es SOLO vertical: una barra horizontal del
+        /// host es siempre un defecto (el grid gestiona la suya).</summary>
+        internal bool ScrollHorizontalHostVisibleParaPrueba
+            => _scrollHost != null && _scrollHost.HorizontalScroll.Visible;
         internal int AlturaContenidoRaizParaPrueba => _rootLayout.Height;
         internal bool CamposApiladosParaPrueba => _camposApilados;
         internal int AnchoDescripcionParaPrueba => _txtDescripcionMatriz.Width;
@@ -459,7 +479,7 @@ namespace SOPRO.WinForms.Controls
                 return false;
 
             _panelBotonesAgregar.Enabled = true;
-            MostrarDatosCabecera(true);
+            AplicarPresentacionCabecera(PresentacionCabecera.Matriz);
 
             if (_matrizActual != null)
             {
@@ -982,7 +1002,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             }
         }
 
-        private void LimpiarEstadoEdicionParaCambioExterno()
+        private void LimpiarEstadoEdicionParaCambioExterno(bool ocultarCabecera = true)
         {
             _modoSubedicionComponente = false;
             _matrizPadreIdSubedicion = null;
@@ -1000,8 +1020,12 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _cabeceraBaseDescripcion = string.Empty;
             _cabeceraBaseUnidad = string.Empty;
             _cabeceraBaseTipo = TipoMatriz.APU;
-            MostrarDatosCabecera(false);
-            _panelHeader.BackColor = _headerColorNormal;
+            // En una navegación la vista destino decide la presentación del header:
+            // ocultarlo aquí y volverlo a mostrar en MostrarMatriz producía el
+            // parpadeo de la banda de campos en cada cambio de concepto. La salida
+            // real del contexto (cerrar workspace/selector) sí lo oculta.
+            if (ocultarCabecera)
+                AplicarPresentacionCabecera(PresentacionCabecera.SinSeleccion);
             _filaContextualComponentes = -1;
         }
 
@@ -1127,7 +1151,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 // destino). Sin esto, llegar a un concepto sin APU tras editar una
                 // matriz filtraba _modoEdicionCabecera y el acceso "Nueva matriz"
                 // permanecía oculto.
-                LimpiarEstadoEdicionParaCambioExterno();
+                LimpiarEstadoEdicionParaCambioExterno(ocultarCabecera: false);
                 return true;
             }
 
@@ -1143,7 +1167,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
 
                 if (rCrear == DialogResult.Yes)
                 {
-                    LimpiarEstadoEdicionParaCambioExterno();
+                    LimpiarEstadoEdicionParaCambioExterno(ocultarCabecera: false);
                     return true;
                 }
 
@@ -1166,7 +1190,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                     return false;
                 }
 
-                LimpiarEstadoEdicionParaCambioExterno();
+                LimpiarEstadoEdicionParaCambioExterno(ocultarCabecera: false);
                 return true;
             }
 
@@ -1192,7 +1216,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 return false;
             }
 
-            LimpiarEstadoEdicionParaCambioExterno();
+            LimpiarEstadoEdicionParaCambioExterno(ocultarCabecera: false);
             return true;
         }
         
@@ -1446,7 +1470,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
 
             _matrizActual = matrizPadre;
             _matrizEditandoId = matrizPadreId;
-            MostrarDatosCabecera(true);
+            AplicarPresentacionCabecera(PresentacionCabecera.Matriz);
             MostrarMatriz(matrizPadre, null);
             _panelBotonesAgregar.Enabled = true;
 
@@ -1586,8 +1610,10 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
 
             if (concepto.MatrizId == null)
             {
-                MostrarSinSeleccion("Concepto sin APU asignada", "Usa la columna P.U. o la búsqueda inteligente en Descripción para vincular una matriz. También puedes crear una matriz nueva desde aquí.");
-                MostrarAccesoNuevaMatriz(true);
+                MostrarSinSeleccion(
+                    "Concepto sin APU asignada",
+                    "Usa la columna P.U. o la búsqueda inteligente en Descripción para vincular una matriz. También puedes crear una matriz nueva desde aquí.",
+                    mostrarAccesoNuevaMatriz: true);
                 return false;
             }
 
@@ -1672,7 +1698,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             SincronizarChipsTipo(matriz.Tipo, basicoHabilitado: true, cuadrillaHabilitado: true, ocultarNoApu: false);
             CapturarEstadoBaseCabeceraDesdeMatriz(matriz);
             _panelBotonesAgregar.Enabled = true;
-            MostrarDatosCabecera(true);
+            AplicarPresentacionCabecera(PresentacionCabecera.Matriz);
 
             PintarComponentesEnGrid(matriz.Componentes);
         }
@@ -1680,19 +1706,28 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
         private static string tipoTexto(Matriz matriz)
             => matriz.Tipo == TipoMatriz.Cuadrilla ? "Cuadrilla" : (matriz.Tipo == TipoMatriz.Basico ? "Básico" : "APU");
 
-        private void MostrarSinSeleccion(string titulo = "Selecciona un concepto en el presupuesto para ver y editar su APU", string info = "")
+        private void MostrarSinSeleccion(
+            string titulo = "Selecciona un concepto en el presupuesto para ver y editar su APU",
+            string info = "",
+            bool mostrarAccesoNuevaMatriz = false)
         {
             _matrizActual = null;
             _ultimaFilaCargada = -1;
             _ultimoConceptoId = null;
             _ultimaMatrizId = null;
             _tipoFijoApu = false;
+            // Sin matriz visible no queda un tipo válido seleccionado: se restablece
+            // el grupo completo (APU marcado, los tres habilitados) para que un estado
+            // latente no reaparezca si otra ruta vuelve a mostrar los chips sin pasar
+            // por SincronizarChipsTipo.
+            SincronizarChipsTipo(TipoMatriz.APU, basicoHabilitado: true, cuadrillaHabilitado: true, ocultarNoApu: false);
             _panelHeader.BackColor = _headerColorNormal;
             _lblTituloMatriz.Text = titulo;
             MostrarEstadoHeader(info, ColorTextoSobreOscuro);
             _panelBotonesAgregar.Enabled = false;
-            MostrarDatosCabecera(false);
-            _btnNuevaMatriz.Visible = false;
+            AplicarPresentacionCabecera(mostrarAccesoNuevaMatriz
+                ? PresentacionCabecera.SinApu
+                : PresentacionCabecera.SinSeleccion);
             _dgvComponentes.Rows.Clear();
             _lblMat.Text = "Mat: —"; _lblMO.Text = "M.O.: —";
             _lblMaq.Text = "Maq.: —"; _lblBas.Text = "Bas.: —";
@@ -2037,20 +2072,6 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             SolicitudNuevaMatriz?.Invoke(this, EventArgs.Empty);
         }
 
-        /// <summary>
-        /// Muestra u oculta la acción primaria "Nueva matriz" del header. Se usa para el
-        /// contexto "concepto sin APU asignada" del presupuesto: es la única vía de
-        /// creación visible en la vista de matrices.
-        /// </summary>
-        internal void MostrarAccesoNuevaMatriz(bool visible)
-        {
-            if (_btnNuevaMatriz == null) return;
-            if (visible && (_modoCreacionMatriz || _modoEdicionCabecera || _modoSubedicionComponente))
-                return;
-            _btnNuevaMatriz.Enabled = true;
-            _btnNuevaMatriz.Visible = visible;
-        }
-
         public void BeginCreateMatrix(
             TipoMatriz tipo,
             Action<Matriz>? onSaved = null,
@@ -2072,6 +2093,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             _modoCreacionMatriz = true;
             _modoEdicionCabecera = true;
             _matrizEditandoId = null;
+            _panelHeader.BackColor = _headerColorNormal;
             _firmaUltimaSeleccionRechazada = null;
             _cantidadNuevaMatriz = cantidad;
             _conceptoOrigenIdNuevaMatriz = conceptoOrigenId;
@@ -2098,7 +2120,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 ColorTextoSobreOscuro);
             _lblMat.Text = "Mat: 0.00"; _lblMO.Text = "M.O.: 0.00"; _lblMaq.Text = "Maq.: 0.00"; _lblBas.Text = "Bas.: 0.00"; _lblDir.Text = "Costo Directo: 0.00";
             CapturarEstadoBaseCabeceraDesdeUI();
-            MostrarDatosCabecera(true);
+            AplicarPresentacionCabecera(PresentacionCabecera.Captura);
             _txtClaveMatriz.Focus();
         }
 
@@ -2147,7 +2169,7 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 // editar una matriz existente re-habilita y re-muestra los tres chips.
                 _tipoFijoApu = false;
                 SincronizarChipsTipo(matriz.Tipo, basicoHabilitado: true, cuadrillaHabilitado: true, ocultarNoApu: false);
-                MostrarDatosCabecera(true);
+                AplicarPresentacionCabecera(PresentacionCabecera.Matriz);
                 MostrarMatriz(matriz, null);
                 _panelBotonesAgregar.Enabled = true;
                 _txtClaveMatriz.Focus();
@@ -2223,18 +2245,41 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             MostrarSinSeleccion("No se pudo reconciliar la cabecera", mensaje);
         }
 
-        private void MostrarDatosCabecera(bool visible)
+        /// <summary>
+        /// Escribe de una sola vez las tres salidas mutuamente excluyentes del header:
+        /// banda de campos, chips de tipo y acceso "Nueva matriz". Es el ÚNICO punto que
+        /// decide visibilidad de esas piezas; las rutas de navegación sólo eligen el
+        /// estado destino, y los pases diferidos únicamente miden.
+        /// </summary>
+        private void AplicarPresentacionCabecera(PresentacionCabecera presentacion)
         {
-            _panelDatos.Visible = visible;
+            if (_panelDatos == null) return;
+
+            bool mostrarCampos = presentacion is PresentacionCabecera.Matriz or PresentacionCabecera.Captura;
+            bool mostrarAcceso = presentacion == PresentacionCabecera.SinApu;
+
+            bool cambio = _panelDatos.Visible != mostrarCampos
+                || (_panelChipsTipo != null && _panelChipsTipo.Visible != mostrarCampos)
+                || (_btnNuevaMatriz != null && _btnNuevaMatriz.Visible != mostrarAcceso);
+
+            _panelDatos.Visible = mostrarCampos;
             // Los chips de tipo solo pertenecen a estados con matriz o en captura:
             // sin selección/agrupador/concepto sin APU el header queda reservado para
             // la acción "Nueva matriz" y el mensaje contextual.
             if (_panelChipsTipo != null)
-                _panelChipsTipo.Visible = visible;
+                _panelChipsTipo.Visible = mostrarCampos;
             // La cabecera sigue el modelo de autoguardado: no hay botones Guardar/Cancelar.
-            if (visible) _btnNuevaMatriz.Visible = false;
-            // El chrome cambia (la banda de campos entra o sale): re-agendar los
-            // ajustes de compacto/scroll cuando las alturas se hayan reasentado.
+            if (_btnNuevaMatriz != null)
+            {
+                _btnNuevaMatriz.Enabled = true;
+                _btnNuevaMatriz.Visible = mostrarAcceso;
+            }
+            if (mostrarAcceso)
+                _tipoFijoApu = false;
+
+            // Solo el cambio real de chrome altera alturas; en navegación entre
+            // matrices la banda ya estaba visible y no debe re-medirse.
+            if (!cambio) return;
             RecalibrarAlturasCromo();
             ReprogramarLayoutVertical();
         }
@@ -2289,7 +2334,6 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
                 }
                 else
                 {
-                    MostrarDatosCabecera(false);
                     MostrarSinSeleccion();
                 }
 
