@@ -778,8 +778,7 @@ public class PanelMatricesComponenteAltasComandoTests
             ctx.SavedChanges += (_, __) => guardasCompartidos++;
 
             panel.BeginCreateMatrix(TipoMatriz.APU, soloApu: true, onSaved: _ => callbackHeredado = true);
-            Assert.IsFalse(panel.BotonGuardarVisibleParaPrueba);
-            Assert.IsFalse(panel.BotonCancelarVisibleParaPrueba);
+            Assert.IsFalse(panel.ExisteBotonGuardarCancelarVisibleParaPrueba);
 
             panel.EstablecerCabeceraParaPrueba("NUEVA-01", "Matriz nueva automática", "m3", TipoMatriz.APU);
             PanelMatricesEmbebido.SeleccionInsumoParaPrueba = _ => new List<ComponenteMatriz>
@@ -792,10 +791,8 @@ public class PanelMatricesComponenteAltasComandoTests
                 panel.UltimaRazonNuevaMatrizSinDespachar);
             Assert.IsFalse(callbackHeredado, "La primera alta no invoca el callback heredado.");
             Assert.IsNotNull(snapshot);
-            Assert.IsFalse(panel.BotonGuardarVisibleParaPrueba,
-                "La cabecera persistida también usa autoguardado y no muestra Guardar.");
-            Assert.IsFalse(panel.BotonCancelarVisibleParaPrueba,
-                "La cabecera persistida no muestra Cancelar porque no revierte cambios confirmados.");
+            Assert.IsFalse(panel.ExisteBotonGuardarCancelarVisibleParaPrueba,
+                "La cabecera persistida también usa autoguardado y no muestra Guardar ni Cancelar.");
             Assert.AreEqual(0, guardasCompartidos, "El comando usa un contexto nuevo.");
             Assert.AreEqual("NUEVA-01", panel.MatrizVisibleEnPanel!.Clave);
 
@@ -896,7 +893,7 @@ public class PanelMatricesComponenteAltasComandoTests
             // el evento de la primera alta, no por callback).
             form.IniciarCreacionMatrizDesdeSelectorParaPrueba(fila, TipoMatriz.APU, 2m);
             Assert.AreEqual("Nueva APU", panel.TituloCabeceraParaPrueba);
-            Assert.IsFalse(panel.BotonGuardarVisibleParaPrueba);
+            Assert.IsFalse(panel.ExisteBotonGuardarCancelarVisibleParaPrueba);
             using (var verificacion = new SOPROContext(dbPath))
             {
                 Assert.IsNull(verificacion.ConceptosPresupuesto.AsNoTracking()

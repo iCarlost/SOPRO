@@ -593,7 +593,7 @@ namespace SOPRO.WinForms.Controls
                 MostrarMatriz(recargada, null);
             }
 
-            MostrarDatosCabecera(true);
+            AplicarPresentacionCabecera(PresentacionCabecera.Matriz);
             NuevaMatrizConComponentesConfirmada?.Invoke(this, snapshot);
         }
 

@@ -842,8 +842,7 @@ public class SelectorApuFlujoPresupuestoTests
             Assert.IsTrue(panel.Visible, "La captura de matriz nueva debe mostrarse en el panel.");
             Assert.AreEqual("Nueva APU", panel.TituloCabeceraParaPrueba,
                 "La creación nace restringida a APU.");
-            Assert.IsFalse(panel.BotonGuardarVisibleParaPrueba);
-            Assert.IsFalse(panel.BotonCancelarVisibleParaPrueba);
+            Assert.IsFalse(panel.ExisteBotonGuardarCancelarVisibleParaPrueba);
 
             Assert.AreEqual(0, avisos.Count,
                 "El borrador no debe intentar una asignación: " + string.Join(" | ", avisos));
