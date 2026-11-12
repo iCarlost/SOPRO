@@ -101,8 +101,13 @@ ConfigurarGrid();
             dgvComponentes.AllowUserToDeleteRows = false;
             dgvComponentes.ReadOnly = false;          // ← ahora editable
             dgvComponentes.EditMode = DataGridViewEditMode.EditOnKeystrokeOrF2;
-            dgvComponentes.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            Helpers.DgvCeldaHelper.Aplicar(dgvComponentes);
+            SeleccionGridHelper.ConfigurarSeleccionPorCelda(dgvComponentes);
+            DgvCeldaHelper.Aplicar(
+                dgvComponentes,
+                conMenuCopia: true,
+                SoproTheme.Colors.SelBg,
+                Color.FromArgb(0, 120, 215),
+                mostrarRowHeaders: false);
             dgvComponentes.RowHeadersVisible = false;
             dgvComponentes.BackgroundColor = Color.White;
             dgvComponentes.RowTemplate.Height = 30;
@@ -166,7 +171,10 @@ ConfigurarGrid();
             };
             colEliminar.DefaultCellStyle.ForeColor = Color.Red;
             dgvComponentes.Columns.Add(colEliminar);
-            
+
+            foreach (DataGridViewColumn columna in dgvComponentes.Columns)
+                columna.SortMode = DataGridViewColumnSortMode.NotSortable;
+
             dgvComponentes.CellClick         += DgvComponentes_CellClick;
             dgvComponentes.CellDoubleClick    += DgvComponentes_CellDoubleClick;
             dgvComponentes.CellEndEdit        += DgvComponentes_CellEndEdit;
@@ -246,6 +254,8 @@ ConfigurarGrid();
 
         private int DecimalesImporte => _context.Proyectos.Find(_proyectoId)?.DecimalesImporte ?? 2;
 
+        internal DataGridView DgvComponentesParaPrueba => dgvComponentes;
+
         private void DgvComponentes_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
         {
             if (e.RowIndex < 0 || e.Value == null) return;
@@ -258,8 +268,10 @@ ConfigurarGrid();
             }
         }
 
-        private void ActualizarGridComponentes()
+        private void ActualizarGridComponentes(DataGridViewStateSnapshot? estado = null)
         {
+            DataGridViewStateSnapshot estadoActual = estado ?? DataGridViewStateHelper.Capture(dgvComponentes);
+
             dgvComponentes.Rows.Clear();
 
             var rows = MatrixComponentPresentationService.BuildRows(_componentesTemp, _baseManoObra);
@@ -274,9 +286,11 @@ ConfigurarGrid();
                     row.PrecioUnitario,
                     row.Importe);
             }
+
+            DataGridViewStateHelper.Restore(dgvComponentes, estadoActual);
         }
-        
-        private void Recalcular()
+
+        private void Recalcular(DataGridViewStateSnapshot? estado = null)
         {
             var totales = MatrixComponentCalculationService.RecalculateParaVista(_componentesTemp, FormatoHelper.DecimalesImporte);
 
@@ -289,7 +303,7 @@ ConfigurarGrid();
             _costoDirectoTotal = totales.CostoDirectoTotal;
 
             ActualizarLabelsResumen();
-            ActualizarGridComponentes();
+            ActualizarGridComponentes(estado);
         }
 
         private void ActualizarLabelsResumen()
@@ -321,8 +335,9 @@ ConfigurarGrid();
             if (result == DialogResult.Yes
                 && MatrixComponentCollectionService.RemoveAt(_componentesTemp, e.RowIndex))
             {
-                ActualizarGridComponentes();
-                Recalcular();
+                DataGridViewStateSnapshot estado = DataGridViewStateHelper.Capture(dgvComponentes);
+                ActualizarGridComponentes(estado);
+                Recalcular(estado);
             }
         }
         
@@ -359,7 +374,8 @@ ConfigurarGrid();
                 var editResult = MatrixComponentEditingService.UpdateQuantityFromDialog(comp, frmRend.Cantidad);
                 if (editResult.Success)
                 {
-                    BeginInvoke(new Action(() => { ActualizarGridComponentes(); Recalcular(); }));
+                    DataGridViewStateSnapshot estado = DataGridViewStateHelper.Capture(dgvComponentes);
+                    BeginInvoke(new Action(() => { ActualizarGridComponentes(estado); Recalcular(estado); }));
                 }
             }
         }
@@ -399,6 +415,8 @@ ConfigurarGrid();
                 return;
             }
 
+            DataGridViewStateSnapshot estado = DataGridViewStateHelper.Capture(dgvComponentes);
+
             if (!MatrixComponentCollectionService.TryGetAt(_componentesTemp, e.RowIndex, out var comp) || comp == null)
             {
                 return;
@@ -421,17 +439,17 @@ ConfigurarGrid();
 
             if (!editResult.Success)
             {
-                BeginInvoke(new Action(ActualizarGridComponentes));
+                BeginInvoke(new Action(() => ActualizarGridComponentes(estado)));
                 return;
             }
 
             if (editResult.RequiresRecalculation)
             {
-                BeginInvoke(new Action(Recalcular));
+                BeginInvoke(new Action(() => Recalcular(estado)));
             }
             else
             {
-                BeginInvoke(new Action(ActualizarGridComponentes));
+                BeginInvoke(new Action(() => ActualizarGridComponentes(estado)));
             }
         }
         
