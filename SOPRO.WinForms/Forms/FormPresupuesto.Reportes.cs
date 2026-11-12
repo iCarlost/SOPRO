@@ -32,10 +32,14 @@ namespace SOPRO.WinForms.Forms
 
             try
             {
+                // El arrastre de columnas puede no estar persistido todavía. Antes de
+                // leer la configuración se guarda el orden visual actual; si el guardado
+                // no se confirma, no se genera un reporte con orden viejo.
+                var snapshot = ConstruirSnapshotPresupuestoParaExportacion();
+                if (snapshot is null) return;
+
                 var svc = new Services.ReporteService(_context);
                 var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
-                // Snapshot neutral desde la configuración persistida (no desde el grid).
-                var snapshot = ConstruirSnapshotPresupuesto();
 
                 var conceptos = _context.ConceptosPresupuesto
                     .Where(c => c.ProyectoId == _proyecto.Id)
@@ -145,11 +149,13 @@ namespace SOPRO.WinForms.Forms
 
             try
             {
+                // Mismo contrato que PDF: el orden visual actual se persiste antes de
+                // construir el snapshot; si falla, la exportación se aborta.
+                var snapshot = ConstruirSnapshotPresupuestoParaExportacion();
+                if (snapshot is null) return;
+
                 var svc = new Services.ReporteService(_context);
                 var plantilla = svc.ObtenerPlantillaSoloLectura(_proyecto.Id);
-
-                // Snapshot neutral desde la configuración persistida (no desde el grid).
-                var snapshot = ConstruirSnapshotPresupuesto();
 
                 var conceptos = _context.ConceptosPresupuesto
                     .Where(c => c.ProyectoId == _proyecto.Id)
@@ -196,6 +202,20 @@ namespace SOPRO.WinForms.Forms
 
 
         /// <summary>
+        /// Seam compartido por PDF y Excel: persiste el orden visual actual del grid
+        /// con el servicio de columnas y recién entonces construye el snapshot del
+        /// reporte. Devuelve <c>null</c> si el orden no se pudo confirmar, de modo
+        /// que ambos flujos abortan sin exportar un orden viejo.
+        /// </summary>
+        internal Application.Models.Reporting.ReportColumns.ReportColumnSnapshot? ConstruirSnapshotPresupuestoParaExportacion()
+        {
+            if (!PersistirOrdenColumnas(mostrarError: true))
+                return null;
+
+            return ConstruirSnapshotPresupuesto();
+        }
+
+        /// <summary>
         /// Construye el snapshot neutral de columnas del reporte de Presupuesto a
         /// partir de la configuración persistida (columnas personalizadas + overlays
         /// de encabezado del reporte). NO lee del <c>DataGridView</c>.
@@ -208,9 +228,10 @@ namespace SOPRO.WinForms.Forms
                 .OrderBy(c => c.Orden)
                 .ToList();
 
-            // SOLO LECTURA: la exportación nunca debe inicializar ni persistir la
-            // configuración de columnas/overlays. Si no existe configuración se
-            // pasa lista vacía y el builder aplica sus defaults en memoria.
+            // Construcción SOLO LECTURA: el orden ya fue persistido por el seam de
+            // exportación; aquí no se inicializa ni se escribe configuración de
+            // columnas/overlays. Si no existe configuración se pasa lista vacía y el
+            // builder aplica sus defaults en memoria.
             var overlays = ObtenerConfiguracionColumnasSoloLectura("Presupuesto");
 
             var snapshot = new Application.UseCases.Reporting.PresupuestoReportSnapshotBuilder()
@@ -337,8 +358,10 @@ namespace SOPRO.WinForms.Forms
             if (!GuardarOrdenPrevioADialogoColumnas())
                 return;
 
-            // Guardar la columna actual para insertar nuevas columnas a su derecha
-            int columnaActualIndex = dgvPresupuesto.CurrentCell?.ColumnIndex ?? -1;
+            // Guardar la posición de la columna actual dentro del orden relativo de
+            // columnas personalizadas (no el índice absoluto del grid, que incluye
+            // colId/# y columnas ocultas) para insertar nuevas columnas a su derecha.
+            int columnaActualIndex = ObtenerOrdenColumnaActualParaInsercion();
 
             using var form = new FormColumnasPersonalizadas(
                 _factory,
@@ -349,6 +372,23 @@ namespace SOPRO.WinForms.Forms
 
             var resultadoDialogo = form.ShowDialog();
             AplicarResultadoDialogoColumnas(form, resultadoDialogo);
+        }
+
+        /// <summary>
+        /// Posición visual (base cero) de la columna actual entre las columnas
+        /// personalizadas VISIBLES, en el orden persistido del grid. Devuelve -1 si
+        /// la celda actual no pertenece a una columna personalizada.
+        /// </summary>
+        internal int ObtenerOrdenColumnaActualParaInsercion()
+        {
+            var actual = dgvPresupuesto.CurrentCell?.OwningColumn;
+            if (actual?.Tag is not ColumnaPersonalizada)
+                return -1;
+
+            return dgvPresupuesto.Columns
+                .Cast<DataGridViewColumn>()
+                .Count(c => c.Tag is ColumnaPersonalizada { Visible: true }
+                         && c.DisplayIndex < actual.DisplayIndex);
         }
 
         /// <summary>

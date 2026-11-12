@@ -137,6 +137,107 @@ public class BudgetColumnConfigurationPersistenceTests
     }
 
     [TestMethod]
+    public void SetColumnVisibility_InsertaDespuesDelFocoConElRankVisualDeColumnasVisibles()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int ocultaId;
+
+            using (var seed = TestDbFactory.CreateContextAt(dbPath))
+            {
+                proyectoId = AddProject(seed, "Proyecto visibilidad").Id;
+
+                AddColumn(seed, proyectoId, "Tipo", "Tipo", 120, orden: -7);
+                AddColumn(seed, proyectoId, "Clave", "Clave", 100, orden: -6);
+                AddColumn(seed, proyectoId, "Descripción", "Descripcion", 300, orden: 2);
+
+                // La oculta precede a las visibles en el orden persistido, pero no
+                // altera el rank visual: el foco Clave es la posición 1 entre visibles.
+                ocultaId = AddColumn(
+                    seed, proyectoId, "Oculta", "Oculta", 100, orden: -100, visible: false).Id;
+            }
+
+            var resultado = BudgetColumnConfigurationService.SetColumnVisibility(
+                new CountingFactory(), dbPath, proyectoId, ocultaId, visible: true, insertionIndex: 1);
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, resultado.Status, resultado.Message);
+
+            using var verificacion = new SOPROContext(dbPath);
+            var ordenadas = verificacion.ColumnasPersonalizadas.AsNoTracking()
+                .Where(c => c.ProyectoId == proyectoId)
+                .OrderBy(c => c.Orden)
+                .Select(c => c.NombreInterno)
+                .ToArray();
+
+            CollectionAssert.AreEqual(
+                new[] { "Tipo", "Clave", "Oculta", "Descripcion" },
+                ordenadas,
+                "La columna visible debe insertarse justo después del foco (Clave), " +
+                "no después de otra columna por un índice absoluto del grid.");
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void SetColumnVisibility_ConVisiblesEmpatadasEnOrden_ColocaLaMostradaJustoDespuesDelFoco()
+    {
+        var dbPath = TestDbFactory.CreateTempDbPath();
+        try
+        {
+            int proyectoId;
+            int ocultaId;
+
+            using (var seed = TestDbFactory.CreateContextAt(dbPath))
+            {
+                proyectoId = AddProject(seed, "Proyecto empate de orden").Id;
+
+                AddColumn(seed, proyectoId, "Primera", "Primera", 100, orden: 1);
+                AddColumn(seed, proyectoId, "Foco", "Foco", 100, orden: 5);
+                AddColumn(seed, proyectoId, "Empatada", "Empatada", 100, orden: 5);
+                AddColumn(seed, proyectoId, "Final", "Final", 100, orden: 20);
+
+                // El foco (Foco) gana el empate por Id. La oculta está entre las
+                // visibles en la secuencia persistida y debe reinsertarse tras el foco.
+                ocultaId = AddColumn(
+                    seed, proyectoId, "Oculta", "Oculta", 100, orden: 10, visible: false).Id;
+            }
+
+            var factory = new CountingFactory();
+            var resultado = BudgetColumnConfigurationService.SetColumnVisibility(
+                factory, dbPath, proyectoId, ocultaId, visible: true, insertionIndex: 1);
+
+            Assert.AreEqual(BudgetOperationStatus.Committed, resultado.Status, resultado.Message);
+            Assert.AreEqual(1, factory.SaveCount, "La visibilidad y el reordenamiento deben guardarse en un solo SaveChanges.");
+
+            using var verificacion = new SOPROContext(dbPath);
+            var ordenadas = verificacion.ColumnasPersonalizadas.AsNoTracking()
+                .Where(c => c.ProyectoId == proyectoId)
+                .OrderBy(c => c.Orden)
+                .ThenBy(c => c.Id)
+                .ToList();
+
+            CollectionAssert.AreEqual(
+                new[] { "Primera", "Foco", "Oculta", "Empatada", "Final" },
+                ordenadas.Select(c => c.NombreInterno).ToArray(),
+                "La visible mostrada debe quedar entre el foco y la otra visible empatada.");
+
+            CollectionAssert.AreEqual(
+                new[] { 0, 1, 2, 3, 4 },
+                ordenadas.Select(c => c.Orden).ToArray(),
+                "La secuencia completa debe quedar con Orden único y determinista.");
+        }
+        finally
+        {
+            DeleteQuietly(dbPath);
+        }
+    }
+
+    [TestMethod]
     public void EnsureColumns_SetLegacy17_ReemplazaPor23YLaSegundaVezEsNoOp()
     {
         var dbPath = TestDbFactory.CreateTempDbPath();
@@ -552,7 +653,8 @@ public class BudgetColumnConfigurationPersistenceTests
         string nombre,
         string nombreInterno,
         int ancho,
-        int orden = 0)
+        int orden = 0,
+        bool visible = true)
     {
         var columna = new ColumnaPersonalizada
         {
@@ -562,7 +664,7 @@ public class BudgetColumnConfigurationPersistenceTests
             TipoColumna = TipoColumnaPersonalizada.Personal,
             TipoDato = TipoDatoColumna.Texto,
             AnchoColumna = ancho,
-            Visible = true,
+            Visible = visible,
             Orden = orden,
             Formula = string.Empty,
             FormatoNumerico = string.Empty,

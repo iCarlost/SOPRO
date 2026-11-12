@@ -69,12 +69,11 @@ namespace SOPRO.Application.Services
             // para el Tag del grid: no deben quedar rastreadas ni exponer mutaciones
             // accidentales sobre el contexto compartido (las escrituras van por
             // BudgetColumnConfigurationService, con contexto propio).
-            var todasColumnas = context.ColumnasPersonalizadas
-                .AsNoTracking()
-                .Where(c => c.ProyectoId == proyecto.Id)
-                .OrderBy(c => c.Visible ? 0 : 1)
-                .ThenBy(c => c.Orden)
-                .ToList();
+            var todasColumnas = BudgetColumnOrder.OrdenarPorOrdenPersistido(
+                context.ColumnasPersonalizadas
+                    .AsNoTracking()
+                    .Where(c => c.ProyectoId == proyecto.Id)
+                    .ToList());
 
             var columnasVisibles = todasColumnas.Where(c => c.Visible).ToList();
             usesTemporaryBaseColumns = columnasVisibles.Count == 0;
@@ -102,7 +101,6 @@ namespace SOPRO.Application.Services
                                        || col.TipoDato == TipoDatoColumna.Porcentaje,
                     AlignCenter         = col.Alineacion == AlineacionColumna.Centro,
                     UseCalculatedBackColor = col.TipoColumna == TipoColumnaPersonalizada.Calculada,
-                    DisplayIndex        = col.Orden,
                     TipoDato            = col.TipoDato,
                     SourceColumn        = col
                 });
