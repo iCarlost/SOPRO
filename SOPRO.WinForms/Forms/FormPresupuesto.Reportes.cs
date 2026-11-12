@@ -375,13 +375,13 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Posición visual (base cero) de la columna actual entre las columnas
+        /// Posición visual (base cero) de la columna enfocada entre las columnas
         /// personalizadas VISIBLES, en el orden persistido del grid. Devuelve -1 si
-        /// la celda actual no pertenece a una columna personalizada.
+        /// el destino no pertenece a una columna personalizada.
         /// </summary>
         internal int ObtenerOrdenColumnaActualParaInsercion()
         {
-            var actual = dgvPresupuesto.CurrentCell?.OwningColumn;
+            var actual = ObtenerColumnaDestinoParaInsercion();
             if (actual?.Tag is not ColumnaPersonalizada)
                 return -1;
 
@@ -389,6 +389,29 @@ namespace SOPRO.WinForms.Forms
                 .Cast<DataGridViewColumn>()
                 .Count(c => c.Tag is ColumnaPersonalizada { Visible: true }
                          && c.DisplayIndex < actual.DisplayIndex);
+        }
+
+        /// <summary>
+        /// Columna del grid que define el punto de inserción. Un click en el
+        /// encabezado deja <see cref="DataGridView.CurrentCell"/> en la celda previa,
+        /// así que en ese caso manda la columna del encabezado seleccionado
+        /// (<c>_columnaRibbon</c>), resuelta al <c>DataGridViewColumn</c> real por Id.
+        /// Sin selección por encabezado se conserva el comportamiento de la celda
+        /// actual.
+        /// </summary>
+        private DataGridViewColumn? ObtenerColumnaDestinoParaInsercion()
+        {
+            if (_seleccionPorEncabezado && _columnaRibbon is not null)
+            {
+                var porEncabezado = dgvPresupuesto.Columns
+                    .Cast<DataGridViewColumn>()
+                    .FirstOrDefault(c => c.Tag is ColumnaPersonalizada cfg
+                                      && cfg.Id == _columnaRibbon.Id);
+                if (porEncabezado is not null)
+                    return porEncabezado;
+            }
+
+            return dgvPresupuesto.CurrentCell?.OwningColumn;
         }
 
         /// <summary>

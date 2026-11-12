@@ -474,6 +474,16 @@ namespace SOPRO.WinForms.Forms
             ColumnaSeleccionadaCambiada?.Invoke(this, EventArgs.Empty);
         }
 
+        /// <summary>
+        /// Seam de la selección por encabezado: fija el destino COLUMNA y la columna
+        /// enfocada, igual que un click real en el encabezado del grid.
+        /// </summary>
+        internal void SeleccionarEncabezadoDeColumna(int colIndex)
+        {
+            _seleccionPorEncabezado = true;
+            NotificarColumnaSeleccionada(colIndex);
+        }
+
         // ═══════════════════ IGridSeleccionFormato (paso 4.1) ═══════════════════
         // El grid reporta su selección tipo Excel (una celda, rango con Shift,
         // multi-rango con Ctrl) como direcciones ESTABLES y pinta el override de
@@ -1132,10 +1142,7 @@ namespace SOPRO.WinForms.Forms
             dgvPresupuesto.EditingControlShowing += DgvPresupuesto_EditingControlShowing;
             dgvPresupuesto.ColumnWidthChanged += DgvPresupuesto_ColumnWidthChanged;
             dgvPresupuesto.ColumnHeaderMouseClick += (s, e) =>
-            {
-                _seleccionPorEncabezado = true;
-                NotificarColumnaSeleccionada(e.ColumnIndex);
-            };
+                SeleccionarEncabezadoDeColumna(e.ColumnIndex);
 
             // Distinguir interacción de cuerpo (=> destino CELDAS) de interacción con
             // encabezado de columna (=> destino COLUMNA). CellMouseDown se dispara

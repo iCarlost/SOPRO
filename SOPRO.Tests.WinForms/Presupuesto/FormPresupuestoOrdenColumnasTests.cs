@@ -151,6 +151,57 @@ public class FormPresupuestoOrdenColumnasTests
     }
 
     [TestMethod]
+    public void EncabezadoSeleccionado_ConCurrentCellEnOtraColumna_InsertaDespuesDeLaColumnaDelEncabezado()
+    {
+        var grid = _form!.GridPrincipal;
+        var clave = ColumnaVisible(grid, "Clave");
+        var pu = ColumnaVisible(grid, "PrecioUnitario");
+
+        // Click en el encabezado real: WinForms dispara ColumnHeaderMouseClick y NO
+        // mueve CurrentCell, que sigue en Clave.
+        grid.CurrentCell = grid.Rows[0].Cells[clave.Index];
+        SimularClickEnEncabezado(grid, pu.Index);
+
+        Assert.AreSame(clave, grid.CurrentCell!.OwningColumn,
+            "El escenario reproduce el bug: tras el click de encabezado CurrentCell sigue en Clave.");
+        Assert.AreEqual(((ColumnaPersonalizada)pu.Tag!).Id, _form.ColumnaSeleccionada!.Id,
+            "El encabezado seleccionado debe quedar registrado como columna activa.");
+
+        int rankClave = ColumnasVisiblesDelGrid(grid).IndexOf(clave);
+        int rankPu = ColumnasVisiblesDelGrid(grid).IndexOf(pu);
+        Assert.AreEqual(1, rankClave, "Clave es la segunda columna personalizada visible.");
+        Assert.IsTrue(rankPu > rankClave,
+            "P.U. debe estar a la derecha de Clave para que el bug sea observable.");
+
+        Assert.AreEqual(rankPu, _form.ObtenerOrdenColumnaActualParaInsercion(),
+            "El punto de inserción debe ser el encabezado seleccionado (P.U.), no la celda actual (Clave).");
+
+        var oculta = grid.Columns.Cast<DataGridViewColumn>()
+            .Single(c => c.Tag is ColumnaPersonalizada { Visible: false, NombreInterno: "Indirectos" });
+        int ocultaId = ((ColumnaPersonalizada)oculta.Tag!).Id;
+
+        var resultado = BudgetColumnConfigurationService.SetColumnVisibility(
+            new ProjectDbContextFactory(), _dbPath, _proyecto.Id, ocultaId,
+            visible: true, insertionIndex: rankPu);
+
+        Assert.AreEqual(BudgetOperationStatus.Committed, resultado.Status, resultado.Message);
+
+        _form.RecargarTrasDialogoColumnas();
+
+        var persistida = SecuenciaPersistidaDelProyecto(soloVisibles: true);
+        Assert.AreEqual(
+            Array.IndexOf(persistida, "PrecioUnitario") + 1,
+            Array.IndexOf(persistida, "Indirectos"),
+            "La columna mostrada debe quedar inmediatamente a la derecha de P.U., no de Clave.");
+
+        var visibleEnGrid = SecuenciaColumnasPersonalizadasDelGrid(_form.GridPrincipal, soloVisibles: true);
+        Assert.AreEqual(
+            Array.IndexOf(visibleEnGrid, "PrecioUnitario") + 1,
+            Array.IndexOf(visibleEnGrid, "Indirectos"),
+            "El grid debe reflejar la columna mostrada inmediatamente a la derecha de P.U.");
+    }
+
+    [TestMethod]
     public void MostrarColumnaOculta_LaInsertaDespuesDelFocoYLaRecargaCoincideConElOrdenPersistido()
     {
         var grid = _form!.GridPrincipal;
@@ -349,6 +400,25 @@ public class FormPresupuestoOrdenColumnasTests
     }
 
     // ───────────────────────────── Infraestructura ─────────────────────────────
+
+    /// <summary>
+    /// Dispara el mismo evento que un click real en el encabezado del grid, para que
+    /// la prueba ejercite el handler de producción (no sólo su seam).
+    /// </summary>
+    private static void SimularClickEnEncabezado(DataGridView grid, int colIndex)
+    {
+        var metodo = typeof(DataGridView).GetMethod(
+            "OnColumnHeaderMouseClick",
+            BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "No se encontró DataGridView.OnColumnHeaderMouseClick.");
+
+        metodo.Invoke(grid, new object[]
+        {
+            new DataGridViewCellMouseEventArgs(colIndex, -1, 0, 0,
+                new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0))
+        });
+    }
 
     private static DataGridViewColumn ColumnaVisible(DataGridView grid, string nombreInterno)
         => grid.Columns.Cast<DataGridViewColumn>()
