@@ -2032,29 +2032,6 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             ProcesarEliminacionComponentePersistida(e.RowIndex);
         }
 
-        // Contorno azul de 2px sobre la celda activa (replica el estilo del presupuesto).
-        private static void DgvComponentes_CellPainting(object sender, DataGridViewCellPaintingEventArgs e)
-        {
-            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
-
-            var dgv = (DataGridView)sender;
-            e.Paint(e.CellBounds, DataGridViewPaintParts.All);
-
-            if (dgv.CurrentCell != null &&
-                e.RowIndex == dgv.CurrentCell.RowIndex &&
-                e.ColumnIndex == dgv.CurrentCell.ColumnIndex)
-            {
-                using var pen = new Pen(Color.FromArgb(0, 120, 215), 2);
-                e.Graphics?.DrawRectangle(pen,
-                    e.CellBounds.Left + 1,
-                    e.CellBounds.Top + 1,
-                    e.CellBounds.Width - 3,
-                    e.CellBounds.Height - 3);
-            }
-
-            e.Handled = true;
-        }
-
         // ── Navegación ─────────────────────────────────────────────────
         private void ActualizarNavegacion()
         {
@@ -2811,16 +2788,24 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             try
             {
                 var clickedRow = _dgvComponentes.Rows[hit.RowIndex];
-                if (!clickedRow.Selected)
+                // Con CellSelect un clic derecho NO puebla SelectedRows: el criterio
+                // se resuelve con DgvCeldaHelper para no destruir una multiselección
+                // de celdas ya vigente. Dentro de la selección NO se reasigna
+                // CurrentCell: ese setter colapsaría el rango a una celda.
+                bool dentroDeSeleccion = DgvCeldaHelper.ClicDentroDeSeleccion(_dgvComponentes, hit.RowIndex);
+                if (!dentroDeSeleccion)
                 {
                     _dgvComponentes.ClearSelection();
-                    clickedRow.Selected = true;
-                }
+                    if (hit.ColumnIndex >= 0)
+                        clickedRow.Cells[hit.ColumnIndex].Selected = true;
+                    else
+                        DgvCeldaHelper.SeleccionarFilaCompleta(_dgvComponentes, hit.RowIndex);
 
-                if (hit.ColumnIndex >= 0)
-                    _dgvComponentes.CurrentCell = clickedRow.Cells[hit.ColumnIndex];
-                else if (clickedRow.Cells.Count > 0)
-                    _dgvComponentes.CurrentCell = clickedRow.Cells[0];
+                    if (hit.ColumnIndex >= 0)
+                        _dgvComponentes.CurrentCell = clickedRow.Cells[hit.ColumnIndex];
+                    else if (clickedRow.Cells.Count > 0)
+                        _dgvComponentes.CurrentCell = clickedRow.Cells[0];
+                }
             }
             catch { }
         }
@@ -2835,16 +2820,20 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             try
             {
                 var clickedRow = _dgvComponentes.Rows[e.RowIndex];
-                if (!clickedRow.Selected)
+                bool dentroDeSeleccion = DgvCeldaHelper.ClicDentroDeSeleccion(_dgvComponentes, e.RowIndex);
+                if (!dentroDeSeleccion)
                 {
                     _dgvComponentes.ClearSelection();
-                    clickedRow.Selected = true;
-                }
+                    if (e.ColumnIndex >= 0)
+                        clickedRow.Cells[e.ColumnIndex].Selected = true;
+                    else
+                        DgvCeldaHelper.SeleccionarFilaCompleta(_dgvComponentes, e.RowIndex);
 
-                if (e.ColumnIndex >= 0)
-                    _dgvComponentes.CurrentCell = clickedRow.Cells[e.ColumnIndex];
-                else if (clickedRow.Cells.Count > 0)
-                    _dgvComponentes.CurrentCell = clickedRow.Cells[0];
+                    if (e.ColumnIndex >= 0)
+                        _dgvComponentes.CurrentCell = clickedRow.Cells[e.ColumnIndex];
+                    else if (clickedRow.Cells.Count > 0)
+                        _dgvComponentes.CurrentCell = clickedRow.Cells[0];
+                }
             }
             catch { }
         }
@@ -2880,11 +2869,19 @@ private void AgregarComponentesTemporales(TipoComponenteMatriz tipoComponente)
             try
             {
                 var clickedRow = _dgvComponentes.Rows[rowIndex];
-                _dgvComponentes.ClearSelection();
-                clickedRow.Selected = true;
+                bool dentroDeSeleccion = DgvCeldaHelper.ClicDentroDeSeleccion(_dgvComponentes, rowIndex);
+                if (!dentroDeSeleccion)
+                {
+                    _dgvComponentes.ClearSelection();
+                    if (columnIndex >= 0)
+                        clickedRow.Cells[columnIndex].Selected = true;
+                    else
+                        DgvCeldaHelper.SeleccionarFilaCompleta(_dgvComponentes, rowIndex);
 
-                int targetCol = columnIndex >= 0 && columnIndex < clickedRow.Cells.Count ? columnIndex : 0;
-                _dgvComponentes.CurrentCell = clickedRow.Cells[targetCol];
+                    int targetCol = columnIndex >= 0 && columnIndex < clickedRow.Cells.Count ? columnIndex : 0;
+                    _dgvComponentes.CurrentCell = clickedRow.Cells[targetCol];
+                }
+
                 _dgvComponentes.Focus();
                 _menuContextualComponentes.Show(_dgvComponentes, menuLocation);
             }

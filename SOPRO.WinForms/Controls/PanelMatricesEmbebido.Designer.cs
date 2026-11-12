@@ -475,7 +475,7 @@ namespace SOPRO.WinForms.Controls
                 Dock = DockStyle.Fill,
                 AllowUserToAddRows = false, AllowUserToDeleteRows = false, ReadOnly = false,
                 EditMode = DataGridViewEditMode.EditOnKeystrokeOrF2,
-                SelectionMode = DataGridViewSelectionMode.FullRowSelect, RowHeadersVisible = false,
+                RowHeadersVisible = false,
                 ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
                 ColumnHeadersHeight = SoproUiMetrics.GridHeaderHeight,
                 RowTemplate = { Height = 28 }, Font = new Font("Segoe UI", 9F),
@@ -484,22 +484,18 @@ namespace SOPRO.WinForms.Controls
             };
             // Estilo SOPRO: header claro 245,245,248 con texto 60,60,60 y filas alternas sutiles.
             _dgvComponentes.AplicarEstiloSOPRO();
-            // Estilo de selección del presupuesto: fila completa azul claro + contorno azul de 2px
-            // en la celda activa, sin tocar el comportamiento de portapapeles del grid.
-            // Patrón read-mutate-assign-back: el getter devuelve una copia
-            // desechable, así que hay que reasignar el style al grid.
-            var baseStyle = _dgvComponentes.DefaultCellStyle;
-            baseStyle.SelectionBackColor = SoproTheme.Colors.SelBg;
-            baseStyle.SelectionForeColor = Color.Black;
-            _dgvComponentes.DefaultCellStyle = baseStyle;
-            // Reafirmar la selección en filas alternas para que el zebra no se
-            // imponga sobre el fondo de la fila seleccionada (selección uniforme).
-            var altStyle = _dgvComponentes.AlternatingRowsDefaultCellStyle;
-            altStyle.SelectionBackColor = SoproTheme.Colors.SelBg;
-            altStyle.SelectionForeColor = Color.Black;
-            _dgvComponentes.AlternatingRowsDefaultCellStyle = altStyle;
-            _dgvComponentes.CellPainting += DgvComponentes_CellPainting;
-            _dgvComponentes.CurrentCellChanged += (s, e) => _dgvComponentes.Invalidate();
+            // Selección por CELDA (tipo Excel, multi-rango con Shift/Ctrl): el color de
+            // selección y el contorno azul de la celda activa los aporta DgvCeldaHelper.
+            // Sin menú de copia propio: Ctrl+C lo gestiona el helper y el panel conserva
+            // su menú contextual de editar/eliminar. La geometría compacta del grid
+            // (encabezados de fila ocultos, scroll horizontal propio) no cambia.
+            SeleccionGridHelper.ConfigurarSeleccionPorCelda(_dgvComponentes);
+            DgvCeldaHelper.Aplicar(
+                _dgvComponentes,
+                conMenuCopia: false,
+                SoproTheme.Colors.SelBg,
+                Color.FromArgb(0, 120, 215),
+                mostrarRowHeaders: false);
             // Se conserva la rejilla horizontal mínima del panel (sin líneas verticales).
             _dgvComponentes.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
 
