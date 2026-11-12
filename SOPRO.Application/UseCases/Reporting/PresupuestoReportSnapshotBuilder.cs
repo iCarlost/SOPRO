@@ -1,3 +1,4 @@
+using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
 using SOPRO.Core.Entities;
@@ -61,9 +62,8 @@ public sealed class PresupuestoReportSnapshotBuilder
             .GroupBy(c => ReportColumnDefinitionMapper.NormalizarIdentificador(c.NombreInterno), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
-        var definiciones = columnas
-            .Where(c => c != null && !ReportColumnDefinitionMapper.EsColumnaInterna(c.NombreInterno))
-            .OrderBy(c => c.Orden)
+        var definiciones = BudgetColumnOrder.OrdenarPorOrdenPersistido(columnas)
+            .Where(c => !ReportColumnDefinitionMapper.EsColumnaInterna(c.NombreInterno))
             .Select(c =>
             {
                 var identificador = ReportColumnDefinitionMapper.NormalizarIdentificador(c.NombreInterno);

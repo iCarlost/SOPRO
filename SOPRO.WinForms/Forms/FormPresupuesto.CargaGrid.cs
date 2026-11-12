@@ -296,17 +296,11 @@ namespace SOPRO.WinForms.Forms
                 dgvPresupuesto.Columns.Add(nuevaColumna);
             }
 
-            foreach (DataGridViewColumn col in dgvPresupuesto.Columns)
-            {
-                if (col.Tag is ColumnaPersonalizada colDef)
-                {
-                    int displayIndex = colDef.Orden;
-                    if (displayIndex >= 0 && displayIndex < dgvPresupuesto.Columns.Count)
-                    {
-                        col.DisplayIndex = displayIndex;
-                    }
-                }
-            }
+            // El orden visible ya es la secuencia persistida ascendente en la que se
+            // agregaron las columnas (colId y colNumero quedan fijos al inicio y el
+            // relleno al final). No se reasigna DisplayIndex con valores absolutos:
+            // los órdenes persistidos pueden ser negativos o tener huecos y no son
+            // índices del DataGridView.
 
             dgvPresupuesto.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
             dgvPresupuesto.ScrollBars = ScrollBars.Both;

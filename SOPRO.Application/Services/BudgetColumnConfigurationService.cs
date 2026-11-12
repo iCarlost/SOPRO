@@ -450,6 +450,13 @@ namespace SOPRO.Application.Services
         /// con una posición de inserción conocida, la coloca a la derecha de la
         /// columna en foco y desplaza el resto, en el mismo único guardado.
         /// </summary>
+        /// <param name="insertionIndex">
+        /// Posición base cero de la columna enfocada entre las columnas
+        /// personalizadas VISIBLES en el orden persistido (ascendente por
+        /// <c>Orden</c>). No es un índice de columna del <c>DataGridView</c>: la
+        /// numeración fija <c>#</c>, <c>colId</c> y las columnas ocultas no forman
+        /// parte de este índice.
+        /// </param>
         public static BudgetColumnConfigurationResult SetColumnVisibility(
             IProjectDbContextFactory factory,
             string databasePath,
@@ -475,27 +482,54 @@ namespace SOPRO.Application.Services
 
                 if (visible && !columna.Visible && insertionIndex.HasValue && insertionIndex.Value >= 0)
                 {
-                    var ordenadas = columnas
-                        .OrderBy(c => c.Visible ? 0 : 1)
-                        .ThenBy(c => c.Orden)
-                        .ThenBy(c => c.Id)
-                        .ToList();
+                    // El foco es una columna visible: su posición es la visual entre
+                    // las visibles persistidas. Las ocultas no alteran el índice (el
+                    // llamador entrega el rank visual, no un ColumnIndex del grid).
+                    var ordenadasVisibles = BudgetColumnOrder.OrdenarPorOrdenPersistido(
+                        columnas.Where(c => c.Visible));
 
-                    var enFoco = ordenadas.Skip(insertionIndex.Value).FirstOrDefault();
-                    int nuevoOrden = enFoco != null
-                        ? enFoco.Orden + 1
-                        : (columnas.Max(c => (int?)c.Orden) ?? 0) + 1;
-
-                    foreach (var otra in columnas.Where(c => c.Orden >= nuevoOrden && c.Id != columna.Id))
+                    var enFoco = ordenadasVisibles.Skip(insertionIndex.Value).FirstOrDefault();
+                    if (enFoco != null)
                     {
-                        otra.Orden++;
-                        huboCambios = true;
+                        // Secuencia completa determinista (Orden, Id), incluyendo ocultas:
+                        // se extrae la columna que se va a mostrar y se reinserta justo
+                        // después del foco. Luego se renumera toda la secuencia para que
+                        // los empates de Orden no dejen a otra visible delante del foco.
+                        var secuencia = BudgetColumnOrder
+                            .OrdenarPorOrdenPersistido(columnas)
+                            .Where(c => c.Id != columna.Id)
+                            .ToList();
+
+                        int indiceFoco = secuencia.FindIndex(c => c.Id == enFoco.Id);
+                        if (indiceFoco >= 0)
+                        {
+                            secuencia.Insert(indiceFoco + 1, columna);
+
+                            for (int i = 0; i < secuencia.Count; i++)
+                            {
+                                if (secuencia[i].Orden != i)
+                                {
+                                    secuencia[i].Orden = i;
+                                    huboCambios = true;
+                                }
+                            }
+                        }
                     }
+                    else
+                    {
+                        int nuevoOrden = (columnas.Max(c => (int?)c.Orden) ?? 0) + 1;
 
-                    if (columna.Orden != nuevoOrden)
-                        huboCambios = true;
+                        foreach (var otra in columnas.Where(c => c.Orden >= nuevoOrden && c.Id != columna.Id))
+                        {
+                            otra.Orden++;
+                            huboCambios = true;
+                        }
 
-                    columna.Orden = nuevoOrden;
+                        if (columna.Orden != nuevoOrden)
+                            huboCambios = true;
+
+                        columna.Orden = nuevoOrden;
+                    }
                 }
 
                 if (columna.Visible != visible)
