@@ -97,6 +97,12 @@ namespace SOPRO.WinForms.Helpers
             public static readonly Font GridHeader = new Font(FontFamily, 9F, FontStyle.Bold, GraphicsUnit.Point);
             public static readonly Font Button = new Font(FontFamily, 9.5F, FontStyle.Bold, GraphicsUnit.Point);
             public static readonly Font GroupTitle = new Font(FontFamily, 10F, FontStyle.Bold, GraphicsUnit.Point);
+
+            /// <summary>
+            /// Rotulo de grupo del ribbon (pie de cada bloque). Tono apagado,
+            /// al pie de la banda de comandos.
+            /// </summary>
+            public static readonly Font RibbonGroupCaption = new Font(FontFamily, 8.5F, FontStyle.Regular, GraphicsUnit.Point);
         }
 
         // =====================================================================
@@ -507,6 +513,150 @@ namespace SOPRO.WinForms.Helpers
             ApplyProyectoHeader(form);
             ApplyProyectoSidebar(form);
             ApplyProyectoRibbonChrome(form);
+            ApplyProyectoRibbonSelectors(form);
+        }
+
+        /// <summary>
+        /// Selectores del ribbon (tipo de fuente y tamano). El ComboBox dibuja
+        /// el elemento seleccionado con los colores del sistema (ignora su
+        /// BackColor), asi que se pinta en modo owner-draw para que respete
+        /// la paleta oscura del ribbon.
+        /// </summary>
+        private static void ApplyProyectoRibbonSelectors(FormProyecto form)
+        {
+            var combo = form.cboFuente;
+            if (combo != null)
+            {
+                combo.FlatStyle = FlatStyle.Flat;
+                combo.BackColor = Colors.RibbonDown;
+                combo.ForeColor = Colors.RibbonText;
+                combo.DrawMode = DrawMode.OwnerDrawFixed;
+                combo.ItemHeight = CalcularItemHeightComboRibbon(combo);
+                combo.DrawItem -= DrawRibbonComboItem;
+                combo.DrawItem += DrawRibbonComboItem;
+
+                // El alto del item depende de la fuente y del DPI: a 200 % un
+                // alto fijo (20) recortaba los nombres de fuente. Se recalcula
+                // en ambos cambios. El -= previo al += evita suscripciones
+                // duplicadas si el tema se aplica mas de una vez al selector.
+                combo.FontChanged -= RibbonCombo_AplicarItemHeight;
+                combo.FontChanged += RibbonCombo_AplicarItemHeight;
+                combo.DpiChangedAfterParent -= RibbonCombo_AplicarItemHeight;
+                combo.DpiChangedAfterParent += RibbonCombo_AplicarItemHeight;
+            }
+
+            var numerico = form.nudTamano;
+            if (numerico != null)
+            {
+                numerico.BackColor = Colors.RibbonDown;
+                numerico.ForeColor = Colors.RibbonText;
+
+                // Los botones +/- los pinta el sistema: se tiñen con el fondo
+                // del grupo para que no rompan la banda oscura.
+                if (numerico.Controls.Count > 0)
+                    numerico.Controls[0].BackColor = Colors.RibbonDown;
+            }
+        }
+
+        /// <summary>
+        /// Alto minimo del item del selector de fuentes del ribbon (px a 96 DPI).
+        /// Es el valor historico: por debajo el texto se rozaba.
+        /// </summary>
+        internal const int ItemHeightMinimoComboRibbon = 20;
+
+        /// <summary>
+        /// Aire vertical del item owner-draw (px): texto medido + este margen.
+        /// </summary>
+        internal const int MargenVerticalItemComboRibbon = 5;
+
+        /// <summary>
+        /// Alto seguro del item owner-draw a partir del alto ya medido del
+        /// texto de la fuente. Es una funcion PURA (no toca la UI), pensada para
+        /// poder testearla sin levantar el ComboBox: nunca baja del minimo
+        /// historico y crece con la fuente.
+        /// </summary>
+        internal static int CalcularItemHeightComboRibbon(int altoTextoMedido)
+            => Math.Max(ItemHeightMinimoComboRibbon, altoTextoMedido + MargenVerticalItemComboRibbon);
+
+        /// <summary>
+        /// Alto seguro del item owner-draw del selector de fuentes. Mide "Mg"
+        /// (mayuscula + descendente: el caso mas alto) con la fuente real.
+        /// Si el control ya tiene handle, la medicion se hace con su DC para
+        /// respetar el DPI real del monitor; si no, se usa la medicion global.
+        /// </summary>
+        internal static int CalcularItemHeightComboRibbon(ComboBox? combo)
+        {
+            if (combo == null || combo.Font == null) return ItemHeightMinimoComboRibbon;
+
+            const TextFormatFlags flags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix;
+            var limite = new Size(int.MaxValue, int.MaxValue);
+
+            Graphics? dc = null;
+            try
+            {
+                dc = combo.CreateGraphics();
+            }
+            catch (ObjectDisposedException)
+            {
+                dc = null;
+            }
+            catch (InvalidOperationException)
+            {
+                dc = null;
+            }
+
+            try
+            {
+                int alto = dc != null
+                    ? TextRenderer.MeasureText(dc, "Mg", combo.Font, limite, flags).Height
+                    : TextRenderer.MeasureText("Mg", combo.Font, limite, flags).Height;
+
+                return CalcularItemHeightComboRibbon(alto);
+            }
+            finally
+            {
+                dc?.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Recalcula el alto del item owner-draw del selector de fuentes.
+        /// Handler ESTATICO a proposito: asi el -= antes del += elimina la
+        /// suscripcion anterior en vez de acumular duplicados.
+        /// </summary>
+        private static void RibbonCombo_AplicarItemHeight(object? sender, EventArgs e)
+        {
+            if (sender is ComboBox combo)
+                combo.ItemHeight = CalcularItemHeightComboRibbon(combo);
+        }
+
+        private static void DrawRibbonComboItem(object? sender, DrawItemEventArgs e)
+        {
+            if (sender is not ComboBox combo || e.Graphics == null) return;
+
+            bool seleccionado = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+            Color fondo = seleccionado ? Colors.RibbonHover : combo.BackColor;
+            Color texto = seleccionado ? Colors.Surface : combo.ForeColor;
+
+            using (var brush = new SolidBrush(fondo))
+                e.Graphics.FillRectangle(brush, e.Bounds);
+
+            string contenido = string.Empty;
+            if (e.Index >= 0 && e.Index < combo.Items.Count)
+                contenido = combo.Items[e.Index]?.ToString() ?? string.Empty;
+            else if (e.Index == -1 && combo.SelectedItem != null)
+                contenido = combo.SelectedItem.ToString() ?? string.Empty;
+
+            if (contenido.Length == 0) return;
+
+            TextRenderer.DrawText(
+                e.Graphics,
+                contenido,
+                combo.Font,
+                e.Bounds,
+                texto,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
         }
 
         private static void ApplyProyectoHeader(FormProyecto form)
@@ -639,18 +789,74 @@ namespace SOPRO.WinForms.Helpers
                     separator.BackColor = Colors.RibbonSeparatorDark;
             }
 
+            // Rotulos de grupo: al pie de la banda de comandos, en tono apagado.
+            foreach (var caption in new[]
+            {
+                form.lblGroupDatos, form.lblGroupExportar, form.lblGroupFuente,
+                form.lblGroupAlineacion, form.lblGroupColores, form.lblGroupCeldas
+            })
+            {
+                if (caption == null) continue;
+                caption.Font = Fonts.RibbonGroupCaption;
+                caption.ForeColor = Colors.RibbonDisabledIcon;
+            }
+
             foreach (var button in new[]
             {
                 form.btnPdfRibbon, form.btnExcelRibbon, form.btnDepurarRibbon,
                 form.btnRecalcularRibbon, form.btnBuscarRibbon, form.btnWrapRibbon,
                 form.btnConsolidarInsumos, form.btnAplicarATodas, form.btnAlinAba,
                 form.btnAlinMed, form.btnAlinJus, form.btnAlinDer, form.btnAlinCen,
-                form.btnAlinIzq
+                form.btnAlinIzq, form.btnColorTexto, form.btnColorFondo
             })
             {
                 if (button != null)
                     button.SoproDisabledIconColor = Colors.RibbonDisabledIcon;
             }
+
+            ApplyProyectoRibbonIndicadorDestino(form);
+        }
+
+        /// <summary>
+        /// Indicador de destino del formato (columna o seleccion de celdas):
+        /// contraste y tooltip.
+        ///
+        /// 1. FormProyecto.Ribbon.cs colorea el indicador con <see cref="Color.Gray"/>
+        ///    cuando no hay destino activo. Sobre el ribbon oscuro ese gris se
+        ///    queda en ~3.9:1, por debajo del 4.5:1 de WCAG AA, asi que aqui se
+        ///    re-mapea al token apagado del tema (~6:1) sin tocar el ribbon.
+        /// 2. El tooltip se sincroniza con el texto real del indicador: asi
+        ///    explica SIEMPRE a que se aplica el formato (columna o celdas) en
+        ///    vez de un texto generico que puede quedar desfasado.
+        /// </summary>
+        private static void ApplyProyectoRibbonIndicadorDestino(FormProyecto form)
+        {
+            var indicador = form.lblColumna;
+            if (indicador == null) return;
+
+            indicador.AutoEllipsis = true;
+            indicador.ForeColorChanged += (_, __) => NormalizarColorIndicadorDestino(indicador);
+            NormalizarColorIndicadorDestino(indicador);
+
+            var toolTip = form.toolTipRibbon;
+            if (toolTip == null) return;
+
+            void SincronizarTooltipIndicador()
+                => toolTip.SetToolTip(indicador, $"Destino del formato: {indicador.Text}");
+
+            indicador.TextChanged += (_, __) => SincronizarTooltipIndicador();
+            SincronizarTooltipIndicador();
+        }
+
+        /// <summary>
+        /// Re-mapea el gris heredado del indicador de destino al token apagado
+        /// del tema. El blanco (destino activo) se respeta: ya tiene contraste.
+        /// </summary>
+        private static void NormalizarColorIndicadorDestino(Label indicador)
+        {
+            if (indicador == null) return;
+            if (indicador.ForeColor == Color.Gray)
+                indicador.ForeColor = Colors.RibbonDisabledIcon;
         }
 
         private static void EnableDoubleBuffering(Control control)

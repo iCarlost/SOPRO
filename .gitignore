@@ -431,6 +431,9 @@ FodyWeavers.xsd
 .ignore
 .slim/
 
+# Mockup externo de ribbon (el directorio original vive fuera del repo).
+/Ribbon sin pestañas-html/
+
 # Datos reales y artefactos SQLite (decision-record seccion 2)
 *.db
 *.db-wal
