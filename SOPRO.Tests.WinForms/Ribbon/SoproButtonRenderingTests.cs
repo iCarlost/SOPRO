@@ -99,6 +99,36 @@ public class SoproButtonRenderingTests
     }
 
     [TestMethod]
+    public void IconosGrandes_UsanBordesSuavizados()
+    {
+        foreach (SoproIconType tipo in new[]
+        {
+            SoproIconType.Recalcular,
+            SoproIconType.Depurar,
+            SoproIconType.Consolidar,
+            SoproIconType.Buscar
+        })
+        {
+            using Image icono = SoproIconProvider.GetIcon(tipo, Color.White, 30);
+            int pixelesDeBordeSuavizado = 0;
+
+            for (int y = 0; y < icono.Height; y++)
+            {
+                for (int x = 0; x < icono.Width; x++)
+                {
+                    byte alpha = ((Bitmap)icono).GetPixel(x, y).A;
+                    if (alpha > 0 && alpha < 255)
+                        pixelesDeBordeSuavizado++;
+                }
+            }
+
+            Assert.IsTrue(
+                pixelesDeBordeSuavizado > 0,
+                $"El icono {tipo} debe usar suavizado de bordes a 30 px.");
+        }
+    }
+
+    [TestMethod]
     public void SampleSwatch_DibujaParcheDe12x12DentroDelBoton()
     {
         using var boton = CrearBoton();

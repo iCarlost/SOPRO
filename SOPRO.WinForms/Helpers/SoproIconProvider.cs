@@ -110,9 +110,9 @@ namespace SOPRO.WinForms.Helpers
             var previousSmoothing = g.SmoothingMode;
             var previousInterpolation = g.InterpolationMode;
             var previousPixelOffset = g.PixelOffsetMode;
-            g.SmoothingMode = SmoothingMode.None;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
             g.InterpolationMode = InterpolationMode.NearestNeighbor;
-            g.PixelOffsetMode = PixelOffsetMode.None;
+            g.PixelOffsetMode = PixelOffsetMode.Half;
 
             using var pen = new Pen(color, Trazo(size));
             using var solid = new SolidBrush(color);
@@ -209,9 +209,9 @@ namespace SOPRO.WinForms.Helpers
             var previousSmoothing = g.SmoothingMode;
             var previousInterpolation = g.InterpolationMode;
             var previousPixelOffset = g.PixelOffsetMode;
-            g.SmoothingMode = SmoothingMode.None;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
             g.InterpolationMode = InterpolationMode.NearestNeighbor;
-            g.PixelOffsetMode = PixelOffsetMode.None;
+            g.PixelOffsetMode = PixelOffsetMode.Half;
 
             using var pen = new Pen(color, Trazo(size));
             using var solid = new SolidBrush(color);
@@ -241,9 +241,9 @@ namespace SOPRO.WinForms.Helpers
             var previousSmoothing = g.SmoothingMode;
             var previousInterpolation = g.InterpolationMode;
             var previousPixelOffset = g.PixelOffsetMode;
-            g.SmoothingMode = SmoothingMode.None;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
             g.InterpolationMode = InterpolationMode.NearestNeighbor;
-            g.PixelOffsetMode = PixelOffsetMode.None;
+            g.PixelOffsetMode = PixelOffsetMode.Half;
 
             using var pen = new Pen(color, Trazo(size));
             using var solid = new SolidBrush(color);
@@ -504,9 +504,9 @@ namespace SOPRO.WinForms.Helpers
             var previousSmoothing = g.SmoothingMode;
             var previousInterpolation = g.InterpolationMode;
             var previousPixelOffset = g.PixelOffsetMode;
-            g.SmoothingMode = SmoothingMode.None;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
             g.InterpolationMode = InterpolationMode.NearestNeighbor;
-            g.PixelOffsetMode = PixelOffsetMode.None;
+            g.PixelOffsetMode = PixelOffsetMode.Half;
 
             using var pen = new Pen(color, Trazo(size));
             using var solid = new SolidBrush(color);
