@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.EntityFrameworkCore;
@@ -303,7 +304,110 @@ namespace SOPRO.WinForms.Forms
             btnRibbonMas.FlatAppearance.MouseDownBackColor = SoproTheme.Colors.RibbonDown;
         }
 
-        private void ActualizarOverflowRibbon()
+        // ════════════════ Overflow del ribbon (grupos semánticos) ════════════════
+        //
+        // El ribbon se organiza en seis grupos físicos, de IZQUIERDA a DERECHA:
+        // Datos → Exportar → Fuente → Alineación → Colores → Celdas. Al reducirse
+        // el ancho se colapsan de DERECHA a IZQUIERDA (la parte visible es siempre
+        // un prefijo de grupos), por lo que Datos y Exportar son los últimos en
+        // ocultarse. El caption del grupo (lblGroup*) y los separadores viajan con
+        // su grupo: se ocultan y reaparecen con él.
+        //
+        // Los selectores de Fuente (cboFuente, nudTamano) y el indicador
+        // lblColumna no se pierden: cuando el grupo está oculto se ofrecen en el
+        // menú "⋯" operando sobre los MISMOS controles reales (mismos handlers y
+        // mismo estado habilitado), sin reparentarlos.
+
+        private const int MargenDerechoOverflowRibbon = 8;
+        private const int SeparacionBotonOverflowRibbon = 8;
+        private const int MargenIzquierdoOverflowRibbon = 4;
+
+        private readonly HashSet<Control> _controlesOcultosOverflowRibbon = new();
+        private bool _clickMenuOverflowEnCurso;
+        private bool _menuOverflowReconstruccionPendiente;
+        private bool _suscripcionMenuOverflowLista;
+        private bool _reconstruccionMenuOverflowDiferidaProgramada;
+
+        private sealed class GrupoRibbonOverflow
+        {
+            public GrupoRibbonOverflow(string clave, string nombreCaption, params Control[] controles)
+            {
+                Clave = clave;
+                NombreCaption = nombreCaption;
+                Controles = controles ?? Array.Empty<Control>();
+            }
+
+            public string Clave { get; }
+
+            public string NombreCaption { get; }
+
+            public IReadOnlyList<Control> Controles { get; }
+        }
+
+        /// <summary>
+        /// Grupos del ribbon en su orden físico de izquierda a derecha. Es la
+        /// única fuente de verdad para el overflow y para el orden del menú.
+        /// </summary>
+        private IReadOnlyList<GrupoRibbonOverflow> ObtenerGruposRibbon()
+        {
+            return new[]
+            {
+                new GrupoRibbonOverflow("Datos", "lblGroupDatos",
+                    btnRecalcularRibbon, btnDepurarRibbon, btnConsolidarInsumos, btnBuscarRibbon),
+                new GrupoRibbonOverflow("Exportar", "lblGroupExportar",
+                    btnExcelRibbon, btnPdfRibbon),
+                new GrupoRibbonOverflow("Fuente", "lblGroupFuente",
+                    cboFuente, nudTamano, btnNegrita, btnCursiva, lblColumna),
+                new GrupoRibbonOverflow("Alineacion", "lblGroupAlineacion",
+                    btnAlinIzq, btnAlinCen, btnAlinDer, btnAlinJus, btnAlinMed, btnAlinAba),
+                new GrupoRibbonOverflow("Colores", "lblGroupColores",
+                    btnColorTexto, btnColorFondo),
+                new GrupoRibbonOverflow("Celdas", "lblGroupCeldas",
+                    btnWrapRibbon, btnAplicarATodas),
+            };
+        }
+
+        internal IReadOnlyList<string> ObtenerClavesGruposRibbon()
+            => ObtenerGruposRibbon().Select(grupo => grupo.Clave).ToArray();
+
+        internal IReadOnlyList<Control> ObtenerControlesGrupoRibbon(string clave)
+            => ObtenerGruposRibbon().First(grupo => grupo.Clave == clave).Controles;
+
+        /// <summary>
+        /// Caption y separadores que acompañan visualmente a un grupo.
+        /// </summary>
+        internal IReadOnlyList<Control> ObtenerDecorGrupoRibbon(string clave)
+        {
+            var grupos = ObtenerGruposRibbon();
+            var decor = ObtenerDecorGruposRibbon(grupos);
+            var grupo = grupos.First(g => g.Clave == clave);
+            return decor[grupo];
+        }
+
+        internal bool EstaOcultoPorOverflowRibbon(Control control)
+            => control != null && _controlesOcultosOverflowRibbon.Contains(control);
+
+        /// <summary>
+        /// Cantidad de grupos visibles (prefijo) que caben en <paramref name="limiteDerecho"/>.
+        /// El primer grupo cuyo borde derecho no cabe se oculta junto con todos los
+        /// que están a su derecha; así el colapso es siempre de derecha a izquierda
+        /// y el orden de prioridad queda fijado por el orden de la lista.
+        /// </summary>
+        internal static int CalcularGruposVisiblesRibbon(IReadOnlyList<int> bordesDerechos, int limiteDerecho)
+        {
+            if (bordesDerechos == null)
+                return 0;
+
+            for (int i = 0; i < bordesDerechos.Count; i++)
+            {
+                if (bordesDerechos[i] > limiteDerecho)
+                    return i;
+            }
+
+            return bordesDerechos.Count;
+        }
+
+        internal void ActualizarOverflowRibbon()
         {
             if (panelRibbon == null || btnRibbonMas == null || cmsRibbonOverflow == null || _actualizandoOverflowRibbon)
                 return;
@@ -312,29 +416,23 @@ namespace SOPRO.WinForms.Forms
             panelRibbon.SuspendLayout();
             try
             {
-                btnRibbonMas.Location = new Point(Math.Max(4, panelRibbon.ClientSize.Width - btnRibbonMas.Width - 6), Math.Max(6, (panelRibbon.ClientSize.Height - btnRibbonMas.Height) / 2));
+                AsegurarSuscripcionMenuOverflowRibbon();
 
-                foreach (var grupo in ObtenerGruposOverflowRibbon())
-                {
-                    foreach (var control in grupo)
-                        control.Visible = true;
-                }
+                var grupos = ObtenerGruposRibbon();
+                var decor = ObtenerDecorGruposRibbon(grupos);
 
-                int rightLimit = btnRibbonMas.Left - 8;
-                bool hayOcultos = false;
+                // Estado de partida idempotente: cada control recibe su visibilidad
+                // definitiva en una sola asignación (sin re-mostrar y volver a
+                // ocultar, que podría provocar un parpadeo).
+                _controlesOcultosOverflowRibbon.Clear();
 
-                foreach (var grupo in ObtenerGruposOverflowRibbon())
-                {
-                    int groupRight = grupo.Max(c => c.Right);
-                    if (groupRight > rightLimit)
-                    {
-                        foreach (var control in grupo)
-                            control.Visible = false;
+                var bordes = grupos.Select(grupo => BordeDerechoGrupoRibbon(grupo, decor[grupo])).ToArray();
+                int gruposVisibles = CalcularGruposVisiblesYPosicionarBotonOverflowRibbon(bordes);
 
-                        hayOcultos = true;
-                    }
-                }
+                for (int i = 0; i < grupos.Count; i++)
+                    AplicarVisibilidadGrupoRibbon(grupos[i], decor[grupos[i]], i < gruposVisibles);
 
+                bool hayOcultos = _controlesOcultosOverflowRibbon.Count > 0;
                 btnRibbonMas.Visible = hayOcultos;
                 ReconstruirMenuOverflowRibbon();
             }
@@ -345,50 +443,297 @@ namespace SOPRO.WinForms.Forms
             }
         }
 
-        private IEnumerable<Control[]> ObtenerGruposOverflowRibbon()
+        /// <summary>
+        /// Calcula cuántos grupos caben y coloca el botón "⋯" inmediatamente a la
+        /// derecha del último grupo visible (con un margen seguro), en vez de
+        /// dejarlo anclado al borde del panel con un hueco grande en medio. Si no
+        /// cabe ningún grupo, el botón queda en el margen izquierdo. Si no hay
+        /// overflow, no se mueve del borde (y permanece oculto).
+        /// </summary>
+        private int CalcularGruposVisiblesYPosicionarBotonOverflowRibbon(IReadOnlyList<int> bordes)
         {
-            yield return new Control[] { lblSepReporte, label2, btnExcelRibbon, btnPdfRibbon };
-            yield return new Control[] { btnAplicarATodas, btnConsolidarInsumos };
-            yield return new Control[] { label1, btnRecalcularRibbon, btnDepurarRibbon };
-            yield return new Control[] { lblSepGlobal, btnWrapRibbon, btnBuscarRibbon };
-            yield return new Control[] { lblSepAlin, btnAlinJus, btnAlinMed, btnAlinAba, btnAlinIzq, btnAlinCen, btnAlinDer };
-            yield return new Control[] { lblSepEstilo, btnColorFondo, btnColorTexto };
-            yield return new Control[] { btnNegrita, btnCursiva };
+            // Estimación con el botón en el borde derecho: define el overflow real.
+            PosicionarBotonOverflowRibbonEn(
+                panelRibbon.ClientSize.Width - btnRibbonMas.Width - MargenDerechoOverflowRibbon);
+            int margenDerecho = btnRibbonMas.Left - MargenDerechoOverflowRibbon;
+            int gruposVisibles = CalcularGruposVisiblesRibbon(bordes, margenDerecho);
+
+            if (gruposVisibles >= bordes.Count)
+                return gruposVisibles;
+
+            // Borde real del prefijo visible (tolerante a geometrías no monótonas).
+            int bordePrefijoVisible = 0;
+            for (int i = 0; i < gruposVisibles; i++)
+                bordePrefijoVisible = Math.Max(bordePrefijoVisible, bordes[i]);
+
+            int izquierda = gruposVisibles == 0
+                ? MargenIzquierdoOverflowRibbon
+                : bordePrefijoVisible + SeparacionBotonOverflowRibbon;
+
+            PosicionarBotonOverflowRibbonEn(izquierda);
+
+            // Recalcular por seguridad: la nueva posición conserva el mismo
+            // prefijo (nunca oculta un grupo que ya cabía).
+            return CalcularGruposVisiblesRibbon(bordes, btnRibbonMas.Left - MargenDerechoOverflowRibbon);
         }
 
-        private void ReconstruirMenuOverflowRibbon()
+        private void PosicionarBotonOverflowRibbonEn(int izquierda)
         {
+            int x = Math.Max(MargenIzquierdoOverflowRibbon, izquierda);
+            int xMaximo = panelRibbon.ClientSize.Width - btnRibbonMas.Width - MargenIzquierdoOverflowRibbon;
+            if (xMaximo >= MargenIzquierdoOverflowRibbon)
+                x = Math.Min(x, xMaximo);
+
+            btnRibbonMas.Location = new Point(
+                x,
+                Math.Max(6, (panelRibbon.ClientSize.Height - btnRibbonMas.Height) / 2));
+        }
+
+        private void AplicarVisibilidadGrupoRibbon(
+            GrupoRibbonOverflow grupo, IEnumerable<Control> decor, bool visible)
+        {
+            foreach (var control in grupo.Controles.Concat(decor))
+            {
+                if (control == null)
+                    continue;
+
+                control.Visible = visible;
+                if (!visible)
+                    _controlesOcultosOverflowRibbon.Add(control);
+            }
+        }
+
+        private Dictionary<GrupoRibbonOverflow, List<Control>> ObtenerDecorGruposRibbon(
+            IReadOnlyList<GrupoRibbonOverflow> grupos)
+        {
+            var decor = grupos.ToDictionary(grupo => grupo, _ => new List<Control>());
+
+            foreach (var grupo in grupos)
+            {
+                var caption = ObtenerCaptionGrupoRibbon(grupo.NombreCaption);
+                if (caption != null)
+                    decor[grupo].Add(caption);
+            }
+
+            foreach (var separador in ObtenerSeparadoresRibbon())
+            {
+                var destino = GrupoMasCercanoALaDerechaRibbon(separador, grupos);
+                if (destino != null && !decor[destino].Contains(separador))
+                    decor[destino].Add(separador);
+            }
+
+            return decor;
+        }
+
+        private Control? ObtenerCaptionGrupoRibbon(string nombre)
+        {
+            if (panelRibbon == null || string.IsNullOrEmpty(nombre))
+                return null;
+
+            return panelRibbon.Controls.Find(nombre, false).FirstOrDefault();
+        }
+
+        /// <summary>
+        /// Separadores verticales heredados (1 px). Se resuelven dinámicamente para
+        /// que cada uno viaje con el grupo que tiene inmediatamente a su derecha,
+        /// sin depender de coordenadas fijas: cuando el lane de diseño reemplace el
+        /// layout siguen acompañando al grupo correcto.
+        /// </summary>
+        private IEnumerable<Control> ObtenerSeparadoresRibbon()
+        {
+            var candidatos = new Control?[]
+            {
+                lblSepGlobal, lblSepFuente, lblSepEstilo, lblSepAlin, lblSepReporte, label1, label2
+            };
+
+            return candidatos
+                .Where(control => control != null && ReferenceEquals(control.Parent, panelRibbon))
+                .Select(control => control!);
+        }
+
+        private GrupoRibbonOverflow? GrupoMasCercanoALaDerechaRibbon(
+            Control separador, IReadOnlyList<GrupoRibbonOverflow> grupos)
+        {
+            int x = OrigenEnRibbon(separador).X;
+            GrupoRibbonOverflow? siguiente = null;
+            int siguienteIzquierda = int.MaxValue;
+            GrupoRibbonOverflow? anterior = null;
+            int anteriorIzquierda = int.MinValue;
+
+            foreach (var grupo in grupos)
+            {
+                int izquierda = IzquierdaGrupoRibbon(grupo);
+                if (izquierda == int.MaxValue)
+                    continue;
+
+                if (izquierda >= x && izquierda < siguienteIzquierda)
+                {
+                    siguiente = grupo;
+                    siguienteIzquierda = izquierda;
+                }
+                else if (izquierda < x && izquierda > anteriorIzquierda)
+                {
+                    anterior = grupo;
+                    anteriorIzquierda = izquierda;
+                }
+            }
+
+            return siguiente ?? anterior;
+        }
+
+        private int IzquierdaGrupoRibbon(GrupoRibbonOverflow grupo)
+        {
+            int izquierda = int.MaxValue;
+            foreach (var control in grupo.Controles)
+            {
+                if (control == null)
+                    continue;
+
+                izquierda = Math.Min(izquierda, OrigenEnRibbon(control).X);
+            }
+
+            return izquierda;
+        }
+
+        private int BordeDerechoGrupoRibbon(GrupoRibbonOverflow grupo, IEnumerable<Control> decor)
+        {
+            int borde = int.MinValue;
+            foreach (var control in grupo.Controles.Concat(decor))
+            {
+                if (control == null)
+                    continue;
+
+                Point origen = OrigenEnRibbon(control);
+                borde = Math.Max(borde, origen.X + control.Width);
+            }
+
+            return borde == int.MinValue ? 0 : borde;
+        }
+
+        /// <summary>
+        /// Origen del control en coordenadas de panelRibbon, aunque el lane de
+        /// diseño lo anide en un contenedor intermedio.
+        /// </summary>
+        private Point OrigenEnRibbon(Control control)
+        {
+            Point origen = control.Location;
+            Control? padre = control.Parent;
+            while (padre != null && !ReferenceEquals(padre, panelRibbon))
+            {
+                origen.Offset(padre.Location);
+                padre = padre.Parent;
+            }
+
+            return origen;
+        }
+
+        private void ReconstruirMenuOverflowRibbon(bool forzarReconstruccion = false)
+        {
+            AsegurarSuscripcionMenuOverflowRibbon();
+
+            // Nunca se vacía/repuebla el menú desde el Click de uno de sus items
+            // (rompería el dispatch en curso) ni con el menú desplegado: la
+            // reconstrucción se difiere hasta que el menú se cierre.
+            if (!forzarReconstruccion && (_clickMenuOverflowEnCurso || cmsRibbonOverflow.Visible))
+            {
+                _menuOverflowReconstruccionPendiente = true;
+                return;
+            }
+
+            _menuOverflowReconstruccionPendiente = false;
             cmsRibbonOverflow.Items.Clear();
 
-            AgregarItemOverflowRibbon(btnNegrita, "Negrita");
-            AgregarItemOverflowRibbon(btnCursiva, "Cursiva");
-            AgregarItemOverflowRibbon(btnColorFondo, "Color de fondo");
-            AgregarItemOverflowRibbon(btnColorTexto, "Color de texto");
-            AgregarItemOverflowRibbon(btnAlinJus, "Alinear arriba");
-            AgregarItemOverflowRibbon(btnAlinMed, "Alinear medio");
-            AgregarItemOverflowRibbon(btnAlinAba, "Alinear abajo");
-            AgregarItemOverflowRibbon(btnAlinIzq, "Alinear izquierda");
-            AgregarItemOverflowRibbon(btnAlinCen, "Alinear centro");
-            AgregarItemOverflowRibbon(btnAlinDer, "Alinear derecha");
-            AgregarItemOverflowRibbon(btnWrapRibbon, "Ajustar");
-            AgregarItemOverflowRibbon(btnBuscarRibbon, "Buscar");
-            AgregarItemOverflowRibbon(btnRecalcularRibbon, "Recalcular");
-            AgregarItemOverflowRibbon(btnDepurarRibbon, "Depurar");
-            AgregarItemOverflowRibbon(btnAplicarATodas, "Aplicar");
-            AgregarItemOverflowRibbon(btnConsolidarInsumos, "Consolidar");
-            AgregarItemOverflowRibbon(btnExcelRibbon, "Excel");
-            AgregarItemOverflowRibbon(btnPdfRibbon, "PDF");
+            bool primerBloque = true;
+            foreach (var grupo in ObtenerGruposRibbon())
+            {
+                bool grupoTieneOcultos = grupo.Controles.Any(_controlesOcultosOverflowRibbon.Contains);
+                if (!grupoTieneOcultos)
+                    continue;
+
+                if (!primerBloque)
+                    cmsRibbonOverflow.Items.Add(new ToolStripSeparator());
+                primerBloque = false;
+
+                // Orden físico dentro del grupo (selectores incluidos).
+                foreach (var control in grupo.Controles)
+                {
+                    if (!_controlesOcultosOverflowRibbon.Contains(control))
+                        continue;
+
+                    if (control is Button boton)
+                        AgregarItemOverflowRibbon(boton, ObtenerTextoOverflowRibbon(boton));
+                    else if (ReferenceEquals(control, cboFuente))
+                        AgregarSubmenuFuenteOverflowRibbon();
+                    else if (ReferenceEquals(control, nudTamano))
+                        AgregarSubmenuTamanoOverflowRibbon();
+                    else if (ReferenceEquals(control, lblColumna))
+                        AgregarIndicadorColumnaOverflowRibbon();
+                }
+            }
 
             btnRibbonMas.Enabled = cmsRibbonOverflow.Items.Count > 0;
         }
 
+        private void AsegurarSuscripcionMenuOverflowRibbon()
+        {
+            if (_suscripcionMenuOverflowLista || cmsRibbonOverflow == null)
+                return;
+
+            cmsRibbonOverflow.Closed += (_, __) => NotificarMenuOverflowCerrado();
+            _suscripcionMenuOverflowLista = true;
+        }
+
+        /// <summary>
+        /// Cierre real del menú (o flush diferido equivalente): recién aquí es
+        /// seguro vaciar y repoblar los items que el menú estaba despachando.
+        /// </summary>
+        internal void NotificarMenuOverflowCerrado()
+        {
+            if (IsDisposed || Disposing)
+                return;
+
+            if (!_menuOverflowReconstruccionPendiente || _clickMenuOverflowEnCurso
+                || cmsRibbonOverflow == null || cmsRibbonOverflow.IsDisposed)
+                return;
+
+            _menuOverflowReconstruccionPendiente = false;
+            ReconstruirMenuOverflowRibbon(forzarReconstruccion: true);
+        }
+
+        /// <summary>
+        /// Si un comando refrescó el overflow durante su propio Click (sin handle
+        /// todavía no hay bucle de mensajes), la reconstrucción se pospone y se
+        /// ejecuta fuera del dispatch del item.
+        /// </summary>
+        private void ProgramarReconstruccionMenuOverflowRibbon()
+        {
+            if (!_menuOverflowReconstruccionPendiente || _reconstruccionMenuOverflowDiferidaProgramada)
+                return;
+
+            if (!IsHandleCreated || IsDisposed || Disposing)
+                return; // Pruebas/sin bucle de mensajes: se hará al cerrar o reabrir.
+
+            _reconstruccionMenuOverflowDiferidaProgramada = true;
+            BeginInvoke(new Action(() =>
+            {
+                _reconstruccionMenuOverflowDiferidaProgramada = false;
+                if (_menuOverflowReconstruccionPendiente
+                    && !_clickMenuOverflowEnCurso
+                    && !cmsRibbonOverflow.Visible)
+                {
+                    NotificarMenuOverflowCerrado();
+                }
+            }));
+        }
+
         private void AgregarItemOverflowRibbon(Button button, string texto)
         {
-            if (button == null || button.Visible)
+            if (button == null)
                 return;
 
             var item = new ToolStripMenuItem(texto)
             {
+                Name = $"itemOverflow_{button.Name}",
                 Enabled = button.Enabled,
                 Tag = button
             };
@@ -396,37 +741,195 @@ namespace SOPRO.WinForms.Forms
             cmsRibbonOverflow.Items.Add(item);
         }
 
+        private void AgregarSubmenuFuenteOverflowRibbon()
+        {
+            var item = new ToolStripMenuItem("Fuente")
+            {
+                Name = "itemOverflowFuente",
+                Enabled = cboFuente.Enabled,
+                Tag = cboFuente
+            };
+            item.DropDownOpening += (_, __) => PoblarSubmenuFuenteRibbon(item);
+            cmsRibbonOverflow.Items.Add(item);
+        }
+
+        private void AgregarSubmenuTamanoOverflowRibbon()
+        {
+            var item = new ToolStripMenuItem("Tamaño")
+            {
+                Name = "itemOverflowTamano",
+                Enabled = nudTamano.Enabled,
+                Tag = nudTamano
+            };
+            item.DropDownOpening += (_, __) => PoblarSubmenuTamanoRibbon(item);
+            cmsRibbonOverflow.Items.Add(item);
+        }
+
+        private void AgregarIndicadorColumnaOverflowRibbon()
+        {
+            cmsRibbonOverflow.Items.Add(new ToolStripMenuItem($"Columna: {lblColumna.Text}")
+            {
+                Name = "itemOverflowColumna",
+                Enabled = false,
+                Tag = lblColumna
+            });
+        }
+
+        /// <summary>
+        /// Replica las fuentes del selector real sobre el mismo control: al elegir
+        /// una opción se cambia <c>cboFuente.SelectedIndex</c>, que dispara el
+        /// handler de siempre (Ribbon_Changed) y aplica el formato igual que el
+        /// ribbon visible.
+        /// </summary>
+        internal void PoblarSubmenuFuenteRibbon(ToolStripMenuItem item)
+        {
+            if (item == null)
+                return;
+
+            item.DropDownItems.Clear();
+            string? seleccionActual = cboFuente.SelectedItem?.ToString();
+
+            foreach (object? opcion in cboFuente.Items)
+            {
+                string? nombre = opcion?.ToString();
+                if (string.IsNullOrEmpty(nombre))
+                    continue;
+
+                var opcionItem = new ToolStripMenuItem(nombre)
+                {
+                    Checked = string.Equals(nombre, seleccionActual, StringComparison.Ordinal),
+                    Enabled = cboFuente.Enabled
+                };
+                string fuente = nombre;
+                opcionItem.Click += (_, __) =>
+                {
+                    int indice = cboFuente.FindStringExact(fuente);
+                    if (indice >= 0)
+                        cboFuente.SelectedIndex = indice;
+                };
+                item.DropDownItems.Add(opcionItem);
+            }
+        }
+
+        /// <summary>
+        /// Replica los tamaños disponibles del numeric real sobre el mismo control,
+        /// respetando mínimo, máximo e incremento configurados.
+        /// </summary>
+        internal void PoblarSubmenuTamanoRibbon(ToolStripMenuItem item)
+        {
+            if (item == null)
+                return;
+
+            item.DropDownItems.Clear();
+            decimal incremento = nudTamano.Increment > 0 ? nudTamano.Increment : 1m;
+
+            for (decimal valor = nudTamano.Minimum; valor <= nudTamano.Maximum; valor += incremento)
+            {
+                decimal tamano = valor;
+                var opcionItem = new ToolStripMenuItem(tamano.ToString("0.#"))
+                {
+                    Checked = tamano == nudTamano.Value,
+                    Enabled = nudTamano.Enabled
+                };
+                opcionItem.Click += (_, __) =>
+                    nudTamano.Value = Math.Min(Math.Max(tamano, nudTamano.Minimum), nudTamano.Maximum);
+                item.DropDownItems.Add(opcionItem);
+            }
+        }
+
+        private static string ObtenerTextoOverflowRibbon(Button button)
+        {
+            switch (button.Name)
+            {
+                case "btnNegrita": return "Negrita";
+                case "btnCursiva": return "Cursiva";
+                case "btnColorFondo": return "Color de fondo";
+                case "btnColorTexto": return "Color de texto";
+                case "btnAlinJus": return "Alinear arriba";
+                case "btnAlinMed": return "Alinear al medio";
+                case "btnAlinAba": return "Alinear abajo";
+                case "btnAlinIzq": return "Alinear a la izquierda";
+                case "btnAlinCen": return "Centrar";
+                case "btnAlinDer": return "Alinear a la derecha";
+                case "btnWrapRibbon": return "Ajustar";
+                case "btnBuscarRibbon": return "Buscar";
+                case "btnRecalcularRibbon": return "Recalcular";
+                case "btnDepurarRibbon": return "Depurar";
+                case "btnAplicarATodas": return "Aplicar";
+                case "btnConsolidarInsumos": return "Consolidar";
+                case "btnExcelRibbon": return "Excel";
+                case "btnPdfRibbon": return "PDF";
+                default: return string.IsNullOrWhiteSpace(button.Text) ? button.Name : button.Text;
+            }
+        }
+
         private void OverflowRibbonItem_Click(object? sender, EventArgs e)
         {
             if (sender is not ToolStripMenuItem item || item.Tag is not Button button || !button.Enabled)
                 return;
 
-            EjecutarClickBotonRibbonOculto(button);
-        }
-
-        private void EjecutarClickBotonRibbonOculto(Button button)
-        {
-            if (button == null)
-                return;
-
-            bool visibleOriginal = button.Visible;
+            _clickMenuOverflowEnCurso = true;
             try
             {
-                if (!visibleOriginal)
-                    button.Visible = true;
-
-                button.PerformClick();
+                EjecutarClickBotonRibbonOculto(button);
             }
             finally
             {
-                if (!visibleOriginal)
-                    button.Visible = false;
+                try
+                {
+                    // Refresca estado contextual (habilitados, indicator, etc.),
+                    // pero el menú queda intacto mientras el Click está en curso.
+                    ActualizarOverflowRibbon();
+                }
+                finally
+                {
+                    _clickMenuOverflowEnCurso = false;
+                }
+
+                ProgramarReconstruccionMenuOverflowRibbon();
+            }
+        }
+
+        /// <summary>
+        /// Dispara el comportamiento original del comando SIN hacerlo visible: un
+        /// comando modal dejaría el botón reapareciendo en el ribbon mientras el
+        /// diálogo está abierto. Se despacha el mismo evento Click (OnClick) que
+        /// performClick ejecutaría, con el propio botón como sender y sin mover
+        /// visibilidad ni geometría.
+        /// </summary>
+        private void EjecutarClickBotonRibbonOculto(Button button)
+        {
+            if (button == null || !button.Enabled)
+                return;
+
+            try
+            {
+                MethodInfo? onClick = OnClickMethod;
+                if (onClick == null)
+                    throw new InvalidOperationException(
+                        "No se pudo resolver Control.OnClick para ejecutar el comando del overflow.");
+
+                onClick.Invoke(button, new object[] { EventArgs.Empty });
+            }
+            catch (TargetInvocationException ex) when (ex.InnerException != null)
+            {
+                ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
             }
         }
 
         private void btnRibbonMas_Click(object sender, EventArgs e)
         {
-            if (cmsRibbonOverflow == null || cmsRibbonOverflow.Items.Count == 0)
+            if (cmsRibbonOverflow == null)
+                return;
+
+            AsegurarSuscripcionMenuOverflowRibbon();
+
+            // Un refresco pendiente (de un clic anterior o de un resize con el
+            // menú abierto) se aplica antes de mostrar: el menú no está abierto.
+            if (_menuOverflowReconstruccionPendiente)
+                ReconstruirMenuOverflowRibbon(forzarReconstruccion: true);
+
+            if (cmsRibbonOverflow.Items.Count == 0)
                 return;
 
             cmsRibbonOverflow.Show(btnRibbonMas, new Point(0, btnRibbonMas.Height));
@@ -448,6 +951,15 @@ namespace SOPRO.WinForms.Forms
 
         private static readonly MethodInfo? SetStyleMethod = typeof(Control).GetMethod(
             "SetStyle", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        /// <summary>
+        /// OnClick es el punto exacto donde ButtonBase.PerformClick despacha los
+        /// handlers de Click. Invocarlo directamente permite ejecutar un comando
+        /// del overflow sin hacer visible (ni mover) el botón real.
+        /// </summary>
+        private static readonly MethodInfo? OnClickMethod = typeof(Control).GetMethod(
+            "OnClick", BindingFlags.Instance | BindingFlags.NonPublic);
+
 
         /// <summary>
         /// Habilita SupportsTransparentBackColor en un control cualquiera vía

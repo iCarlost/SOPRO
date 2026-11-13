@@ -98,6 +98,13 @@ namespace SOPRO.WinForms.Helpers
             return bmp;
         }
 
+        /// <summary>
+        /// Grosor de trazo proporcional al tamano. El diseno de referencia usa
+        /// glifos de 30 px en las acciones principales, donde un trazo de 1 px se
+        /// ve demasiado fino; a 16 px el resultado es identico al de siempre.
+        /// </summary>
+        private static float Trazo(int size) => Math.Max(1f, size / 16f);
+
         private static void DrawBuscar(Graphics g, Color color, int size)
         {
             var previousSmoothing = g.SmoothingMode;
@@ -107,7 +114,7 @@ namespace SOPRO.WinForms.Helpers
             g.InterpolationMode = InterpolationMode.NearestNeighbor;
             g.PixelOffsetMode = PixelOffsetMode.None;
 
-            using var pen = new Pen(color, 1f);
+            using var pen = new Pen(color, Trazo(size));
             using var solid = new SolidBrush(color);
 
             int lens = Math.Max(6, size - 8);
@@ -124,18 +131,39 @@ namespace SOPRO.WinForms.Helpers
 
         private static void DrawExcel(Graphics g, Color color, int size)
         {
-            var stroke = Math.Max(1.7f, size * 0.10f);
+            // Documento con esquina doblada y una "X" (marca de Excel),
+            // como en el diseno de referencia del ribbon.
+            float stroke = Math.Max(1.6f, size * 0.075f);
             using var pen = NewPen(color, stroke);
-            using var fill = new SolidBrush(Color.FromArgb(38, color));
+            using var fill = new SolidBrush(Color.FromArgb(30, color));
 
-            var sheet = CreateRoundedRect(size * 0.28f, size * 0.16f, size * 0.48f, size * 0.68f, size * 0.06f);
-            g.FillPath(fill, sheet);
-            g.DrawPath(pen, sheet);
-            g.DrawLine(pen, size * 0.40f, size * 0.16f, size * 0.40f, size * 0.84f);
-            g.DrawLine(pen, size * 0.28f, size * 0.38f, size * 0.76f, size * 0.38f);
-            g.DrawLine(pen, size * 0.28f, size * 0.60f, size * 0.76f, size * 0.60f);
-            g.DrawLine(pen, size * 0.12f, size * 0.28f, size * 0.28f, size * 0.72f);
-            g.DrawLine(pen, size * 0.28f, size * 0.28f, size * 0.12f, size * 0.72f);
+            float left = size * 0.16f;
+            float top = size * 0.08f;
+            float right = size * 0.84f;
+            float bottom = size * 0.92f;
+            float fold = size * 0.22f;
+
+            var path = new GraphicsPath();
+            path.StartFigure();
+            path.AddLine(left, top, right - fold, top);
+            path.AddLine(right - fold, top, right, top + fold);
+            path.AddLine(right, top + fold, right, bottom);
+            path.AddLine(right, bottom, left, bottom);
+            path.CloseFigure();
+
+            g.FillPath(fill, path);
+            g.DrawPath(pen, path);
+
+            // Pliegue de la esquina.
+            g.DrawLine(pen, right - fold, top, right - fold, top + fold);
+            g.DrawLine(pen, right - fold, top + fold, right, top + fold);
+
+            // Cruz interior.
+            float centroX = (left + right) / 2f;
+            float centroY = (top + bottom) / 2f;
+            float radio = size * 0.16f;
+            g.DrawLine(pen, centroX - radio, centroY - radio, centroX + radio, centroY + radio);
+            g.DrawLine(pen, centroX + radio, centroY - radio, centroX - radio, centroY + radio);
         }
 
 
@@ -148,7 +176,7 @@ namespace SOPRO.WinForms.Helpers
             g.InterpolationMode = InterpolationMode.NearestNeighbor;
             g.PixelOffsetMode = PixelOffsetMode.None;
 
-            using var pen = new Pen(color, 1f);
+            using var pen = new Pen(color, Trazo(size));
             using var solid = new SolidBrush(color);
 
             int left = 3;
@@ -175,6 +203,7 @@ namespace SOPRO.WinForms.Helpers
             g.InterpolationMode = previousInterpolation;
             g.PixelOffsetMode = previousPixelOffset;
         }
+
         private static void DrawRecalcular(Graphics g, Color color, int size)
         {
             var previousSmoothing = g.SmoothingMode;
@@ -184,18 +213,21 @@ namespace SOPRO.WinForms.Helpers
             g.InterpolationMode = InterpolationMode.NearestNeighbor;
             g.PixelOffsetMode = PixelOffsetMode.None;
 
-            using var pen = new Pen(color, 1f);
+            using var pen = new Pen(color, Trazo(size));
             using var solid = new SolidBrush(color);
 
             int left = 3;
             int top = 3;
             int diameter = size - 7;
             g.DrawArc(pen, left, top, diameter, diameter, 35, 250);
+
+            // Punta de flecha proporcional al tamano del glifo.
+            int punta = Math.Max(4, (int)Math.Round(size * 0.25f));
             var arrow = new[]
             {
-                new Point(size - 4, 5),
-                new Point(size - 8, 5),
-                new Point(size - 5, 9)
+                new Point(size - 4, top + 2),
+                new Point(size - 4 - punta, top + 2),
+                new Point(size - 4 - Math.Max(1, punta / 4), top + 2 + punta)
             };
             g.FillPolygon(solid, arrow);
 
@@ -213,15 +245,20 @@ namespace SOPRO.WinForms.Helpers
             g.InterpolationMode = InterpolationMode.NearestNeighbor;
             g.PixelOffsetMode = PixelOffsetMode.None;
 
-            using var pen = new Pen(color, 1f);
+            using var pen = new Pen(color, Trazo(size));
             using var solid = new SolidBrush(color);
 
-            g.DrawLine(pen, 4, size - 4, size - 3, 5);
-            g.FillRectangle(solid, 2, size - 6, 5, 3);
-            g.DrawLine(pen, 3, size - 3, 2, size - 1);
-            g.DrawLine(pen, 5, size - 3, 5, size - 1);
-            g.DrawLine(pen, 7, size - 4, 7, size - 1);
-            g.FillRectangle(solid, size - 5, 2, 2, 2);
+            // Cabeza de la escoba y fibras, proporcionales al glifo.
+            int cabeza = Math.Max(5, (int)Math.Round(size * 0.31f));
+            int fibras = Math.Max(3, (int)Math.Round(size * 0.19f));
+            int polvo = Math.Max(2, (int)Math.Round(size * 0.12f));
+
+            g.DrawLine(pen, cabeza - 1, size - 4, size - 3, 5);
+            g.FillRectangle(solid, 2, size - 6, cabeza, fibras);
+            g.DrawLine(pen, 2 + (cabeza / 3), size - 3, 1, size - 1);
+            g.DrawLine(pen, 2 + (cabeza / 3), size - 3, 2 + (cabeza / 3), size - 1);
+            g.DrawLine(pen, 2 + ((cabeza * 2) / 3), size - 4, 2 + ((cabeza * 2) / 3), size - 1);
+            g.FillRectangle(solid, size - 3 - polvo, 2, polvo, polvo);
 
             g.SmoothingMode = previousSmoothing;
             g.InterpolationMode = previousInterpolation;
@@ -239,14 +276,18 @@ namespace SOPRO.WinForms.Helpers
 
             using var solid = new SolidBrush(color);
 
-            int left = 2;
-            int right = size - 7;
-            g.FillRectangle(solid, left, 3, right - left + 1, 2);
-            g.FillRectangle(solid, left, 7, right - left - 1, 2);
-            g.FillRectangle(solid, left, 11, right - left - 4, 2);
+            int left = Math.Max(2, (int)Math.Round(size * 0.125f));
+            int right = size - Math.Max(7, (int)Math.Round(size * 0.44f));
+            int top = Math.Max(3, (int)Math.Round(size * 0.19f));
+            int paso = Math.Max(4, (int)Math.Round(size * 0.25f));
+            int grosor = Math.Max(2, (int)Math.Round(size * 0.125f));
 
-            int guideX = size - 4;
-            g.FillRectangle(solid, guideX, 3, 2, size - 6);
+            g.FillRectangle(solid, left, top, right - left + 1, grosor);
+            g.FillRectangle(solid, left, top + paso, right - left - 1, grosor);
+            g.FillRectangle(solid, left, top + (2 * paso), right - left - 4, grosor);
+
+            int guideX = size - Math.Max(4, (int)Math.Round(size * 0.25f));
+            g.FillRectangle(solid, guideX, top, grosor, size - 6);
             g.FillPolygon(solid, new[] { new Point(guideX + 1, 1), new Point(guideX - 2, 4), new Point(guideX + 4, 4) });
             g.FillPolygon(solid, new[] { new Point(guideX + 1, size - 1), new Point(guideX - 2, size - 4), new Point(guideX + 4, size - 4) });
 
@@ -264,17 +305,19 @@ namespace SOPRO.WinForms.Helpers
             g.InterpolationMode = InterpolationMode.NearestNeighbor;
             g.PixelOffsetMode = PixelOffsetMode.None;
 
-            using var pen = new Pen(color, 1f);
+            using var pen = new Pen(color, Trazo(size));
             using var solid = new SolidBrush(color);
 
-            g.DrawRectangle(pen, 2, 5, 5, 5);
-            g.DrawRectangle(pen, 5, 2, 5, 5);
-            g.DrawLine(pen, 9, 9, size - 4, size - 4);
+            int lado = Math.Max(5, (int)Math.Round(size * 0.31f));
+
+            g.DrawRectangle(pen, 2, lado, lado, lado);
+            g.DrawRectangle(pen, lado, 2, lado, lado);
+            g.DrawLine(pen, 2 + lado, 2 + lado, size - 4, size - 4);
             g.FillPolygon(solid, new[]
             {
                 new Point(size - 2, size - 2),
-                new Point(size - 6, size - 3),
-                new Point(size - 3, size - 6)
+                new Point(size - 2 - lado + 1, size - 3),
+                new Point(size - 3, size - 2 - lado + 1)
             });
 
             g.SmoothingMode = previousSmoothing;
@@ -456,19 +499,6 @@ namespace SOPRO.WinForms.Helpers
             };
         }
 
-        private static GraphicsPath CreateRoundedRect(float x, float y, float width, float height, float radius)
-        {
-            var path = new GraphicsPath();
-            var diameter = radius * 2;
-            path.AddArc(x, y, diameter, diameter, 180, 90);
-            path.AddArc(x + width - diameter, y, diameter, diameter, 270, 90);
-            path.AddArc(x + width - diameter, y + height - diameter, diameter, diameter, 0, 90);
-            path.AddArc(x, y + height - diameter, diameter, diameter, 90, 90);
-            path.CloseFigure();
-            return path;
-        }
-
-
         private static void DrawConsolidar(Graphics g, Color color, int size)
         {
             var previousSmoothing = g.SmoothingMode;
@@ -478,19 +508,24 @@ namespace SOPRO.WinForms.Helpers
             g.InterpolationMode = InterpolationMode.NearestNeighbor;
             g.PixelOffsetMode = PixelOffsetMode.None;
 
-            using var pen = new Pen(color, 1f);
+            using var pen = new Pen(color, Trazo(size));
             using var solid = new SolidBrush(color);
 
-            g.DrawRectangle(pen, 2, 3, 4, 4);
-            g.DrawRectangle(pen, 2, size - 7, 4, 4);
-            g.DrawRectangle(pen, size - 7, (size / 2) - 2, 4, 4);
-            g.DrawLine(pen, 6, 5, size - 8, (size / 2));
-            g.DrawLine(pen, 6, size - 5, size - 8, (size / 2));
+            // Tres fuentes que convergen en un unico destino.
+            int lado = Math.Max(4, (int)Math.Round(size * 0.22f));
+            int derecha = size - 3 - lado;
+            int medio = size / 2;
+
+            g.DrawRectangle(pen, 2, 3, lado, lado);
+            g.DrawRectangle(pen, 2, size - 3 - lado, lado, lado);
+            g.DrawRectangle(pen, derecha, medio - (lado / 2), lado, lado);
+            g.DrawLine(pen, 2 + lado, 5, derecha - 1, medio);
+            g.DrawLine(pen, 2 + lado, size - 5, derecha - 1, medio);
             g.FillPolygon(solid, new[]
             {
-                new Point(size - 3, size / 2),
-                new Point(size - 8, (size / 2) - 3),
-                new Point(size - 8, (size / 2) + 3)
+                new Point(derecha + lado, medio),
+                new Point(derecha - 1, medio - 3),
+                new Point(derecha - 1, medio + 3)
             });
 
             g.SmoothingMode = previousSmoothing;
