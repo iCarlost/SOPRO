@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using SOPRO.WinForms.Services;
@@ -59,6 +60,8 @@ namespace SOPRO.WinForms.Forms
             bool puedeEditar = PuedeEditar(_materialSeleccionado);
 
             var menu = new ContextMenuStrip();
+            var menuCts = new CancellationTokenSource();
+            ReemplazarMenuContextual(menu, menuCts);
 
             var itemEditar = menu.Items.Add("✏️  Editar");
             itemEditar.Enabled = puedeEditar;
@@ -74,8 +77,19 @@ namespace SOPRO.WinForms.Forms
             menu.Items.Add(new ToolStripSeparator());
 
             var itemDonde = new ToolStripMenuItem("📋  Dónde se usa");
+            // El submenú debe poder abrirse desde el primer clic: un DropDownItems
+            // vacío no dispara DropDownOpening.
+            AgregarPlaceholderConsultando(itemDonde);
+            // El Id se captura al construir el menú: si la selección cambia
+            // mientras la consulta está pendiente, no debe consultarse otra fila.
+            int materialId = _materialSeleccionado.Id;
+            int solicitud = 0;
             itemDonde.DropDownOpening += async (_, __) =>
-                await CargarDondeSeUsaAsync(itemDonde, _materialSeleccionado.Id);
+            {
+                int version = ++solicitud;
+                await CargarDondeSeUsaAsync(
+                    itemDonde, materialId, menuCts.Token, () => version == solicitud);
+            };
             menu.Items.Add(itemDonde);
             menu.Items.Add(new ToolStripSeparator());
 
@@ -99,7 +113,33 @@ namespace SOPRO.WinForms.Forms
             var itemCopiar = menu.Items.Add($"📄  {etiquetaCopiar}");
             itemCopiar.Click += (_, __) => DgvCeldaHelper.CopiarSeleccionAlPortapapeles(dgvMateriales);
 
+            menu.Closed += (_, __) =>
+            {
+                if (ReferenceEquals(_menuContextual, menu))
+                    menuCts.Cancel();
+            };
+
             menu.Show(dgvMateriales, dgvMateriales.PointToClient(Cursor.Position));
+        }
+
+        private void ReemplazarMenuContextual(ContextMenuStrip menu, CancellationTokenSource cts)
+        {
+            var menuAnterior = _menuContextual;
+            var ctsAnterior = _menuCts;
+            _menuContextual = menu;
+            _menuCts = cts;
+            ctsAnterior?.Cancel();
+            menuAnterior?.Dispose();
+        }
+
+        private void CerrarMenuContextual()
+        {
+            var menu = _menuContextual;
+            var cts = _menuCts;
+            _menuContextual = null;
+            _menuCts = null;
+            cts?.Cancel();
+            menu?.Dispose();
         }
 
         /// <summary>
@@ -111,58 +151,121 @@ namespace SOPRO.WinForms.Forms
         internal bool PuedeEditar(MaterialListItem? material)
             => material != null;
 
+        /// <summary>Texto seguro cuando la consulta del menú falla de forma inesperada.</summary>
+        internal const string MensajeErrorDondeSeUsa = "No se pudo consultar dónde se usa el material.";
+
+        /// <summary>Placeholder deshabilitado mientras la consulta está en curso.</summary>
+        internal const string TextoConsultandoUsos = "(Consultando usos…)";
+
         /// <summary>
         /// "Dónde se usa": la consulta vive en el caso de uso headless
         /// (FindMatricesUsingMaterial) y devuelve DTOs, no entidades rastreadas.
         /// </summary>
-        private async Task CargarDondeSeUsaAsync(ToolStripMenuItem itemDonde, int materialId)
+        internal Task CargarDondeSeUsaAsync(
+            ToolStripMenuItem itemDonde, int materialId, CancellationToken cancellationToken)
+            => CargarDondeSeUsaAsync(itemDonde, materialId, cancellationToken, () => true);
+
+        internal async Task CargarDondeSeUsaAsync(
+            ToolStripMenuItem itemDonde,
+            int materialId,
+            CancellationToken cancellationToken,
+            Func<bool> sigueVigente)
+        {
+            try
+            {
+                if (!PuedeActualizarItemDonde(itemDonde, cancellationToken, sigueVigente)) return;
+
+                RestablecerPlaceholderConsultando(itemDonde);
+
+                var result = await new FindMatricesUsingMaterial(_factory).ExecuteDetailed(
+                    _sessionInfo, new FindMatricesUsingMaterialRequest(materialId), cancellationToken);
+
+                if (!PuedeActualizarItemDonde(itemDonde, cancellationToken, sigueVigente)) return;
+
+                if (!result.IsSuccess)
+                {
+                    itemDonde.DropDownItems.Clear();
+                    AgregarItemDeshabilitado(itemDonde, result.Error!.Message);
+                    return;
+                }
+
+                var detail = result.Value!;
+                itemDonde.DropDownItems.Clear();
+                var matricesMenu = new ToolStripMenuItem("Matrices");
+                var machineryMenu = new ToolStripMenuItem("Maquinaria (costo horario)");
+                itemDonde.DropDownItems.Add(matricesMenu);
+                itemDonde.DropDownItems.Add(machineryMenu);
+                if (detail.Matrices.Count == 0)
+                {
+                    var sinUso = matricesMenu.DropDownItems.Add("(Sin uso en matrices)");
+                    sinUso.Enabled = false;
+                }
+                foreach (var uso in detail.Matrices)
+                {
+                    string label = uso.Clave + " — " + (uso.Descripcion?.Length > 50
+                        ? uso.Descripcion[..50] + "…" : uso.Descripcion ?? "");
+                    var item = matricesMenu.DropDownItems.Add(label);
+                    int matrizId = uso.MatrizId;
+                    item.Click += (_, __) =>
+                    {
+                        var matriz = _context.Matrices.Find(matrizId);
+                        if (matriz != null)
+                            AbrirEditorMatriz(matriz);
+                    };
+                }
+
+                if (detail.MachineryUsages.Count == 0)
+                {
+                    var sinUso = machineryMenu.DropDownItems.Add("(Sin vínculo con maquinaria)");
+                    sinUso.Enabled = false;
+                }
+                foreach (string label in CrearEtiquetasMaquinaria(detail.MachineryUsages))
+                {
+                    ToolStripItem item = machineryMenu.DropDownItems.Add(label);
+                    item.Enabled = false;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Cierre/reemplazo del menú o cancelación del formulario: silencio.
+            }
+            catch (Exception)
+            {
+                // El detalle técnico no se muestra en la UI: solo un ítem genérico.
+                if (PuedeActualizarItemDonde(itemDonde, cancellationToken, sigueVigente))
+                {
+                    itemDonde.DropDownItems.Clear();
+                    AgregarItemDeshabilitado(itemDonde, MensajeErrorDondeSeUsa);
+                }
+            }
+        }
+
+        private bool PuedeActualizarItemDonde(
+            ToolStripMenuItem itemDonde, CancellationToken cancellationToken, Func<bool> sigueVigente)
+        {
+            if (cancellationToken.IsCancellationRequested || !sigueVigente()) return false;
+            if (IsDisposed || Disposing) return false;
+            if (itemDonde.IsDisposed) return false;
+            return itemDonde.Owner is null || !itemDonde.Owner.IsDisposed;
+        }
+
+        private static void AgregarItemDeshabilitado(ToolStripMenuItem itemDonde, string texto)
+        {
+            ToolStripItem item = itemDonde.DropDownItems.Add(texto);
+            item.Enabled = false;
+        }
+
+        private static void RestablecerPlaceholderConsultando(ToolStripMenuItem itemDonde)
         {
             itemDonde.DropDownItems.Clear();
+            AgregarPlaceholderConsultando(itemDonde);
+        }
 
-            var result = await new FindMatricesUsingMaterial(_factory).ExecuteDetailed(
-                _sessionInfo, new FindMatricesUsingMaterialRequest(materialId));
-
-            if (!result.IsSuccess)
-            {
-                var errorItem = itemDonde.DropDownItems.Add(result.Error!.Message);
-                errorItem.Enabled = false;
-                return;
-            }
-
-            var detail = result.Value!;
-            var matricesMenu = new ToolStripMenuItem("Matrices");
-            var machineryMenu = new ToolStripMenuItem("Maquinaria (costo horario)");
-            itemDonde.DropDownItems.Add(matricesMenu);
-            itemDonde.DropDownItems.Add(machineryMenu);
-            if (detail.Matrices.Count == 0)
-            {
-                var sinUso = matricesMenu.DropDownItems.Add("(Sin uso en matrices)");
-                sinUso.Enabled = false;
-            }
-            foreach (var uso in detail.Matrices)
-            {
-                string label = uso.Clave + " — " + (uso.Descripcion?.Length > 50
-                    ? uso.Descripcion[..50] + "…" : uso.Descripcion ?? "");
-                var item = matricesMenu.DropDownItems.Add(label);
-                int matrizId = uso.MatrizId;
-                item.Click += (_, __) =>
-                {
-                    var matriz = _context.Matrices.Find(matrizId);
-                    if (matriz != null)
-                        AbrirEditorMatriz(matriz);
-                };
-            }
-
-            if (detail.MachineryUsages.Count == 0)
-            {
-                var sinUso = machineryMenu.DropDownItems.Add("(Sin vínculo con maquinaria)");
-                sinUso.Enabled = false;
-            }
-            foreach (string label in CrearEtiquetasMaquinaria(detail.MachineryUsages))
-            {
-                ToolStripItem item = machineryMenu.DropDownItems.Add(label);
-                item.Enabled = false;
-            }
+        private static ToolStripItem AgregarPlaceholderConsultando(ToolStripMenuItem itemDonde)
+        {
+            ToolStripItem placeholder = itemDonde.DropDownItems.Add(TextoConsultandoUsos);
+            placeholder.Enabled = false;
+            return placeholder;
         }
 
         internal static IReadOnlyList<string> CrearEtiquetasMaquinaria(IEnumerable<MaterialMachineryUsage> usages)

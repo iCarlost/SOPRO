@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 using SOPRO.WinForms.Helpers;
 using SOPRO.Data.Repositories;
 using System;
@@ -88,6 +89,16 @@ namespace SOPRO.WinForms.Forms
 
         // ── Constructor ───────────────────────────────────────────────────────
         public FormCatalogoMateriales(SOPROContext context, int? proyectoId = null)
+            : this(context, proyectoId, factory: null)
+        {
+        }
+
+        /// <summary>
+        /// Seam interno para pruebas: conserva la fábrica de producción cuando no
+        /// se inyecta una explícita.
+        /// </summary>
+        internal FormCatalogoMateriales(
+            SOPROContext context, int? proyectoId, IProjectDbContextFactory? factory)
         {
             InitializeComponent();
             FormRenderHelper.OptimizeForGridRendering(this);
@@ -95,6 +106,7 @@ namespace SOPRO.WinForms.Forms
             btnImportarExcel.Visible = false;
             dgvMateriales.AplicarEstiloSOPRO();
             _context = context ?? throw new ArgumentNullException(nameof(context));
+            _factory = factory ?? new ProjectDbContextFactory();
             _sessionInfo = LegacySessionBridge.FromLegacy(_context, proyectoId);
             _proyectoId = proyectoId;
 
@@ -112,6 +124,7 @@ namespace SOPRO.WinForms.Forms
             ConfigurarGrid();
             ConfigurarFormatoCeldas();
             this.Load += (s, e) => CargarMateriales();
+            this.Disposed += (s, e) => CerrarMenuContextual();
 
             dgvMateriales.ColumnHeaderMouseClick += (s, e) =>
             {
