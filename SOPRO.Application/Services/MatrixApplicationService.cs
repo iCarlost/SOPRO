@@ -98,7 +98,17 @@ namespace SOPRO.Application.Services
             if (!referenceValidation.Success)
                 throw new MatrixComponentReferenceException(referenceValidation.ErrorMessage);
 
+            // Las ediciones de descripción de las fuentes también se validan antes
+            // de cualquier escritura: un lote contradictorio o una fuente inválida
+            // no debe dejar la matriz a medio guardar.
+            var sourceDescriptionPatches = ValidateSourceDescriptionEdits(dto, existingMatrix?.Id);
+
             await using var operationContext = dbContextFactory.Create(databasePath);
+
+            // Si la sesión tiene pendiente la descripción de una fuente, esa
+            // edición es ajena a esta guarda (el staging nuevo ya no muta la
+            // navegación): se rechaza antes de abrir la transacción.
+            GuardPendingSourceDescriptionEdits(sessionContext, sourceDescriptionPatches);
 
             // Guarda previa a cualquier escritura: la cascada recalcula las matrices
             // que usan a esta como auxiliar. Si la sesión tiene ediciones pendientes
@@ -148,6 +158,17 @@ namespace SOPRO.Application.Services
                 }
 
                 await operationContext.SaveChangesAsync();
+
+                // Las descripciones de las fuentes se aplican después de la matriz
+                // y sus componentes y antes de la cascada: cualquier fallo
+                // posterior revierte las tres cosas juntas.
+                if (sourceDescriptionPatches.Count > 0)
+                {
+                    await ApplySourceDescriptionEditsAsync(
+                        operationContext,
+                        dto.ProyectoId,
+                        sourceDescriptionPatches);
+                }
 
                 var cascaded = isNew
                     ? 0
@@ -239,21 +260,26 @@ namespace SOPRO.Application.Services
                     "guarde o descarte esos cambios antes de editar esta matriz.");
             }
 
-            // Los componentes Modified de la matriz objetivo son las copias de
-            // trabajo del editor y el DTO ya captura altas/bajas. En cambio, un
-            // Added/Deleted ajeno (otro flujo de la sesión) sería descartado por la
-            // reconciliación posterior: se rechaza antes de escribir.
+            // El editor trabaja ahora sobre copias AsNoTracking: el DTO captura el
+            // lote completo y ningún ComponenteMatriz de la matriz objetivo debería
+            // estar rastreado como pendiente. Cualquier alta, modificación o baja
+            // rastreada es trabajo ajeno de la sesión; el reemplazo por operación la
+            // dejaría obsoleta y un guardado posterior podría sobrescribir los
+            // valores recién confirmados o intentar actualizar filas eliminadas.
+            // Solo Detached/Unchanged son inocuos.
             var ambiguousTargetComponents = sessionContext.ChangeTracker.Entries<ComponenteMatriz>()
                 .Where(entry => entry.Entity.MatrizId == targetMatrixId
-                    && (entry.State == EntityState.Added || entry.State == EntityState.Deleted))
+                    && (entry.State == EntityState.Added
+                        || entry.State == EntityState.Modified
+                        || entry.State == EntityState.Deleted))
                 .Select(entry => entry.State)
                 .ToList();
 
             if (ambiguousTargetComponents.Count > 0)
             {
                 throw new InvalidOperationException(
-                    $"Hay componentes agregados o eliminados sin guardar en la matriz {targetMatrixId}; " +
-                    "la reconciliación tras guardar los descartaría. " +
+                    $"Hay componentes agregados, modificados o eliminados sin guardar en la matriz {targetMatrixId}; " +
+                    "el reemplazo por operación los dejaría obsoletos. " +
                     "Guarde o descarte esos cambios antes de editar esta matriz.");
             }
 
@@ -278,6 +304,235 @@ namespace SOPRO.Application.Services
                     "guarde o descarte esos cambios antes de editar esta matriz.");
             }
         }
+
+        /// <summary>
+        /// Normaliza y valida las ediciones explícitas de descripción de fuentes.
+        /// La descripción final se recorta igual que la edición de la cuadrícula
+        /// (<see cref="MatrixComponentEditingService.UpdateDescription"/>); la
+        /// original se conserva literal porque es la base de la comparación
+        /// optimista contra la base. Un mismo insumo puede repetirse solo si
+        /// baseline y descripción final coinciden.
+        /// </summary>
+        private static List<NormalizedSourceDescriptionPatch> ValidateSourceDescriptionEdits(
+            MatrixEditDto dto,
+            int? targetMatrixId)
+        {
+            var edits = dto.SourceDescriptionEdits;
+            if (edits == null || edits.Count == 0)
+            {
+                return new List<NormalizedSourceDescriptionPatch>();
+            }
+
+            var unique = new Dictionary<(TipoComponenteMatriz Tipo, int SourceId), NormalizedSourceDescriptionPatch>();
+
+            foreach (var edit in edits)
+            {
+                if (edit == null)
+                {
+                    throw new InvalidOperationException(
+                        "La solicitud incluye una edición de descripción de insumo vacía.");
+                }
+
+                if (!IsSupportedSourceKind(edit.TipoComponente))
+                {
+                    throw new InvalidOperationException(
+                        $"El tipo de componente {edit.TipoComponente} no admite edición de descripción desde la matriz.");
+                }
+
+                if (edit.SourceId <= 0)
+                {
+                    throw new InvalidOperationException(
+                        "La edición de descripción requiere un identificador de insumo válido.");
+                }
+
+                if (edit.OriginalDescription == null)
+                {
+                    throw new InvalidOperationException(
+                        $"La descripción original del insumo {edit.SourceId} es requerida para validar la edición.");
+                }
+
+                if (targetMatrixId.HasValue
+                    && edit.TipoComponente == TipoComponenteMatriz.Auxiliar
+                    && edit.SourceId == targetMatrixId.Value)
+                {
+                    throw new InvalidOperationException(
+                        $"La matriz {targetMatrixId.Value} no puede editar su propia descripción como auxiliar; " +
+                        "use el campo Descripción de la matriz.");
+                }
+
+                var patch = new NormalizedSourceDescriptionPatch(
+                    edit.TipoComponente,
+                    edit.SourceId,
+                    edit.OriginalDescription,
+                    (edit.NewDescription ?? string.Empty).Trim());
+
+                var key = (patch.TipoComponente, patch.SourceId);
+                if (unique.TryGetValue(key, out var existing))
+                {
+                    if (existing.OriginalDescription != patch.OriginalDescription
+                        || existing.NormalizedDescription != patch.NormalizedDescription)
+                    {
+                        throw new InvalidOperationException(
+                            $"Hay dos ediciones de descripción contradictorias para {DescribeSource(patch.TipoComponente)} " +
+                            $"{patch.SourceId}. Deje una sola versión del cambio.");
+                    }
+
+                    continue;
+                }
+
+                unique.Add(key, patch);
+            }
+
+            return unique.Values
+                .OrderBy(patch => patch.TipoComponente)
+                .ThenBy(patch => patch.SourceId)
+                .ToList();
+        }
+
+        private static bool IsSupportedSourceKind(TipoComponenteMatriz tipo)
+            => tipo == TipoComponenteMatriz.Material
+                || tipo == TipoComponenteMatriz.ManoDeObra
+                || tipo == TipoComponenteMatriz.Maquinaria
+                || tipo == TipoComponenteMatriz.Auxiliar
+                || tipo == TipoComponenteMatriz.Herramienta;
+
+        /// <summary>
+        /// Rechaza, antes de escribir, cuando el tracker de la sesión tiene
+        /// pendiente la descripción de una fuente del lote (o la eliminó). Las
+        /// demás propiedades modificadas de la fuente no son conflicto: quedan
+        /// pendientes y sin guardar.
+        /// </summary>
+        private static void GuardPendingSourceDescriptionEdits(
+            SOPROContext? sessionContext,
+            IReadOnlyList<NormalizedSourceDescriptionPatch> patches)
+        {
+            if (sessionContext == null || patches.Count == 0)
+            {
+                return;
+            }
+
+            sessionContext.ChangeTracker.DetectChanges();
+
+            var conflicts = patches
+                .Where(patch => HasPendingSourceDescriptionChange(sessionContext, patch))
+                .Select(patch => $"{DescribeSource(patch.TipoComponente)} {patch.SourceId}")
+                .ToList();
+
+            if (conflicts.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"La descripción de {string.Join(", ", conflicts)} tiene cambios sin guardar " +
+                    "o fue eliminada en la sesión. Guarde o descarte esos cambios antes de editar esta matriz.");
+            }
+        }
+
+        private static bool HasPendingSourceDescriptionChange(
+            SOPROContext sessionContext,
+            NormalizedSourceDescriptionPatch patch)
+        {
+            return patch.TipoComponente switch
+            {
+                TipoComponenteMatriz.Material => HasPendingDescriptionChange<Material>(
+                    sessionContext, patch.SourceId, material => material.Id),
+                TipoComponenteMatriz.ManoDeObra => HasPendingDescriptionChange<ManoDeObra>(
+                    sessionContext, patch.SourceId, manoDeObra => manoDeObra.Id),
+                TipoComponenteMatriz.Maquinaria => HasPendingDescriptionChange<Maquinaria>(
+                    sessionContext, patch.SourceId, maquinaria => maquinaria.Id),
+                TipoComponenteMatriz.Auxiliar => HasPendingDescriptionChange<Matriz>(
+                    sessionContext, patch.SourceId, matriz => matriz.Id),
+                TipoComponenteMatriz.Herramienta => HasPendingDescriptionChange<Herramienta>(
+                    sessionContext, patch.SourceId, herramienta => herramienta.Id),
+                _ => false
+            };
+        }
+
+        private static bool HasPendingDescriptionChange<TEntity>(
+            SOPROContext sessionContext,
+            int sourceId,
+            Func<TEntity, int> idSelector)
+            where TEntity : class
+        {
+            return sessionContext.ChangeTracker.Entries<TEntity>()
+                .Where(entry => idSelector(entry.Entity) == sourceId)
+                .Any(entry => entry.State == EntityState.Deleted
+                    || (entry.State == EntityState.Modified
+                        && entry.Property(nameof(Matriz.Descripcion)).IsModified));
+        }
+
+        /// <summary>
+        /// Aplica cada edición con un UPDATE condicional de una sola propiedad
+        /// (Id, proyecto y descripción original). Si la fuente no existe en el
+        /// proyecto o su descripción cambió, no se toca ninguna fila y se lanza
+        /// el conflicto para que la transacción revierta el resto. Los demás
+        /// campos de la fuente (costos, precios, notas) no se modifican.
+        /// </summary>
+        private static async Task ApplySourceDescriptionEditsAsync(
+            SOPROContext context,
+            int proyectoId,
+            IReadOnlyList<NormalizedSourceDescriptionPatch> patches)
+        {
+            foreach (var patch in patches)
+            {
+                var affected = patch.TipoComponente switch
+                {
+                    TipoComponenteMatriz.Material => await context.Materiales
+                        .Where(material => material.Id == patch.SourceId
+                            && material.ProyectoId == proyectoId
+                            && material.Descripcion == patch.OriginalDescription)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(material => material.Descripcion, patch.NormalizedDescription)),
+                    TipoComponenteMatriz.ManoDeObra => await context.ManoDeObra
+                        .Where(manoDeObra => manoDeObra.Id == patch.SourceId
+                            && manoDeObra.ProyectoId == proyectoId
+                            && manoDeObra.Descripcion == patch.OriginalDescription)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(manoDeObra => manoDeObra.Descripcion, patch.NormalizedDescription)),
+                    TipoComponenteMatriz.Maquinaria => await context.Maquinaria
+                        .Where(maquinaria => maquinaria.Id == patch.SourceId
+                            && maquinaria.ProyectoId == proyectoId
+                            && maquinaria.Descripcion == patch.OriginalDescription)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(maquinaria => maquinaria.Descripcion, patch.NormalizedDescription)),
+                    TipoComponenteMatriz.Auxiliar => await context.Matrices
+                        .Where(auxiliar => auxiliar.Id == patch.SourceId
+                            && auxiliar.ProyectoId == proyectoId
+                            && auxiliar.Descripcion == patch.OriginalDescription)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(auxiliar => auxiliar.Descripcion, patch.NormalizedDescription)),
+                    TipoComponenteMatriz.Herramienta => await context.Herramientas
+                        .Where(herramienta => herramienta.Id == patch.SourceId
+                            && herramienta.ProyectoId == proyectoId
+                            && herramienta.Descripcion == patch.OriginalDescription)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(herramienta => herramienta.Descripcion, patch.NormalizedDescription)),
+                    _ => 0
+                };
+
+                if (affected != 1)
+                {
+                    throw new InvalidOperationException(
+                        $"No se pudo actualizar la descripción de {DescribeSource(patch.TipoComponente)} " +
+                        $"{patch.SourceId}: el insumo ya no existe en el proyecto o su descripción cambió " +
+                        "desde que se cargó la matriz. Recargue la vista e intente de nuevo.");
+                }
+            }
+        }
+
+        private static string DescribeSource(TipoComponenteMatriz tipo) => tipo switch
+        {
+            TipoComponenteMatriz.Material => "el material",
+            TipoComponenteMatriz.ManoDeObra => "la mano de obra",
+            TipoComponenteMatriz.Maquinaria => "la maquinaria",
+            TipoComponenteMatriz.Auxiliar => "el auxiliar",
+            TipoComponenteMatriz.Herramienta => "la herramienta",
+            _ => $"el insumo ({tipo})"
+        };
+
+        private sealed record NormalizedSourceDescriptionPatch(
+            TipoComponenteMatriz TipoComponente,
+            int SourceId,
+            string OriginalDescription,
+            string NormalizedDescription);
 
         /// <summary>
         /// Compara la copia rastreada con los campos que <see cref="Apply"/> escribe

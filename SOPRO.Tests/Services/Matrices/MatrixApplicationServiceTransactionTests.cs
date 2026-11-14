@@ -257,7 +257,7 @@ public class MatrixApplicationServiceTransactionTests
                 escenario.MatrizA,
                 context));
 
-        StringAssert.Contains(ex.Message, "agregados o eliminados");
+        StringAssert.Contains(ex.Message, "agregados, modificados o eliminados");
         StringAssert.Contains(ex.Message, escenario.MatrizA.Id.ToString());
 
         await AssertEstadoOriginalAsync(dbPath, escenario, context);
@@ -287,7 +287,7 @@ public class MatrixApplicationServiceTransactionTests
                 escenario.MatrizA,
                 context));
 
-        StringAssert.Contains(ex.Message, "agregados o eliminados");
+        StringAssert.Contains(ex.Message, "agregados, modificados o eliminados");
         StringAssert.Contains(ex.Message, escenario.MatrizA.Id.ToString());
 
         await AssertEstadoOriginalAsync(dbPath, escenario, context);
@@ -324,31 +324,37 @@ public class MatrixApplicationServiceTransactionTests
     }
 
     [TestMethod]
-    public async Task SaveAsync_ComponenteDeLaMatrizObjetivoPendienteEnSesion_NoRechaza()
+    public async Task SaveAsync_ComponenteModificadoDeLaMatrizObjetivoPendienteEnSesion_RechazaSinEscribirYConservaElPendiente()
     {
         using var context = TestDbFactory.CreateContext();
         var dbPath = context.DatabasePath;
         var escenario = CrearEscenario(context);
 
-        // Copia de trabajo del editor: la guarda solo rechaza dependientes.
+        // El editor usa copias AsNoTracking: un ComponenteMatriz rastreado y
+        // modificado en la matriz objetivo es trabajo ajeno. El reemplazo por
+        // operación lo dejaría obsoleto y un guardado posterior podría
+        // sobrescribir los valores recién confirmados.
+        MarcarSentinel(context, escenario.Proyecto);
         var componenteObjetivo = context.ComponentesMatriz.Single(c => c.MatrizId == escenario.MatrizA.Id);
         componenteObjetivo.Cantidad = 9m;
         context.ChangeTracker.DetectChanges();
 
-        var result = await MatrixApplicationService.SaveAsync(
-            new SOPRO.Data.Factories.ProjectDbContextFactory(),
-            dbPath,
-            escenario.Dto,
-            escenario.MatrizA,
-            context);
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => MatrixApplicationService.SaveAsync(
+                new SOPRO.Data.Factories.ProjectDbContextFactory(),
+                dbPath,
+                escenario.Dto,
+                escenario.MatrizA,
+                context));
 
-        Assert.AreEqual(escenario.MatrizA.Id, result.MatrixId);
+        StringAssert.Contains(ex.Message, "agregados, modificados o eliminados");
+        StringAssert.Contains(ex.Message, escenario.MatrizA.Id.ToString());
 
-        var estado = await LeerEstadoPersistidoAsync(dbPath, escenario.MatrizA.Id, escenario.MatrizB.Id);
-        Assert.AreEqual(DescripcionMatrizEditada, estado.MatrizADescripcion);
-        Assert.AreEqual(5m, estado.ComponentesA[0].Cantidad);
+        await AssertEstadoOriginalAsync(dbPath, escenario, context);
         Assert.AreEqual(EntityState.Modified, context.Entry(componenteObjetivo).State,
-            "La copia de trabajo del editor sigue intacta en la sesión.");
+            "El pendiente ajeno debe seguir rastreado y sin persistir.");
+        Assert.AreEqual(9m, componenteObjetivo.Cantidad,
+            "La guarda no debe mutar la copia de la sesión.");
     }
 
     // ── Escenario ─────────────────────────────────────────────────────────────

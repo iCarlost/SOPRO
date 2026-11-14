@@ -17,14 +17,12 @@ namespace SOPRO.Tests.WinForms.Matrices;
 
 /// <summary>
 /// Reconciliación de los rastreados propios del editor de matrices tras el
-/// guardado por contexto por operación (#121). La edición muta en sitio los
-/// <see cref="ComponenteMatriz"/> rastreados por la sesión; el commit externo
-/// elimina y reemplaza esas filas. Sin reconciliación, cualquier SaveChanges
-/// ajeno posterior del contexto compartido intentaría actualizar filas
-/// inexistentes (DbUpdateConcurrencyException) o pisar los valores confirmados.
-/// La reconciliación resincroniza la matriz editada (Unchanged con
-/// OriginalValues alineados) y deja Detached el lote reemplazado, conservando
-/// el trabajo pendiente ajeno sin guardar ni limpiar el tracker.
+/// guardado por contexto por operación (#121). El editor trabaja con COPIAS
+/// DESACOPLADAS (AsNoTracking): las ediciones propias jamás quedan pendientes
+/// en el tracker de la sesión. La reconciliación resincroniza la matriz editada
+/// (Unchanged con OriginalValues alineados), desconecta en profundidad cualquier
+/// entrada legado del lote reemplazado y conserva el trabajo pendiente ajeno sin
+/// guardar ni limpiar el tracker.
 /// </summary>
 [STATestClass]
 [DoNotParallelize] // El constructor fija el proyecto global de FormatoHelper; contextos SQLite temporales.
@@ -37,14 +35,13 @@ public class FormEditarMatrizReconciliacionRastreadosTests
     {
         EjecutarConEditor((ctx, dbPath, proyecto, matriz, form) =>
         {
-            // La edición del usuario muta en sitio un componente rastreado: el
-            // tracker de la sesión queda sucio con el lote que el commit va a
-            // reemplazar.
+            // Las copias de trabajo del editor son desacopladas (#121): la
+            // edición del usuario NO deja trabajo pendiente en el tracker.
             var editado = form.ComponentesTempParaPrueba.First();
             editado.Cantidad = 5m;
             editado.Importe = 12.5m;
-            Assert.IsTrue(ctx.ChangeTracker.HasChanges(),
-                "La edición en sitio del componente debe dejar trabajo pendiente en el tracker de la sesión.");
+            Assert.IsFalse(ctx.ChangeTracker.HasChanges(),
+                "Las copias desacopladas no deben ensuciar el tracker de la sesión.");
 
             var dto = MatrixEditorService.BuildEditDto(
                 proyecto.Id,
@@ -65,12 +62,6 @@ public class FormEditarMatrizReconciliacionRastreadosTests
             Assert.IsFalse(resultado.IsNew);
             Assert.AreEqual(matriz.Id, resultado.MatrixId);
 
-            // El contexto de sesión viaja como sessionContext para la guarda de
-            // conflictos, pero el servicio no lo guarda ni lo limpia: las ediciones
-            // propias pendientes siguen ahí hasta la reconciliación del editor.
-            Assert.IsTrue(ctx.ChangeTracker.HasChanges(),
-                "El guardado por operación no debe guardar ni limpiar el tracker de la sesión.");
-
             form.ReconciliarRastreadosPropios(dto);
 
             // La matriz queda Unchanged con los valores confirmados: un SaveChanges
@@ -83,19 +74,8 @@ public class FormEditarMatrizReconciliacionRastreadosTests
             Assert.AreEqual(dto.ProyectoId, matriz.ProyectoId,
                 "La reconciliación debe sincronizar también los campos que Apply reescribe, como ProyectoId.");
 
-            // El lote reemplazado queda Detached: ningún SaveChanges ajeno intenta
-            // actualizar filas que el commit eliminó.
-            foreach (var componente in form.ComponentesTempParaPrueba)
-            {
-                Assert.AreEqual(EntityState.Detached, ctx.Entry(componente).State,
-                    "El componente reemplazado debe quedar Detached tras la reconciliación.");
-            }
-
-            Assert.IsFalse(ctx.ChangeTracker.HasChanges(),
-                "Sin trabajo ajeno, la reconciliación debe dejar el tracker limpio.");
-
-            // Un SaveChanges del contexto de sesión ya no rompe ni pisa: el commit
-            // externo se conserva intacto.
+            // El SaveChanges ajeno del contexto de sesión confirma lo pendiente
+            // ajeno y nunca toca las copias desacopladas del editor.
             ctx.SaveChanges();
 
             using (var lectura = new SOPROContext(dbPath))
@@ -106,6 +86,8 @@ public class FormEditarMatrizReconciliacionRastreadosTests
                 Assert.AreEqual("Descripción confirmada", fresca.Descripcion);
                 Assert.AreEqual(dto.Componentes.Count, fresca.Componentes.Count,
                     "El SaveChanges ajeno no debe alterar el lote de componentes confirmado.");
+                Assert.AreEqual(5m, fresca.Componentes.Single(c => c.Orden == 1).Cantidad,
+                    "La cantidad editada en la copia desacoplada debe confirmarse vía DTO.");
                 Assert.IsFalse(fresca.Componentes.Any(c => idsOriginales.Contains(c.Id)),
                     "Los registros de componentes reemplazados deben seguir eliminados.");
             }
@@ -219,21 +201,20 @@ public class FormEditarMatrizReconciliacionRastreadosTests
     {
         EjecutarConEditor((ctx, dbPath, proyecto, matriz, form) =>
         {
-            // Las ediciones del usuario sobre los componentes de trabajo dejan el
-            // tracker sucio, pero son exactamente el dato que el DTO captura y el
-            // commit por operación confirma: NO deben bloquear el guardado.
+            // Las copias de trabajo del editor son desacopladas (#121): las
+            // ediciones propias jamás quedan pendientes en el tracker y jamás
+            // bloquean el guardado.
             form.ComponentesTempParaPrueba.First().Cantidad = 7m;
             form.ComponentesTempParaPrueba.First().Importe = 17.5m;
-            Assert.IsTrue(ctx.ChangeTracker.HasChanges(),
-                "La edición propia deja trabajo pendiente en el tracker.");
+
+            Assert.AreEqual(EntityState.Detached,
+                ctx.Entry(form.ComponentesTempParaPrueba.First()).State,
+                "El componente de trabajo debe estar desacoplado del tracker.");
+            Assert.IsFalse(ctx.ChangeTracker.HasChanges(),
+                "La edición propia no debe dejar trabajo pendiente en el tracker.");
 
             Assert.IsFalse(form.TieneCambiosPendientesEnLaMatriz(),
                 "La guarda sólo debe bloquear por cambios pendientes de la entidad Matriz, nunca por las ediciones propias de componentes.");
-
-            Assert.IsTrue(ctx.ChangeTracker.HasChanges(),
-                "La guarda no debe guardar ni limpiar las ediciones propias al evaluar.");
-            Assert.AreEqual(EntityState.Modified, ctx.Entry(form.ComponentesTempParaPrueba.First()).State,
-                "La edición propia debe seguir rastreada intacta tras evaluar la guarda.");
         });
     }
 
@@ -255,8 +236,8 @@ public class FormEditarMatrizReconciliacionRastreadosTests
                 "La eliminación desde la lista debe replicar la ruta real del editor.");
             Assert.AreNotEqual(0, eliminado.Id);
             ctx.ChangeTracker.DetectChanges();
-            Assert.AreEqual(EntityState.Modified, ctx.Entry(eliminado).State,
-                "El componente quitado de la lista debe seguir rastreado por la sesión.");
+            Assert.AreEqual(EntityState.Detached, ctx.Entry(eliminado).State,
+                "El componente quitado de la lista es una copia desacoplada; el tracker no lo rastrea.");
 
             // Trabajo pendiente ajeno que la reconciliación no debe tocar. Primero
             // se siembra la matriz ajena (con su propio SaveChanges) y después se
