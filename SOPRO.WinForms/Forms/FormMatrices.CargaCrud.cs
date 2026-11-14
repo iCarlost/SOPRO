@@ -29,14 +29,35 @@ namespace SOPRO.WinForms.Forms
         /// pendiente no se recarga: nunca se guarda ni se limpia el tracker ajeno.
         /// </summary>
         internal void RecargarTrasCambioDeInsumos()
+            => IntentarRecargarCatalogoTrasEscrituraExterna(
+                "Hay cambios sin guardar; no se recargó el catálogo de matrices.");
+
+        /// <summary>
+        /// Recarga el catálogo después de que el editor guardó una matriz (#121: la
+        /// escritura ocurre en un contexto por operación y el tracker de la sesión
+        /// queda intacto). Con el tracker limpio descarta lo rastreado para que la
+        /// recarga materialice los valores confirmados. Con trabajo pendiente NO
+        /// recarga y deja el aviso visible: la recarga inmediata que el llamador
+        /// hace al cerrar el editor no puede enmascarar el conflicto con los datos
+        /// stale del identity map. Nunca guarda ni limpia el tracker ajeno.
+        /// </summary>
+        /// <returns>true sólo si la recarga se ejecutó.</returns>
+        internal bool RecargarTrasGuardadoDeMatriz()
+            => IntentarRecargarCatalogoTrasEscrituraExterna(
+                MatrixCatalogRefreshHelper.HayEscriturasMatricesPendientes(_context)
+                    ? "La matriz se guardó, pero hay cambios sin guardar en matrices del proyecto; confirmarlos después puede pisar los valores recién guardados. El catálogo no se recargó."
+                    : "La matriz se guardó, pero hay cambios sin guardar; el catálogo no se recargó.");
+
+        private bool IntentarRecargarCatalogoTrasEscrituraExterna(string mensajeCambiosPendientes)
         {
             if (!MatrixCatalogRefreshHelper.DescartarRastreados(_context))
             {
-                lblStatus.Text = "Hay cambios sin guardar; no se recargó el catálogo de matrices.";
-                return;
+                lblStatus.Text = mensajeCambiosPendientes;
+                return false;
             }
 
             CargarMatrices();
+            return true;
         }
 
         private async void CargarMatrices()

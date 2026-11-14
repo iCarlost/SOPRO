@@ -1,8 +1,13 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.Models;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.Data.Factories;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.Common;
+using System.Linq;
 
 namespace SOPRO.Application.Services
 {
@@ -61,10 +66,31 @@ namespace SOPRO.Application.Services
 
         public ProjectSession OpenProject(string projectPath)
         {
+            if (string.IsNullOrWhiteSpace(projectPath))
+            {
+                throw new ArgumentException(
+                    "Debe indicar la ruta del proyecto a abrir.", nameof(projectPath));
+            }
+
+            // El archivo debe existir ANTES de tocar SQLite o el candado: abrir una
+            // base inexistente crearía un archivo vacío y un .lock sobrante.
+            if (!File.Exists(projectPath))
+            {
+                throw new FileNotFoundException(
+                    "No se encontró el archivo del proyecto.", projectPath);
+            }
+
             var workspaceLock = WorkspaceLock.Acquire(projectPath);
+            SOPROContext? context = null;
             try
             {
-                var context = _dbContextFactory.Create(projectPath);
+                // Preflight de solo lectura con SQL crudo: un archivo que no es un
+                // proyecto SOPRO se rechaza SIN migrarlo (EnsureCurrentSchema escribe).
+                // No se materializa la entidad Proyecto: los esquemas legacy pueden
+                // carecer de columnas nuevas y la consulta EF fallaría antes de migrar.
+                EnsureValidProjectFile(projectPath);
+
+                context = _dbContextFactory.Create(projectPath);
 
                 // Fuente única de verdad del schema — actualiza cualquier DB viejo
                 SchemaManager.EnsureCurrentSchema(context);
@@ -78,9 +104,171 @@ namespace SOPRO.Application.Services
             }
             catch
             {
+                context?.Dispose();
                 workspaceLock.Dispose();
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Verifica, sobre un contexto de solo lectura y con SQL crudo, que el archivo
+        /// es un SQLite válido con las ocho tablas del modelo core, todas sus columnas
+        /// base y una fila en <c>Proyectos</c>. No escribe ni migra: el archivo queda
+        /// intacto.
+        /// </summary>
+        private void EnsureValidProjectFile(string projectPath)
+        {
+            try
+            {
+                using var readOnlyContext = _dbContextFactory.CreateReadOnly(projectPath);
+                var connection = readOnlyContext.Database.GetDbConnection();
+                var wasOpen = connection.State == ConnectionState.Open;
+                if (!wasOpen)
+                {
+                    connection.Open();
+                }
+
+                try
+                {
+                    if (!TieneProyectoValido(connection))
+                    {
+                        throw new InvalidOperationException(
+                            "El archivo no contiene un proyecto válido.");
+                    }
+                }
+                finally
+                {
+                    if (!wasOpen)
+                    {
+                        connection.Close();
+                    }
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                throw;
+            }
+            catch (SqliteException ex)
+            {
+                // Archivo corrupto, vacío o que no es una base SQLite.
+                throw new InvalidOperationException(
+                    "El archivo no es un proyecto SOPRO válido o está dañado.", ex);
+            }
+        }
+
+        /// <summary>
+        /// Columnas base del modelo core SOPRO, anteriores a cualquier migración
+        /// M0xx (esquema histórico + entidades actuales menos lo agregado por las
+        /// migraciones). Las migraciones solo AGREGAN columnas/tablas: no pueden
+        /// reconstruir estas columnas, así que su ausencia delata un SQLite ajeno.
+        /// Solo se exige presencia de nombres (sin tipo, afinidad, nulabilidad,
+        /// orden ni columnas extra); la comparación es insensible a mayúsculas.
+        /// </summary>
+        private static readonly (string Tabla, string[] Columnas)[] ColumnasBaseProyecto =
+        {
+            ("Proyectos", new[]
+            {
+                "Id", "Nombre", "Descripcion", "Ubicacion", "Convocante", "Contratista",
+                "ApoderadoLegal", "FechaInicio", "FechaTermino", "PlazoEjecucion",
+                "PorcentajeIndirectosCentral", "PorcentajeIndirectosCampo",
+                "PorcentajeFinanciamiento", "PorcentajeUtilidad", "PorcentajeIVA",
+                "FactorSalarioReal", "FechaCalculoFSR", "FechaCreacion", "FechaModificacion"
+            }),
+            ("Materiales", new[]
+            {
+                "Id", "Clave", "Descripcion", "Unidad", "PrecioUnitario", "Origen",
+                "MaterialMaestroId", "ProyectoId", "Notas", "FechaCreacion", "FechaModificacion"
+            }),
+            ("ManoDeObra", new[]
+            {
+                "Id", "Clave", "Descripcion", "Unidad", "SalarioBase", "FactorSalarioReal",
+                "SalarioReal", "Origen", "ManoDeObraMaestraId", "ProyectoId", "Notas",
+                "FechaCreacion", "FechaModificacion"
+            }),
+            ("Maquinaria", new[]
+            {
+                "Id", "Clave", "Descripcion", "PotenciaNominal", "ValorAdquisicion",
+                "ValorLlantas", "ValorPiezasEspeciales", "FactorRescate", "VidaEconomica",
+                "TasaInteres", "HorasEfectivasAnio", "PrimaSeguro", "FactorMantenimiento",
+                "CantidadCombustible", "PrecioCombustible", "CantidadAceite", "PrecioAceite",
+                "VidaEconomicaLlantas", "VidaPiezasEspeciales", "SalarioOperador",
+                "FactorSalarioReal", "HorasEfectivasTurno", "CostoHorario", "Origen",
+                "MaquinariaMaestraId", "ProyectoId", "Notas", "FechaCreacion", "FechaModificacion"
+            }),
+            ("Matrices", new[]
+            {
+                "Id", "Clave", "Descripcion", "Unidad", "Tipo", "CostoDirecto", "Origen",
+                "MatrizMaestraId", "ProyectoId", "Notas", "FechaCreacion", "FechaModificacion",
+                "FechaUltimoCalculo"
+            }),
+            ("ComponentesMatriz", new[]
+            {
+                "Id", "MatrizId", "TipoComponente", "MaterialId", "ManoDeObraId",
+                "MaquinariaId", "AuxiliarId", "Cantidad", "Importe", "Orden", "Notas"
+            }),
+            ("ConceptosPresupuesto", new[]
+            {
+                "Id", "ProyectoId", "Clave", "Descripcion", "Unidad", "EsAgrupador",
+                "PadreId", "Orden", "Cantidad", "MatrizId", "CostoDirectoUnitario",
+                "CostoDirectoTotal", "Indirectos", "Financiamiento", "Utilidad",
+                "PrecioUnitario", "ImporteTotal"
+            }),
+            ("ColumnasPersonalizadas", new[]
+            {
+                "Id", "ProyectoId", "Nombre", "NombreInterno", "TipoColumna", "TipoDato",
+                "Formula", "Visible", "Imprimible", "AnchoColumna", "Orden", "Totalizar",
+                "CondicionTotalizacion", "FormatoNumerico", "FormatoFecha", "Alineacion",
+                "NombreFuente", "TamanoFuente", "ColorFuente", "ColorFondo", "Negrita",
+                "Cursiva", "FechaCreacion", "FechaModificacion"
+            })
+        };
+
+        private static bool TieneProyectoValido(DbConnection connection)
+        {
+            // Los objetos de ColumnasBaseProyecto pertenecen al modelo core
+            // pre-migraciones. Comprobar columnas y objetos tipo table (no views)
+            // evita que un SQLite ajeno con una tabla llamada Proyectos llegue a
+            // EnsureCurrentSchema (que crearía __MigracionesCustom) y recién
+            // entonces falle EF al consultar columnas inexistentes.
+            foreach (var (tableName, requiredColumns) in ColumnasBaseProyecto)
+            {
+                if (!TablaExiste(connection, tableName)
+                    || !TieneColumnas(connection, tableName, requiredColumns))
+                {
+                    return false;
+                }
+            }
+
+            using var rowCommand = connection.CreateCommand();
+            rowCommand.CommandText = "SELECT 1 FROM Proyectos LIMIT 1";
+            return rowCommand.ExecuteScalar() is not null;
+        }
+
+        private static bool TablaExiste(DbConnection connection, string tableName)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = @name";
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "@name";
+            parameter.Value = tableName;
+            command.Parameters.Add(parameter);
+            return Convert.ToInt32(command.ExecuteScalar()) > 0;
+        }
+
+        private static bool TieneColumnas(DbConnection connection, string tableName, string[] requiredColumns)
+        {
+            var actualColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = $"PRAGMA table_info('{tableName}')";
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    actualColumns.Add(reader.GetString(1));
+                }
+            }
+
+            return requiredColumns.All(actualColumns.Contains);
         }
 
         public void CloseProjectSession(ProjectSession? session)

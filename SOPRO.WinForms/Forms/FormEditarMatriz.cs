@@ -4,6 +4,7 @@ using SOPRO.Application.Models.Matrices;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using System;
@@ -23,6 +24,7 @@ namespace SOPRO.WinForms.Forms
         public static event EventHandler MatrizGuardada;
 
         private readonly SOPROContext _context;
+        private readonly IProjectDbContextFactory _dbContextFactory;
         private readonly int _proyectoId;
         private readonly Matriz _matriz;
         private readonly bool _esNuevo;
@@ -41,9 +43,10 @@ namespace SOPRO.WinForms.Forms
         private decimal _totalBasicos = 0;
         private decimal _costoDirectoTotal = 0;
         
-        public FormEditarMatriz(SOPROContext context, int proyectoId, Matriz matriz = null, TipoMatriz? tipoInicial = null)
+        public FormEditarMatriz(SOPROContext context, int proyectoId, Matriz matriz = null, TipoMatriz? tipoInicial = null, IProjectDbContextFactory? dbContextFactory = null)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
+            _dbContextFactory = dbContextFactory ?? new ProjectDbContextFactory();
             _proyectoId = proyectoId;
             _matriz = matriz;
             _esNuevo = (matriz == null);
@@ -463,6 +466,19 @@ ConfigurarGrid();
                 return;
             }
 
+            // La matriz editada puede llegar con cambios pendientes de otra edición
+            // en el contexto de sesión (p. ej. una escritura heredada del panel
+            // embebido aún sin confirmar). El commit por operación reescribiría esa
+            // fila y la reconciliación posterior la marcaría Unchanged con los
+            // valores de esta edición, descartando silenciosamente el trabajo
+            // ajeno: se bloquea ANTES de cualquier escritura, sin mutar el tracker.
+            if (TieneCambiosPendientesEnLaMatriz())
+            {
+                MessageBox.Show(MensajeMatrizConCambiosPendientes,
+                    "Cambios sin guardar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             try
             {
                 var claveDuplicada = await MatrixApplicationService.ExistsByKeyAsync(
@@ -479,9 +495,38 @@ ConfigurarGrid();
                 }
 
                 var dto = BuildMatrixEditDto();
-                var result = await MatrixApplicationService.SaveAsync(_context, dto, _esNuevo ? null : _matriz);
+                // La escritura ocurre en un contexto por operación sobre la ruta de la
+                // base; el contexto de la sesión no se guarda ni se limpia. Se aporta
+                // como sessionContext para que la guarda previa del servicio rechace,
+                // antes de escribir, cualquier edición pendiente ajena sobre la
+                // matriz objetivo o sobre las matrices que dependen de ella (la
+                // cascada las recalcularía y un guardado compartido posterior podría
+                // sobrescribirlas). Las ediciones propias de los componentes de
+                // trabajo del editor no son conflicto: viajan en el DTO. El refresco
+                // de MatrizGuardada descarta lo rastreado si no hay cambios
+                // pendientes o advierte cuando el tracker está sucio.
+                var result = await MatrixApplicationService.SaveAsync(
+                    _dbContextFactory,
+                    _context.DatabasePath,
+                    dto,
+                    _esNuevo ? null : _matriz,
+                    _context);
 
-                MessageBox.Show(MatrixSaveFlowService.GetSuccessMessage(result.IsNew), "Guardado", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                // La edición mutó en sitio los ComponenteMatriz rastreados por la
+                // sesión (el editor trabaja sobre las instancias cargadas con
+                // seguimiento). El commit por operación los reemplazó en la base:
+                // reconciliar los rastreados propios antes de notificar, para que un
+                // SaveChanges ajeno posterior no intente actualizar filas inexistentes
+                // ni pise los valores recién confirmados.
+                ReconciliarRastreadosPropios(dto);
+
+                var mensajeExito = MatrixSaveFlowService.GetSuccessMessage(result.IsNew);
+                if (_context.ChangeTracker.HasChanges())
+                {
+                    mensajeExito += "\n\nAtención: hay cambios sin guardar en el proyecto; el catálogo de matrices no se recargará hasta confirmarlos o descartarlos.";
+                }
+
+                MessageBox.Show(mensajeExito, "Guardado", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                 DialogResult = DialogResult.OK;
                 MatrizGuardada?.Invoke(null, EventArgs.Empty);
@@ -508,6 +553,109 @@ ConfigurarGrid();
                     break;
             }
         }
+
+        /// <summary>
+        /// Mensaje del bloqueo de guardado cuando la matriz editada ya tenía
+        /// cambios pendientes en el contexto de sesión, ajenos a esta edición.
+        /// </summary>
+        private const string MensajeMatrizConCambiosPendientes =
+            "Esta matriz tiene cambios sin guardar de otra edición en la sesión de trabajo. " +
+            "Guarde o descarte esos cambios y vuelva a abrir el editor antes de guardar.";
+
+        /// <summary>
+        /// Detecta cambios pendientes de la matriz editada en el contexto de sesión
+        /// que no provienen de esta edición: el editor nunca muta la entidad
+        /// <see cref="Matriz"/> (solo sus componentes de trabajo, que el DTO captura
+        /// y el commit por operación confirma). Con ese estado previo el guardado
+        /// se bloquea antes del commit: la reconciliación posterior sincronizaría
+        /// la fila con los valores confirmados y descartaría silenciosamente el
+        /// trabajo ajeno.
+        /// </summary>
+        internal bool TieneCambiosPendientesEnLaMatriz()
+        {
+            if (_esNuevo || _matriz == null) return false;
+
+            _context.ChangeTracker.DetectChanges();
+            var entrada = _context.Entry(_matriz);
+            return entrada.State is EntityState.Modified or EntityState.Deleted;
+        }
+
+        /// <summary>
+        /// Reconciliación de los rastreados PROPIOS tras el commit por operación
+        /// (#121), con el mismo patrón que la ruta de comandos del panel de
+        /// matrices embebido: las entidades modificadas ajenas se conservan y el
+        /// ChangeTracker de la sesión jamás se limpia ni se guarda.
+        ///
+        /// La matriz editada se resincroniza con los valores confirmados y queda
+        /// Unchanged con OriginalValues alineados: un SaveChanges ajeno posterior
+        /// la reescribe como no-op en lugar de pisar el commit. Si la entrada de la
+        /// matriz ya estaba Modified/Deleted (trabajo ajeno que la guarda de
+        /// guardado habría bloqueado antes del commit), NO se toca: la
+        /// resincronización descartaría silenciosamente ese trabajo.
+        ///
+        /// El commit eliminó y reemplazó el lote COMPLETO de componentes de la
+        /// matriz editada: eso incluye los componentes que el usuario quitó de la
+        /// lista del editor y que la sesión sigue rastreando (quitarlos de la
+        /// lista no desconecta la entrada). Se desconectan TODAS las entradas
+        /// rastreadas de la matriz objetivo, estén en la lista o no, para que
+        /// ningún SaveChanges ajeno intente actualizar filas inexistentes
+        /// (DbUpdateConcurrencyException). Las entradas de OTRAS matrices y las
+        /// ediciones ajenas no se tocan; los componentes nuevos o solo de lista no
+        /// rastreados no se adjuntan (Entry los ve Detached y no hay mutación).
+        /// </summary>
+        internal void ReconciliarRastreadosPropios(MatrixEditDto dto)
+        {
+            if (dto == null) throw new ArgumentNullException(nameof(dto));
+
+            if (!_esNuevo && _matriz != null)
+            {
+                var entradaMatriz = _context.Entry(_matriz);
+                bool trabajoAjenoPendiente = entradaMatriz.State is EntityState.Modified or EntityState.Deleted;
+
+                if (!trabajoAjenoPendiente)
+                {
+                    _matriz.Clave = dto.Clave.Trim().ToUpperInvariant();
+                    _matriz.Descripcion = dto.Descripcion.Trim();
+                    _matriz.Unidad = dto.Unidad.Trim();
+                    _matriz.Tipo = dto.Tipo;
+                    _matriz.CostoDirecto = dto.CostoDirecto;
+                    _matriz.ProyectoId = dto.ProyectoId;
+                    _matriz.Notas ??= string.Empty;
+                    _matriz.FechaModificacion = DateTime.Now;
+                }
+
+                if (entradaMatriz.State != EntityState.Detached && !trabajoAjenoPendiente)
+                {
+                    entradaMatriz.OriginalValues.SetValues(entradaMatriz.CurrentValues);
+                    entradaMatriz.State = EntityState.Unchanged;
+                }
+
+                // Lote reemplazado de la matriz objetivo: en lista o fuera de ella
+                // (un componente quitado de la lista sigue rastreado). ToList:
+                // cambiar estados mientras se enumera el tracker no es seguro.
+                int matrizIdObjetivo = _matriz.Id;
+                foreach (var entrada in _context.ChangeTracker.Entries<ComponenteMatriz>().ToList())
+                {
+                    if (entrada.Entity.MatrizId == matrizIdObjetivo
+                        && entrada.State != EntityState.Detached)
+                    {
+                        entrada.State = EntityState.Detached;
+                    }
+                }
+            }
+
+            foreach (var componente in _componentesTemp)
+            {
+                var entradaComponente = _context.Entry(componente);
+                if (entradaComponente.State != EntityState.Detached)
+                {
+                    entradaComponente.State = EntityState.Detached;
+                }
+            }
+        }
+
+        /// <summary>Acceso del ensamblado de pruebas a los componentes de trabajo del editor.</summary>
+        internal IReadOnlyList<ComponenteMatriz> ComponentesTempParaPrueba => _componentesTemp;
 
         private MatrixEditDto BuildMatrixEditDto()
         {
