@@ -28,10 +28,10 @@ public sealed class FindMatricesUsingMaterial
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        await using var context = await _factory.CreateAsync(session.DatabasePath, cancellationToken);
-
         try
         {
+            await using var context = await _factory.CreateAsync(session.DatabasePath, cancellationToken);
+
             var material = await context.Materiales
                 .AsNoTracking()
                 .FirstOrDefaultAsync(m => m.Id == request.MaterialId, cancellationToken);
@@ -94,9 +94,10 @@ public sealed class FindMatricesUsingMaterial
         if (!matricesResult.IsSuccess)
             return Result<MaterialUsageDetail>.Fail(matricesResult.Error!);
 
-        await using var context = await _factory.CreateAsync(session.DatabasePath, cancellationToken);
         try
         {
+            await using var context = await _factory.CreateAsync(session.DatabasePath, cancellationToken);
+
             var linkedMachinery = await context.Maquinaria.AsNoTracking()
                 .Where(m => m.ProyectoId == session.Project.ProjectId
                     && (m.MaterialCombustibleId == request.MaterialId || m.MaterialAceiteId == request.MaterialId))

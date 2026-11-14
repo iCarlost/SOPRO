@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
@@ -29,7 +30,12 @@ namespace SOPRO.WinForms.Forms
 
         // N4: la fábrica de contextos es transient por uso; la sesión ya no posee
         // contexto, cada caso de uso abre y libera el suyo dentro del método.
-        private readonly IProjectDbContextFactory _factory = new ProjectDbContextFactory();
+        private readonly IProjectDbContextFactory _factory;
+
+        // Menú contextual activo: al reemplazarlo o cerrar el formulario se
+        // cancela la consulta pendiente para que no toque ítems ya liberados.
+        private ContextMenuStrip? _menuContextual;
+        private CancellationTokenSource? _menuCts;
 
         // Casos de uso de la frontera N3: la UI no calcula ni persiste materiales directamente.
         private readonly ListMaterials _listMaterials;

@@ -16,6 +16,17 @@ namespace SOPRO.WinForms.Forms
         private readonly MaterialListItem _material;
         private readonly bool _esNuevo;
         private readonly IProjectDbContextFactory _factory;
+        private int _generacionAutocompletadoClave;
+
+        /// <summary>
+        /// Seam por instancia de los diálogos del autocompletado por clave. En
+        /// producción conserva los <see cref="MessageBox"/> existentes; las pruebas
+        /// STA lo sustituyen para ejercitar el flujo sin abrir ventanas modales.
+        /// No es un hook estático: cada editor tiene el suyo.
+        /// </summary>
+        internal Func<string, string, MessageBoxButtons, MessageBoxIcon, DialogResult> MostrarDialogo
+        { get; set; } = static (mensaje, titulo, botones, icono) =>
+            MessageBox.Show(mensaje, titulo, botones, icono);
 
         /// <summary>Id del material persistido por el último guardado exitoso (para el selector de insumos).</summary>
         public int? UltimoMaterialIdGuardado { get; private set; }
@@ -38,6 +49,12 @@ namespace SOPRO.WinForms.Forms
 
             ConfigurarFormulario();
             SeleccionTotalNumericUpDown.Configurar(nudPrecio);
+
+            // Cualquier edición posterior de la clave invalida la consulta en curso
+            // (A→B→A no puede aceptar la respuesta vieja de A). El descarte/cierre
+            // también la invalida para no tocar controles dispuestos.
+            txtClave.TextChanged += (_, _) => InvalidarAutocompletadoClave();
+            Disposed += (_, _) => InvalidarAutocompletadoClave();
 
             if (_esNuevo)
                 txtClave.Text = KeySuggestionService.Generate();
@@ -95,10 +112,39 @@ namespace SOPRO.WinForms.Forms
             string clave = txtClave.Text.Trim();
             if (string.IsNullOrWhiteSpace(clave)) return;
 
-            var result = await new FindMaterialByKey(_factory).Execute(
-                _sessionInfo, new FindMaterialByKeyRequest(clave));
+            int generacion = ++_generacionAutocompletadoClave;
 
-            if (!result.IsSuccess || result.Value == null) return;
+            Result<MaterialListItem?> result;
+            try
+            {
+                result = await new FindMaterialByKey(_factory).Execute(
+                    _sessionInfo, new FindMaterialByKeyRequest(clave));
+            }
+            catch (OperationCanceledException)
+            {
+                // Cierre o cancelación esperada: no es un fallo visible.
+                return;
+            }
+            catch (Exception ex)
+            {
+                if (EsBusquedaVigente(generacion, clave))
+                    ReportarErrorBusqueda(clave, ex.Message);
+                return;
+            }
+
+            // La respuesta pudo llegar después de cerrar el editor, de cambiar la
+            // clave o de iniciar otra consulta: no debe tocar los controles.
+            if (!EsBusquedaVigente(generacion, clave)) return;
+
+            if (!result.IsSuccess)
+            {
+                // Un fallo inesperado de la consulta es recuperable: se informa y el
+                // editor sigue utilizable. "No encontrado" (Ok con null) es silencioso.
+                ReportarErrorBusqueda(clave, result.Error!.Message);
+                return;
+            }
+
+            if (result.Value == null) return;
 
             var materialExistente = result.Value;
             if (!_esNuevo && materialExistente.Id == _material.Id) return;
@@ -106,15 +152,12 @@ namespace SOPRO.WinForms.Forms
             // Si es NUEVO → auto-completar silenciosamente
             if (_esNuevo)
             {
-                txtDescripcion.Text = materialExistente.Descripcion;
-                txtUnidad.Text = materialExistente.Unidad;
-                nudPrecio.Value = materialExistente.PrecioUnitario;
-                txtNotas.Text = materialExistente.Notas;
+                AplicarMaterialExistente(materialExistente);
                 return;
             }
 
             // Si es EDICIÓN → confirmar reemplazo
-            var resultMensaje = MessageBox.Show(
+            var resultMensaje = MostrarDialogo(
                 $"La clave '{clave}' ya está asignada a:\n\n" +
                 $"  → {materialExistente.Descripcion}\n" +
                 $"  → Precio: {materialExistente.PrecioUnitario:C2}\n\n" +
@@ -124,22 +167,53 @@ namespace SOPRO.WinForms.Forms
                 MessageBoxIcon.Question
             );
 
+            // La clave pudo cambiar mientras el diálogo estaba abierto.
+            if (!EsBusquedaVigente(generacion, clave)) return;
+
             if (resultMensaje == DialogResult.Yes)
             {
-                txtDescripcion.Text = materialExistente.Descripcion;
-                txtUnidad.Text = materialExistente.Unidad;
-                nudPrecio.Value = materialExistente.PrecioUnitario;
-                txtNotas.Text = materialExistente.Notas;
+                AplicarMaterialExistente(materialExistente);
             }
             else
             {
                 // Restaurar clave anterior
-                if (_material != null)
-                    txtClave.Text = _material.Clave;
-                else
-                    txtClave.Text = "";
+                txtClave.Text = _material != null ? _material.Clave : string.Empty;
                 txtClave.Focus();
             }
+        }
+
+        private void AplicarMaterialExistente(MaterialListItem material)
+        {
+            txtDescripcion.Text = material.Descripcion;
+            txtUnidad.Text = material.Unidad;
+            nudPrecio.Value = material.PrecioUnitario;
+            txtNotas.Text = material.Notas;
+        }
+
+        private void ReportarErrorBusqueda(string clave, string detalle)
+        {
+            MostrarDialogo(
+                $"No se pudo buscar la clave '{clave}'.\n\n{detalle}\n\n" +
+                "El editor sigue disponible; puede continuar capturando el material.",
+                "Búsqueda de material",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            );
+        }
+
+        private bool EsBusquedaVigente(int generacion, string clave)
+        {
+            if (IsDisposed || Disposing) return false;
+            if (generacion != _generacionAutocompletadoClave) return false;
+            return string.Equals(txtClave.Text.Trim(), clave, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void InvalidarAutocompletadoClave() => _generacionAutocompletadoClave++;
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            InvalidarAutocompletadoClave();
+            base.OnFormClosed(e);
         }
 
         private bool _guardando;
