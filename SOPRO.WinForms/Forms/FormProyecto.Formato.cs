@@ -238,7 +238,19 @@ namespace SOPRO.WinForms.Forms
 
         private async void btnRecalcularRibbon_Click(object sender, EventArgs e)
         {
-            await RecalcularTodoElProyectoAsync();
+            try
+            {
+                await RecalcularTodoElProyectoAsync();
+            }
+            catch (Exception ex)
+            {
+                Cursor = Cursors.Default;
+                btnRecalcularRibbon.Enabled = true;
+                MessageBox.Show(
+                    RecalculoGlobalUiFeedback.MensajeFalloInesperado(ex.Message),
+                    RecalculoGlobalUiFeedback.TituloFalloInesperado,
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private async Task RecalcularTodoElProyectoAsync()
@@ -254,7 +266,7 @@ namespace SOPRO.WinForms.Forms
             Cursor = Cursors.WaitCursor;
 
             SOPRO.Application.Contracts.Result<SOPRO.Application.Services.RecalculoGlobalResultado>? resultado = null;
-            Exception error = null;
+            Exception? errorCalculo = null;
 
             try
             {
@@ -267,7 +279,7 @@ namespace SOPRO.WinForms.Forms
             }
             catch (Exception ex)
             {
-                error = ex;
+                errorCalculo = ex;
             }
             finally
             {
@@ -275,46 +287,113 @@ namespace SOPRO.WinForms.Forms
                 btnRecalcularRibbon.Enabled = true;
             }
 
-            if (error != null)
+            if (errorCalculo != null)
             {
-                RestaurarFocoTrasRecalculo(tabActiva, formActivoAntes, controlConFocoAntes);
-                MessageBox.Show($"Error en el recálculo global:{error.Message}",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                RestaurarFocoSeguro(tabActiva, formActivoAntes, controlConFocoAntes);
+                MostrarErrorCalculo(errorCalculo.Message);
                 return;
             }
 
             if (resultado == null || !resultado.IsSuccess)
             {
-                RestaurarFocoTrasRecalculo(tabActiva, formActivoAntes, controlConFocoAntes);
-                MessageBox.Show(
-                    $"Error en el recálculo global:\n{resultado?.Error?.Message ?? "No se pudo completar el recálculo."}",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                RestaurarFocoSeguro(tabActiva, formActivoAntes, controlConFocoAntes);
+                MostrarErrorCalculo(resultado?.Error?.Message);
                 return;
             }
 
             var recalculado = resultado.Value!;
 
-            // Refrescar todos los tabs abiertos que implementen IRecalculable
-            foreach (TabPage tab in tabControl.TabPages)
+            RefrescoPostRecalculoResultado refresco;
+            try
             {
-                if (tab.Controls.Count > 0 && tab.Controls[0] is IRecalculable form)
-                {
-                    try { form.RecalcularTodo(); }
-                    catch { /* no interrumpir por un tab */ }
-                }
+                refresco = EjecutarRefrescoPostRecalculo();
+            }
+            catch (Exception ex)
+            {
+                // El refresco ya no puede hacer fallar el flujo: el cálculo está guardado.
+                refresco = RefrescoPostRecalculoResultado.ConError(ex);
             }
 
-            // Ajustar altura de filas del form activo
-            if (_formActivo?.GridPrincipal != null)
-                FormatoHelper.AjustarAutoAlturaFilas(_formActivo.GridPrincipal);
+            RestaurarFocoSeguro(tabActiva, formActivoAntes, controlConFocoAntes);
 
-            RestaurarFocoTrasRecalculo(tabActiva, formActivoAntes, controlConFocoAntes);
+            if (refresco.TieneFallos)
+            {
+                MessageBox.Show(
+                    RecalculoGlobalUiFeedback.MensajeFalloRefresco(refresco.PestanasFallidas, refresco.Error),
+                    RecalculoGlobalUiFeedback.TituloFalloRefresco,
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
-            // Mostrar resultado discretamente como tooltip debajo del botón recalcular
-            var tip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 0, ReshowDelay = 0 };
-            // Mostrar debajo del botón (y = altura del botón + margen)
-            tip.Show(recalculado.ResumenTexto, btnRecalcularRibbon,
-                0, btnRecalcularRibbon.Height + 4, 5000);
+            MostrarResumenRecalculo(recalculado);
+        }
+
+        /// <summary>
+        /// Refresca las pestañas abiertas después de un recálculo exitoso. Un fallo
+        /// por pestaña se cuenta y no interrumpe las restantes; cualquier otro fallo
+        /// del refresco se devuelve para informarlo sin sugerir una reversión.
+        /// </summary>
+        internal RefrescoPostRecalculoResultado EjecutarRefrescoPostRecalculo()
+        {
+            int pestanasFallidas = 0;
+            Exception? error = null;
+
+            try
+            {
+                foreach (TabPage tab in tabControl.TabPages)
+                {
+                    if (tab.Controls.Count > 0 && tab.Controls[0] is IRecalculable form)
+                    {
+                        try { form.RecalcularTodo(); }
+                        catch { pestanasFallidas++; }
+                    }
+                }
+
+                // Ajustar altura de filas del form activo
+                if (_formActivo?.GridPrincipal != null)
+                    FormatoHelper.AjustarAutoAlturaFilas(_formActivo.GridPrincipal);
+            }
+            catch (Exception ex)
+            {
+                error = ex;
+            }
+
+            return new RefrescoPostRecalculoResultado(pestanasFallidas, error);
+        }
+
+        private static void MostrarErrorCalculo(string? detalle)
+        {
+            MessageBox.Show(
+                RecalculoGlobalUiFeedback.MensajeFalloCalculo(detalle),
+                RecalculoGlobalUiFeedback.TituloFalloCalculo,
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+
+        private void MostrarResumenRecalculo(RecalculoGlobalResultado recalculado)
+        {
+            try
+            {
+                // Mostrar resultado discretamente como tooltip debajo del botón recalcular
+                var tip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 0, ReshowDelay = 0 };
+                tip.Show(recalculado.ResumenTexto, btnRecalcularRibbon,
+                    0, btnRecalcularRibbon.Height + 4, 5000);
+            }
+            catch
+            {
+                // El resumen es informativo; un fallo al mostrarlo no debe propagarse.
+            }
+        }
+
+        private void RestaurarFocoSeguro(TabPage tabActiva, Form formActivoAntes, Control controlConFocoAntes)
+        {
+            try
+            {
+                RestaurarFocoTrasRecalculo(tabActiva, formActivoAntes, controlConFocoAntes);
+            }
+            catch
+            {
+                // La restauración de foco es best-effort y no debe ocultar el resultado.
+            }
         }
     }
 }

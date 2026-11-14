@@ -147,37 +147,52 @@ namespace SOPRO.WinForms.Forms
 
         private void RestaurarFocoTrasRecalculo(TabPage tabActiva, Form formActivoAntes, Control controlConFocoAntes)
         {
-            if (IsDisposed)
+            if (IsDisposed || !IsHandleCreated)
                 return;
 
-            BeginInvoke(new Action(() =>
+            try
             {
-                if (IsDisposed)
-                    return;
-
-                if (tabActiva != null && tabControl.TabPages.Contains(tabActiva))
-                    tabControl.SelectedTab = tabActiva;
-
-                if (controlConFocoAntes != null
-                    && !controlConFocoAntes.IsDisposed
-                    && controlConFocoAntes.Visible
-                    && controlConFocoAntes.CanFocus)
+                BeginInvoke(new Action(() =>
                 {
+                    if (IsDisposed)
+                        return;
+
                     try
                     {
-                        controlConFocoAntes.Select();
-                        controlConFocoAntes.Focus();
-                        return;
+                        if (tabActiva != null && tabControl.TabPages.Contains(tabActiva))
+                            tabControl.SelectedTab = tabActiva;
+
+                        if (controlConFocoAntes != null
+                            && !controlConFocoAntes.IsDisposed
+                            && controlConFocoAntes.Visible
+                            && controlConFocoAntes.CanFocus)
+                        {
+                            try
+                            {
+                                controlConFocoAntes.Select();
+                                controlConFocoAntes.Focus();
+                                return;
+                            }
+                            catch
+                            {
+                                // Si el control ya no acepta foco, caer al formulario activo.
+                            }
+                        }
+
+                        if (formActivoAntes != null && !formActivoAntes.IsDisposed)
+                            TransferirFocoAlFormularioAbierto(formActivoAntes);
                     }
                     catch
                     {
-                        // Si el control ya no acepta foco, caer al formulario activo.
+                        // El foco es best-effort: un control que ya no acepta foco
+                        // no debe provocar una excepción en el hilo de UI.
                     }
-                }
-
-                if (formActivoAntes != null && !formActivoAntes.IsDisposed)
-                    TransferirFocoAlFormularioAbierto(formActivoAntes);
-            }));
+                }));
+            }
+            catch (InvalidOperationException)
+            {
+                // El formulario se cerró antes de poder programar la restauración.
+            }
         }
 
         private Control ObtenerControlConFoco(Control contenedor)
