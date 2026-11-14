@@ -31,5 +31,29 @@ namespace SOPRO.WinForms.Helpers
 
             return true;
         }
+
+        /// <summary>
+        /// Detecta escrituras de matrices pendientes (Modified/Deleted) en el
+        /// tracker de la sesión. Si un módulo ajeno las confirma después con el
+        /// contexto compartido, pisarían los valores recién commitidos por una
+        /// escritura por operación: el llamador debe nombrar ese riesgo en su aviso.
+        /// Los Altos pendientes no cuentan (una fila nueva no pisa nada).
+        /// </summary>
+        public static bool HayEscriturasMatricesPendientes(SOPROContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+
+            foreach (var entry in context.ChangeTracker.Entries<Matriz>())
+            {
+                if (entry.State is EntityState.Modified or EntityState.Deleted) return true;
+            }
+
+            foreach (var entry in context.ChangeTracker.Entries<ComponenteMatriz>())
+            {
+                if (entry.State is EntityState.Modified or EntityState.Deleted) return true;
+            }
+
+            return false;
+        }
     }
 }

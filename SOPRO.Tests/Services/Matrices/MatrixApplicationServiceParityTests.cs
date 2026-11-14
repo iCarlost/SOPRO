@@ -6,6 +6,7 @@ using SOPRO.Application.Models;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 using SOPRO.Tests.TestInfrastructure;
 
 namespace SOPRO.Tests.Services.Matrices;
@@ -35,11 +36,17 @@ public class MatrixApplicationServiceParityTests
             var setupRef = await CrearEscenario(contextRef, valores, iter);
 
             var dto = setup.Dto;
-            var servicio = await MatrixApplicationService.SaveAsync(context, dto, setup.MatrizA);
+            var servicio = await MatrixApplicationService.SaveAsync(
+                new ProjectDbContextFactory(), context.DatabasePath, dto, setup.MatrizA);
             var referencia = await SaveAsyncConFachada(contextRef, dto, setupRef.MatrizA);
 
             Assert.AreEqual(referencia.IsNew, servicio.IsNew, $"iter={iter} IsNew");
             Assert.AreEqual(referencia.CascadedMatricesUpdated, servicio.CascadedMatricesUpdated, $"iter={iter} CascadedMatricesUpdated");
+
+            // [121] La guarda escribe en un contexto por operación: el tracker del
+            // contexto llamador queda intacto y stale. Se descarta para leer lo
+            // realmente persistido.
+            context.ChangeTracker.Clear();
 
             var afectada = await context.Matrices.Include(m => m.Componentes)
                 .FirstAsync(m => m.Id == setup.MatrizB.Id);
@@ -151,13 +158,16 @@ public class MatrixApplicationServiceParityTests
             }
         };
 
-        var result = await MatrixApplicationService.SaveAsync(context, dto, matrizA);
+        var result = await MatrixApplicationService.SaveAsync(
+            new ProjectDbContextFactory(), context.DatabasePath, dto, matrizA);
 
         Assert.IsFalse(result.IsNew);
         Assert.AreEqual(1, result.CascadedMatricesUpdated);
 
         // Matriz B: auxiliar cant 2 × CostoDirecto(A)=350 → 700; material cant 3 × 100 → 300;
         // total 1000 → R2 = 1000.00
+        // [121] contexto por operación: el tracker del llamador queda stale.
+        context.ChangeTracker.Clear();
         var afectada = await context.Matrices.Include(m => m.Componentes)
             .FirstAsync(m => m.Id == matrizB.Id);
         Assert.AreEqual(1000.00m, afectada.CostoDirecto);
@@ -178,7 +188,8 @@ public class MatrixApplicationServiceParityTests
         context.Matrices.Remove(setup.MatrizB);
         await context.SaveChangesAsync();
 
-        var result = await MatrixApplicationService.SaveAsync(context, setup.Dto, setup.MatrizA);
+        var result = await MatrixApplicationService.SaveAsync(
+            new ProjectDbContextFactory(), context.DatabasePath, setup.Dto, setup.MatrizA);
 
         Assert.AreEqual(0, result.CascadedMatricesUpdated);
     }

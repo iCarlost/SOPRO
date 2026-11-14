@@ -103,8 +103,6 @@ public class FormEditarMatrizInteraccionGridTests
 
     [TestMethod]
     [DataRow("colDescripcion", "Descripción actualizada")]
-    [DataRow("colUnidad", "lt")]
-    [DataRow("colPU", "12.50")]
     public void OtrasCeldasEditables_ConservanCeldaFocoYScroll(
         string nombreColumna,
         string valorEditado)

@@ -11,5 +11,6 @@ namespace SOPRO.Application.DTOs.Matrices
         public TipoMatriz Tipo { get; set; }
         public decimal CostoDirecto { get; set; }
         public List<MatrixComponentEditDto> Componentes { get; set; } = new();
+        public List<MatrixSourceDescriptionEditDto> SourceDescriptionEdits { get; set; } = new();
     }
 }

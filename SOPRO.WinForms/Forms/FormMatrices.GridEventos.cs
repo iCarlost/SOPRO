@@ -143,7 +143,10 @@ namespace SOPRO.WinForms.Forms
             using var form = new FormEditarMatriz(_context, _proyectoId);
             if (form.ShowDialog() == DialogResult.OK)
             {
-                CargarMatrices();
+                // El guardado escribió por un contexto por operación: la recarga
+                // posterior usa la misma guarda que el evento MatrizGuardada; con
+                // trabajo pendiente no recarga y deja el aviso de conflicto visible.
+                RecargarTrasGuardadoDeMatriz();
                 PropagrarCambiosAlPresupuesto();
             }
         }
@@ -160,7 +163,10 @@ namespace SOPRO.WinForms.Forms
             using var form = new FormEditarMatriz(_context, _proyectoId, _matrizSeleccionada);
             if (form.ShowDialog() == DialogResult.OK)
             {
-                CargarMatrices();
+                // El guardado escribió por un contexto por operación: la recarga
+                // posterior usa la misma guarda que el evento MatrizGuardada; con
+                // trabajo pendiente no recarga y deja el aviso de conflicto visible.
+                RecargarTrasGuardadoDeMatriz();
                 PropagrarCambiosAlPresupuesto();
             }
         }

@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using SOPRO.Application.DTOs.Matrices;
 using SOPRO.Application.Models.Matrices;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.Data.Factories;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using System;
@@ -23,11 +25,20 @@ namespace SOPRO.WinForms.Forms
         public static event EventHandler MatrizGuardada;
 
         private readonly SOPROContext _context;
+        private readonly IProjectDbContextFactory _dbContextFactory;
         private readonly int _proyectoId;
         private readonly Matriz _matriz;
         private readonly bool _esNuevo;
         private readonly TipoMatriz? _tipoInicialForzado;
         private readonly List<ComponenteMatriz> _componentesTemp = new List<ComponenteMatriz>();
+
+        // Staging de descripciones por fuente (insumo o auxiliar): clave
+        // (TipoComponente, SourceId), con la descripción original como baseline y
+        // la propuesta normalizada más reciente. El staging NO muta la entidad de
+        // la fuente en la sesión; viaja como parche explícito en el DTO del
+        // guardado y la Application lo confirma en la misma transacción (#121).
+        private sealed record EdicionDescripcionFuente(string Original, string Propuesta);
+        private readonly Dictionary<(TipoComponenteMatriz Tipo, int SourceId), EdicionDescripcionFuente> _descripcionFuentes = new();
         private Color _grpDatosBackColorOriginal;
         private readonly Color _colorApu = Color.FromArgb(245, 248, 252);
         private readonly Color _colorBasico = Color.FromArgb(255, 248, 220);
@@ -41,9 +52,10 @@ namespace SOPRO.WinForms.Forms
         private decimal _totalBasicos = 0;
         private decimal _costoDirectoTotal = 0;
         
-        public FormEditarMatriz(SOPROContext context, int proyectoId, Matriz matriz = null, TipoMatriz? tipoInicial = null)
+        public FormEditarMatriz(SOPROContext context, int proyectoId, Matriz matriz = null, TipoMatriz? tipoInicial = null, IProjectDbContextFactory? dbContextFactory = null)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
+            _dbContextFactory = dbContextFactory ?? new ProjectDbContextFactory();
             _proyectoId = proyectoId;
             _matriz = matriz;
             _esNuevo = (matriz == null);
@@ -134,10 +146,12 @@ ConfigurarGrid();
                 ReadOnly = false
             });
             
-            // Unidad - EDITABLE
+            // Unidad - SOLO LECTURA en este editor (#121): viene del insumo y
+            // editarla aquí mutaría la fuente compartida rastreada por la sesión.
+            // El panel embebido conserva su propia edición (CanBeginEdit no cambia).
             dgvComponentes.Columns.Add(new DataGridViewTextBoxColumn
             {
-                Name = "colUnidad", HeaderText = "Unidad", Width = 70, ReadOnly = false
+                Name = "colUnidad", HeaderText = "Unidad", Width = 70, ReadOnly = true
             });
             
             // Cantidad - EDITABLE directo para Material; doble click abre Rendimiento para M.O./Maq.
@@ -148,12 +162,12 @@ ConfigurarGrid();
                 ReadOnly = false
             });
             
-            // P.U. - EDITABLE para Material; solo lectura para M.O./Maq./Básico (viene del catálogo)
+            // P.U. - SOLO LECTURA en este editor (#121): viene del insumo; igual que Unidad.
             dgvComponentes.Columns.Add(new DataGridViewTextBoxColumn
             {
                 Name = "colPU", HeaderText = "P.U.", Width = 100,
                 DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight },
-                ReadOnly = false
+                ReadOnly = true
             });
             
             // Importe - solo lectura, calculado
@@ -184,7 +198,18 @@ ConfigurarGrid();
         
         private void CargarDatosMatriz()
         {
+            // Copias de trabajo DESACOPLADAS (#121): los componentes y sus
+            // fuentes se cargan con AsNoTracking para que las ediciones del
+            // editor (cantidad, importes, staging de descripción) jamás muten
+            // entidades rastreadas por la sesión. Sin esto, una edición seguida
+            // de Cancelar quedaba como pendiente en el tracker y un SaveChanges
+            // ajeno posterior la confirmaba a escondidas. La cabecera sigue en
+            // los controles y la entidad Matriz permanece rastreada (sólo se
+            // lee). Con no-tracking la consulta materializa valores de la BASE,
+            // así que un precio/costo pendiente ajeno en la sesión no contamina
+            // los totales ni el DTO del editor.
             var componentes = _context.ComponentesMatriz
+                .AsNoTracking()
                 .Include(c => c.Material)
                 .Include(c => c.ManoDeObra)
                 .Include(c => c.Maquinaria)
@@ -237,6 +262,14 @@ ConfigurarGrid();
         private void AgregarComponentesDesdeSelector(TipoComponenteMatriz tipoComponente)
         {
             var selectedComponents = ComponentSelectorDialogService.SelectComponents(this, _context, _proyectoId, tipoComponente);
+
+            // Los componentes del selector pueden traer navegaciones rastreadas
+            // por la sesión: se reconstruyen con instantáneas frescas de la base
+            // (AsNoTracking) ANTES de entrar a la lista de trabajo, conservando
+            // cantidad/orden/notas seleccionadas, para que los totales y el DTO
+            // usen el precio/costo persistido y no un pendiente ajeno (#121).
+            NormalizarFuentesSeleccionadas(selectedComponents);
+
             var selectionResult = MatrixComponentSelectionFlowService.AddSelectedComponents(_componentesTemp, selectedComponents);
 
             if (!selectionResult.HasComponents)
@@ -249,6 +282,41 @@ ConfigurarGrid();
             if (selectionResult.RequiresRecalculation)
             {
                 Recalcular();
+            }
+        }
+
+        /// <summary>
+        /// Rebuilds the sources of the components selected by the selector with
+        /// detached DB snapshots (AsNoTracking): it does not alter the shared
+        /// selection services, and it ensures the editor's working copies never
+        /// reference entities tracked by the session. A pending source price
+        /// modification of another flow in the tracker stays pending and out of
+        /// the editor's totals/DTO.
+        /// </summary>
+        internal void NormalizarFuentesSeleccionadas(IReadOnlyList<ComponenteMatriz> componentes)
+        {
+            if (componentes == null) throw new ArgumentNullException(nameof(componentes));
+
+            foreach (var comp in componentes)
+            {
+                switch (comp.TipoComponente)
+                {
+                    case TipoComponenteMatriz.Material when comp.MaterialId > 0:
+                        comp.Material = _context.Materiales.AsNoTracking().Single(m => m.Id == comp.MaterialId);
+                        break;
+                    case TipoComponenteMatriz.ManoDeObra when comp.ManoDeObraId > 0:
+                        comp.ManoDeObra = _context.ManoDeObra.AsNoTracking().Single(m => m.Id == comp.ManoDeObraId);
+                        break;
+                    case TipoComponenteMatriz.Maquinaria when comp.MaquinariaId > 0:
+                        comp.Maquinaria = _context.Maquinaria.AsNoTracking().Single(m => m.Id == comp.MaquinariaId);
+                        break;
+                    case TipoComponenteMatriz.Auxiliar when comp.AuxiliarId > 0:
+                        comp.Auxiliar = _context.Matrices.AsNoTracking().Single(m => m.Id == comp.AuxiliarId);
+                        break;
+                    case TipoComponenteMatriz.Herramienta when comp.HerramientaId > 0:
+                        comp.Herramienta = _context.Herramientas.AsNoTracking().Single(m => m.Id == comp.HerramientaId);
+                        break;
+                }
             }
         }
 
@@ -287,7 +355,34 @@ ConfigurarGrid();
                     row.Importe);
             }
 
+            SuperponerDescripcionesEditadas();
             DataGridViewStateHelper.Restore(dgvComponentes, estadoActual);
+        }
+
+        /// <summary>
+        /// Superpone sobre el grid la descripción en borrador de cada fuente con
+        /// edición pendiente: la presentación lee la descripción sin mutar de la
+        /// fuente, así que el rebuild debe reponer el texto propuesto en todas
+        /// las filas que referencian la misma fuente (#121).
+        /// </summary>
+        private void SuperponerDescripcionesEditadas()
+        {
+            if (_descripcionFuentes.Count == 0)
+            {
+                return;
+            }
+
+            int columna = dgvComponentes.Columns["colDescripcion"].Index;
+            int filas = Math.Min(dgvComponentes.Rows.Count, _componentesTemp.Count);
+
+            for (int fila = 0; fila < filas; fila++)
+            {
+                if (TryObtenerFuente(_componentesTemp[fila], out var clave, out _)
+                    && _descripcionFuentes.TryGetValue(clave, out var edicion))
+                {
+                    dgvComponentes.Rows[fila].Cells[columna].Value = edicion.Propuesta;
+                }
+            }
         }
 
         private void Recalcular(DataGridViewStateSnapshot? estado = null)
@@ -398,6 +493,17 @@ ConfigurarGrid();
             }
 
             var columnName = dgvComponentes.Columns[e.ColumnIndex].Name;
+
+            // Sólo lectura en ESTE editor (#121): Unidad y P.U. provienen del
+            // insumo y su edición por aquí mutaría la fuente compartida en la
+            // sesión. El panel embebido conserva su propia edición: no se toca
+            // MatrixComponentGridFlowService.CanBeginEdit.
+            if (columnName is "colUnidad" or "colPU")
+            {
+                e.Cancel = true;
+                return;
+            }
+
             if (!MatrixComponentGridFlowService.CanBeginEdit(comp, columnName))
             {
                 e.Cancel = true;
@@ -425,6 +531,17 @@ ConfigurarGrid();
             var cell = dgvComponentes.Rows[e.RowIndex].Cells[e.ColumnIndex];
             var value = cell.Value?.ToString() ?? string.Empty;
             var columnName = dgvComponentes.Columns[e.ColumnIndex].Name;
+
+            // La descripción NO muta la fuente en la sesión (#121): se registra
+            // en el staging por (tipo, id de fuente) y viaja como parche en el
+            // DTO del guardado. El rebuild superpone el borrador en todas las
+            // filas que referencian la misma fuente.
+            if (columnName == "colDescripcion")
+            {
+                EstablecerDescripcionComponente(comp, value);
+                BeginInvoke(new Action(() => ActualizarGridComponentes(estado)));
+                return;
+            }
 
             var editResult = MatrixComponentGridFlowService.ApplyCellEdit(
                 comp,
@@ -463,6 +580,19 @@ ConfigurarGrid();
                 return;
             }
 
+            // La matriz editada puede llegar con cambios pendientes de otra edición
+            // en el contexto de sesión (p. ej. una escritura heredada del panel
+            // embebido aún sin confirmar). El commit por operación reescribiría esa
+            // fila y la reconciliación posterior la marcaría Unchanged con los
+            // valores de esta edición, descartando silenciosamente el trabajo
+            // ajeno: se bloquea ANTES de cualquier escritura, sin mutar el tracker.
+            if (TieneCambiosPendientesEnLaMatriz())
+            {
+                MessageBox.Show(MensajeMatrizConCambiosPendientes,
+                    "Cambios sin guardar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             try
             {
                 var claveDuplicada = await MatrixApplicationService.ExistsByKeyAsync(
@@ -479,9 +609,65 @@ ConfigurarGrid();
                 }
 
                 var dto = BuildMatrixEditDto();
-                var result = await MatrixApplicationService.SaveAsync(_context, dto, _esNuevo ? null : _matriz);
+                // La escritura ocurre en un contexto por operación sobre la ruta de la
+                // base; el contexto de la sesión no se guarda ni se limpia. Se aporta
+                // como sessionContext para que la guarda previa del servicio rechace,
+                // antes de escribir, cualquier edición pendiente ajena sobre la
+                // matriz objetivo o sobre las matrices que dependen de ella (la
+                // cascada las recalcularía y un guardado compartido posterior podría
+                // sobrescribirlas). Las ediciones propias de los componentes de
+                // trabajo del editor no son conflicto: viajan en el DTO. El refresco
+                // de MatrizGuardada descarta lo rastreado si no hay cambios
+                // pendientes o advierte cuando el tracker está sucio.
+                var result = await MatrixApplicationService.SaveAsync(
+                    _dbContextFactory,
+                    _context.DatabasePath,
+                    dto,
+                    _esNuevo ? null : _matriz,
+                    _context);
 
-                MessageBox.Show(MatrixSaveFlowService.GetSuccessMessage(result.IsNew), "Guardado", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                // Los componentes de trabajo son copias desacopladas (#121), así
+                // que normalmente no hay entradas rastreadas que reconciliar; la
+                // resincronización de la matriz y la desconexión del lote se
+                // conservan como defensa (p. ej. un flujo legado que aún rastree
+                // instancias de la matriz objetivo), para que un SaveChanges
+                // ajeno posterior no pise los valores recién confirmados.
+                ReconciliarRastreadosPropios(dto);
+
+                // Las descripciones de fuentes confirmadas viajaron como parches en
+                // el DTO y la sesión nunca las mutó: resincronizar las entradas
+                // rastreadas con el valor confirmado ANTES del aviso de cambios
+                // pendientes y del evento de refresco (#121). Un fallo aquí no
+                // deshace el commit ni invalida la base: sólo deja la vista de
+                // sesión desalineada y se anuncia sin reclamar fallo del guardado.
+                string? falloReconciliacionDescripciones = null;
+                try
+                {
+                    ReconciliarDescripcionesConfirmadas();
+                }
+                catch (Exception ex)
+                {
+                    falloReconciliacionDescripciones = ex.Message;
+                }
+
+                _descripcionFuentes.Clear();
+
+                var mensajeExito = MatrixSaveFlowService.GetSuccessMessage(result.IsNew);
+                if (_context.ChangeTracker.HasChanges())
+                {
+                    mensajeExito += "\n\nAtención: hay cambios sin guardar en el proyecto; el catálogo de matrices no se recargará hasta confirmarlos o descartarlos.";
+                }
+
+                MessageBox.Show(mensajeExito, "Guardado", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                if (falloReconciliacionDescripciones != null)
+                {
+                    MessageBox.Show(
+                        "La matriz se guardó correctamente, pero la vista de la sesión no pudo " +
+                        "sincronizar las descripciones editadas; recargue el catálogo para ver el " +
+                        "estado confirmado.\n\n" + falloReconciliacionDescripciones,
+                        "Guardado", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
 
                 DialogResult = DialogResult.OK;
                 MatrizGuardada?.Invoke(null, EventArgs.Empty);
@@ -509,9 +695,306 @@ ConfigurarGrid();
             }
         }
 
+        /// <summary>
+        /// Mensaje del bloqueo de guardado cuando la matriz editada ya tenía
+        /// cambios pendientes en el contexto de sesión, ajenos a esta edición.
+        /// </summary>
+        private const string MensajeMatrizConCambiosPendientes =
+            "Esta matriz tiene cambios sin guardar de otra edición en la sesión de trabajo. " +
+            "Guarde o descarte esos cambios y vuelva a abrir el editor antes de guardar.";
+
+        /// <summary>
+        /// Detecta cambios pendientes de la matriz editada en el contexto de sesión
+        /// que no provienen de esta edición: el editor nunca muta la entidad
+        /// <see cref="Matriz"/> (solo sus componentes de trabajo, que el DTO captura
+        /// y el commit por operación confirma). Con ese estado previo el guardado
+        /// se bloquea antes del commit: la reconciliación posterior sincronizaría
+        /// la fila con los valores confirmados y descartaría silenciosamente el
+        /// trabajo ajeno.
+        /// </summary>
+        internal bool TieneCambiosPendientesEnLaMatriz()
+        {
+            if (_esNuevo || _matriz == null) return false;
+
+            _context.ChangeTracker.DetectChanges();
+            var entrada = _context.Entry(_matriz);
+            return entrada.State is EntityState.Modified or EntityState.Deleted;
+        }
+
+        /// <summary>
+        /// Reconciliación de los rastreados PROPIOS tras el commit por operación
+        /// (#121), con el mismo patrón que la ruta de comandos del panel de
+        /// matrices embebido: las entidades modificadas ajenas se conservan y el
+        /// ChangeTracker de la sesión jamás se limpia ni se guarda.
+        ///
+        /// Desde el staging desacoplado, el editor trabaja con copias AsNoTracking
+        /// y normalmente no hay componentes rastreados que tocar; el método se
+        /// conserva como defensa en profundidad.
+        ///
+        /// La matriz editada se resincroniza con los valores confirmados y queda
+        /// Unchanged con OriginalValues alineados: un SaveChanges ajeno posterior
+        /// la reescribe como no-op en lugar de pisar el commit. Si la entrada de la
+        /// matriz ya estaba Modified/Deleted (trabajo ajeno que la guarda de
+        /// guardado habría bloqueado antes del commit), NO se toca: la
+        /// resincronización descartaría silenciosamente ese trabajo.
+        ///
+        /// El commit eliminó y reemplazó el lote COMPLETO de componentes de la
+        /// matriz editada. Con copias desacopladas no hay entradas rastreadas del
+        /// lote; si alguna instancia de la matriz objetivo llegara a estar
+        /// rastreada por un flujo legado (en lista o fuera de ella), se
+        /// desconecta, para que ningún SaveChanges ajeno intente actualizar filas
+        /// inexistentes (DbUpdateConcurrencyException). Las entradas de OTRAS
+        /// matrices y las ediciones ajenas no se tocan.
+        /// </summary>
+        internal void ReconciliarRastreadosPropios(MatrixEditDto dto)
+        {
+            if (dto == null) throw new ArgumentNullException(nameof(dto));
+
+            if (!_esNuevo && _matriz != null)
+            {
+                var entradaMatriz = _context.Entry(_matriz);
+                bool trabajoAjenoPendiente = entradaMatriz.State is EntityState.Modified or EntityState.Deleted;
+
+                if (!trabajoAjenoPendiente)
+                {
+                    _matriz.Clave = dto.Clave.Trim().ToUpperInvariant();
+                    _matriz.Descripcion = dto.Descripcion.Trim();
+                    _matriz.Unidad = dto.Unidad.Trim();
+                    _matriz.Tipo = dto.Tipo;
+                    _matriz.CostoDirecto = dto.CostoDirecto;
+                    _matriz.ProyectoId = dto.ProyectoId;
+                    _matriz.Notas ??= string.Empty;
+                    _matriz.FechaModificacion = DateTime.Now;
+                }
+
+                if (entradaMatriz.State != EntityState.Detached && !trabajoAjenoPendiente)
+                {
+                    entradaMatriz.OriginalValues.SetValues(entradaMatriz.CurrentValues);
+                    entradaMatriz.State = EntityState.Unchanged;
+                }
+
+                // Lote reemplazado de la matriz objetivo: en lista o fuera de ella
+                // (un componente quitado de la lista sigue rastreado). ToList:
+                // cambiar estados mientras se enumera el tracker no es seguro.
+                int matrizIdObjetivo = _matriz.Id;
+                foreach (var entrada in _context.ChangeTracker.Entries<ComponenteMatriz>().ToList())
+                {
+                    if (entrada.Entity.MatrizId == matrizIdObjetivo
+                        && entrada.State != EntityState.Detached)
+                    {
+                        entrada.State = EntityState.Detached;
+                    }
+                }
+            }
+
+            foreach (var componente in _componentesTemp)
+            {
+                var entradaComponente = _context.Entry(componente);
+                if (entradaComponente.State != EntityState.Detached)
+                {
+                    entradaComponente.State = EntityState.Detached;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Registra en el staging la descripción propuesta para la fuente del
+        /// componente. La propuesta se normaliza igual que la Application
+        /// (recorte); el baseline es la descripción original de la fuente, que
+        /// esta edición jamás muta en la sesión. Editar de vuelta al original
+        /// elimina el parche, y varias filas con la misma fuente comparten una
+        /// sola entrada. Un auxiliar no puede editar la descripción de la matriz
+        /// que se está editando: ese texto es el campo Descripción de la matriz.
+        /// </summary>
+        internal void EstablecerDescripcionComponente(ComponenteMatriz componente, string texto)
+        {
+            if (componente == null) throw new ArgumentNullException(nameof(componente));
+
+            if (!TryObtenerFuente(componente, out var clave, out string? descripcionOriginal))
+            {
+                return;
+            }
+
+            if (!_esNuevo && _matriz != null
+                && clave.Tipo == TipoComponenteMatriz.Auxiliar
+                && clave.SourceId == _matriz.Id)
+            {
+                return;
+            }
+
+            var propuesta = (texto ?? string.Empty).Trim();
+
+            if (!_descripcionFuentes.TryGetValue(clave, out var edicion))
+            {
+                if (propuesta == descripcionOriginal)
+                {
+                    return;
+                }
+
+                _descripcionFuentes[clave] = new EdicionDescripcionFuente(descripcionOriginal, propuesta);
+                return;
+            }
+
+            if (propuesta == edicion.Original)
+            {
+                _descripcionFuentes.Remove(clave);
+                return;
+            }
+
+            _descripcionFuentes[clave] = edicion with { Propuesta = propuesta };
+        }
+
+        /// <summary>
+        /// Resuelve la identidad de la fuente del componente para TODAS las
+        /// clases soportadas, incluido Auxiliar cuya fuente es otra
+        /// <see cref="Matriz"/>. La identidad sale de la referencia persistida
+        /// (MaterialId/ManoDeObraId/...) y sólo recurre a la navegación cuando la
+        /// referencia no está asignada; la descripción se lee de la navegación
+        /// SIN mutarla.
+        /// </summary>
+        private static bool TryObtenerFuente(
+            ComponenteMatriz componente,
+            out (TipoComponenteMatriz Tipo, int SourceId) clave,
+            out string? descripcionActual)
+        {
+            clave = default;
+            descripcionActual = null;
+
+            int? sourceId = componente.TipoComponente switch
+            {
+                TipoComponenteMatriz.Material => IdFuente(componente.MaterialId, componente.Material?.Id),
+                TipoComponenteMatriz.ManoDeObra => IdFuente(componente.ManoDeObraId, componente.ManoDeObra?.Id),
+                TipoComponenteMatriz.Maquinaria => IdFuente(componente.MaquinariaId, componente.Maquinaria?.Id),
+                TipoComponenteMatriz.Auxiliar => IdFuente(componente.AuxiliarId, componente.Auxiliar?.Id),
+                TipoComponenteMatriz.Herramienta => IdFuente(componente.HerramientaId, componente.Herramienta?.Id),
+                _ => null,
+            };
+
+            if (!sourceId.HasValue)
+            {
+                return false;
+            }
+
+            clave = (componente.TipoComponente, sourceId.Value);
+            descripcionActual = componente.TipoComponente switch
+            {
+                TipoComponenteMatriz.Material => componente.Material?.Descripcion,
+                TipoComponenteMatriz.ManoDeObra => componente.ManoDeObra?.Descripcion,
+                TipoComponenteMatriz.Maquinaria => componente.Maquinaria?.Descripcion,
+                TipoComponenteMatriz.Auxiliar => componente.Auxiliar?.Descripcion,
+                TipoComponenteMatriz.Herramienta => componente.Herramienta?.Descripcion,
+                _ => null,
+            };
+
+            return true;
+        }
+
+        private static int? IdFuente(int? referenciaId, int? navegacionId)
+            => referenciaId.HasValue && referenciaId.Value > 0
+                ? referenciaId
+                : (navegacionId.HasValue && navegacionId.Value > 0 ? navegacionId : null);
+
+        /// <summary>
+        /// Reconciliación de las descripciones de fuentes confirmadas por el
+        /// commit por operación (#121). La edición viajó como parche en el DTO y
+        /// el editor trabaja con copias desacopladas, así que hay dos superficies
+        /// que resincronizar con el valor confirmado: la entrada RASTREADA de la
+        /// fuente si otra flujo de la sesión la tiene en el tracker (sólo la
+        /// propiedad Descripcion, current y original, preservando cualquier otra
+        /// propiedad modificada ajena), y las copias de trabajo DESACOPLADAS del
+        /// propio editor (las navegaciones de _componentesTemp). Nunca se guarda,
+        /// limpia ni desconecta el tracker; las fuentes no rastreadas o en estado
+        /// no reconciliable se omiten.
+        /// </summary>
+        internal void ReconciliarDescripcionesConfirmadas()
+        {
+            foreach (var par in _descripcionFuentes)
+            {
+                var entrada = BuscarEntradaFuente(par.Key.Tipo, par.Key.SourceId);
+                if (entrada == null
+                    || entrada.State is EntityState.Detached or EntityState.Added or EntityState.Deleted)
+                {
+                    continue;
+                }
+
+                var propiedad = entrada.Property(nameof(Matriz.Descripcion));
+                propiedad.CurrentValue = par.Value.Propuesta;
+                propiedad.OriginalValue = par.Value.Propuesta;
+
+                // El flag IsModified es persistente: si un DetectChanges intermedio
+                // lo marcó, alinear current y original no lo limpia solo. Con los
+                // valores ya alineados, quitar el flag deja la entrada exactamente
+                // como estaba: Unchanged si sólo cambió la descripción, Modified si
+                // otra propiedad ajena sigue pendiente.
+                if (propiedad.IsModified)
+                {
+                    propiedad.IsModified = false;
+                }
+            }
+
+            // Copias de trabajo propias del editor: el valor confirmado ya está en
+            // la base; la vista del editor no debe quedarse con el texto previo.
+            foreach (var componente in _componentesTemp)
+            {
+                if (TryObtenerFuente(componente, out var clave, out _)
+                    && _descripcionFuentes.TryGetValue(clave, out var edicion))
+                {
+                    EstablecerDescripcionEnFuente(componente, edicion.Propuesta);
+                }
+            }
+
+            _context.ChangeTracker.DetectChanges();
+        }
+
+        private static void EstablecerDescripcionEnFuente(ComponenteMatriz componente, string descripcion)
+        {
+            switch (componente.TipoComponente)
+            {
+                case TipoComponenteMatriz.Material when componente.Material != null:
+                    componente.Material.Descripcion = descripcion;
+                    break;
+                case TipoComponenteMatriz.ManoDeObra when componente.ManoDeObra != null:
+                    componente.ManoDeObra.Descripcion = descripcion;
+                    break;
+                case TipoComponenteMatriz.Maquinaria when componente.Maquinaria != null:
+                    componente.Maquinaria.Descripcion = descripcion;
+                    break;
+                case TipoComponenteMatriz.Auxiliar when componente.Auxiliar != null:
+                    componente.Auxiliar.Descripcion = descripcion;
+                    break;
+                case TipoComponenteMatriz.Herramienta when componente.Herramienta != null:
+                    componente.Herramienta.Descripcion = descripcion;
+                    break;
+            }
+        }
+
+        private EntityEntry? BuscarEntradaFuente(TipoComponenteMatriz tipo, int sourceId)
+            => tipo switch
+            {
+                TipoComponenteMatriz.Material => _context.ChangeTracker.Entries<Material>()
+                    .FirstOrDefault(entrada => entrada.Entity.Id == sourceId),
+                TipoComponenteMatriz.ManoDeObra => _context.ChangeTracker.Entries<ManoDeObra>()
+                    .FirstOrDefault(entrada => entrada.Entity.Id == sourceId),
+                TipoComponenteMatriz.Maquinaria => _context.ChangeTracker.Entries<Maquinaria>()
+                    .FirstOrDefault(entrada => entrada.Entity.Id == sourceId),
+                TipoComponenteMatriz.Auxiliar => _context.ChangeTracker.Entries<Matriz>()
+                    .FirstOrDefault(entrada => entrada.Entity.Id == sourceId),
+                TipoComponenteMatriz.Herramienta => _context.ChangeTracker.Entries<Herramienta>()
+                    .FirstOrDefault(entrada => entrada.Entity.Id == sourceId),
+                _ => null,
+            };
+
+        /// <summary>Acceso del ensamblado de pruebas a los componentes de trabajo del editor.</summary>
+        internal IReadOnlyList<ComponenteMatriz> ComponentesTempParaPrueba => _componentesTemp;
+
+        /// <summary>Acceso del ensamblado de pruebas al staging de descripciones por fuente.</summary>
+        internal IReadOnlyDictionary<(TipoComponenteMatriz Tipo, int SourceId), (string Original, string Propuesta)>
+            EdicionesDescripcionParaPrueba
+            => _descripcionFuentes.ToDictionary(par => par.Key, par => (par.Value.Original, par.Value.Propuesta));
+
         private MatrixEditDto BuildMatrixEditDto()
         {
-            return MatrixEditorService.BuildEditDto(
+            var dto = MatrixEditorService.BuildEditDto(
                 _proyectoId,
                 txtClave.Text,
                 txtDescripcion.Text,
@@ -520,6 +1003,23 @@ ConfigurarGrid();
                 rbAPU.Checked,
                 _costoDirectoTotal,
                 _componentesTemp);
+
+            // Parches explícitos de descripción por fuente: la Application los
+            // aplica en la misma transacción del commit, con validación
+            // optimista contra la descripción original. El staging no muta la
+            // fuente en la sesión (#121).
+            foreach (var par in _descripcionFuentes)
+            {
+                dto.SourceDescriptionEdits.Add(new MatrixSourceDescriptionEditDto
+                {
+                    TipoComponente = par.Key.Tipo,
+                    SourceId = par.Key.SourceId,
+                    OriginalDescription = par.Value.Original,
+                    NewDescription = par.Value.Propuesta,
+                });
+            }
+
+            return dto;
         }
 
         /// <summary>
