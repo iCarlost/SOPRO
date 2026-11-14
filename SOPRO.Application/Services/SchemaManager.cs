@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using SOPRO.Data.Context;
 using System;
@@ -21,6 +22,8 @@ namespace SOPRO.Application.Services
     ///   - RepararActividadesProgramadas corre FUERA de esa transacción porque
     ///     necesita PRAGMA foreign_keys=OFF, que SQLite no permite dentro de
     ///     una transacción activa.
+    ///   - La versión se sella en otra transacción DESPUÉS de que la reparación
+    ///     termine bien: si algo falla, la base no queda marcada como al día.
     ///
     /// Uso:
     ///   SchemaManager.EnsureCurrentSchema(context);
@@ -65,6 +68,11 @@ namespace SOPRO.Application.Services
 
             try
             {
+                // Fail-closed de versión: se lee ANTES de cualquier escritura (incluida
+                // la creación de __MigracionesCustom). Una base de una versión más nueva
+                // o con versión ilegible no se migra ni se re-sella.
+                ValidarVersionRegistrada(conn);
+
                 // Crear tabla de control de versiones (idempotente, fuera de tx)
                 EnsureMigracionesTable(conn);
 
@@ -89,7 +97,6 @@ namespace SOPRO.Application.Services
                         M013_TablasIndirectosVistas(conn, tx);
                         M014_TablasFormatoReporte(conn, tx);
                         M015_VinculosCostoHorarioMaquinaria(conn, tx);
-                        RegistrarVersion(conn, tx);
                         tx.Commit();
                     }
                     catch
@@ -102,8 +109,26 @@ namespace SOPRO.Application.Services
                 // PASO 2 — Reparación especial de ActividadesProgramadas.
                 // DEBE correr FUERA de cualquier transacción activa porque necesita
                 // PRAGMA foreign_keys=OFF, que SQLite prohíbe dentro de transacciones.
-                // Tiene su propia transacción interna.
+                // Tiene su propia transacción interna y propaga cualquier fallo.
                 RepararActividadesProgramadas(conn, context);
+
+                // PASO 3 — Sello de versión. Va DESPUÉS de la reparación: si la
+                // reparación falla, la apertura falla y la base no queda marcada
+                // como al día. Las migraciones ya confirmadas son idempotentes y
+                // se reintentan en la siguiente apertura.
+                using (var txVersion = conn.BeginTransaction())
+                {
+                    try
+                    {
+                        RegistrarVersion(conn, txVersion);
+                        txVersion.Commit();
+                    }
+                    catch
+                    {
+                        txVersion.Rollback();
+                        throw;
+                    }
+                }
             }
             finally
             {
@@ -123,10 +148,16 @@ namespace SOPRO.Application.Services
             cmd.ExecuteNonQuery();
         }
 
-        private static void TryExec(DbConnection conn, string sql, DbTransaction? tx = null)
+        /// <summary>
+        /// Verdadero solo para la carrera de columna duplicada que SQLite puede
+        /// devolver entre el prechequeo y el ALTER. Cualquier otro error debe
+        /// propagarse.
+        /// </summary>
+        private static bool EsDuplicadoIgnorable(SqliteException ex)
         {
-            try { Exec(conn, sql, tx); }
-            catch { /* columna o índice ya existe — ignorar */ }
+            return ex.SqliteErrorCode == 1
+                && !string.IsNullOrEmpty(ex.Message)
+                && ex.Message.Contains("duplicate column name", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TablaExiste(DbConnection conn, string tabla, DbTransaction? tx = null)
@@ -148,11 +179,45 @@ namespace SOPRO.Application.Services
 
         private static void AgregarColumna(DbConnection conn, string tabla, string columna, string definicion, DbTransaction? tx = null)
         {
-            if (!ColumnaExiste(conn, tabla, columna, tx))
-                TryExec(conn, $"ALTER TABLE [{tabla}] ADD COLUMN {columna} {definicion}", tx);
+            if (ColumnaExiste(conn, tabla, columna, tx)) return;
+
+            try
+            {
+                Exec(conn, $"ALTER TABLE [{tabla}] ADD COLUMN {columna} {definicion}", tx);
+            }
+            catch (SqliteException ex) when (EsDuplicadoIgnorable(ex))
+            {
+                // Carrera entre el prechequeo y el ALTER: otro proceso ya agregó la
+                // columna. Es el único duplicado tolerado al agregar columnas.
+            }
         }
 
         // ── Versionado de schema ───────────────────────────────────────────────
+
+        private static void ValidarVersionRegistrada(DbConnection conn)
+        {
+            var versionRegistrada = LeerVersionRegistrada(conn);
+            if (versionRegistrada is null)
+                return;
+
+            var comparacion = SchemaVersion.Compare(versionRegistrada, VersionActual);
+
+            if (comparacion is null)
+            {
+                throw new InvalidOperationException(
+                    "El proyecto registra una versión de esquema no reconocida "
+                    + $"({versionRegistrada}). Por seguridad no se migra: ábralo con una "
+                    + "versión de SOPRO que reconozca ese esquema.");
+            }
+
+            if (comparacion > 0)
+            {
+                throw new InvalidOperationException(
+                    "El proyecto usa una versión de esquema más reciente "
+                    + $"({versionRegistrada}) que la soportada por esta instalación "
+                    + $"({VersionActual}). Actualice SOPRO para abrirlo.");
+            }
+        }
 
         private static void EnsureMigracionesTable(DbConnection conn)
         {
@@ -194,21 +259,34 @@ namespace SOPRO.Application.Services
             if (!wasOpen) conn.Open();
             try
             {
+                return LeerVersionRegistrada(conn);
+            }
+            finally { if (!wasOpen) conn.Close(); }
+        }
+
+        private static string? LeerVersionRegistrada(DbConnection conn)
+        {
+            try
+            {
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
                     SELECT Clave FROM __MigracionesCustom
                     WHERE Clave LIKE 'SchemaVersion_%'
                     ORDER BY FechaAplicacion DESC LIMIT 1";
+                const string prefijo = "SchemaVersion_";
                 var val = cmd.ExecuteScalar() as string;
-                return val?.Replace("SchemaVersion_", "");
+                // Se quita exactamente un prefijo. Un sufijo malformado se devuelve
+                // tal cual para que el gating lo rechace como versión no reconocida.
+                return val is not null && val.StartsWith(prefijo, StringComparison.Ordinal)
+                    ? val.Substring(prefijo.Length)
+                    : val;
             }
-            catch (Microsoft.Data.Sqlite.SqliteException ex)
+            catch (SqliteException ex)
                 when (ex.Message != null && ex.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
             {
                 // Aún no hay __MigracionesCustom (DB sin migrar): "sin versión" es válido.
                 return null;
             }
-            finally { if (!wasOpen) conn.Close(); }
         }
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -230,9 +308,9 @@ namespace SOPRO.Application.Services
                     Notas             TEXT    NULL,
                     FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE
                 );", tx);
-            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_Herramientas_ProyectoId ON Herramientas(ProyectoId);", tx);
+            Exec(conn, "CREATE INDEX IF NOT EXISTS IX_Herramientas_ProyectoId ON Herramientas(ProyectoId);", tx);
             AgregarColumna(conn, "ComponentesMatriz", "HerramientaId", "INTEGER NULL", tx);
-            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_ComponentesMatriz_HerramientaId ON ComponentesMatriz(HerramientaId);", tx);
+            Exec(conn, "CREATE INDEX IF NOT EXISTS IX_ComponentesMatriz_HerramientaId ON ComponentesMatriz(HerramientaId);", tx);
         }
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -272,7 +350,7 @@ namespace SOPRO.Application.Services
                     Activo      INTEGER NOT NULL DEFAULT 1,
                     FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE
                 );", tx);
-            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_CalendariosLaborales_ProyectoId_Nombre ON CalendariosLaborales(ProyectoId, Nombre);", tx);
+            Exec(conn, "CREATE INDEX IF NOT EXISTS IX_CalendariosLaborales_ProyectoId_Nombre ON CalendariosLaborales(ProyectoId, Nombre);", tx);
 
             Exec(conn, @"
                 CREATE TABLE IF NOT EXISTS ProgramasObra (
@@ -292,7 +370,7 @@ namespace SOPRO.Application.Services
                     FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE,
                     FOREIGN KEY (CalendarioLaboralId) REFERENCES CalendariosLaborales(Id) ON DELETE RESTRICT
                 );", tx);
-            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_ProgramasObra_ProyectoId_Nombre ON ProgramasObra(ProyectoId, Nombre);", tx);
+            Exec(conn, "CREATE INDEX IF NOT EXISTS IX_ProgramasObra_ProyectoId_Nombre ON ProgramasObra(ProyectoId, Nombre);", tx);
 
             // Crear con FK correcta (SET NULL). Si ya existe con FK vieja (RESTRICT),
             // RepararActividadesProgramadas — que corre FUERA de esta transacción — la corrige.
@@ -338,8 +416,8 @@ namespace SOPRO.Application.Services
                     FOREIGN KEY (ConceptoPresupuestoId) REFERENCES ConceptosPresupuesto(Id) ON DELETE SET NULL,
                     FOREIGN KEY (ActividadPadreId) REFERENCES ActividadesProgramadas(Id) ON DELETE SET NULL
                 );", tx);
-            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_ActividadesProgramadas_ProgramaObraId_Orden ON ActividadesProgramadas(ProgramaObraId, Orden);", tx);
-            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_ActividadesProgramadas_ProgramaObraId_ConceptoPresupuestoId ON ActividadesProgramadas(ProgramaObraId, ConceptoPresupuestoId);", tx);
+            Exec(conn, "CREATE INDEX IF NOT EXISTS IX_ActividadesProgramadas_ProgramaObraId_Orden ON ActividadesProgramadas(ProgramaObraId, Orden);", tx);
+            Exec(conn, "CREATE INDEX IF NOT EXISTS IX_ActividadesProgramadas_ProgramaObraId_ConceptoPresupuestoId ON ActividadesProgramadas(ProgramaObraId, ConceptoPresupuestoId);", tx);
 
             Exec(conn, @"
                 CREATE TABLE IF NOT EXISTS PeriodosPrograma (
@@ -352,7 +430,7 @@ namespace SOPRO.Application.Services
                     EsCerrado      INTEGER NOT NULL DEFAULT 0,
                     FOREIGN KEY (ProgramaObraId) REFERENCES ProgramasObra(Id) ON DELETE CASCADE
                 );", tx);
-            TryExec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_PeriodosPrograma_ProgramaObraId_NumeroPeriodo ON PeriodosPrograma(ProgramaObraId, NumeroPeriodo);", tx);
+            Exec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_PeriodosPrograma_ProgramaObraId_NumeroPeriodo ON PeriodosPrograma(ProgramaObraId, NumeroPeriodo);", tx);
 
             Exec(conn, @"
                 CREATE TABLE IF NOT EXISTS DistribucionesPeriodo (
@@ -368,7 +446,7 @@ namespace SOPRO.Application.Services
                     FOREIGN KEY (ActividadProgramadaId) REFERENCES ActividadesProgramadas(Id) ON DELETE CASCADE,
                     FOREIGN KEY (PeriodoProgramaId)     REFERENCES PeriodosPrograma(Id)       ON DELETE CASCADE
                 );", tx);
-            TryExec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_DistribucionesPeriodo_ActividadProgramadaId_PeriodoProgramaId ON DistribucionesPeriodo(ActividadProgramadaId, PeriodoProgramaId);", tx);
+            Exec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_DistribucionesPeriodo_ActividadProgramadaId_PeriodoProgramaId ON DistribucionesPeriodo(ActividadProgramadaId, PeriodoProgramaId);", tx);
 
             Exec(conn, @"
                 CREATE TABLE IF NOT EXISTS DependenciasActividad (
@@ -381,7 +459,7 @@ namespace SOPRO.Application.Services
                     FOREIGN KEY (ActividadOrigenId)  REFERENCES ActividadesProgramadas(Id) ON DELETE CASCADE,
                     FOREIGN KEY (ActividadDestinoId) REFERENCES ActividadesProgramadas(Id) ON DELETE CASCADE
                 );", tx);
-            TryExec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_DependenciasActividad_ActividadOrigenId_ActividadDestinoId ON DependenciasActividad(ActividadOrigenId, ActividadDestinoId);", tx);
+            Exec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_DependenciasActividad_ActividadOrigenId_ActividadDestinoId ON DependenciasActividad(ActividadOrigenId, ActividadDestinoId);", tx);
 
             Exec(conn, @"
                 CREATE TABLE IF NOT EXISTS ExcepcionesCalendario (
@@ -392,7 +470,7 @@ namespace SOPRO.Application.Services
                     Tipo                INTEGER NOT NULL DEFAULT 1,
                     FOREIGN KEY (CalendarioLaboralId) REFERENCES CalendariosLaborales(Id) ON DELETE CASCADE
                 );", tx);
-            TryExec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_ExcepcionesCalendario_CalendarioLaboralId_Fecha ON ExcepcionesCalendario(CalendarioLaboralId, Fecha);", tx);
+            Exec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_ExcepcionesCalendario_CalendarioLaboralId_Fecha ON ExcepcionesCalendario(CalendarioLaboralId, Fecha);", tx);
         }
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -423,7 +501,7 @@ namespace SOPRO.Application.Services
                         FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE,
                         UNIQUE (ProyectoId, NombreInterno)
                     );", tx);
-                TryExec(conn, $"CREATE UNIQUE INDEX IF NOT EXISTS IX_{nombre}_ProyectoId_NombreInterno ON [{nombre}](ProyectoId, NombreInterno);", tx);
+                Exec(conn, $"CREATE UNIQUE INDEX IF NOT EXISTS IX_{nombre}_ProyectoId_NombreInterno ON [{nombre}](ProyectoId, NombreInterno);", tx);
             }
 
             CrearTablaColumnas("ColumnasMaterial");
@@ -438,8 +516,8 @@ namespace SOPRO.Application.Services
 
             if (!ColumnaExiste(conn, "ComponentesMatriz", "Rendimiento", tx))
             {
-                TryExec(conn, "ALTER TABLE ComponentesMatriz ADD COLUMN Rendimiento REAL NOT NULL DEFAULT 0", tx);
-                TryExec(conn, @"
+                Exec(conn, "ALTER TABLE ComponentesMatriz ADD COLUMN Rendimiento REAL NOT NULL DEFAULT 0", tx);
+                Exec(conn, @"
                     UPDATE ComponentesMatriz
                     SET Rendimiento = CASE WHEN CAST(Cantidad AS REAL) > 0
                                      THEN 1.0 / CAST(Cantidad AS REAL) ELSE 0 END
@@ -593,7 +671,7 @@ namespace SOPRO.Application.Services
             AgregarColumna(conn, "ConceptosPresupuesto", "FechaCreacion", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP", tx);
             AgregarColumna(conn, "ConceptosPresupuesto", "FechaModificacion", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP", tx);
 
-            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_ConceptosPresupuesto_MatrizId ON ConceptosPresupuesto(MatrizId);", tx);
+            Exec(conn, "CREATE INDEX IF NOT EXISTS IX_ConceptosPresupuesto_MatrizId ON ConceptosPresupuesto(MatrizId);", tx);
         }
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -626,7 +704,7 @@ namespace SOPRO.Application.Services
                     FormatoNumero TEXT    NOT NULL DEFAULT '',
                     FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE
                 );", tx);
-            TryExec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_ConfigColumnasReporte_ProyectoId_TipoReporte_NombreInterno ON ConfigColumnasReporte(ProyectoId, TipoReporte, NombreInterno);", tx);
+            Exec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_ConfigColumnasReporte_ProyectoId_TipoReporte_NombreInterno ON ConfigColumnasReporte(ProyectoId, TipoReporte, NombreInterno);", tx);
         }
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -668,7 +746,7 @@ namespace SOPRO.Application.Services
                 if (!TablaExiste(conn, tabla)) continue;
                 if (!ColumnaExiste(conn, tabla, columna)) continue;
 
-                TryExec(conn, $@"
+                Exec(conn, $@"
                     UPDATE [{tabla}]
                     SET [{columna}] = ''
                     WHERE [{columna}] IS NULL", tx);
@@ -813,15 +891,10 @@ namespace SOPRO.Application.Services
                     tx.Commit();
                     System.Diagnostics.Debug.WriteLine("[SchemaManager] RepararActividadesProgramadas: reparación aplicada correctamente.");
                 }
-                catch (Exception exReparacion)
+                catch
                 {
                     tx.Rollback();
-                    // No relanzar: es mejor abrir el proyecto con el bug de FK
-                    // que bloquear la apertura por completo.
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[SchemaManager] RepararActividadesProgramadas falló: {exReparacion.Message}. " +
-                        "El proyecto abre con la FK original (RESTRICT). " +
-                        "Esto puede causar errores al eliminar actividades padre en Programación de Obra.");
+                    throw;
                 }
             }
             finally
@@ -882,11 +955,17 @@ namespace SOPRO.Application.Services
                 ON PlantillasReporteElementos (PlantillaReporteId, Zona);", tx);
 
             // Columnas de altura de franja en dmm agregadas a PlantillasReporte
-            // (independientes de EncabezadoAltura/PiePaginaAltura que son px para Excel)
-            AgregarColumna(conn, "PlantillasReporte", "AlturaEncabezadoDmm",
-                "INTEGER NOT NULL DEFAULT 400", tx);   // 400 dmm = 40 mm
-            AgregarColumna(conn, "PlantillasReporte", "AlturaPieDmm",
-                "INTEGER NOT NULL DEFAULT 200", tx);   // 200 dmm = 20 mm
+            // (independientes de EncabezadoAltura/PiePaginaAltura que son px para Excel).
+            // PlantillasReporte no la crea ninguna migración: se agregaron cuando la
+            // tabla ya existía en el modelo. Un DB legacy sin ella no es un error de
+            // esta migración; si la tabla existe, un fallo del ALTER sí se propaga.
+            if (TablaExiste(conn, "PlantillasReporte", tx))
+            {
+                AgregarColumna(conn, "PlantillasReporte", "AlturaEncabezadoDmm",
+                    "INTEGER NOT NULL DEFAULT 400", tx);   // 400 dmm = 40 mm
+                AgregarColumna(conn, "PlantillasReporte", "AlturaPieDmm",
+                    "INTEGER NOT NULL DEFAULT 200", tx);   // 200 dmm = 20 mm
+            }
         }
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -913,7 +992,7 @@ namespace SOPRO.Application.Services
                     Orden      INTEGER NOT NULL DEFAULT 0,
                     FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE
                 );", tx);
-            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_GruposIndirectos_ProyectoId_Orden ON GruposIndirectos(ProyectoId, Orden);", tx);
+            Exec(conn, "CREATE INDEX IF NOT EXISTS IX_GruposIndirectos_ProyectoId_Orden ON GruposIndirectos(ProyectoId, Orden);", tx);
 
             Exec(conn, @"
                 CREATE TABLE IF NOT EXISTS ConceptosIndirectos (
@@ -927,7 +1006,7 @@ namespace SOPRO.Application.Services
                     Activo           INTEGER NOT NULL DEFAULT 1,
                     FOREIGN KEY (GrupoIndirectoId) REFERENCES GruposIndirectos(Id) ON DELETE CASCADE
                 );", tx);
-            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_ConceptosIndirectos_GrupoIndirectoId_Orden ON ConceptosIndirectos(GrupoIndirectoId, Orden);", tx);
+            Exec(conn, "CREATE INDEX IF NOT EXISTS IX_ConceptosIndirectos_GrupoIndirectoId_Orden ON ConceptosIndirectos(GrupoIndirectoId, Orden);", tx);
 
             Exec(conn, @"
                 CREATE TABLE IF NOT EXISTS ConfiguracionesIndirectos (
@@ -955,7 +1034,7 @@ namespace SOPRO.Application.Services
                     FechaModificacion       TEXT    NOT NULL,
                     FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE
                 );", tx);
-            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_VistasPresupuesto_ProyectoId ON VistasPresupuesto(ProyectoId);", tx);
+            Exec(conn, "CREATE INDEX IF NOT EXISTS IX_VistasPresupuesto_ProyectoId ON VistasPresupuesto(ProyectoId);", tx);
         }
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -998,7 +1077,7 @@ namespace SOPRO.Application.Services
                     FechaModificacion    TEXT    NOT NULL,
                     FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE
                 );", tx);
-            TryExec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_FormatosCeldaReporte_ProyectoId_TipoReporte_ClaveVista_ClaveFila_NombreColumna ON FormatosCeldaReporte(ProyectoId, TipoReporte, ClaveVista, ClaveFila, NombreColumna);", tx);
+            Exec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_FormatosCeldaReporte_ProyectoId_TipoReporte_ClaveVista_ClaveFila_NombreColumna ON FormatosCeldaReporte(ProyectoId, TipoReporte, ClaveVista, ClaveFila, NombreColumna);", tx);
 
             Exec(conn, @"
                 CREATE TABLE IF NOT EXISTS ConfiguracionesEstiloFilaReporte (
@@ -1019,7 +1098,7 @@ namespace SOPRO.Application.Services
                     FechaModificacion    TEXT    NOT NULL,
                     FOREIGN KEY (ProyectoId) REFERENCES Proyectos(Id) ON DELETE CASCADE
                 );", tx);
-            TryExec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_ConfiguracionesEstiloFilaReporte_ProyectoId_TipoReporte_RolFila ON ConfiguracionesEstiloFilaReporte(ProyectoId, TipoReporte, RolFila);", tx);
+            Exec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_ConfiguracionesEstiloFilaReporte_ProyectoId_TipoReporte_RolFila ON ConfiguracionesEstiloFilaReporte(ProyectoId, TipoReporte, RolFila);", tx);
         }
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -1041,9 +1120,9 @@ namespace SOPRO.Application.Services
             AgregarColumna(conn, "Maquinaria", "ManoDeObraOperadorId",
                 "INTEGER NULL REFERENCES ManoDeObra(Id) ON DELETE RESTRICT", tx);
 
-            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_Maquinaria_MaterialCombustibleId ON Maquinaria(MaterialCombustibleId);", tx);
-            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_Maquinaria_MaterialAceiteId ON Maquinaria(MaterialAceiteId);", tx);
-            TryExec(conn, "CREATE INDEX IF NOT EXISTS IX_Maquinaria_ManoDeObraOperadorId ON Maquinaria(ManoDeObraOperadorId);", tx);
+            Exec(conn, "CREATE INDEX IF NOT EXISTS IX_Maquinaria_MaterialCombustibleId ON Maquinaria(MaterialCombustibleId);", tx);
+            Exec(conn, "CREATE INDEX IF NOT EXISTS IX_Maquinaria_MaterialAceiteId ON Maquinaria(MaterialAceiteId);", tx);
+            Exec(conn, "CREATE INDEX IF NOT EXISTS IX_Maquinaria_ManoDeObraOperadorId ON Maquinaria(ManoDeObraOperadorId);", tx);
         }
     }
 }

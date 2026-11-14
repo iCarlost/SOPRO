@@ -2,7 +2,6 @@ using Microsoft.Data.Sqlite;
 using SOPRO.Data.Context;
 using SOPRO.Data.Factories;
 using System;
-using System.Globalization;
 using System.IO;
 using System.Threading;
 
@@ -86,7 +85,7 @@ public sealed class ExternalProjectSource : IDisposable
         var registeredVersion = ReadRegisteredVersion(factory, fullPath);
         if (registeredVersion is not null)
         {
-            var comparison = CompareVersions(registeredVersion, SchemaManager.VersionActual);
+            var comparison = SchemaVersion.Compare(registeredVersion, SchemaManager.VersionActual);
 
             if (comparison is null)
                 throw new InvalidOperationException(
@@ -219,54 +218,6 @@ public sealed class ExternalProjectSource : IDisposable
         destination.Open();
 
         source.BackupDatabase(destination);
-    }
-
-    private static int? CompareVersions(string left, string right)
-    {
-        var leftParts = ParseVersion(left);
-        var rightParts = ParseVersion(right);
-        if (leftParts is null || rightParts is null)
-            return null;
-
-        for (var i = 0; i < leftParts.Length; i++)
-        {
-            var comparison = leftParts[i].CompareTo(rightParts[i]);
-            if (comparison != 0)
-                return comparison;
-        }
-
-        return 0;
-    }
-
-    private static int[]? ParseVersion(string value)
-    {
-        var parts = value.Split('.');
-        // Contrato documentado: AAAA.MM.revision con año de 4 dígitos, mes de 2 y
-        // revisión de 1+ dígitos. Nada de componentes extra (2026.04.4.0 no equivale
-        // a 2026.04.4), longitudes laxas (2026.4.4 / 26.04.4), signos ni espacios.
-        if (parts.Length != 3
-            || parts[0].Length != 4
-            || parts[1].Length != 2
-            || parts[2].Length == 0)
-            return null;
-
-        var parsed = new int[3];
-        for (var i = 0; i < parts.Length; i++)
-        {
-            if (parts[i].Length == 0)
-                return null;
-
-            foreach (var caracter in parts[i])
-            {
-                if (caracter is < '0' or > '9')
-                    return null;
-            }
-
-            if (!int.TryParse(parts[i], NumberStyles.None, CultureInfo.InvariantCulture, out parsed[i]))
-                return null;
-        }
-
-        return parsed;
     }
 
     private static void TryDeleteDirectory(string directory)

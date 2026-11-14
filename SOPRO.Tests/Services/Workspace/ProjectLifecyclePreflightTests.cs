@@ -443,6 +443,8 @@ public sealed class ProjectLifecyclePreflightTests
         }
 
         Assert.IsFalse(File.Exists(dbPath + ".lock"), "cerrar la sesión libera el candado");
+        Assert.IsFalse(TablaExiste(dbPath, "PlantillasReporte"),
+            "la base reconstruida no trae PlantillasReporte; M012 debe omitir sus columnas sin fallar");
 
         using (var verificacion = new ProjectDbContextFactory().CreateReadOnly(dbPath))
         {
@@ -464,5 +466,41 @@ public sealed class ProjectLifecyclePreflightTests
         Assert.IsTrue(ColumnaExiste(dbPath, "Maquinaria", "MaterialCombustibleId"), "M015 debe agregar MaterialCombustibleId");
         Assert.IsTrue(ColumnaExiste(dbPath, "Maquinaria", "MaterialAceiteId"), "M015 debe agregar MaterialAceiteId");
         Assert.IsTrue(ColumnaExiste(dbPath, "Maquinaria", "ManoDeObraOperadorId"), "M015 debe agregar ManoDeObraOperadorId");
+    }
+
+    [TestMethod]
+    public void OpenProject_VersionFutura_RechazaSinAlterarLaVersionRegistrada()
+    {
+        var dbPath = CrearRutaTemporal();
+        using (var contexto = TestDbFactory.CreateContextAt(dbPath))
+        {
+            contexto.Proyectos.Add(CrearProyecto("Proyecto versión futura"));
+            contexto.SaveChanges();
+        }
+
+        var servicio = CrearServicio();
+        using (var sesion = servicio.OpenProject(dbPath))
+        {
+            Assert.AreEqual("Proyecto versión futura", sesion.Project.Nombre);
+        }
+
+        Ejecutar(dbPath,
+            "DELETE FROM __MigracionesCustom WHERE Clave LIKE 'SchemaVersion_%';");
+        Ejecutar(dbPath,
+            "INSERT INTO __MigracionesCustom (Clave, FechaAplicacion) "
+            + "VALUES ('SchemaVersion_2999.01.1', '2999-01-01T00:00:00.0000000');");
+
+        var ex = Assert.ThrowsExactly<InvalidOperationException>(
+            () => servicio.OpenProject(dbPath));
+
+        StringAssert.Contains(ex.Message, "más reciente");
+        StringAssert.Contains(ex.Message, "Actualice SOPRO");
+        Assert.IsFalse(File.Exists(dbPath + ".lock"), "el candado debe liberarse tras el rechazo");
+
+        using var verificacion = new ProjectDbContextFactory().CreateReadOnly(dbPath);
+        Assert.AreEqual(
+            "2999.01.1",
+            SchemaManager.GetVersionRegistrada(verificacion),
+            "la apertura rechazada no debe borrar ni reemplazar la versión futura");
     }
 }
