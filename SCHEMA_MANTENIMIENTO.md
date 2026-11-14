@@ -18,16 +18,17 @@ Si tocas (1) y (2) sin tocar (3), los DBs viejos fallarán al abrirse con errore
 
 ## Cómo agregar una migración nueva
 
-1. **Crear el método** `M0XX_NombreDescriptivo(DbConnection conn)` en `SchemaManager.cs`
+1. **Crear el método** `M0XX_NombreDescriptivo(DbConnection conn, DbTransaction tx)` en `SchemaManager.cs`
 
-2. **Registrarlo** en `EnsureCurrentSchema` dentro del bloque de la transacción:
+2. **Registrarlo** en `EnsureCurrentSchema` dentro del bloque de la transacción principal:
    ```csharp
-   M010_ConfigColumnasReporte(conn);
-   M011_SanitizarNullsLegacy(conn);
-   M012_TuNuevaMigracion(conn);   // ← aquí
-   RegistrarVersion(conn);
+   M010_ConfigColumnasReporte(conn, tx);
+   M011_SanitizarNullsLegacy(conn, tx);
+   M012_TuNuevaMigracion(conn, tx);   // ← aquí
    tx.Commit();
    ```
+   `RegistrarVersion` no va en ese bloque: se ejecuta en su propia transacción
+   después de `RepararActividadesProgramadas`.
 
 3. **Incrementar** `VersionActual`:
    ```csharp
@@ -38,6 +39,12 @@ Si tocas (1) y (2) sin tocar (3), los DBs viejos fallarán al abrirse con errore
    (sin `?`) a una entidad, agrégala también en `M011_SanitizarNullsLegacy` para
    limpiar NULLs en DBs viejos que puedan existir.
 
+5. **Manejo de errores**: usa `Exec`; **no** envuelvas migraciones en un catch
+   genérico. `CREATE ... IF NOT EXISTS` ya es idempotente en SQLite. El único
+   duplicado tolerado es la carrera de `ALTER TABLE ... ADD COLUMN`
+   (`SqliteException` con código 1 y mensaje `duplicate column name`).
+   Cualquier otro fallo debe propagarse.
+
 ---
 
 ## Arquitectura del SchemaManager
@@ -45,29 +52,54 @@ Si tocas (1) y (2) sin tocar (3), los DBs viejos fallarán al abrirse con errore
 ```
 EnsureCurrentSchema(context)
 │
+├── ValidarVersionRegistrada(conn)   ← ANTES de cualquier escritura (fail-closed)
+│     └── si la versión es más nueva o ilegible: lanza y no toca el archivo
+│
 ├── EnsureMigracionesTable(conn)     ← crea __MigracionesCustom si no existe
 │
 ├── TRANSACCIÓN ──────────────────────────────────────────────────────
-│   ├── M001_Herramientas
-│   ├── M002_ProyectosColumnas        ← ModoCalculoPorcentajes, ParametrosFSR, etc.
-│   ├── M003_ProgramacionObra         ← 7 tablas de programación
-│   ├── M004_ColumnasTablas           ← Columnas* catálogos, Rendimiento, Modulo
-│   ├── M005_Financiamiento
-│   ├── M006_TitulosReporte
-│   ├── M007_WrapTextoAlineacion
-│   ├── M008_MaquinariaColumnas       ← TipoCombustible, NumeroLlantas, etc.
-│   ├── M009_ConceptosPresupuesto     ← CargosAdicionales, Nivel, Fechas
-│   ├── M010_ConfigColumnasReporte
-│   ├── M011_SanitizarNullsLegacy    ← NULLs en columnas string NOT NULL
-│   ├── M012_DisenadorEncabezadoPdf  ← PlantillasReporteElementos
-│   ├── M013_TablasIndirectosVistas  ← Grupos/Conceptos/ConfiguracionesIndirectos, VistasPresupuesto
-│   ├── M014_TablasFormatoReporte    ← FormatosCeldaReporte, ConfiguracionesEstiloFilaReporte
-│   └── RegistrarVersion             ← sella __MigracionesCustom con versión
+│   ├── M001_Herramientas(conn, tx)
+│   ├── M002_ProyectosColumnas(conn, tx)        ← ModoCalculoPorcentajes, ParametrosFSR, etc.
+│   ├── M003_ProgramacionObra(conn, tx)         ← 7 tablas de programación
+│   ├── M004_ColumnasTablas(conn, tx)           ← Columnas* catálogos, Rendimiento, Modulo
+│   ├── M005_Financiamiento(conn, tx)
+│   ├── M006_TitulosReporte(conn, tx)
+│   ├── M007_WrapTextoAlineacion(conn, tx)
+│   ├── M008_MaquinariaColumnas(conn, tx)       ← TipoCombustible, NumeroLlantas, etc.
+│   ├── M009_ConceptosPresupuesto(conn, tx)     ← CargosAdicionales, Nivel, Fechas
+│   ├── M010_ConfigColumnasReporte(conn, tx)
+│   ├── M011_SanitizarNullsLegacy(conn, tx)     ← NULLs en columnas string NOT NULL
+│   ├── M012_DisenadorEncabezadoPdf(conn, tx)   ← PlantillasReporteElementos
+│   ├── M013_TablasIndirectosVistas(conn, tx)   ← Grupos/Conceptos/ConfiguracionesIndirectos, VistasPresupuesto
+│   ├── M014_TablasFormatoReporte(conn, tx)     ← FormatosCeldaReporte, ConfiguracionesEstiloFilaReporte
+│   └── M015_VinculosCostoHorarioMaquinaria(conn, tx)
 │
-└── RepararActividadesProgramadas(conn, context)
-    └── TRANSACCIÓN PROPIA ── fuera de la principal porque necesita
-                              PRAGMA foreign_keys=OFF (no permitido en tx)
+├── RepararActividadesProgramadas(conn, context)
+│   └── TRANSACCIÓN PROPIA ── fuera de la principal porque necesita
+│                             PRAGMA foreign_keys=OFF (no permitido en tx)
+│
+└── TRANSACCIÓN ── RegistrarVersion(conn, tx)   ← sella solo si todo lo anterior terminó bien
 ```
+
+Contrato de fallo:
+
+- La transacción principal es atómica: si una migración falla, se revierte y el
+  error se propaga. `RegistrarVersion` **no** se ejecuta.
+- `RepararActividadesProgramadas` corre después del commit de las migraciones y
+  antes del sello de versión. Si falla, sus cambios se revierten, el error se
+  propaga y **no** se registra versión. Las migraciones ya confirmadas son
+  idempotentes y se reintentan en la siguiente apertura, que también reintenta
+  la reparación.
+- No se toleran fallos genéricos. Solo la carrera de columna duplicada en
+  `AgregarColumna` se ignora mediante `EsDuplicadoIgnorable`.
+- El gating de versión ocurre antes de crear/modificar cualquier tabla. Una
+  versión registrada más nueva que `VersionActual` o con formato no reconocido
+  rechaza la operación y conserva la fila original. La clave debe ser
+  `SchemaVersion_` seguida de una versión estricta; un sufijo malformado no se
+  normaliza.
+- `SchemaVersion.Compare` es el único parser/comparador del contrato
+  `AAAA.MM.revision`; lo comparten `SchemaManager`, `ExternalProjectSource` y
+  `ProjectDuplicationService`.
 
 ---
 
@@ -78,6 +110,13 @@ string? version = SchemaManager.GetVersionRegistrada(context);
 // "2026.04.5" si ya pasó por SchemaManager
 // null si es un DB muy viejo (antes del SchemaManager)
 ```
+
+`SchemaVersion.Compare` devuelve `null` si alguna de las dos versiones no cumple
+el contrato `AAAA.MM.revision`, negativo si la primera es anterior y positivo si
+es posterior. Hay que comprobar `version is not null` antes de llamarlo:
+`EnsureCurrentSchema` rechaza (`InvalidOperationException`) las versiones
+posteriores o ilegibles; los callers externos aplican la misma regla antes de
+copiar/migrar.
 
 ---
 
@@ -123,19 +162,21 @@ Uso del formato y precedencia de estilos: ver
 
 ## Puntos donde se llama SchemaManager
 
-Todo `new SOPROContext(path)` en el sistema llama `SchemaManager.EnsureCurrentSchema(context)` inmediatamente después de `EnsureCreated()`:
+Callers vigentes de `EnsureCurrentSchema(context)`:
 
 - `ProjectLifecycleService.CreateProject` — proyectos nuevos
-- `ProjectLifecycleService.OpenProject` — apertura normal
+- `ProjectLifecycleService.OpenProject` — apertura normal (con gating de versión)
 - `ProjectLifecycleService.ApplyProjectUpgrades` — upgrade manual
-- `DatabaseInitializer.InitializeMasterCatalog` — catálogo maestro nuevo
-- `DatabaseInitializer.CreateNewProject` — nuevo proyecto desde initializer
-- `DatabaseInitializer.UpgradeSchema` — upgrade manual desde initializer
-- `CatalogSearchService.BuildProjectCatalogIndex` — indexado de proyectos externos
-- `ExternalMatrixImportService` — importación de matrices (3 métodos)
-- `ExternalInsumoImportService` — importación de insumos (2 métodos)
+- `ExternalProjectSource.OpenSnapshot` — copia temporal de una fuente externa
+- `ProjectDuplicationService` — borrador de duplicación antes de migrarlo
 - `FormCatalogoMaestro` — apertura del catálogo maestro en UI
 - `FormImportarMaestro` — importación desde catálogo maestro
+
+Patrón: crear el contexto, llamar `EnsureCurrentSchema(context)` y, solo si no
+lanza, usar la base. En fuentes externas la versión se valida antes de copiar;
+en duplicación se valida sobre el borrador ya copiado, antes de migrarlo; en la
+apertura propia el gating ocurre dentro de `EnsureCurrentSchema` antes de
+cualquier escritura.
 
 ---
 

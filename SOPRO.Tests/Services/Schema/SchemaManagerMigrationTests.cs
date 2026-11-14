@@ -751,6 +751,292 @@ public class SchemaManagerMigrationTests
             "MaquinariaMaestraId no debe reutilizarse para los vínculos de costo horario.");
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // Fail-closed de versión y de migraciones (issue #123)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    [TestMethod]
+    public void EnsureCurrentSchema_VersionFutura_RechazaSinCrearTablasNiReemplazarVersion()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"sopro_schema_{Guid.NewGuid():N}.db");
+        try
+        {
+            EjecutarSql(dbPath, @"
+                CREATE TABLE __MigracionesCustom (
+                    Clave           TEXT PRIMARY KEY NOT NULL,
+                    FechaAplicacion TEXT NOT NULL
+                );
+                INSERT INTO __MigracionesCustom (Clave, FechaAplicacion)
+                VALUES ('SchemaVersion_2999.01.1', '2999-01-01T00:00:00.0000000');");
+
+            using var ctx = new SOPROContext(dbPath);
+            var ex = Assert.ThrowsExactly<InvalidOperationException>(
+                () => SchemaManager.EnsureCurrentSchema(ctx));
+
+            StringAssert.Contains(ex.Message, "más reciente");
+            StringAssert.Contains(ex.Message, "Actualice SOPRO");
+            Assert.IsFalse(TablaExiste(ctx, "Herramientas"),
+                "una versión futura no debe ejecutar M001 ni ninguna otra migración.");
+            Assert.AreEqual("2999.01.1", SchemaManager.GetVersionRegistrada(ctx),
+                "la fila de versión futura debe conservarse intacta.");
+            Assert.AreEqual(1, ContarVersionRegistrada(ctx),
+                "no debe agregarse ni reemplazarse la fila de versión.");
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void EnsureCurrentSchema_VersionNoReconocida_RechazaSinEscritura()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"sopro_schema_{Guid.NewGuid():N}.db");
+        try
+        {
+            EjecutarSql(dbPath, @"
+                CREATE TABLE __MigracionesCustom (
+                    Clave           TEXT PRIMARY KEY NOT NULL,
+                    FechaAplicacion TEXT NOT NULL
+                );
+                INSERT INTO __MigracionesCustom (Clave, FechaAplicacion)
+                VALUES ('SchemaVersion_vNext', '2026-01-01T00:00:00.0000000');");
+
+            using var ctx = new SOPROContext(dbPath);
+            var ex = Assert.ThrowsExactly<InvalidOperationException>(
+                () => SchemaManager.EnsureCurrentSchema(ctx));
+
+            StringAssert.Contains(ex.Message, "no reconocida");
+            Assert.IsFalse(TablaExiste(ctx, "Herramientas"),
+                "una versión ilegible no debe migrar ni crear tablas.");
+            Assert.AreEqual("vNext", SchemaManager.GetVersionRegistrada(ctx),
+                "la versión original debe conservarse.");
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void EnsureCurrentSchema_FalloRealDeMigracion_PropagaYNoSellaVersion()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"sopro_schema_{Guid.NewGuid():N}.db");
+        try
+        {
+            // Fixture mínima para llegar a M003: ComponentesMatriz existe (M001 crea
+            // su índice) y PeriodosPrograma tiene duplicados en la clave del índice
+            // único, por lo que CREATE UNIQUE INDEX debe fallar de verdad.
+            EjecutarSql(dbPath, @"
+                CREATE TABLE Proyectos (Id INTEGER PRIMARY KEY);
+                CREATE TABLE ComponentesMatriz (
+                    Id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Cantidad       REAL,
+                    TipoComponente INTEGER
+                );
+                CREATE TABLE PeriodosPrograma (
+                    Id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ProgramaObraId INTEGER NOT NULL,
+                    NumeroPeriodo  INTEGER NOT NULL,
+                    Etiqueta       TEXT NOT NULL DEFAULT '',
+                    FechaInicio    TEXT NOT NULL DEFAULT '',
+                    FechaFin       TEXT NOT NULL DEFAULT '',
+                    EsCerrado      INTEGER NOT NULL DEFAULT 0
+                );
+                INSERT INTO PeriodosPrograma (ProgramaObraId, NumeroPeriodo)
+                VALUES (1, 1), (1, 1);");
+
+            using var ctx = new SOPROContext(dbPath);
+            var ex = Assert.ThrowsExactly<SqliteException>(
+                () => SchemaManager.EnsureCurrentSchema(ctx));
+
+            StringAssert.Contains(ex.Message, "UNIQUE constraint failed");
+            Assert.IsNull(SchemaManager.GetVersionRegistrada(ctx),
+                "un fallo real no debe sellar la versión.");
+            Assert.IsFalse(TablaExiste(ctx, "Herramientas"),
+                "la transacción principal debe revertir M001.");
+            Assert.AreEqual(2, ContarFilas(ctx, "PeriodosPrograma"),
+                "los datos legacy deben quedar intactos tras el rollback.");
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void EnsureCurrentSchema_ClaveVersionMalformada_RechazaSinEscritura()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"sopro_schema_{Guid.NewGuid():N}.db");
+        try
+        {
+            // Un prefijo repetido no debe normalizarse a una versión válida.
+            EjecutarSql(dbPath, @"
+                CREATE TABLE __MigracionesCustom (
+                    Clave           TEXT PRIMARY KEY NOT NULL,
+                    FechaAplicacion TEXT NOT NULL
+                );
+                INSERT INTO __MigracionesCustom (Clave, FechaAplicacion)
+                VALUES ('SchemaVersion_SchemaVersion_2026.04.5', '2026-01-01T00:00:00.0000000');");
+
+            using var ctx = new SOPROContext(dbPath);
+            var ex = Assert.ThrowsExactly<InvalidOperationException>(
+                () => SchemaManager.EnsureCurrentSchema(ctx));
+
+            StringAssert.Contains(ex.Message, "no reconocida");
+            StringAssert.Contains(ex.Message, "SchemaVersion_2026.04.5");
+            Assert.IsFalse(TablaExiste(ctx, "Herramientas"),
+                "una clave malformada no debe habilitar la migración.");
+            Assert.AreEqual("SchemaVersion_2026.04.5", SchemaManager.GetVersionRegistrada(ctx),
+                "se quita exactamente un prefijo; el sufijo malformado se conserva.");
+            Assert.AreEqual(1, ContarVersionRegistrada(ctx),
+                "no debe agregarse ni reemplazarse la fila original.");
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void EnsureCurrentSchema_FalloDeMigracionConservaVersionAnterior()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"sopro_schema_{Guid.NewGuid():N}.db");
+        try
+        {
+            // Misma fixture que el fallo real, pero con una versión anterior ya
+            // registrada: el rollback no debe avanzarla a VersionActual.
+            EjecutarSql(dbPath, @"
+                CREATE TABLE __MigracionesCustom (
+                    Clave           TEXT PRIMARY KEY NOT NULL,
+                    FechaAplicacion TEXT NOT NULL
+                );
+                INSERT INTO __MigracionesCustom (Clave, FechaAplicacion)
+                VALUES ('SchemaVersion_2026.04.4', '2026-04-04T00:00:00.0000000');
+                CREATE TABLE Proyectos (Id INTEGER PRIMARY KEY);
+                CREATE TABLE ComponentesMatriz (
+                    Id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Cantidad       REAL,
+                    TipoComponente INTEGER
+                );
+                CREATE TABLE PeriodosPrograma (
+                    Id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ProgramaObraId INTEGER NOT NULL,
+                    NumeroPeriodo  INTEGER NOT NULL,
+                    Etiqueta       TEXT NOT NULL DEFAULT '',
+                    FechaInicio    TEXT NOT NULL DEFAULT '',
+                    FechaFin       TEXT NOT NULL DEFAULT '',
+                    EsCerrado      INTEGER NOT NULL DEFAULT 0
+                );
+                INSERT INTO PeriodosPrograma (ProgramaObraId, NumeroPeriodo)
+                VALUES (1, 1), (1, 1);");
+
+            using var ctx = new SOPROContext(dbPath);
+            Assert.ThrowsExactly<SqliteException>(
+                () => SchemaManager.EnsureCurrentSchema(ctx));
+
+            Assert.AreEqual("2026.04.4", SchemaManager.GetVersionRegistrada(ctx),
+                "un fallo no debe reemplazar la versión anterior.");
+            Assert.AreEqual(1, ContarVersionRegistrada(ctx),
+                "no debe agregarse una segunda fila de versión.");
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void EnsureCurrentSchema_FalloDeReparacion_PropagaYNoSellaVersion()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"sopro_schema_{Guid.NewGuid():N}.db");
+        try
+        {
+            // Partir de una base completa y luego simular una tabla legacy con FK
+            // RESTRICT a la que le falta una columna que la reparación copia.
+            using (var ctx = new SOPROContext(dbPath))
+            {
+                ctx.Database.EnsureCreated();
+                SchemaManager.EnsureCurrentSchema(ctx);
+            }
+
+            EjecutarSql(dbPath, @"
+                PRAGMA foreign_keys = OFF;
+                DROP TABLE ActividadesProgramadas;
+                CREATE TABLE ActividadesProgramadas (
+                    Id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ProgramaObraId        INTEGER NOT NULL,
+                    ConceptoPresupuestoId INTEGER NULL,
+                    ActividadPadreId      INTEGER NULL,
+                    Descripcion           TEXT NOT NULL,
+                    Orden                 INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY (ActividadPadreId) REFERENCES ActividadesProgramadas(Id) ON DELETE RESTRICT
+                );
+                DELETE FROM __MigracionesCustom WHERE Clave LIKE 'SchemaVersion_%';
+                PRAGMA foreign_keys = ON;");
+
+            using var ctxReparacion = new SOPROContext(dbPath);
+            var ex = Assert.ThrowsExactly<SqliteException>(
+                () => SchemaManager.EnsureCurrentSchema(ctxReparacion));
+
+            StringAssert.Contains(ex.Message, "no such column");
+            Assert.IsNull(SchemaManager.GetVersionRegistrada(ctxReparacion),
+                "una reparación fallida no debe sellar la versión.");
+            Assert.IsTrue(TablaExiste(ctxReparacion, "Herramientas"),
+                "las migraciones ya confirmadas son idempotentes y permanecen.");
+            Assert.IsFalse(TablaExiste(ctxReparacion, "ActividadesProgramadas_FIX"),
+                "la tabla temporal de la reparación debe revertirse.");
+            StringAssert.Contains(LeerDdlTabla(ctxReparacion, "ActividadesProgramadas"), "ON DELETE RESTRICT",
+                "la tabla legacy original debe conservarse tras el rollback.");
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void EnsureCurrentSchema_ColumnaYaPresente_NoFallaNiDuplica()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"sopro_schema_{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var ctx = new SOPROContext(dbPath))
+            {
+                ctx.Database.EnsureCreated();
+
+                // Simular que otro proceso ya agregó una columna de M002 antes de
+                // que corra la migración: el prechequeo debe evitarla sin duplicar.
+                ctx.Database.ExecuteSqlRaw("DROP TABLE IF EXISTS Herramientas;");
+                ctx.Database.ExecuteSqlRaw(
+                    "ALTER TABLE Proyectos DROP COLUMN ModoCalculoPorcentajes;");
+                ctx.Database.ExecuteSqlRaw(
+                    "ALTER TABLE Proyectos ADD COLUMN ModoCalculoPorcentajes TEXT NOT NULL DEFAULT 'Acumulables';");
+            }
+
+            using (var ctx = new SOPROContext(dbPath))
+            {
+                SchemaManager.EnsureCurrentSchema(ctx);
+
+                Assert.IsTrue(ColumnaExiste(ctx, "Proyectos", "ModoCalculoPorcentajes"));
+                Assert.AreEqual(1, ContarColumna(ctx, "Proyectos", "ModoCalculoPorcentajes"),
+                    "la columna preexistente no debe duplicarse.");
+                Assert.AreEqual(SchemaManager.VersionActual, SchemaManager.GetVersionRegistrada(ctx));
+            }
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────
 
     private static Proyecto CrearProyecto(string nombre) => new()
@@ -843,6 +1129,46 @@ public class SchemaManagerMigrationTests
         while (reader.Read())
             claves.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2)));
         return claves;
+    }
+
+    private static string LeerDdlTabla(SOPROContext ctx, string tabla)
+    {
+        using var cmd = ctx.Database.GetDbConnection().CreateCommand();
+        cmd.CommandText = "SELECT sql FROM sqlite_master WHERE type='table' AND name=$1";
+        var p = cmd.CreateParameter(); p.ParameterName = "$1"; p.Value = tabla; cmd.Parameters.Add(p);
+        if (cmd.Connection!.State != System.Data.ConnectionState.Open)
+            cmd.Connection.Open();
+        return cmd.ExecuteScalar() as string ?? string.Empty;
+    }
+
+    private static void EjecutarSql(string dbPath, string sql)
+    {
+        using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = dbPath, Pooling = false }.ToString());
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.ExecuteNonQuery();
+    }
+
+    private static int ContarFilas(SOPROContext ctx, string tabla)
+    {
+        using var cmd = ctx.Database.GetDbConnection().CreateCommand();
+        cmd.CommandText = $"SELECT COUNT(*) FROM [{tabla}]";
+        if (cmd.Connection!.State != System.Data.ConnectionState.Open)
+            cmd.Connection.Open();
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
+    private static int ContarColumna(SOPROContext ctx, string tabla, string columna)
+    {
+        using var cmd = ctx.Database.GetDbConnection().CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info($1) WHERE name=$2";
+        var p1 = cmd.CreateParameter(); p1.ParameterName = "$1"; p1.Value = tabla; cmd.Parameters.Add(p1);
+        var p2 = cmd.CreateParameter(); p2.ParameterName = "$2"; p2.Value = columna; cmd.Parameters.Add(p2);
+        if (cmd.Connection!.State != System.Data.ConnectionState.Open)
+            cmd.Connection.Open();
+        return Convert.ToInt32(cmd.ExecuteScalar());
     }
 
     private static void RecrearMaquinariaSinVinculos(SOPROContext ctx)
