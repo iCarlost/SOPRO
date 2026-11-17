@@ -1,6 +1,9 @@
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
+using SOPRO.WinForms.Diagnostics;
 using SOPRO.WinForms.Forms;
 using System;
+using System.IO;
 using System.Windows.Forms;
 
 namespace SOPRO.WinForms
@@ -10,10 +13,99 @@ namespace SOPRO.WinForms
         [STAThread]
         static void Main(string[] args)
         {
-            ApplicationConfiguration.Initialize();
-            System.Windows.Forms.Application.EnableVisualStyles();
-            System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
+            FileDiagnosticsSink? sink = null;
+            GlobalExceptionHooks? hooks = null;
 
+            // El try/catch cubre también la composición observable: si algo falla
+            // antes de instalar los hooks, no se continúa con estado desconocido.
+            try
+            {
+                ApplicationConfiguration.Initialize();
+                System.Windows.Forms.Application.EnableVisualStyles();
+                System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
+
+                // Fase 2 de diagnóstico: los logs viven junto a los datos locales,
+                // nunca junto al proyecto ni en la carpeta de instalación.
+                var logsDirectory = Path.Combine(WorkspacePaths.LocalDataFolder, "logs");
+                sink = new FileDiagnosticsSink(logsDirectory);
+                hooks = new GlobalExceptionHooks(
+                    sink,
+                    new FatalErrorDialogPresenter(),
+                    ObtenerVersionProducto(),
+                    logsDirectory);
+
+                // Los hooks se instalan una sola vez y antes de crear cualquier
+                // ventana para no perder fallos de arranque ni dejar excepciones
+                // sin política.
+                hooks.Install();
+
+                EjecutarArranque(args);
+            }
+            catch (Exception ex)
+            {
+                if (hooks is not null)
+                {
+                    // Registra, presenta el diálogo fatal en el hilo de arranque
+                    // y termina con código distinto de cero.
+                    hooks.HandleStartupFailure(ex);
+
+                    // Solo alcanzable si la terminación inyectada no saliera del
+                    // proceso: el arranque nunca continúa con estado desconocido.
+                    Environment.Exit(GlobalExceptionHooks.ExitCodeFatal);
+                }
+
+                TerminarSinCoordinador(sink, ex);
+            }
+            finally
+            {
+                hooks?.Dispose();
+                sink?.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Fallback mínimo cuando la composición de diagnóstico falló antes de
+        /// tener coordinador: se registra lo que permita el sink disponible y se
+        /// cierra con código 1, sin MessageBox y sin continuar.
+        /// <para>
+        /// Límite conocido: si el fallo ocurre antes de crear el sink (por
+        /// ejemplo en <see cref="ApplicationConfiguration.Initialize"/>), no
+        /// queda evidencia local; solo el código de salida.
+        /// </para>
+        /// </summary>
+        private static void TerminarSinCoordinador(IDiagnosticsSink? sink, Exception exception)
+        {
+            if (sink is not null)
+            {
+                try
+                {
+                    sink.Write(DiagnosticsEvent.FromException(
+                        DateTimeOffset.UtcNow,
+                        DiagnosticsSeverity.Fatal,
+                        GlobalExceptionHooks.Source,
+                        GlobalExceptionHooks.OperationStartupFailure,
+                        ObtenerVersionProducto(),
+                        GlobalExceptionHooks.FallbackCorrelationId,
+                        exception));
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    sink.Flush();
+                }
+                catch
+                {
+                }
+            }
+
+            Environment.Exit(GlobalExceptionHooks.ExitCodeFatal);
+        }
+
+        private static void EjecutarArranque(string[] args)
+        {
             var workspaceService = new ProjectWorkspaceService();
             workspaceService.EnsureWorkspaceExists();
 
@@ -49,6 +141,12 @@ namespace SOPRO.WinForms
                 workspaceService,
                 new ProjectLifecycleService(workspaceService),
                 projectPath));
+        }
+
+        private static string ObtenerVersionProducto()
+        {
+            var version = typeof(Program).Assembly.GetName().Version;
+            return version?.ToString() ?? "0.0.0";
         }
     }
 }
