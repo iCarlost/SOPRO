@@ -4,6 +4,7 @@ using SOPRO.WinForms.Helpers;
 using System;
 using System.Linq;
 using System.Windows.Forms;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
 using SOPRO.Application.DTOs.Catalog;
 
@@ -16,8 +17,26 @@ namespace SOPRO.WinForms.Forms
         private readonly ManoDeObra _manoDeObra;
         private readonly bool _esNuevo;
         private readonly Proyecto? _proyecto; // para calcular FSR automáticamente
-        
+        private readonly IDiagnosticsSink? _diagnosticsSink;
+        private readonly string? _productVersion;
+
         public FormEditarManoObra(SOPROContext context, int? proyectoId, ManoDeObra manoDeObra = null, Proyecto proyecto = null)
+            : this(context, proyectoId, manoDeObra, proyecto, diagnosticsSink: null, productVersion: null)
+        {
+        }
+
+        /// <summary>
+        /// Seam de composición: sink y versión de diagnóstico opcionales, usados al
+        /// registrar un FSR que no pudo deserializarse, adaptarse o calcularse. El
+        /// constructor público conserva el comportamiento sin diagnóstico.
+        /// </summary>
+        internal FormEditarManoObra(
+            SOPROContext context,
+            int? proyectoId,
+            ManoDeObra? manoDeObra,
+            Proyecto? proyecto,
+            IDiagnosticsSink? diagnosticsSink,
+            string? productVersion)
         {
             InitializeComponent();
             
@@ -26,6 +45,8 @@ namespace SOPRO.WinForms.Forms
             _manoDeObra = manoDeObra;
             _esNuevo = manoDeObra == null;
             _proyecto = proyecto;
+            _diagnosticsSink = diagnosticsSink;
+            _productVersion = productVersion;
             
             ConfigurarFormulario();
             SeleccionTotalNumericUpDown.Configurar(nudSalarioBase);
@@ -97,7 +118,11 @@ namespace SOPRO.WinForms.Forms
             if (_proyecto == null) return;
             if (string.IsNullOrEmpty(_proyecto.ParametrosFSR)) return;
 
-            var fsr = FsrCalculationService.Calcular(_proyecto.ParametrosFSR, nudSalarioBase.Value);
+            var fsr = FsrCalculationService.Calcular(
+                _proyecto.ParametrosFSR,
+                nudSalarioBase.Value,
+                _diagnosticsSink,
+                _productVersion);
             if (fsr.HasValue)
             {
                 var fsrRedondeado = Math.Round(fsr.Value, 6);

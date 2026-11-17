@@ -53,6 +53,13 @@ namespace SOPRO.Application.Services
         /// recalcula el salario real; sin ellos, o para filas <c>%MO</c> / salario
         /// no positivo, conserva el FSR y salario real de origen.
         /// </summary>
+        /// <remarks>
+        /// Importadores externos fuera del alcance de #145: esta ruta no recibe sink
+        /// de diagnóstico y no instrumenta el fallo del FSR. Las entradas
+        /// productivas instrumentadas son el editor de mano de obra del proyecto
+        /// (catálogo) y su cálculo de FSR. Instrumentar la importación requiere un
+        /// issue propio.
+        /// </remarks>
         public static void ApplyManoDeObra(
             ManoDeObra target, ManoDeObra source, int currentProjectId, string projectName, string? parametrosFSRDestino = null)
         {
