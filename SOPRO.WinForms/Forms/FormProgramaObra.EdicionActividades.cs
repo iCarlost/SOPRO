@@ -227,7 +227,7 @@ namespace SOPRO.WinForms.Forms
             {
                 System.Diagnostics.Debug.WriteLine($"ProcesarFinEdicionActividadAsync: {ex}");
                 _cargando = false;
-                SuspenderPorResultadoIncierto($"No se pudo guardar la actividad: {ex.Message}");
+                SuspenderPorResultadoIncierto($"No se pudo guardar la actividad: {ex.Message}", ex);
                 RecargarProgramaVerificado(gridState);
             }
             finally

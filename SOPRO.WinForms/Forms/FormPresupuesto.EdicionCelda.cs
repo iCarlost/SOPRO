@@ -721,7 +721,9 @@ namespace SOPRO.WinForms.Forms
                 _proyecto.Id,
                 FormatoTipoReporte,
                 ConstruirLoteCambios(cambios, aplicarAntes),
-                _undoManager);
+                _undoManager,
+                diagnosticsSink: _diagnosticsSink,
+                productVersion: _productVersion);
 
             foreach (var cambio in cambios)
                 EstablecerOverlayEnMemoria(cambio.Direccion, aplicarAntes ? cambio.Antes : cambio.Despues);

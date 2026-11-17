@@ -296,7 +296,7 @@ namespace SOPRO.WinForms.Forms
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"GuardarDependenciasActualesAsync: {ex}");
-                SuspenderPorResultadoIncierto($"No se pudieron guardar las dependencias: {ex.Message}");
+                SuspenderPorResultadoIncierto($"No se pudieron guardar las dependencias: {ex.Message}", ex);
                 RecargarProgramaVerificado(state);
             }
             finally

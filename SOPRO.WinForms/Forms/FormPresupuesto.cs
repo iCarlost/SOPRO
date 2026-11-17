@@ -2,6 +2,7 @@
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.Data.Factories;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.DTOs.Presupuesto;
 using SOPRO.Application.DTOs.Catalog;
 using SOPRO.Application.DTOs.Matrices;
@@ -10,6 +11,7 @@ using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services;
 using SOPRO.Application.Services.Reporting;
+using SOPRO.WinForms.Diagnostics;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Services;
@@ -45,7 +47,9 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         private bool _columnasBloqueadasPorResultadoIncierto;
         private readonly ExternalMatrixImportService _externalMatrixImportService = new(new ProjectDbContextFactory());
-        private readonly IProjectDbContextFactory _factory = new ProjectDbContextFactory();
+        private readonly IProjectDbContextFactory _factory;
+        private readonly IDiagnosticsSink? _diagnosticsSink;
+        private readonly string? _productVersion;
         private readonly ProjectWorkspaceService _workspaceService;
         private readonly ProjectIndexService _projectIndexService;
         private readonly ProjectUsageService _projectUsageService;
@@ -585,6 +589,19 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
+        /// Seam de composición: sink y versión de diagnóstico opcionales. Nunca altera
+        /// el constructor público.
+        /// </summary>
+        internal FormPresupuesto(
+            SOPROContext context,
+            Proyecto proyecto,
+            IDiagnosticsSink? diagnosticsSink,
+            string? productVersion)
+            : this(context, proyecto, new ProjectWorkspaceService(), diagnosticsSink, productVersion, null)
+        {
+        }
+
+        /// <summary>
         /// Seam de composición para pruebas: permite inyectar el workspace (rutas
         /// temporales) del que dependen el índice de proyectos, el uso de matrices,
         /// la búsqueda de catálogo y el estado del panel de workspace, sin tocar las
@@ -592,9 +609,27 @@ namespace SOPRO.WinForms.Forms
         /// de siempre delegando en este con <see cref="ProjectWorkspaceService"/>.
         /// </summary>
         internal FormPresupuesto(SOPROContext context, Proyecto proyecto, ProjectWorkspaceService workspaceService)
+            : this(context, proyecto, workspaceService, null, null, null)
+        {
+        }
+
+        /// <summary>
+        /// Composición completa con fábrica de contextos inyectable (seam de pruebas
+        /// para inducir resultados inciertos en comandos atómicos como el pegado).
+        /// </summary>
+        internal FormPresupuesto(
+            SOPROContext context,
+            Proyecto proyecto,
+            ProjectWorkspaceService workspaceService,
+            IDiagnosticsSink? diagnosticsSink,
+            string? productVersion,
+            IProjectDbContextFactory? factory)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _workspaceService = workspaceService ?? throw new ArgumentNullException(nameof(workspaceService));
+            _factory = factory ?? new ProjectDbContextFactory();
+            _diagnosticsSink = diagnosticsSink;
+            _productVersion = productVersion;
             _formatoReporteService = new FormatoReporteService(_context);
             _projectIndexService = new ProjectIndexService(_workspaceService);
             _projectUsageService = new ProjectUsageService(_workspaceService);

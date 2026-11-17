@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Windows.Forms;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Models.Reporting.ReportColumns;
 using SOPRO.Application.Services.Reporting;
 using SOPRO.Data.Factories;
+using SOPRO.WinForms.Diagnostics;
 using SOPRO.WinForms.Undo;
 
 namespace SOPRO.WinForms.Helpers
@@ -66,7 +68,9 @@ namespace SOPRO.WinForms.Helpers
             string tipoReporte,
             IReadOnlyList<CambioFormatoCeldaCommand> comandos,
             UndoManager undoManager,
-            IProjectDbContextFactory? factory = null)
+            IProjectDbContextFactory? factory = null,
+            IDiagnosticsSink? diagnosticsSink = null,
+            string? productVersion = null)
         {
             var resultado = FormatoCeldasCommandService.ExecuteAplicarCeldasCommand(
                 factory ?? DefaultFactory, databasePath, proyectoId, tipoReporte, comandos);
@@ -74,7 +78,11 @@ namespace SOPRO.WinForms.Helpers
             if (resultado.IsCommitted) return;
 
             if (resultado.Status == BudgetOperationStatus.OutcomeUnknown)
+            {
                 undoManager.SuspendForReconciliation();
+                OutcomeUnknownDiagnostics.FormatoCeldasResultadoIncierto(
+                    diagnosticsSink, productVersion);
+            }
 
             throw new FormatoCeldasPersistenceException(
                 resultado.Status, resultado.Message, resultado.Diagnostic);

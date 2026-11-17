@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
+using SOPRO.WinForms.Diagnostics;
 using SOPRO.WinForms.Helpers;
 using System;
 using System.Collections.Generic;
@@ -355,9 +356,18 @@ namespace SOPRO.WinForms.Forms
                 // Un "Committed" sin instantánea no permite reconciliar ni afirmar el
                 // éxito; se trata como incierto en lugar de asumir que no hubo cambios.
                 if (resultado.IsCommitted)
+                {
+                    OutcomeUnknownDiagnostics.PegadoResultadoIncierto(
+                        _diagnosticsSink, _productVersion);
                     return BudgetPasteOutcome.OutcomeUnknown(MensajePegadoResultadoIncierto);
+                }
 
-                return ClasificarResultadoPegado(resultado.Status, resultado.Message);
+                var outcome = ClasificarResultadoPegado(resultado.Status, resultado.Message);
+                if (outcome.Kind == BudgetPasteOutcomeKind.OutcomeUnknown)
+                    OutcomeUnknownDiagnostics.PegadoResultadoIncierto(
+                        _diagnosticsSink, _productVersion);
+
+                return outcome;
             }
 
             bool aplicadoEnVista = false;
@@ -428,6 +438,8 @@ namespace SOPRO.WinForms.Forms
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Recarga tras pegado fallida: {ex.Message}");
+                OutcomeUnknownDiagnostics.PegadoReconciliacionFallida(
+                    _diagnosticsSink, _productVersion, ex);
                 return false;
             }
         }
