@@ -9,6 +9,7 @@ using SOPRO.Application.Services;
 using SOPRO.Application.Services.Reporting;
 using SOPRO.Data.Context;
 using SOPRO.Data.Factories;
+using SOPRO.WinForms.Diagnostics;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Undo;
 
@@ -162,7 +163,7 @@ namespace SOPRO.WinForms.Forms
         /// Suspende undo/redo y toda operación de programa/mutación hasta una lectura
         /// fresca completa. No revierte, no reintenta y no descarta historial.
         /// </summary>
-        private void SuspenderPorResultadoIncierto(string mensaje)
+        private void SuspenderPorResultadoIncierto(string mensaje, Exception? excepcion = null)
         {
             _programaOperacionIncierta = true;
             _requiereLecturaFresca = false;
@@ -171,6 +172,8 @@ namespace SOPRO.WinForms.Forms
             lblEstado.Text = "El programa quedó en estado incierto. Presione «Recargar» para reconciliar.";
             Notificador.Advertir(
                 $"{mensaje} No se pudo confirmar el resultado. Presione «Recargar» antes de continuar.");
+            OutcomeUnknownDiagnostics.ProgramaObraResultadoIncierto(
+                _diagnosticsSink, _productVersion, excepcion);
         }
 
         /// <summary>
@@ -308,12 +311,17 @@ namespace SOPRO.WinForms.Forms
 
             try
             {
+                UltimoErrorLecturaFresca = null;
                 CargarPrograma(stateToRestore, escrituraConfirmada);
                 return !EstaBloqueadoParaOperar;
             }
             catch (Exception ex)
             {
-                var detalle = RegistrarErrorLecturaFresca("RecargarProgramaVerificado", ex);
+                // Sentinel de deduplicación: si la recarga ya registró la causa de la
+                // lectura fresca (y con ella su evento de diagnóstico), el cierre de
+                // esta operación no vuelve a emitir el mismo fallo.
+                var detalle = UltimoErrorLecturaFresca
+                    ?? RegistrarErrorLecturaFresca("RecargarProgramaVerificado", ex);
                 _requiereLecturaFresca = true;
                 _undoManager.SuspendForReconciliation();
                 ActualizarHabilitacionPrograma();
@@ -401,6 +409,8 @@ namespace SOPRO.WinForms.Forms
             UltimoErrorLecturaFresca = $"{origen}: {detalle}";
             System.Diagnostics.Debug.WriteLine(
                 $"[ProgramaObra] {origen} falló: {ex}");
+            OutcomeUnknownDiagnostics.ProgramaObraReconciliacionFallida(
+                _diagnosticsSink, _productVersion, ex);
             return detalle;
         }
 

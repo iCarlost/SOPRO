@@ -3,11 +3,13 @@ using System.Threading.Tasks;
 using System.Drawing;
 using System.Windows.Forms;
 using Microsoft.EntityFrameworkCore;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.DTOs.Programacion;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.Data.Factories;
+using SOPRO.WinForms.Diagnostics;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using SOPRO.WinForms.Controls;
@@ -21,6 +23,8 @@ namespace SOPRO.WinForms.Forms
         private readonly SOPROContext _context;
         private readonly Proyecto _proyecto;
         private readonly IProjectDbContextFactory _factory;
+        private readonly IDiagnosticsSink? _diagnosticsSink;
+        private readonly string? _productVersion;
         private readonly ProgramacionLoadService _loadService = new();
         private readonly ProgramacionGenerationService _generationService = new();
         private readonly ProgramacionCalculationService _calculationService = new();
@@ -137,15 +141,35 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
+        /// Seam de composición: permite inyectar el sink/productVersion de diagnóstico
+        /// sin cambiar el constructor público. El sink es opcional y best-effort.
+        /// </summary>
+        internal FormProgramaObra(
+            SOPROContext context,
+            Proyecto proyecto,
+            IDiagnosticsSink? diagnosticsSink,
+            string? productVersion)
+            : this(context, proyecto, new ProjectDbContextFactory(), diagnosticsSink, productVersion)
+        {
+        }
+
+        /// <summary>
         /// Constructor con fábrica de contextos inyectable (seam de pruebas para
         /// simular resultados inciertos y lecturas frescas fallidas). En producción
         /// se usa el constructor público con <see cref="ProjectDbContextFactory"/>.
         /// </summary>
-        internal FormProgramaObra(SOPROContext context, Proyecto proyecto, IProjectDbContextFactory factory)
+        internal FormProgramaObra(
+            SOPROContext context,
+            Proyecto proyecto,
+            IProjectDbContextFactory factory,
+            IDiagnosticsSink? diagnosticsSink = null,
+            string? productVersion = null)
         {
             _context = context;
             _proyecto = proyecto;
             _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+            _diagnosticsSink = diagnosticsSink;
+            _productVersion = productVersion;
             FormatoHelper.EstablecerProyecto(_proyecto);
             InitializeComponent();
             ConfigurarFormulario();

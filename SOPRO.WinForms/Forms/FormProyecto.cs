@@ -10,6 +10,7 @@ using SOPRO.Data.Context;
 using SOPRO.Data.Factories;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.UI.Controls;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
 
 namespace SOPRO.WinForms.Forms
@@ -19,6 +20,8 @@ namespace SOPRO.WinForms.Forms
         private SOPROContext _context;
         private readonly Proyecto _proyecto;
         private readonly IProjectDbContextFactory _factory = new ProjectDbContextFactory();
+        private readonly IDiagnosticsSink? _diagnosticsSink;
+        private readonly string? _productVersion;
 
         private bool _cargandoRibbon = false;
         private IGridFormato _formActivo = null;
@@ -42,9 +45,25 @@ namespace SOPRO.WinForms.Forms
         private bool _actualizandoOverflowRibbon = false;
 
         public FormProyecto(SOPROContext context, Proyecto proyecto)
+            : this(context, proyecto, diagnosticsSink: null, productVersion: null)
+        {
+        }
+
+        /// <summary>
+        /// Seam de composición: propaga el sink/productVersion opcionales a los módulos
+        /// que emiten diagnóstico de resultados inciertos. El constructor público
+        /// conserva el comportamiento sin diagnóstico.
+        /// </summary>
+        internal FormProyecto(
+            SOPROContext context,
+            Proyecto proyecto,
+            IDiagnosticsSink? diagnosticsSink,
+            string? productVersion)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _proyecto = proyecto ?? throw new ArgumentNullException(nameof(proyecto));
+            _diagnosticsSink = diagnosticsSink;
+            _productVersion = productVersion;
             InitializeComponent();
             SoproTheme.ApplyFormProyecto(this);
             // KeyPreview permite interceptar F9/F10 antes que los controles hijos

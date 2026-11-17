@@ -115,7 +115,7 @@ namespace SOPRO.WinForms.Forms
                 case "nodePorcentajes":
                     Abrir("Porcentajes", new FormPorcentajes(_context, _proyecto), n); break;
                 case "nodeHojaPresupuesto":
-                    Abrir("Presupuesto", new FormPresupuesto(_context, _proyecto), n); break;
+                    Abrir("Presupuesto", new FormPresupuesto(_context, _proyecto, _diagnosticsSink, _productVersion), n); break;
                 case "nodeExplosionInsumos":
                     Abrir("Explosion de Insumos", new FormExplosionInsumos(_context, _proyecto.Id), n); break;
                 case "nodeIndirectos":
@@ -139,7 +139,7 @@ namespace SOPRO.WinForms.Forms
                 case "nodeMatrices":
                     Abrir("Matrices", new FormMatrices(_context, _proyecto.Id), n); break;
                 case "nodeProgramaObra":
-                    Abrir("Programa de Obra", new FormProgramaObra(_context, _proyecto), n); break;
+                    Abrir("Programa de Obra", new FormProgramaObra(_context, _proyecto, _diagnosticsSink, _productVersion), n); break;
                 case "nodeProgramaInsumos":
                     Abrir("Programa de Insumos", new FormProgramaInsumos(_context, _proyecto), n); break;
             }

@@ -640,7 +640,7 @@ namespace SOPRO.WinForms.Forms
         {
             this.Hide();
 
-            var formProyecto = new FormProyecto(_currentContext!, proyecto);
+            var formProyecto = new FormProyecto(_currentContext!, proyecto, _diagnosticsSink, _productVersion);
             formProyecto.FormClosed += (s, e) =>
             {
                 CloseCurrentSession();
