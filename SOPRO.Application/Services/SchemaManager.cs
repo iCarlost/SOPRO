@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using SOPRO.Application.Contracts;
 using SOPRO.Data.Context;
 using System;
 using System.Data.Common;
@@ -47,13 +48,26 @@ namespace SOPRO.Application.Services
         /// </summary>
         public const string VersionActual = "2026.04.5";
 
+        internal const string DiagnosticsSource = "SOPRO.Application";
+        internal const string OperationReparacionIniciada = "SchemaRepararActividadesProgramadasIniciada";
+        internal const string OperationReparacionConfirmada = "SchemaRepararActividadesProgramadasConfirmada";
+        internal const string SchemaStageReparacionActividades = "RepararActividadesProgramadas";
+
+        private const string ProductVersionDesconocida = "0.0.0";
+
         /// <summary>
         /// Aplica todas las migraciones sobre el contexto dado.
         /// Idempotente: se puede llamar múltiples veces sin efectos secundarios.
+        /// El sink de diagnóstico es opcional y best-effort: solo se usa para
+        /// registrar la reparación de ActividadesProgramadas cuando realmente se
+        /// ejecuta, con la correlación y versión de la operación de apertura.
         /// </summary>
         public static void EnsureCurrentSchema(
             SOPROContext context,
-            Action<string>? etapaObserver = null)
+            Action<string>? etapaObserver = null,
+            IDiagnosticsSink? diagnosticsSink = null,
+            string? productVersion = null,
+            string? correlationId = null)
         {
             ArgumentNullException.ThrowIfNull(context);
 
@@ -128,7 +142,7 @@ namespace SOPRO.Application.Services
                 // PRAGMA foreign_keys=OFF, que SQLite prohíbe dentro de transacciones.
                 // Tiene su propia transacción interna y propaga cualquier fallo.
                 NotificarEtapa(etapaObserver, "RepararActividadesProgramadas");
-                RepararActividadesProgramadas(conn, context);
+                RepararActividadesProgramadas(conn, context, diagnosticsSink, productVersion, correlationId);
 
                 // PASO 3 — Sello de versión. Va DESPUÉS de la reparación: si la
                 // reparación falla, la apertura falla y la base no queda marcada
@@ -173,6 +187,61 @@ namespace SOPRO.Application.Services
             catch
             {
                 // El observador nunca debe alterar la semántica de la migración.
+            }
+        }
+
+        /// <summary>
+        /// Emite un evento Info fijo de la reparación de ActividadesProgramadas.
+        /// Best-effort: el fallo del sink (o de la construcción del evento) jamás
+        /// altera la migración. Sin mensajes, SQL, trazas ni datos del proyecto.
+        /// </summary>
+        private static void NotificarReparacion(
+            IDiagnosticsSink? diagnosticsSink,
+            string operacion,
+            string? productVersion,
+            string correlacion)
+        {
+            if (diagnosticsSink is null)
+            {
+                return;
+            }
+
+            DiagnosticsEvent evento;
+            try
+            {
+                evento = new DiagnosticsEvent(
+                    DateTimeOffset.UtcNow,
+                    DiagnosticsSeverity.Info,
+                    DiagnosticsSource,
+                    operacion,
+                    string.IsNullOrWhiteSpace(productVersion)
+                        ? ProductVersionDesconocida
+                        : productVersion,
+                    correlacion,
+                    schemaVersion: VersionActual,
+                    schemaStage: SchemaStageReparacionActividades);
+            }
+            catch
+            {
+                return;
+            }
+
+            try
+            {
+                diagnosticsSink.Write(evento);
+            }
+            catch
+            {
+                // Escritura best-effort: nunca cambia la excepción ni la transacción.
+            }
+
+            try
+            {
+                diagnosticsSink.Flush();
+            }
+            catch
+            {
+                // El vaciado también es best-effort.
             }
         }
 
@@ -800,7 +869,12 @@ namespace SOPRO.Application.Services
         // PRAGMA foreign_keys=OFF dentro de una transacción activa.
         // Idempotente: solo actúa si detecta ON DELETE RESTRICT en el DDL real.
         // ═══════════════════════════════════════════════════════════════════════
-        private static void RepararActividadesProgramadas(DbConnection conn, SOPROContext context)
+        private static void RepararActividadesProgramadas(
+            DbConnection conn,
+            SOPROContext context,
+            IDiagnosticsSink? diagnosticsSink,
+            string? productVersion,
+            string? correlationId)
         {
             if (!TablaExiste(conn, "ActividadesProgramadas")) return;
 
@@ -821,11 +895,16 @@ namespace SOPRO.Application.Services
 
             if (!tieneRestrict) return; // Ya correcta o tabla nueva — no hacer nada
 
+            var correlacion = string.IsNullOrWhiteSpace(correlationId)
+                ? DiagnosticsCorrelationId.Create(null)
+                : correlationId;
+
             // PRAGMA foreign_keys=OFF debe ejecutarse FUERA de cualquier transacción.
             // SQLite ignora silenciosamente este PRAGMA si hay una transacción activa,
             // lo que causa que el DROP TABLE posterior falle por FK violations.
             // Secuencia correcta: PRAGMA OFF → tx → operaciones → tx COMMIT → PRAGMA ON.
-            System.Diagnostics.Debug.WriteLine("[SchemaManager] RepararActividadesProgramadas: iniciando reparación.");
+            NotificarReparacion(
+                diagnosticsSink, OperationReparacionIniciada, productVersion, correlacion);
             using (var pragmaOff = conn.CreateCommand())
             {
                 pragmaOff.CommandText = "PRAGMA foreign_keys = OFF;";
@@ -929,7 +1008,8 @@ namespace SOPRO.Application.Services
                     cmd.ExecuteNonQuery();
 
                     tx.Commit();
-                    System.Diagnostics.Debug.WriteLine("[SchemaManager] RepararActividadesProgramadas: reparación aplicada correctamente.");
+                    NotificarReparacion(
+                        diagnosticsSink, OperationReparacionConfirmada, productVersion, correlacion);
                 }
                 catch
                 {

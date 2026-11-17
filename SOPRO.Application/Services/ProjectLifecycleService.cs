@@ -84,7 +84,12 @@ namespace SOPRO.Application.Services
                 context.Database.EnsureCreated();
 
                 // Fuente única de verdad del schema
-                SchemaManager.EnsureCurrentSchema(context, etapa => schemaStage = etapa);
+                SchemaManager.EnsureCurrentSchema(
+                    context,
+                    etapa => schemaStage = etapa,
+                    _diagnosticsSink,
+                    _productVersion,
+                    correlationId);
                 schemaStage = null;
 
                 context.Proyectos.Add(proyecto);
@@ -173,7 +178,12 @@ namespace SOPRO.Application.Services
                 // Fuente única de verdad del schema — actualiza cualquier DB viejo
                 fase = ProjectLifecyclePhase.Schema;
                 context = _dbContextFactory.Create(projectPath);
-                SchemaManager.EnsureCurrentSchema(context, etapa => schemaStage = etapa);
+                SchemaManager.EnsureCurrentSchema(
+                    context,
+                    etapa => schemaStage = etapa,
+                    _diagnosticsSink,
+                    _productVersion,
+                    correlationId);
                 schemaStage = null;
 
                 fase = ProjectLifecyclePhase.ProjectRead;
