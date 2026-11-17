@@ -26,7 +26,8 @@ public sealed class DiagnosticsEvent
         string? schemaVersion = null,
         string? exceptionType = null,
         int? hResult = null,
-        IEnumerable<string>? innerExceptionTypes = null)
+        IEnumerable<string>? innerExceptionTypes = null,
+        string? schemaStage = null)
     {
         TimestampUtc = timestampUtc.ToUniversalTime();
         Severity = severity;
@@ -37,6 +38,7 @@ public sealed class DiagnosticsEvent
         SchemaVersion = schemaVersion;
         ExceptionType = exceptionType;
         HResult = hResult;
+        SchemaStage = schemaStage;
         _innerExceptionTypes = new ReadOnlyCollection<string>(
             innerExceptionTypes?.ToArray() ?? Array.Empty<string>());
     }
@@ -55,6 +57,12 @@ public sealed class DiagnosticsEvent
     public string ProductVersion { get; }
 
     public string? SchemaVersion { get; }
+
+    /// <summary>
+    /// Etapa fija del esquema en la que falló la operación (<c>M001</c>…<c>M015</c>,
+    /// reparación o sello), cuando se conoce. No admite texto libre del usuario.
+    /// </summary>
+    public string? SchemaStage { get; }
 
     /// <summary>Identificador de correlación para enlazar eventos de una misma operación.</summary>
     public string CorrelationId { get; }
@@ -79,7 +87,8 @@ public sealed class DiagnosticsEvent
         string productVersion,
         string correlationId,
         Exception exception,
-        string? schemaVersion = null)
+        string? schemaVersion = null,
+        string? schemaStage = null)
     {
         ArgumentNullException.ThrowIfNull(exception);
 
@@ -96,7 +105,8 @@ public sealed class DiagnosticsEvent
             schemaVersion,
             exception.GetType().FullName ?? exception.GetType().Name,
             exception.HResult,
-            innerTypes);
+            innerTypes,
+            schemaStage);
     }
 
     private static void CollectInnerExceptionTypes(Exception exception, List<string> destination)

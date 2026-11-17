@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Models;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
@@ -13,25 +14,59 @@ namespace SOPRO.Application.Services
 {
     public class ProjectLifecycleService
     {
+        internal const string DiagnosticsSource = "SOPRO.Application";
+        internal const string OperationOpenProject = "AbrirProyecto";
+        internal const string OperationCreateProject = "CrearProyecto";
+
+        private const string DefaultProductVersion = "0.0.0";
+
         private readonly ProjectWorkspaceService _workspaceService;
         private readonly IProjectDbContextFactory _dbContextFactory;
+        private readonly IDiagnosticsSink? _diagnosticsSink;
+        private readonly string _productVersion;
 
         public ProjectLifecycleService(
             ProjectWorkspaceService workspaceService,
-            IProjectDbContextFactory? dbContextFactory = null)
+            IProjectDbContextFactory? dbContextFactory = null,
+            IDiagnosticsSink? diagnosticsSink = null,
+            string? productVersion = null)
         {
             _workspaceService = workspaceService;
             _dbContextFactory = dbContextFactory ?? new ProjectDbContextFactory();
+            _diagnosticsSink = diagnosticsSink;
+            _productVersion = string.IsNullOrWhiteSpace(productVersion)
+                ? DefaultProductVersion
+                : productVersion;
         }
 
         public ProjectSession CreateProject(Proyecto proyecto)
         {
+            var correlationId = DiagnosticsCorrelationId.Create(null);
             var dbPath = _workspaceService.BuildProjectDatabasePath(proyecto.Nombre);
 
             // N4-2: el candado se toma ANTES de tocar la base; se libera al cerrar
             // la sesión (CloseProjectSession → Dispose). Si algo falla después de
             // adquirirlo, se libera aquí mismo.
-            var workspaceLock = WorkspaceLock.Acquire(dbPath);
+            IWorkspaceLock workspaceLock;
+            try
+            {
+                workspaceLock = WorkspaceLock.Acquire(dbPath);
+            }
+            catch (Exception exception)
+            {
+                WriteFailureDiagnostics(
+                    OperationCreateProject,
+                    correlationId,
+                    DiagnosticsSeverity.Warning,
+                    exception,
+                    schemaVersion: null,
+                    schemaStage: null);
+                throw;
+            }
+
+            SOPROContext? context = null;
+            var fase = ProjectLifecyclePhase.Defaults;
+            string? schemaStage = null;
             try
             {
                 // El nombre se sanea para construir la ruta: dos nombres distintos
@@ -39,16 +74,18 @@ namespace SOPRO.Application.Services
                 // Nunca se reutiliza un proyecto existente para "crear" otro.
                 if (File.Exists(dbPath))
                 {
+                    fase = ProjectLifecyclePhase.ExistingFile;
                     throw new InvalidOperationException(
                         "Ya existe un archivo de proyecto con el nombre indicado. "
                         + "Elige otro nombre o usa Abrir proyecto para abrir el proyecto existente.");
                 }
 
-                var context = _dbContextFactory.Create(dbPath);
+                context = _dbContextFactory.Create(dbPath);
                 context.Database.EnsureCreated();
 
                 // Fuente única de verdad del schema
-                SchemaManager.EnsureCurrentSchema(context);
+                SchemaManager.EnsureCurrentSchema(context, etapa => schemaStage = etapa);
+                schemaStage = null;
 
                 context.Proyectos.Add(proyecto);
                 context.SaveChanges();
@@ -57,31 +94,74 @@ namespace SOPRO.Application.Services
 
                 return new ProjectSession(context, proyecto, dbPath, workspaceLock);
             }
-            catch
+            catch (Exception exception)
             {
+                // La lectura de la versión y la liberación ocurren ANTES del sink:
+                // el evento se escribe sin contexto, candado ni transacción abiertos.
+                var schemaVersion = TryReadSchemaVersion(context);
+                context?.Dispose();
                 workspaceLock.Dispose();
+                WriteFailureDiagnostics(
+                    OperationCreateProject,
+                    correlationId,
+                    Classify(fase, schemaStage, exception),
+                    exception,
+                    schemaVersion,
+                    schemaStage);
                 throw;
             }
         }
 
         public ProjectSession OpenProject(string projectPath)
         {
+            var correlationId = DiagnosticsCorrelationId.Create(null);
+
             if (string.IsNullOrWhiteSpace(projectPath))
             {
-                throw new ArgumentException(
-                    "Debe indicar la ruta del proyecto a abrir.", nameof(projectPath));
+                throw RegistrarFalloYDevolver(
+                    new ArgumentException(
+                        "Debe indicar la ruta del proyecto a abrir.", nameof(projectPath)),
+                    OperationOpenProject,
+                    correlationId,
+                    DiagnosticsSeverity.Warning,
+                    schemaVersion: null,
+                    schemaStage: null);
             }
 
             // El archivo debe existir ANTES de tocar SQLite o el candado: abrir una
             // base inexistente crearía un archivo vacío y un .lock sobrante.
             if (!File.Exists(projectPath))
             {
-                throw new FileNotFoundException(
-                    "No se encontró el archivo del proyecto.", projectPath);
+                throw RegistrarFalloYDevolver(
+                    new FileNotFoundException(
+                        "No se encontró el archivo del proyecto.", projectPath),
+                    OperationOpenProject,
+                    correlationId,
+                    DiagnosticsSeverity.Warning,
+                    schemaVersion: null,
+                    schemaStage: null);
             }
 
-            var workspaceLock = WorkspaceLock.Acquire(projectPath);
+            IWorkspaceLock workspaceLock;
+            try
+            {
+                workspaceLock = WorkspaceLock.Acquire(projectPath);
+            }
+            catch (Exception exception)
+            {
+                WriteFailureDiagnostics(
+                    OperationOpenProject,
+                    correlationId,
+                    DiagnosticsSeverity.Warning,
+                    exception,
+                    schemaVersion: null,
+                    schemaStage: null);
+                throw;
+            }
+
             SOPROContext? context = null;
+            var fase = ProjectLifecyclePhase.Preflight;
+            string? schemaStage = null;
             try
             {
                 // Preflight de solo lectura con SQL crudo: un archivo que no es un
@@ -90,23 +170,156 @@ namespace SOPRO.Application.Services
                 // carecer de columnas nuevas y la consulta EF fallaría antes de migrar.
                 EnsureValidProjectFile(projectPath);
 
-                context = _dbContextFactory.Create(projectPath);
-
                 // Fuente única de verdad del schema — actualiza cualquier DB viejo
-                SchemaManager.EnsureCurrentSchema(context);
+                fase = ProjectLifecyclePhase.Schema;
+                context = _dbContextFactory.Create(projectPath);
+                SchemaManager.EnsureCurrentSchema(context, etapa => schemaStage = etapa);
+                schemaStage = null;
 
-                var project = context.Proyectos.FirstOrDefault()
-                    ?? throw new InvalidOperationException("El archivo no contiene un proyecto válido.");
+                fase = ProjectLifecyclePhase.ProjectRead;
+                var project = context.Proyectos.FirstOrDefault();
+                if (project is null)
+                {
+                    fase = ProjectLifecyclePhase.ProjectInvalid;
+                    throw new InvalidOperationException("El archivo no contiene un proyecto válido.");
+                }
 
+                fase = ProjectLifecyclePhase.Defaults;
                 EnsureDefaultColumns(context, project.Id);
 
                 return new ProjectSession(context, project, projectPath, workspaceLock);
             }
-            catch
+            catch (Exception exception)
             {
+                // La lectura de la versión y la liberación ocurren ANTES del sink:
+                // el evento se escribe sin contexto, candado ni transacción abiertos.
+                var schemaVersion = TryReadSchemaVersion(context);
                 context?.Dispose();
                 workspaceLock.Dispose();
+                WriteFailureDiagnostics(
+                    OperationOpenProject,
+                    correlationId,
+                    Classify(fase, schemaStage, exception),
+                    exception,
+                    schemaVersion,
+                    schemaStage);
                 throw;
+            }
+        }
+
+        private enum ProjectLifecyclePhase
+        {
+            Defaults,
+            ExistingFile,
+            Preflight,
+            Schema,
+            ProjectRead,
+            ProjectInvalid
+        }
+
+        private static DiagnosticsSeverity Classify(
+            ProjectLifecyclePhase phase,
+            string? schemaStage,
+            Exception exception)
+        {
+            if (phase is ProjectLifecyclePhase.ExistingFile
+                or ProjectLifecyclePhase.Preflight
+                or ProjectLifecyclePhase.ProjectInvalid)
+            {
+                return DiagnosticsSeverity.Warning;
+            }
+
+            // El gating de versión (futura o ilegible) rechaza antes de migrar y no
+            // reporta etapa. Es un proyecto no válido para esta instalación.
+            if (phase is ProjectLifecyclePhase.Schema
+                && schemaStage is null
+                && exception is InvalidOperationException
+                && exception is not SqliteException)
+            {
+                return DiagnosticsSeverity.Warning;
+            }
+
+            return DiagnosticsSeverity.Error;
+        }
+
+        /// <summary>
+        /// Lee la versión de esquema registrada solo si puede hacerlo sin alterar
+        /// el flujo; cualquier fallo de lectura deja el campo en <c>null</c>.
+        /// </summary>
+        private static string? TryReadSchemaVersion(SOPROContext? context)
+        {
+            if (context is null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return SchemaManager.GetVersionRegistrada(context);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private TException RegistrarFalloYDevolver<TException>(
+            TException exception,
+            string operation,
+            string correlationId,
+            DiagnosticsSeverity severity,
+            string? schemaVersion,
+            string? schemaStage)
+            where TException : Exception
+        {
+            WriteFailureDiagnostics(
+                operation,
+                correlationId,
+                severity,
+                exception,
+                schemaVersion,
+                schemaStage);
+            return exception;
+        }
+
+        private void WriteFailureDiagnostics(
+            string operation,
+            string correlationId,
+            DiagnosticsSeverity severity,
+            Exception exception,
+            string? schemaVersion,
+            string? schemaStage)
+        {
+            if (_diagnosticsSink is null)
+            {
+                return;
+            }
+
+            try
+            {
+                _diagnosticsSink.Write(DiagnosticsEvent.FromException(
+                    DateTimeOffset.UtcNow,
+                    severity,
+                    DiagnosticsSource,
+                    operation,
+                    _productVersion,
+                    correlationId,
+                    exception,
+                    schemaVersion,
+                    schemaStage));
+            }
+            catch
+            {
+                // Best-effort: el sink nunca reemplaza ni oculta la excepción original.
+            }
+
+            try
+            {
+                _diagnosticsSink.Flush();
+            }
+            catch
+            {
+                // El vaciado también es best-effort y nunca altera la operación.
             }
         }
 
