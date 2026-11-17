@@ -407,8 +407,6 @@ namespace SOPRO.WinForms.Forms
         {
             var detalle = $"{ex.GetType().Name}: {ex.Message}";
             UltimoErrorLecturaFresca = $"{origen}: {detalle}";
-            System.Diagnostics.Debug.WriteLine(
-                $"[ProgramaObra] {origen} falló: {ex}");
             OutcomeUnknownDiagnostics.ProgramaObraReconciliacionFallida(
                 _diagnosticsSink, _productVersion, ex);
             return detalle;
