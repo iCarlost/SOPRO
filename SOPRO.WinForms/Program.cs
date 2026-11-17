@@ -27,11 +27,12 @@ namespace SOPRO.WinForms
                 // Fase 2 de diagnóstico: los logs viven junto a los datos locales,
                 // nunca junto al proyecto ni en la carpeta de instalación.
                 var logsDirectory = Path.Combine(WorkspacePaths.LocalDataFolder, "logs");
+                var productVersion = ObtenerVersionProducto();
                 sink = new FileDiagnosticsSink(logsDirectory);
                 hooks = new GlobalExceptionHooks(
                     sink,
                     new FatalErrorDialogPresenter(),
-                    ObtenerVersionProducto(),
+                    productVersion,
                     logsDirectory);
 
                 // Los hooks se instalan una sola vez y antes de crear cualquier
@@ -39,7 +40,7 @@ namespace SOPRO.WinForms
                 // sin política.
                 hooks.Install();
 
-                EjecutarArranque(args);
+                EjecutarArranque(args, sink, productVersion);
             }
             catch (Exception ex)
             {
@@ -104,7 +105,10 @@ namespace SOPRO.WinForms
             Environment.Exit(GlobalExceptionHooks.ExitCodeFatal);
         }
 
-        private static void EjecutarArranque(string[] args)
+        private static void EjecutarArranque(
+            string[] args,
+            IDiagnosticsSink diagnosticsSink,
+            string productVersion)
         {
             var workspaceService = new ProjectWorkspaceService();
             workspaceService.EnsureWorkspaceExists();
@@ -120,7 +124,10 @@ namespace SOPRO.WinForms
                 // pinte. Si la apertura falla, se cae al selector con el error.
                 var principal = new FormPrincipal(
                     workspaceService,
-                    new ProjectLifecycleService(workspaceService));
+                    new ProjectLifecycleService(workspaceService),
+                    initialProjectPath: null,
+                    diagnosticsSink: diagnosticsSink,
+                    productVersion: productVersion);
                 var projectForm = principal.TryOpenProject(projectPath);
 
                 if (projectForm != null)
@@ -140,7 +147,9 @@ namespace SOPRO.WinForms
             System.Windows.Forms.Application.Run(new FormPrincipal(
                 workspaceService,
                 new ProjectLifecycleService(workspaceService),
-                projectPath));
+                projectPath,
+                diagnosticsSink: diagnosticsSink,
+                productVersion: productVersion));
         }
 
         private static string ObtenerVersionProducto()

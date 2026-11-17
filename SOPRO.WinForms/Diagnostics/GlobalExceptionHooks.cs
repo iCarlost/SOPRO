@@ -1,8 +1,8 @@
 using System;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using SOPRO.Application.Contracts;
+using SOPRO.Application.Services;
 using WinFormsApplication = System.Windows.Forms.Application;
 
 namespace SOPRO.WinForms.Diagnostics
@@ -27,14 +27,14 @@ namespace SOPRO.WinForms.Diagnostics
         internal const string OperationUnobservedTaskException = "ExcepcionDeTareaNoObservada";
         internal const string OperationStartupFailure = "FalloDeArranque";
 
-        internal const int CorrelationIdLength = 8;
+        internal const int CorrelationIdLength = DiagnosticsCorrelationId.Length;
         internal const int ExitCodeFatal = 1;
 
         /// <summary>Alfabeto sin caracteres ambiguos (I, O, 0, 1) para dictar el código por teléfono.</summary>
-        internal const string CorrelationIdAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        internal const string CorrelationIdAlphabet = DiagnosticsCorrelationId.Alphabet;
 
         /// <summary>Código de respaldo cuando la factoría y el generador fallan; legible y de 8 caracteres.</summary>
-        internal const string FallbackCorrelationId = "SPRA2AAA";
+        internal const string FallbackCorrelationId = DiagnosticsCorrelationId.Fallback;
 
         private readonly IDiagnosticsSink _sink;
         private readonly IFatalErrorPresenter _presenter;
@@ -63,7 +63,7 @@ namespace SOPRO.WinForms.Diagnostics
             _productVersion = productVersion ?? throw new ArgumentNullException(nameof(productVersion));
             _logsDirectory = logsDirectory ?? throw new ArgumentNullException(nameof(logsDirectory));
             _clock = clock ?? (() => DateTimeOffset.UtcNow);
-            _correlationIdFactory = correlationIdFactory ?? GenerateCorrelationId;
+            _correlationIdFactory = correlationIdFactory ?? DiagnosticsCorrelationId.Generate;
             _terminate = terminate ?? (code => Environment.Exit(code));
             _uiThreadId = Environment.CurrentManagedThreadId;
         }
@@ -443,52 +443,7 @@ namespace SOPRO.WinForms.Diagnostics
             }
         }
 
-        private string CreateCorrelationId()
-        {
-            try
-            {
-                var correlationId = _correlationIdFactory();
-                if (IsValidCorrelationId(correlationId))
-                {
-                    return correlationId;
-                }
-            }
-            catch
-            {
-            }
-
-            return GenerateCorrelationId();
-        }
-
-        private static bool IsValidCorrelationId(string? correlationId)
-        {
-            if (correlationId is null || correlationId.Length != CorrelationIdLength)
-            {
-                return false;
-            }
-
-            foreach (var caracter in correlationId)
-            {
-                if (!CorrelationIdAlphabet.Contains(caracter))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        private static string GenerateCorrelationId()
-        {
-            try
-            {
-                return new(RandomNumberGenerator.GetItems<char>(CorrelationIdAlphabet, CorrelationIdLength));
-            }
-            catch
-            {
-                return FallbackCorrelationId;
-            }
-        }
+        private string CreateCorrelationId() => DiagnosticsCorrelationId.Create(_correlationIdFactory);
 
         private void PresentSafely(string correlationId)
         {

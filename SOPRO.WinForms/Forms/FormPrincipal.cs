@@ -4,11 +4,13 @@ using SOPRO.Application.Models;
 using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.WinForms.Diagnostics;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using System;
 using System.Diagnostics;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using System.IO;
 using System.Linq;
@@ -18,9 +20,22 @@ namespace SOPRO.WinForms.Forms
 {
     public partial class FormPrincipal : Form
     {
+        internal const string OperationUpdateCheck = "ComprobacionActualizaciones";
+        internal const string OperationUpdateAvailable = "ActualizacionDisponible";
+        internal const string OperationUpdateDecision = "DecisionActualizacion";
+        internal const string OperationUpdateUnavailable = "ActualizacionNoDisponible";
+        internal const string OperationUpdateMissingInstaller = "ActualizacionSinInstalador";
+        internal const string OperationUpdateMissingUrl = "ActualizacionSinUrlDescarga";
+        internal const string OperationUpdateLaunchFailed = "InicioInstaladorActualizacion";
+
         private readonly ProjectWorkspaceService _workspaceService;
         private readonly ProjectLifecycleService _projectLifecycleService;
         private readonly ProjectDuplicationService _projectDuplicationService;
+        private readonly IDiagnosticsSink _diagnosticsSink;
+        private readonly string _productVersion;
+        private readonly Func<Version, CancellationToken, Task<UpdateCheckResult>> _updateChecker;
+        private readonly Func<string, string, bool> _updateConfirmation;
+        private readonly Action<string> _installerLauncher;
         private ProjectSession? _currentSession;
 
         /// <summary>
@@ -53,11 +68,40 @@ namespace SOPRO.WinForms.Forms
         public FormPrincipal(
             ProjectWorkspaceService workspaceService,
             ProjectLifecycleService projectLifecycleService,
-            string? initialProjectPath)
+            string? initialProjectPath,
+            IDiagnosticsSink? diagnosticsSink = null,
+            string? productVersion = null)
+            : this(
+                workspaceService,
+                projectLifecycleService,
+                initialProjectPath,
+                diagnosticsSink ?? new NullDiagnosticsSink(),
+                productVersion,
+                updateChecker: null,
+                updateConfirmation: null,
+                installerLauncher: null)
+        {
+        }
+
+        internal FormPrincipal(
+            ProjectWorkspaceService workspaceService,
+            ProjectLifecycleService projectLifecycleService,
+            string? initialProjectPath,
+            IDiagnosticsSink diagnosticsSink,
+            string? productVersion,
+            Func<Version, CancellationToken, Task<UpdateCheckResult>>? updateChecker,
+            Func<string, string, bool>? updateConfirmation,
+            Action<string>? installerLauncher)
         {
             _workspaceService = workspaceService;
             _projectLifecycleService = projectLifecycleService;
             _projectDuplicationService = new ProjectDuplicationService(_workspaceService);
+            _diagnosticsSink = diagnosticsSink ?? throw new ArgumentNullException(nameof(diagnosticsSink));
+            _productVersion = productVersion ?? GetCurrentApplicationVersion().ToString();
+            _updateChecker = updateChecker
+                ?? ((version, cancellationToken) => new GitHubUpdateService().CheckForUpdateAsync(version, cancellationToken));
+            _updateConfirmation = updateConfirmation ?? ConfirmUpdate;
+            _installerLauncher = installerLauncher ?? LaunchInstaller;
             _initialProjectPath = initialProjectPath;
 
             InitializeComponent();
@@ -88,7 +132,7 @@ namespace SOPRO.WinForms.Forms
             _ = CheckForUpdatesOnStartupAsync();
         }
 
-        private async Task CheckForUpdatesOnStartupAsync()
+        internal async Task CheckForUpdatesOnStartupAsync()
         {
             // Una sola comprobación por proceso: en el arranque directo se lanza
             // antes de que el selector se muestre, y al volver a él no debe repetirse.
@@ -98,26 +142,47 @@ namespace SOPRO.WinForms.Forms
             }
 
             _startupUpdateCheckStarted = true;
+            var correlationId = DiagnosticsCorrelationId.Generate();
 
             try
             {
                 var currentVersion = GetCurrentApplicationVersion();
-                var updateService = new GitHubUpdateService();
-                var result = await updateService.CheckForUpdateAsync(currentVersion);
+                var result = await _updateChecker(currentVersion, CancellationToken.None);
 
-                if (!result.CheckSucceeded || !result.HasUpdate)
+                if (!result.CheckSucceeded)
+                {
+                    WriteDiagnostics(DiagnosticsSeverity.Warning, OperationUpdateUnavailable, correlationId);
                     return;
+                }
 
-                var userResult = MessageBox.Show(
+                if (!result.HasUpdate)
+                {
+                    WriteDiagnostics(DiagnosticsSeverity.Info, OperationUpdateCheck, correlationId);
+                    return;
+                }
+
+                WriteDiagnostics(DiagnosticsSeverity.Info, OperationUpdateAvailable, correlationId);
+
+                if (string.IsNullOrWhiteSpace(result.InstallerUrl)
+                    && string.IsNullOrWhiteSpace(result.ReleaseUrl))
+                {
+                    WriteDiagnostics(DiagnosticsSeverity.Warning, OperationUpdateMissingUrl, correlationId);
+                }
+                else if (!HasInstallerAsset(result))
+                {
+                    WriteDiagnostics(DiagnosticsSeverity.Warning, OperationUpdateMissingInstaller, correlationId);
+                }
+
+                var confirmed = _updateConfirmation(
                     $"Hay una nueva versión disponible de SOPRO.\n\n" +
                     $"Versión instalada: v{currentVersion}\n" +
                     $"Versión disponible: {result.LatestTag}\n\n" +
                     "¿Deseas abrir la descarga del instalador ahora?",
-                    "Actualización disponible",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Information);
+                    "Actualización disponible");
 
-                if (userResult != DialogResult.Yes)
+                WriteDiagnostics(DiagnosticsSeverity.Info, OperationUpdateDecision, correlationId);
+
+                if (!confirmed)
                     return;
 
                 var url = !string.IsNullOrWhiteSpace(result.InstallerUrl)
@@ -127,16 +192,75 @@ namespace SOPRO.WinForms.Forms
                 if (string.IsNullOrWhiteSpace(url))
                     return;
 
-                Process.Start(new ProcessStartInfo
+                try
                 {
-                    FileName = url,
-                    UseShellExecute = true
-                });
+                    _installerLauncher(url);
+                }
+                catch (Exception exception)
+                {
+                    WriteDiagnostics(DiagnosticsSeverity.Error, OperationUpdateLaunchFailed, correlationId, exception);
+                }
             }
-            catch
+            catch (Exception exception)
             {
                 // La verificación de actualizaciones no debe impedir que SOPRO abra.
                 // Puede fallar por falta de internet, GitHub no disponible o falta de autenticación.
+                WriteDiagnostics(DiagnosticsSeverity.Error, OperationUpdateCheck, correlationId, exception);
+            }
+        }
+
+        // El servicio conserva el fallback a la página del release cuando no
+        // hay asset .exe; una URL de instalador distinta de la del release es
+        // la señal disponible sin cambiar el contrato de UpdateCheckResult.
+        private static bool HasInstallerAsset(UpdateCheckResult result) =>
+            !string.IsNullOrWhiteSpace(result.InstallerUrl)
+            && !string.Equals(result.InstallerUrl, result.ReleaseUrl, StringComparison.Ordinal);
+
+        private static bool ConfirmUpdate(string message, string caption) =>
+            MessageBox.Show(
+                message,
+                caption,
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Information) == DialogResult.Yes;
+
+        private static void LaunchInstaller(string url) =>
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+
+        private void WriteDiagnostics(
+            DiagnosticsSeverity severity,
+            string operation,
+            string correlationId,
+            Exception? exception = null)
+        {
+            try
+            {
+                var timestamp = DateTimeOffset.UtcNow;
+                var diagnosticsEvent = exception is null
+                    ? new DiagnosticsEvent(
+                        timestamp,
+                        severity,
+                        GlobalExceptionHooks.Source,
+                        operation,
+                        _productVersion,
+                        correlationId)
+                    : DiagnosticsEvent.FromException(
+                        timestamp,
+                        severity,
+                        GlobalExceptionHooks.Source,
+                        operation,
+                        _productVersion,
+                        correlationId,
+                        exception);
+
+                _diagnosticsSink.Write(diagnosticsEvent);
+            }
+            catch
+            {
+                // El diagnóstico del updater es best-effort: nunca altera la UX.
             }
         }
 
