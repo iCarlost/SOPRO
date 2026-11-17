@@ -1,6 +1,6 @@
-# ADR 0002 (propuesta): observabilidad y política global de fallos
+# ADR 0002: observabilidad y política global de fallos
 
-Estado: **propuesta**. Este documento requiere aprobación del mantenedor antes de implementar código. Se relaciona con el issue #132.
+Estado: **aprobada por el mantenedor el 2026-11-17**. La Fase 1 (contrato y sinks, sin hooks) se implementa en la rama `feat/132-diagnostics-phase1`. Se relaciona con el issue #132.
 
 ## Contexto
 
@@ -16,7 +16,7 @@ Actualmente:
 
 El cambio es estructural, pero no requiere crear un proyecto o una capa nueva. Los contratos y el sink vivirán en las capas existentes y el cableado de hooks quedará en WinForms.
 
-## Decisión propuesta
+## Decisión
 
 ### Clasificación de fallos
 
@@ -28,18 +28,22 @@ El cambio es estructural, pero no requiere crear un proyecto o una capa nueva. L
 
 ### Contrato y ubicación
 
-- Crear un contrato inyectable, por ejemplo `IDiagnosticsSink`, en `SOPRO.Application/Contracts`.
-- Implementar el sink de archivo en `SOPRO.Application/Services`, sin dependencias NuGet nuevas.
-- Proporcionar un sink en memoria para pruebas.
-- El evento incluirá timestamp UTC, severidad, origen, operación, excepción completa, versión de producto, versión de esquema cuando aplique e identificador de correlación.
-- El logger será thread-safe, append/flush y tolerante a fallos: un error del propio logger nunca se propaga ni bloquea la UI.
+- Crear un contrato inyectable `IDiagnosticsSink` en `SOPRO.Application/Contracts`, con `Write(DiagnosticsEvent)` y `Flush()`.
+- Implementar el sink de archivo y el sink en memoria en `SOPRO.Application/Services`, sin dependencias NuGet nuevas.
+- El evento es inmutable, con campos fijos (sin campo de metadatos libres), e incluye timestamp UTC, severidad, origen, operación, versión de producto, versión de esquema cuando aplique e identificador de correlación.
+- Si hay excepción, el payload es conservador: nombre completo del tipo, `HResult` y cadena de tipos de las excepciones internas (máximo 8, aplanando `AggregateException`). No se registran `Exception.Message`, `Exception.StackTrace` ni `Exception.ToString()`, porque ese texto puede arrastrar rutas, nombres de proyecto y datos de usuario.
+- La privacidad no depende solo de expresiones regulares: el contrato solo admite campos fijos y no tiene campo de metadatos libres, además de excluir el texto libre de excepciones. Sobre esos campos se sustituye el perfil por `%USERPROFILE%`, se eliminan caracteres de control, se redactan patrones obvios de secretos y se trunca la longitud.
+- El logger será thread-safe, append/flush y tolerante a fallos: un error del propio logger nunca se propaga ni bloquea la UI. Cada escritura se vacía a disco de forma sincrónica.
+- El sink de archivo toma un candado interproceso exclusivo (`FileShare.None` sobre `sopro-diagnostics.lock`) con espera acotada alrededor de la selección del archivo, el append, la rotación y la purga. Si no lo obtiene, descarta el evento y reporta el fallo solo de forma interna; nunca escribe fuera del candado.
 
 ### Almacenamiento y retención
 
-- Directorio: `%LOCALAPPDATA%\SOPRO\logs\`.
-- Archivos diarios `sopro-YYYYMMDD.log`, con un límite aproximado de 1 MB.
-- Retención inicial: máximo 7 días o 10 archivos, lo que ocurra primero.
-- Rotación y purga best-effort al arrancar.
+- Directorio: `%LOCALAPPDATA%\SOPRO\logs\`, inyectable en pruebas.
+- Archivo diario `sopro-YYYYMMDD.log` según la fecha UTC, con un límite aproximado de 1 MB.
+- Rotación segmentada: al superar el límite, el archivo del día se renombra a `sopro-YYYYMMDD.1.log` y los segmentos existentes se desplazan (`sopro-YYYYMMDD.2.log`, etc.). El sufijo crece con la antigüedad: el archivo base es siempre el más reciente. El máximo de 10 archivos aplica al conjunto completo de segmentos, no por día.
+- Retención inicial: máximo 7 días o 10 archivos en total, lo que ocurra primero. La purga reserva un hueco para el archivo del evento en curso, de modo que el conjunto nunca supere el máximo.
+- Rotación y purga best-effort al arrancar y tras cada rotación, siempre dentro del candado interproceso.
+- El candado es un archivo `sopro-diagnostics.lock` en el mismo directorio; no se borra al cerrar para evitar carreras entre instancias.
 - Los logs no se guardarán junto al `.soproproj` ni en el directorio de instalación.
 - Los registros no se borrarán automáticamente durante la desinstalación; el usuario tendrá una acción explícita para borrarlos.
 
@@ -51,7 +55,7 @@ No se registrarán:
 - tokens, cabeceras HTTP ni secretos;
 - rutas con el segmento de perfil sin sanitizar.
 
-Las rutas de proyecto tokenizarán `%USERPROFILE%` como `%USERPROFILE%`. El sistema será local y no subirá registros automáticamente. La exportación será una acción manual del usuario, con vista previa del contenido.
+Las rutas de proyecto tokenizarán el perfil del usuario como `%USERPROFILE%`, respetando límites de nombre de ruta (un perfil no debe sustituir el prefijo de otro nombre). La sanitización textual es defensa en profundidad, no la garantía principal: el evento no transporta mensajes ni trazas de excepción y su contrato no admite metadatos libres. El sistema será local y no subirá registros automáticamente. La exportación será una acción manual del usuario, con vista previa del contenido.
 
 ### Hooks y experiencia fatal
 
@@ -70,11 +74,11 @@ Todos los sinks y diálogos deberán poder sustituirse en pruebas para no romper
 
 ### Fase 0 — Contrato y ADR
 
-Definir el contrato, la sanitización, la matriz de eventos y los puntos de integración priorizados. Esta fase termina con la aprobación explícita de este ADR.
+Definir el contrato, la sanitización, la matriz de eventos y los puntos de integración priorizados. Fase completada con la aprobación de este ADR el 2026-11-17.
 
 ### Fase 1 — Sink local
 
-Implementar el sink de archivo y el sink en memoria, con pruebas de formato, privacidad, concurrencia, rotación y fallo del propio sink.
+Implementar el sink de archivo y el sink en memoria, con pruebas de formato, privacidad, concurrencia, rotación y fallo del propio sink. Esta fase no instala hooks ni modifica `Program.cs`; el cableado de UI y el diálogo fatal quedan en la Fase 2.
 
 ### Fase 2 — Hooks globales
 
