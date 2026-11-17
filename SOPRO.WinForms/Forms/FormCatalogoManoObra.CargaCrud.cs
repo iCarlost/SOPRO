@@ -65,7 +65,7 @@ namespace SOPRO.WinForms.Forms
         // ── Botones CRUD ──────────────────────────────────────────────────────
         private void btnNuevo_Click(object sender, EventArgs e)
         {
-            using var form = new FormEditarManoObra(_context, _proyectoId, proyecto: ProyectoActual);
+            using var form = CrearEditorManoObra(manoDeObra: null);
             if (form.ShowDialog() == DialogResult.OK) CargarManoDeObra();
         }
 
@@ -87,7 +87,7 @@ namespace SOPRO.WinForms.Forms
                     "Registro Fuera de Alcance", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            using var form = new FormEditarManoObra(_context, _proyectoId, _manoDeObraSeleccionada, ProyectoActual);
+            using var form = CrearEditorManoObra(_manoDeObraSeleccionada);
             if (form.ShowDialog() == DialogResult.OK) CargarManoDeObra();
         }
 
@@ -222,7 +222,8 @@ namespace SOPRO.WinForms.Forms
             try
             {
                 using var selector = new FormSeleccionarInsumo(
-                    _context, _proyectoId.Value, TipoComponenteMatriz.ManoDeObra, modoCatalogo: true);
+                    _context, _proyectoId.Value, TipoComponenteMatriz.ManoDeObra, modoCatalogo: true,
+                    diagnosticsSink: _diagnosticsSink, productVersion: _productVersion);
                 if (selector.ShowDialog(this) != DialogResult.OK) return;
 
                 OpenFormsRefreshHelper.RefrescarCatalogoPorTipo(TipoComponenteMatriz.ManoDeObra);

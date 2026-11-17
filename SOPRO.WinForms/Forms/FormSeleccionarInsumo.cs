@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.DTOs.Insumos;
 using SOPRO.Application.Models;
 using SOPRO.Application.Models.ExternalProjects;
@@ -56,12 +57,31 @@ namespace SOPRO.WinForms.Forms
         public int CantidadImportada { get; private set; }
         public bool ModoCatalogo => _modoCatalogo;
 
-        public FormSeleccionarInsumo(SOPROContext context, int proyectoId, TipoComponenteMatriz tipoComponente, bool modoCatalogo = false, ProjectWorkspaceService? workspaceService = null)
+        internal IDiagnosticsSink? DiagnosticsSink { get; }
+        internal string? ProductVersion { get; }
+
+        /// <summary>
+        /// <paramref name="diagnosticsSink"/> y <paramref name="productVersion"/> son
+        /// opcionales: solo los aporta la composición que ya los tiene (catálogo de
+        /// mano de obra del proyecto). El selector los reenvía al editor de mano de
+        /// obra que crea un insumo nuevo. Las aperturas sin sink (edición de
+        /// matrices, importadores) conservan el comportamiento sin diagnóstico.
+        /// </summary>
+        public FormSeleccionarInsumo(
+            SOPROContext context,
+            int proyectoId,
+            TipoComponenteMatriz tipoComponente,
+            bool modoCatalogo = false,
+            ProjectWorkspaceService? workspaceService = null,
+            IDiagnosticsSink? diagnosticsSink = null,
+            string? productVersion = null)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _proyectoId = proyectoId;
             _tipoComponente = tipoComponente;
             _modoCatalogo = modoCatalogo;
+            DiagnosticsSink = diagnosticsSink;
+            ProductVersion = productVersion;
             if (_modoCatalogo)
                 _searchScopeTag = ScopeRecentTag;
             workspaceService ??= new ProjectWorkspaceService();

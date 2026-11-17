@@ -131,7 +131,7 @@ namespace SOPRO.WinForms.Forms
                 case "nodeMateriales":
                     Abrir("Materiales", new FormCatalogoMateriales(_context, _proyecto.Id), n); break;
                 case "nodeManoObra":
-                    Abrir("Mano de Obra", new FormCatalogoManoObra(_context, _proyecto.Id), n); break;
+                    Abrir("Mano de Obra", CrearCatalogoManoObra(), n); break;
                 case "nodeHerramienta":
                     Abrir("Herramienta", new FormCatalogoHerramientas(_context, _proyecto.Id), n); break;
                 case "nodeEquipo":

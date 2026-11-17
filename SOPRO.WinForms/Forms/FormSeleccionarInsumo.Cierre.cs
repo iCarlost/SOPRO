@@ -83,7 +83,9 @@ namespace SOPRO.WinForms.Forms
                     else
                     {
                         var proyFSR = _context.Proyectos.Find(_proyectoId);
-                        using (var form = new FormEditarManoObra(_context, _proyectoId, proyecto: proyFSR))
+                        using (var form = new FormEditarManoObra(
+                            _context, _proyectoId, manoDeObra: null, proyecto: proyFSR,
+                            diagnosticsSink: DiagnosticsSink, productVersion: ProductVersion))
                         {
                             if (form.ShowDialog(this) == DialogResult.OK)
                                 nuevoId = _context.ManoDeObra.Where(m => m.ProyectoId == _proyectoId).OrderByDescending(m => m.Id).Select(m => (int?)m.Id).FirstOrDefault();

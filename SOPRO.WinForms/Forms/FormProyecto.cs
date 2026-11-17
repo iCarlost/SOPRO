@@ -71,6 +71,13 @@ namespace SOPRO.WinForms.Forms
             this.KeyDown += FormProyecto_KeyDown;
         }
 
+        /// <summary>
+        /// Seam de composición: el catálogo de mano de obra recibe el sink/versión
+        /// de diagnóstico para propagarlos al editor y al cálculo de FSR.
+        /// </summary>
+        internal FormCatalogoManoObra CrearCatalogoManoObra()
+            => new(_context, _proyecto.Id, _diagnosticsSink, _productVersion);
+
         private void FormProyecto_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.F9 && !e.Control && !e.Shift && !e.Alt)

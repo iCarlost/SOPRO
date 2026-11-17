@@ -30,6 +30,8 @@ namespace SOPRO.WinForms.Forms
         private readonly IProjectDbContextFactory _factory = new ProjectDbContextFactory();
         private readonly PreviewCatalogBatchDeletion _previewCatalogBatchDeletion;
         private readonly DeleteCatalogBatch _deleteCatalogBatch;
+        private readonly IDiagnosticsSink? _diagnosticsSink;
+        private readonly string? _productVersion;
         private ManoDeObra _manoDeObraSeleccionada;
         private Proyecto ProyectoActual => _proyectoId.HasValue
             ? _context.Proyectos.Find(_proyectoId.Value)
@@ -54,6 +56,20 @@ namespace SOPRO.WinForms.Forms
 
         // ── Constructor ───────────────────────────────────────────────────────
         public FormCatalogoManoObra(SOPROContext context, int? proyectoId = null)
+            : this(context, proyectoId, diagnosticsSink: null, productVersion: null)
+        {
+        }
+
+        /// <summary>
+        /// Seam de composición: sink y versión de diagnóstico opcionales que se
+        /// propagan al editor de mano de obra (cálculo de FSR). El constructor
+        /// público conserva el comportamiento sin diagnóstico.
+        /// </summary>
+        internal FormCatalogoManoObra(
+            SOPROContext context,
+            int? proyectoId,
+            IDiagnosticsSink? diagnosticsSink,
+            string? productVersion)
         {
             InitializeComponent();
             FormRenderHelper.OptimizeForGridRendering(this);
@@ -63,6 +79,8 @@ namespace SOPRO.WinForms.Forms
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _repository = new Repository<ManoDeObra>(_context);
             _proyectoId = proyectoId;
+            _diagnosticsSink = diagnosticsSink;
+            _productVersion = productVersion;
             _sessionInfo = LegacySessionBridge.FromLegacy(_context, proyectoId);
             _previewCatalogBatchDeletion = new PreviewCatalogBatchDeletion(_factory);
             _deleteCatalogBatch = new DeleteCatalogBatch(_factory);
@@ -84,6 +102,13 @@ namespace SOPRO.WinForms.Forms
             };
             dgvManoObra.ColumnWidthChanged += DgvManoObra_ColumnWidthChanged;
         }
+
+        /// <summary>
+        /// Fábrica del editor con el sink/versión de diagnóstico ya compuestos.
+        /// La usan las entradas productivas del catálogo (Nuevo/Editar).
+        /// </summary>
+        internal FormEditarManoObra CrearEditorManoObra(ManoDeObra? manoDeObra)
+            => new(_context, _proyectoId, manoDeObra, ProyectoActual, _diagnosticsSink, _productVersion);
 
 
         // ── Grid ──────────────────────────────────────────────────────────────
