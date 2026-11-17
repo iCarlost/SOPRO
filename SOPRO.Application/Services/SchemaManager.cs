@@ -51,7 +51,9 @@ namespace SOPRO.Application.Services
         /// Aplica todas las migraciones sobre el contexto dado.
         /// Idempotente: se puede llamar múltiples veces sin efectos secundarios.
         /// </summary>
-        public static void EnsureCurrentSchema(SOPROContext context)
+        public static void EnsureCurrentSchema(
+            SOPROContext context,
+            Action<string>? etapaObserver = null)
         {
             ArgumentNullException.ThrowIfNull(context);
 
@@ -82,20 +84,35 @@ namespace SOPRO.Application.Services
                 {
                     try
                     {
+                        NotificarEtapa(etapaObserver, "M001");
                         M001_Herramientas(conn, tx);
+                        NotificarEtapa(etapaObserver, "M002");
                         M002_ProyectosColumnas(conn, tx);
+                        NotificarEtapa(etapaObserver, "M003");
                         M003_ProgramacionObra(conn, tx);
+                        NotificarEtapa(etapaObserver, "M004");
                         M004_ColumnasTablas(conn, tx);
+                        NotificarEtapa(etapaObserver, "M005");
                         M005_Financiamiento(conn, tx);
+                        NotificarEtapa(etapaObserver, "M006");
                         M006_TitulosReporte(conn, tx);
+                        NotificarEtapa(etapaObserver, "M007");
                         M007_WrapTextoAlineacion(conn, tx);
+                        NotificarEtapa(etapaObserver, "M008");
                         M008_MaquinariaColumnas(conn, tx);
+                        NotificarEtapa(etapaObserver, "M009");
                         M009_ConceptosPresupuesto(conn, tx);
+                        NotificarEtapa(etapaObserver, "M010");
                         M010_ConfigColumnasReporte(conn, tx);
+                        NotificarEtapa(etapaObserver, "M011");
                         M011_SanitizarNullsLegacy(conn, tx);
+                        NotificarEtapa(etapaObserver, "M012");
                         M012_DisenadorEncabezadoPdf(conn, tx);
+                        NotificarEtapa(etapaObserver, "M013");
                         M013_TablasIndirectosVistas(conn, tx);
+                        NotificarEtapa(etapaObserver, "M014");
                         M014_TablasFormatoReporte(conn, tx);
+                        NotificarEtapa(etapaObserver, "M015");
                         M015_VinculosCostoHorarioMaquinaria(conn, tx);
                         tx.Commit();
                     }
@@ -110,6 +127,7 @@ namespace SOPRO.Application.Services
                 // DEBE correr FUERA de cualquier transacción activa porque necesita
                 // PRAGMA foreign_keys=OFF, que SQLite prohíbe dentro de transacciones.
                 // Tiene su propia transacción interna y propaga cualquier fallo.
+                NotificarEtapa(etapaObserver, "RepararActividadesProgramadas");
                 RepararActividadesProgramadas(conn, context);
 
                 // PASO 3 — Sello de versión. Va DESPUÉS de la reparación: si la
@@ -120,6 +138,7 @@ namespace SOPRO.Application.Services
                 {
                     try
                     {
+                        NotificarEtapa(etapaObserver, "RegistrarVersion");
                         RegistrarVersion(conn, txVersion);
                         txVersion.Commit();
                     }
@@ -133,6 +152,27 @@ namespace SOPRO.Application.Services
             finally
             {
                 if (!wasOpen) conn.Close();
+            }
+        }
+
+        /// <summary>
+        /// Notifica la etapa en curso al observador opcional. El observador es
+        /// best-effort: sus fallos no cambian la excepción ni la transacción.
+        /// </summary>
+        private static void NotificarEtapa(Action<string>? etapaObserver, string etapa)
+        {
+            if (etapaObserver is null)
+            {
+                return;
+            }
+
+            try
+            {
+                etapaObserver(etapa);
+            }
+            catch
+            {
+                // El observador nunca debe alterar la semántica de la migración.
             }
         }
 

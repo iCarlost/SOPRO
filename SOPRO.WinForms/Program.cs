@@ -124,7 +124,10 @@ namespace SOPRO.WinForms
                 // pinte. Si la apertura falla, se cae al selector con el error.
                 var principal = new FormPrincipal(
                     workspaceService,
-                    new ProjectLifecycleService(workspaceService),
+                    new ProjectLifecycleService(
+                        workspaceService,
+                        diagnosticsSink: diagnosticsSink,
+                        productVersion: productVersion),
                     initialProjectPath: null,
                     diagnosticsSink: diagnosticsSink,
                     productVersion: productVersion);
@@ -146,7 +149,10 @@ namespace SOPRO.WinForms
 
             System.Windows.Forms.Application.Run(new FormPrincipal(
                 workspaceService,
-                new ProjectLifecycleService(workspaceService),
+                new ProjectLifecycleService(
+                    workspaceService,
+                    diagnosticsSink: diagnosticsSink,
+                    productVersion: productVersion),
                 projectPath,
                 diagnosticsSink: diagnosticsSink,
                 productVersion: productVersion));

@@ -407,6 +407,7 @@ public sealed class FileDiagnosticsSink : IDiagnosticsSink, IDisposable
             Operation = DiagnosticsSanitizer.Sanitize(diagnosticsEvent.Operation),
             ProductVersion = DiagnosticsSanitizer.Sanitize(diagnosticsEvent.ProductVersion),
             SchemaVersion = SanitizeOptional(diagnosticsEvent.SchemaVersion),
+            SchemaStage = SanitizeOptional(diagnosticsEvent.SchemaStage),
             CorrelationId = DiagnosticsSanitizer.Sanitize(diagnosticsEvent.CorrelationId),
             ExceptionType = SanitizeOptional(diagnosticsEvent.ExceptionType),
             HResult = diagnosticsEvent.HResult,
@@ -462,6 +463,9 @@ public sealed class FileDiagnosticsSink : IDiagnosticsSink, IDisposable
 
         [JsonPropertyName("schema")]
         public string? SchemaVersion { get; init; }
+
+        [JsonPropertyName("stage")]
+        public string? SchemaStage { get; init; }
 
         [JsonPropertyName("correlationId")]
         public string CorrelationId { get; init; } = string.Empty;
