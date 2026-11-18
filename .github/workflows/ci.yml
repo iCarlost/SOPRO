@@ -180,7 +180,9 @@ jobs:
         run: dotnet build SOPRO.sln --configuration Release --no-restore --nologo
 
       - name: Run solution tests
-        run: dotnet test SOPRO.sln --configuration Release --no-build --no-restore --nologo
+        run: >
+          dotnet test SOPRO.sln --configuration Release --no-build --no-restore --nologo
+          --blame-hang-timeout 600s --blame-hang-dump-type none
 
   calculation-tests:
     name: Calculation tests (${{ matrix.os }})
