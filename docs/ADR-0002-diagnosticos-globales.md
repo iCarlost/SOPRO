@@ -1,6 +1,6 @@
 # ADR 0002: observabilidad y política global de fallos
 
-Estado: **aprobada por el mantenedor el 2026-11-17**. La Fase 1 (contrato y sinks, sin hooks) se implementa en la rama `feat/132-diagnostics-phase1`. Se relaciona con el issue #132.
+Estado: **aprobada por el mantenedor el 2026-11-17; implementación de las Fases 0–4 completada**. La Fase 4 se completó en el PR #149 (issue #148). Este ADR se relaciona con el issue #132.
 
 ## Contexto
 
@@ -76,17 +76,17 @@ Todos los sinks y diálogos deberán poder sustituirse en pruebas para no romper
 
 Definir el contrato, la sanitización, la matriz de eventos y los puntos de integración priorizados. Fase completada con la aprobación de este ADR el 2026-11-17.
 
-### Fase 1 — Sink local
+### Fase 1 — Sink local (completada: PR #134)
 
-Implementar el sink de archivo y el sink en memoria, con pruebas de formato, privacidad, concurrencia, rotación y fallo del propio sink. Esta fase no instala hooks ni modifica `Program.cs`; el cableado de UI y el diálogo fatal quedan en la Fase 2.
+Se implementaron el sink de archivo y el sink en memoria, con pruebas de formato, privacidad, concurrencia, rotación y fallo del propio sink. Esta fase no instaló hooks ni modificó `Program.cs`; el cableado de UI y el diálogo fatal se completaron en la Fase 2.
 
-### Fase 2 — Hooks globales
+### Fase 2 — Hooks globales (completada: PR #135)
 
-Conectar los hooks, el flush síncrono y el diálogo fatal. Probar excepciones UI, no-UI y tareas no observadas sin introducir la opción «Continuar».
+Se conectaron los hooks, el flush síncrono y el diálogo fatal. Se probaron excepciones UI, no-UI y tareas no observadas sin introducir la opción «Continuar».
 
-### Fase 3 — Rutas críticas
+### Fase 3 — Rutas críticas (completada: PRs #137, #139, #141, #143, #146 y #147)
 
-Adoptar el sink, en este orden:
+Se adoptó el sink en las rutas priorizadas:
 
 1. apertura de proyecto y migraciones, incluyendo versión de esquema y `M0XX` cuando estén disponibles;
 2. arranque y updater, sustituyendo catches silenciosos por registro no intrusivo;
@@ -94,9 +94,9 @@ Adoptar el sink, en este orden:
 4. `Debug.WriteLine` de rutas críticas;
 5. mensajes internos y correlación, sin exponer stack traces al usuario.
 
-### Fase 4 — Privacidad y soporte
+### Fase 4 — Privacidad y soporte (completada: PR #149)
 
-Añadir aviso de primera ejecución, exportación manual con vista previa, borrado explícito y documentación en `README.md`/`SUPPORT.md`.
+Se añadió el aviso de primera ejecución, la exportación manual con vista previa, el borrado explícito y la documentación en `README.md`/`SUPPORT.md`.
 
 El barrido de `async void` y fire-and-forget residual queda fuera de este ADR y se tratará en otro issue.
 
