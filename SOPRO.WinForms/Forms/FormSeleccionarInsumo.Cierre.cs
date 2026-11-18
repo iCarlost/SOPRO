@@ -67,7 +67,9 @@ namespace SOPRO.WinForms.Forms
                 case TipoComponenteMatriz.ManoDeObra:
                     if (rbMOCuadrillas.Checked)
                     {
-                        using (var form = new FormEditarMatriz(_context, _proyectoId, tipoInicial: TipoMatriz.Cuadrilla))
+                        using (var form = new FormEditarMatriz(
+                            _context, _proyectoId, null, TipoMatriz.Cuadrilla, null,
+                            DiagnosticsSink, ProductVersion))
                         {
                             if (form.ShowDialog(this) == DialogResult.OK)
                             {
@@ -100,7 +102,9 @@ namespace SOPRO.WinForms.Forms
                     }
                     break;
                 case TipoComponenteMatriz.Auxiliar:
-                    using (var form = new FormEditarMatriz(_context, _proyectoId, tipoInicial: TipoMatriz.Basico))
+                    using (var form = new FormEditarMatriz(
+                        _context, _proyectoId, null, TipoMatriz.Basico, null,
+                        DiagnosticsSink, ProductVersion))
                     {
                         if (form.ShowDialog(this) == DialogResult.OK)
                             nuevoId = _context.Matrices.Where(m => m.ProyectoId == _proyectoId && m.Tipo == TipoMatriz.Basico).OrderByDescending(m => m.Id).Select(m => (int?)m.Id).FirstOrDefault();

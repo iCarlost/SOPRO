@@ -33,6 +33,8 @@ namespace SOPRO.WinForms.Forms
         private readonly CatalogoMatricesExportService _exportService = new(new ProjectDbContextFactory());
         private readonly int _proyectoId;
         private readonly bool _modoEmbebido;
+        private readonly IDiagnosticsSink? _diagnosticsSink;
+        private readonly string? _productVersion;
         private readonly EventHandler _onInsumos;
         private bool _suscripcionesGlobalesLiberadas;
         private ContextMenuStrip? _menuMatrices;
@@ -75,6 +77,21 @@ namespace SOPRO.WinForms.Forms
         private readonly UndoManager _undoManager = new();
 
         public FormMatrices(SOPROContext context, int proyectoId, bool modoEmbebido = false)
+            : this(context, proyectoId, modoEmbebido, diagnosticsSink: null, productVersion: null)
+        {
+        }
+
+        /// <summary>
+        /// Seam de composición: el catálogo de matrices recibe el sink/versión
+        /// opcionales de la sesión para propagarlos a los editores de matriz que
+        /// abre. El constructor público conserva el comportamiento sin diagnóstico.
+        /// </summary>
+        internal FormMatrices(
+            SOPROContext context,
+            int proyectoId,
+            bool modoEmbebido,
+            IDiagnosticsSink? diagnosticsSink,
+            string? productVersion)
         {
             InitializeComponent();
             FormRenderHelper.OptimizeForGridRendering(this);
@@ -84,6 +101,8 @@ namespace SOPRO.WinForms.Forms
             _previewMatricesBatchDeletion = new PreviewMatricesBatchDeletion(_factory);
             _proyectoId = proyectoId;
             _modoEmbebido = modoEmbebido;
+            _diagnosticsSink = diagnosticsSink;
+            _productVersion = productVersion;
             _sessionInfo = LegacySessionBridge.FromLegacy(_context, _proyectoId);
             _formatoReporteService = new FormatoReporteService(_context);
 
@@ -134,6 +153,17 @@ namespace SOPRO.WinForms.Forms
 
 
 
+
+        internal IDiagnosticsSink? DiagnosticsSink => _diagnosticsSink;
+
+        internal new string? ProductVersion => _productVersion;
+
+        /// <summary>
+        /// Seam de composición: el editor de matriz recibe el sink/versión del
+        /// catálogo para propagarlos a su selector de insumos y a la guarda.
+        /// </summary>
+        internal FormEditarMatriz CrearEditorMatriz(Matriz? matriz = null, TipoMatriz? tipoInicial = null)
+            => new(_context, _proyectoId, matriz, tipoInicial, null, _diagnosticsSink, _productVersion);
 
         private int DecimalesImporte => _context.Proyectos.Find(_proyectoId)?.DecimalesImporte ?? 2;
 

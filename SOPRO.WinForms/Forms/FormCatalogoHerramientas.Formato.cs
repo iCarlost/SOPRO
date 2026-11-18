@@ -10,6 +10,7 @@ using System.Linq;
 using System.Windows.Forms;
 using SOPRO.WinForms.Services;
 using ClosedXML.Excel;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
 using SOPRO.Application.UseCases.Catalog;
 using SOPRO.Application.Models.Reporting.ReportColumns;
@@ -101,12 +102,23 @@ namespace SOPRO.WinForms.Forms
 
         // ── Constructor ───────────────────────────────────────────────────────
         public FormCatalogoHerramientas(SOPROContext context, int? proyectoId = null)
+            : this(context, proyectoId, diagnosticsSink: null, productVersion: null)
+        {
+        }
+
+        internal FormCatalogoHerramientas(
+            SOPROContext context,
+            int? proyectoId,
+            IDiagnosticsSink? diagnosticsSink,
+            string? productVersion)
         {
             InitializeComponent();
             dgvHerramientas.AplicarEstiloSOPRO();
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _repository = new Repository<Herramienta>(_context);
             _proyectoId = proyectoId;
+            _diagnosticsSink = diagnosticsSink;
+            _productVersion = productVersion;
             _sessionInfo = LegacySessionBridge.FromLegacy(_context, proyectoId);
             _previewCatalogBatchDeletion = new PreviewCatalogBatchDeletion(_factory);
             _deleteCatalogBatch = new DeleteCatalogBatch(_factory);
@@ -128,6 +140,9 @@ namespace SOPRO.WinForms.Forms
             };
             dgvHerramientas.ColumnWidthChanged += DgvHerramientas_ColumnWidthChanged;
         }
+
+        internal FormEditarMatriz CrearEditorMatriz(Matriz? matriz = null)
+            => new(_context, _proyectoId ?? 0, matriz, null, null, _diagnosticsSink, _productVersion);
 
         // ═══════════════════ Formato de celdas (paso 6.3) ═══════════════════
         // Selección tipo Excel → direcciones ESTABLES (INS:{Id} + identificador de

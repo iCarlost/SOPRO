@@ -110,6 +110,9 @@ namespace SOPRO.WinForms.Forms
         internal FormEditarManoObra CrearEditorManoObra(ManoDeObra? manoDeObra)
             => new(_context, _proyectoId, manoDeObra, ProyectoActual, _diagnosticsSink, _productVersion);
 
+        internal FormEditarMatriz CrearEditorMatriz(Matriz? matriz = null)
+            => new(_context, _proyectoId ?? 0, matriz, null, null, _diagnosticsSink, _productVersion);
+
 
         // ── Grid ──────────────────────────────────────────────────────────────
 

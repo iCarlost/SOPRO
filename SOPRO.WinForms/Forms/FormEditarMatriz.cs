@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.DTOs.Matrices;
 using SOPRO.Application.Models.Matrices;
 using SOPRO.Application.Services;
@@ -30,6 +31,8 @@ namespace SOPRO.WinForms.Forms
         private readonly Matriz _matriz;
         private readonly bool _esNuevo;
         private readonly TipoMatriz? _tipoInicialForzado;
+        private readonly IDiagnosticsSink? _diagnosticsSink;
+        private readonly string? _productVersion;
         private readonly List<ComponenteMatriz> _componentesTemp = new List<ComponenteMatriz>();
 
         // Staging de descripciones por fuente (insumo o auxiliar): clave
@@ -53,13 +56,33 @@ namespace SOPRO.WinForms.Forms
         private decimal _costoDirectoTotal = 0;
         
         public FormEditarMatriz(SOPROContext context, int proyectoId, Matriz matriz = null, TipoMatriz? tipoInicial = null, IProjectDbContextFactory? dbContextFactory = null)
+            : this(context, proyectoId, matriz, tipoInicial, dbContextFactory, diagnosticsSink: null, productVersion: null)
+        {
+        }
+
+        /// <summary>
+        /// Seam de composición: el editor recibe el sink/versión opcionales del
+        /// catálogo de matrices para propagarlos al selector de insumos que abre y
+        /// al evento de un fallo de reversión del guardado. El constructor público
+        /// conserva el comportamiento sin diagnóstico.
+        /// </summary>
+        internal FormEditarMatriz(
+            SOPROContext context,
+            int proyectoId,
+            Matriz? matriz,
+            TipoMatriz? tipoInicial,
+            IProjectDbContextFactory? dbContextFactory,
+            IDiagnosticsSink? diagnosticsSink,
+            string? productVersion)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _dbContextFactory = dbContextFactory ?? new ProjectDbContextFactory();
             _proyectoId = proyectoId;
-            _matriz = matriz;
+            _matriz = matriz!;
             _esNuevo = (matriz == null);
             _tipoInicialForzado = _esNuevo ? tipoInicial : null;
+            _diagnosticsSink = diagnosticsSink;
+            _productVersion = productVersion;
             
             // Establecer proyecto para formateo
             var proyecto = context.Proyectos.Find(proyectoId);
@@ -261,7 +284,8 @@ ConfigurarGrid();
 
         private void AgregarComponentesDesdeSelector(TipoComponenteMatriz tipoComponente)
         {
-            var selectedComponents = ComponentSelectorDialogService.SelectComponents(this, _context, _proyectoId, tipoComponente);
+            var selectedComponents = ComponentSelectorDialogService.SelectComponents(
+                this, _context, _proyectoId, tipoComponente, _diagnosticsSink, _productVersion);
 
             // Los componentes del selector pueden traer navegaciones rastreadas
             // por la sesión: se reconstruyen con instantáneas frescas de la base
@@ -323,6 +347,10 @@ ConfigurarGrid();
         private int DecimalesImporte => _context.Proyectos.Find(_proyectoId)?.DecimalesImporte ?? 2;
 
         internal DataGridView DgvComponentesParaPrueba => dgvComponentes;
+
+        internal IDiagnosticsSink? DiagnosticsSink => _diagnosticsSink;
+
+        internal new string? ProductVersion => _productVersion;
 
         private void DgvComponentes_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
         {
@@ -624,7 +652,9 @@ ConfigurarGrid();
                     _context.DatabasePath,
                     dto,
                     _esNuevo ? null : _matriz,
-                    _context);
+                    _context,
+                    _diagnosticsSink,
+                    _productVersion);
 
                 // Los componentes de trabajo son copias desacopladas (#121), así
                 // que normalmente no hay entradas rastreadas que reconciliar; la

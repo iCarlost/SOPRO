@@ -31,6 +31,8 @@ namespace SOPRO.WinForms.Forms
         private readonly IProjectDbContextFactory _factory = new ProjectDbContextFactory();
         private readonly PreviewCatalogBatchDeletion _previewCatalogBatchDeletion;
         private readonly DeleteCatalogBatch _deleteCatalogBatch;
+        private readonly IDiagnosticsSink? _diagnosticsSink;
+        private readonly string? _productVersion;
         private Maquinaria _maquinariaSeleccionada;
         private List<ColumnaMaquinaria> _columnasConfig = new List<ColumnaMaquinaria>();
         private bool _cargandoColumnas = false;

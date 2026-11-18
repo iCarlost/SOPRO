@@ -134,13 +134,13 @@ namespace SOPRO.WinForms.Forms
 
         private void AbrirEditorMatriz(Matriz matriz)
         {
-            using var form = new FormEditarMatriz(_context, _proyectoId, matriz);
+            using var form = CrearEditorMatriz(matriz);
             form.ShowDialog(this);
         }
 
         private void btnNuevo_Click(object sender, EventArgs e)
         {
-            using var form = new FormEditarMatriz(_context, _proyectoId);
+            using var form = CrearEditorMatriz();
             if (form.ShowDialog() == DialogResult.OK)
             {
                 // El guardado escribió por un contexto por operación: la recarga
@@ -160,7 +160,7 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            using var form = new FormEditarMatriz(_context, _proyectoId, _matrizSeleccionada);
+            using var form = CrearEditorMatriz(_matrizSeleccionada);
             if (form.ShowDialog() == DialogResult.OK)
             {
                 // El guardado escribió por un contexto por operación: la recarga

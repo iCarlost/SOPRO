@@ -27,6 +27,8 @@ namespace SOPRO.WinForms.Forms
         private readonly SOPROContext _context;
         private readonly ProjectSessionInfo _sessionInfo;
         private readonly int? _proyectoId;
+        private readonly IDiagnosticsSink? _diagnosticsSink;
+        private readonly string? _productVersion;
 
         // N4: la fábrica de contextos es transient por uso; la sesión ya no posee
         // contexto, cada caso de uso abre y libera el suyo dentro del método.

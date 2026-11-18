@@ -89,7 +89,7 @@ namespace SOPRO.WinForms.Forms
 
         // ── Constructor ───────────────────────────────────────────────────────
         public FormCatalogoMateriales(SOPROContext context, int? proyectoId = null)
-            : this(context, proyectoId, factory: null)
+            : this(context, proyectoId, factory: null, diagnosticsSink: null, productVersion: null)
         {
         }
 
@@ -99,6 +99,16 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         internal FormCatalogoMateriales(
             SOPROContext context, int? proyectoId, IProjectDbContextFactory? factory)
+            : this(context, proyectoId, factory, diagnosticsSink: null, productVersion: null)
+        {
+        }
+
+        internal FormCatalogoMateriales(
+            SOPROContext context,
+            int? proyectoId,
+            IProjectDbContextFactory? factory,
+            IDiagnosticsSink? diagnosticsSink,
+            string? productVersion)
         {
             InitializeComponent();
             FormRenderHelper.OptimizeForGridRendering(this);
@@ -109,6 +119,8 @@ namespace SOPRO.WinForms.Forms
             _factory = factory ?? new ProjectDbContextFactory();
             _sessionInfo = LegacySessionBridge.FromLegacy(_context, proyectoId);
             _proyectoId = proyectoId;
+            _diagnosticsSink = diagnosticsSink;
+            _productVersion = productVersion;
 
             // N4: la sesión es datos puros (no posee contexto): no hay Dispose.
             _listMaterials = new ListMaterials(_factory);
@@ -133,6 +145,9 @@ namespace SOPRO.WinForms.Forms
             };
             dgvMateriales.ColumnWidthChanged += DgvMateriales_ColumnWidthChanged;
         }
+
+        internal FormEditarMatriz CrearEditorMatriz(Matriz? matriz = null)
+            => new(_context, _proyectoId ?? 0, matriz, null, null, _diagnosticsSink, _productVersion);
 
         // ═══════════════════ Formato de celdas (paso 6.3) ═══════════════════
         // Selección tipo Excel → direcciones ESTABLES (INS:{Id} + identificador de

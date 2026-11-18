@@ -78,6 +78,24 @@ namespace SOPRO.WinForms.Forms
         internal FormCatalogoManoObra CrearCatalogoManoObra()
             => new(_context, _proyecto.Id, _diagnosticsSink, _productVersion);
 
+        internal FormCatalogoMateriales CrearCatalogoMateriales()
+            => new(_context, _proyecto.Id, factory: null,
+                diagnosticsSink: _diagnosticsSink,
+                productVersion: _productVersion);
+
+        internal FormCatalogoMaquinaria CrearCatalogoMaquinaria()
+            => new(_context, _proyecto.Id, _diagnosticsSink, _productVersion);
+
+        internal FormCatalogoHerramientas CrearCatalogoHerramientas()
+            => new(_context, _proyecto.Id, _diagnosticsSink, _productVersion);
+
+        /// <summary>
+        /// Seam de composición: el catálogo de matrices recibe el sink/versión de
+        /// diagnóstico para propagarlos a los editores de matriz que abre.
+        /// </summary>
+        internal FormMatrices CrearCatalogoMatrices()
+            => new(_context, _proyecto.Id, false, _diagnosticsSink, _productVersion);
+
         private void FormProyecto_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.F9 && !e.Control && !e.Shift && !e.Alt)

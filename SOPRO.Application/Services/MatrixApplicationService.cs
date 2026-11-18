@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Sopro.Calculation;
+using SOPRO.Application.Contracts;
 using SOPRO.Application.DTOs.Matrices;
 using SOPRO.Application.Models;
 using SOPRO.Application.Models.Matrices;
@@ -27,6 +28,11 @@ namespace SOPRO.Application.Services
     // ╚══════════════════════════════════════════════════════════════════════════╝
     public static class MatrixApplicationService
     {
+        internal const string DiagnosticsSource = "SOPRO.Application";
+        internal const string OperationGuardarMatrizRollbackFallido = "GuardarMatrizRollbackFallido";
+
+        private const string DefaultProductVersion = "0.0.0";
+
         // Fábrica por defecto de la sobrecarga heredada, que aún recibe el
         // contexto de la sesión solo como fuente de la ruta de la base.
         private static readonly IProjectDbContextFactory DefaultDbContextFactory = new ProjectDbContextFactory();
@@ -52,12 +58,25 @@ namespace SOPRO.Application.Services
         /// propio (una operación, un contexto) para no confirmar ni revertir
         /// ediciones ajenas rastreadas por el contexto de la sesión.
         /// <paramref name="existingMatrix"/> se usa solo como identidad; nunca se
-        /// adjunta al contexto de la operación.
+        /// adjunta al contexto de la operación. El sink/versión opcionales solo
+        /// alimentan el evento de un fallo de reversión; no alteran la operación.
         /// </summary>
-        public static Task<MatrixSaveResult> SaveAsync(SOPROContext context, MatrixEditDto dto, Matriz? existingMatrix = null)
+        public static Task<MatrixSaveResult> SaveAsync(
+            SOPROContext context,
+            MatrixEditDto dto,
+            Matriz? existingMatrix = null,
+            IDiagnosticsSink? diagnosticsSink = null,
+            string? productVersion = null)
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
-            return SaveAsync(DefaultDbContextFactory, context.DatabasePath, dto, existingMatrix, context);
+            return SaveAsync(
+                DefaultDbContextFactory,
+                context.DatabasePath,
+                dto,
+                existingMatrix,
+                context,
+                diagnosticsSink,
+                productVersion);
         }
 
         /// <summary>
@@ -69,19 +88,28 @@ namespace SOPRO.Application.Services
         /// pendientes sobre la matriz objetivo (o altas/bajas ajenas de sus
         /// componentes) o sobre las matrices/componentes que dependen de ella (la
         /// cascada las recalcularía y el guardado compartido posterior podría
-        /// sobrescribirlas). El tracker no se guarda ni se limpia.
+        /// sobrescribirlas). El tracker no se guarda ni se limpia. El
+        /// sink/versión opcionales solo alimentan el evento de un fallo de
+        /// reversión; un fallo best-effort del sink nunca reemplaza la excepción
+        /// original ni cambia la transacción.
         /// </summary>
         public static async Task<MatrixSaveResult> SaveAsync(
             IProjectDbContextFactory dbContextFactory,
             string databasePath,
             MatrixEditDto dto,
             Matriz? existingMatrix = null,
-            SOPROContext? sessionContext = null)
+            SOPROContext? sessionContext = null,
+            IDiagnosticsSink? diagnosticsSink = null,
+            string? productVersion = null)
         {
             if (dbContextFactory == null) throw new ArgumentNullException(nameof(dbContextFactory));
             if (string.IsNullOrWhiteSpace(databasePath))
                 throw new ArgumentException("La ruta de la base del proyecto es requerida.", nameof(databasePath));
             if (dto == null) throw new ArgumentNullException(nameof(dto));
+
+            // Una sola correlación por operación: el evento de reversión fallida
+            // (si ocurre) se enlaza con esta guarda y con nada más.
+            var correlationId = DiagnosticsCorrelationId.Create(null);
 
             var isNew = existingMatrix == null;
 
@@ -193,11 +221,64 @@ namespace SOPRO.Application.Services
                 {
                     // El fallo original es el que debe llegar al llamador; el de la
                     // reversión se deja como rastro diagnóstico.
-                    System.Diagnostics.Debug.WriteLine(
-                        $"MatrixApplicationService.SaveAsync rollback: {rollbackFailure}");
+                    // Evento estructurado, uno solo y sin datos de negocio: la
+                    // reversión no se pudo confirmar y la operación queda incierta.
+                    WriteRollbackFailureDiagnostics(
+                        rollbackFailure,
+                        correlationId,
+                        diagnosticsSink,
+                        productVersion);
                 }
 
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// Registra el fallo de reversión como un evento estructurado con
+        /// operación fija. Nunca incluye el DTO, el mensaje, la traza, el SQL, la
+        /// ruta ni datos de negocio: solo tipo, HResult y cadena de tipos de la
+        /// excepción de reversión. Write y Flush son best-effort e independientes;
+        /// nada de esto altera la transacción ni la excepción original.
+        /// </summary>
+        private static void WriteRollbackFailureDiagnostics(
+            Exception rollbackFailure,
+            string correlationId,
+            IDiagnosticsSink? diagnosticsSink,
+            string? productVersion)
+        {
+            if (diagnosticsSink is null)
+            {
+                return;
+            }
+
+            var version = string.IsNullOrWhiteSpace(productVersion)
+                ? DefaultProductVersion
+                : productVersion;
+
+            try
+            {
+                diagnosticsSink.Write(DiagnosticsEvent.FromException(
+                    DateTimeOffset.UtcNow,
+                    DiagnosticsSeverity.Error,
+                    DiagnosticsSource,
+                    OperationGuardarMatrizRollbackFallido,
+                    version,
+                    correlationId,
+                    rollbackFailure));
+            }
+            catch
+            {
+                // Best-effort: un sink defectuoso no reemplaza la excepción original.
+            }
+
+            try
+            {
+                diagnosticsSink.Flush();
+            }
+            catch
+            {
+                // El vaciado también es best-effort y nunca altera la operación.
             }
         }
 
