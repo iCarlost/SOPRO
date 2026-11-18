@@ -23,6 +23,14 @@ internal interface IDiagnosticsFileStore
     IReadOnlyList<string> EnumerateFiles(string directory, string searchPattern);
 
     DateTime GetLastWriteTimeUtc(string path);
+
+    byte[] ReadAllBytes(string path);
+
+    bool IsReparsePoint(string path);
+
+    void WriteNewFileAndFlush(string path, byte[] bytes);
+
+    void MoveNew(string source, string destination);
 }
 
 internal sealed class DiagnosticsFileStore : IDiagnosticsFileStore
@@ -61,4 +69,17 @@ internal sealed class DiagnosticsFileStore : IDiagnosticsFileStore
             : Array.Empty<string>();
 
     public DateTime GetLastWriteTimeUtc(string path) => File.GetLastWriteTimeUtc(path);
+
+    public byte[] ReadAllBytes(string path) => File.ReadAllBytes(path);
+
+    public bool IsReparsePoint(string path) => (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+
+    public void WriteNewFileAndFlush(string path, byte[] bytes)
+    {
+        using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        stream.Write(bytes);
+        stream.Flush(flushToDisk: true);
+    }
+
+    public void MoveNew(string source, string destination) => File.Move(source, destination);
 }

@@ -40,6 +40,8 @@ namespace SOPRO.WinForms
                 // sin política.
                 hooks.Install();
 
+                MostrarAvisoPrivacidadDiagnosticos();
+
                 EjecutarArranque(args, sink, productVersion);
             }
             catch (Exception ex)
@@ -61,6 +63,22 @@ namespace SOPRO.WinForms
             {
                 hooks?.Dispose();
                 sink?.Dispose();
+            }
+        }
+
+        private static void MostrarAvisoPrivacidadDiagnosticos()
+        {
+            var store = new DiagnosticsPrivacyNoticeStore();
+            if (store.IsAcknowledged) return;
+            using var notice = new FormAvisoPrivacidadDiagnosticos();
+            notice.ShowDialog();
+            if (!notice.Reconocido) return;
+            try { store.Acknowledge(); }
+            catch (Exception) { }
+            if (notice.Revisar)
+            {
+                using var logs = new FormRegistrosLocales();
+                logs.ShowDialog();
             }
         }
 

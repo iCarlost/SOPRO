@@ -105,6 +105,20 @@ namespace SOPRO.WinForms.Forms
             _initialProjectPath = initialProjectPath;
 
             InitializeComponent();
+            var btnRegistros = new Button
+            {
+                Name = "btnRegistrosLocales",
+                Text = "Registros locales…",
+                AccessibleName = "Revisar registros locales",
+                Dock = DockStyle.Right,
+                Size = new System.Drawing.Size(180, 38),
+                UseVisualStyleBackColor = true,
+                TabIndex = 0
+            };
+            btnRegistros.Click += (_, _) => { using var dialog = new FormRegistrosLocales(); dialog.ShowDialog(this); };
+            var panelDiagnostics = new Panel { Dock = DockStyle.Bottom, Height = 48, Padding = new Padding(0, 5, 0, 5), TabIndex = 0 };
+            panelDiagnostics.Controls.Add(btnRegistros);
+            panelCenter.Controls.Add(panelDiagnostics);
             SoproTheme.ApplyFormPrincipal(this);
             dgvRecientes.CellToolTipTextNeeded += DgvRecientes_CellToolTipTextNeeded;
             LoadRecentProjects();

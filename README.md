@@ -68,6 +68,12 @@ La aplicacion consulta actualizaciones desde `iCarlost/SOPRO-Releases`. Cada ver
 - Base de datos: SQLite, un archivo por proyecto (extension `.soproproj`; ver [Formato de proyecto](#formato-de-proyecto)).
 - Esquema gestionado por `SchemaManager` (version actual de esquema: `2026.04.5`).
 
+## Diagnosticos locales
+
+SOPRO guarda registros de diagnóstico en `%LOCALAPPDATA%\SOPRO\logs\`, separados de los proyectos. Son archivos JSONL locales que contienen marcas de tiempo, nivel, origen, operación, versión e identificadores de correlación; cuando ocurre una excepción, guardan solo su tipo y datos estructurales, no el mensaje ni la traza. La retención es best-effort: hasta 1 MiB por archivo, 10 archivos y 7 días.
+
+Los registros no se suben automáticamente. Desde **Registros locales** en la pantalla principal puedes revisar una instantánea, exportar manualmente el archivo que estás viendo o borrar los registros locales. La exportación requiere elegir un destino y conserva exactamente el contenido previsualizado. Los archivos exportados pueden contener información sensible indirecta; revísalos antes de compartirlos y evita publicarlos en Issues públicos.
+
 ## Formato de proyecto
 
 Los proyectos SOPRO se guardan en un archivo SQLite con extension **`.soproproj`** (la extension canonica de los proyectos nuevos).
