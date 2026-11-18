@@ -63,7 +63,7 @@ namespace SOPRO.WinForms.Forms
             {
                 Cursor = Cursors.WaitCursor;
                 var resultado = _matrixConsolidationService.Consolidar(_context, _proyectoId, tipo, dlg.InsumoBaseId, seleccion.Select(x => x.Id).ToList());
-                CargarMatrices();
+                SolicitarCargaMatrices();
                 EstadoConsolidacionCambiado?.Invoke(this, EventArgs.Empty);
                 MessageBox.Show($"Consolidación completada.\n\nRegistros sustituidos: {resultado.RegistrosConsolidados}\nComponentes actualizados: {resultado.ComponentesActualizados}\nMatrices afectadas: {resultado.MatricesAfectadas}\nConceptos impactados: {resultado.ConceptosAfectados}", "Consolidar", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }

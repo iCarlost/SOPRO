@@ -22,7 +22,7 @@ namespace SOPRO.WinForms.Forms
     public partial class FormCatalogoMaquinaria
     {
 
-        public void RecalcularTodo() => CargarMaquinaria();
+        public void RecalcularTodo() => SolicitarCargaMaquinaria();
 
         private void OnDecimalesActualizados_Cat(object sender, EventArgs e)
         {

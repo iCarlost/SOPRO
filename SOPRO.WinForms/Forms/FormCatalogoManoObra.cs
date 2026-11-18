@@ -93,7 +93,8 @@ namespace SOPRO.WinForms.Forms
 
             ConfigurarGrid();
             ConfigurarFormatoCeldas();
-            this.Load += (s, e) => CargarManoDeObra();
+            this.Load += (s, e) => SolicitarCargaManoDeObra();
+            this.Disposed += (s, e) => CerrarCargaCatalogo();
 
             dgvManoObra.ColumnHeaderMouseClick += (s, e) =>
             {

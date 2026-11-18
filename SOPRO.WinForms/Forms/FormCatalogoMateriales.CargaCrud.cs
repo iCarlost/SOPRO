@@ -17,6 +17,7 @@ using SOPRO.Application.UseCases.Materials;
 using SOPRO.Application.UseCases.Catalog;
 using SOPRO.Application.Models.Catalogs;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -26,30 +27,81 @@ namespace SOPRO.WinForms.Forms
     public partial class FormCatalogoMateriales
     {
 
-        public void RecargarCatalogo() => CargarMateriales();
+        public void RecargarCatalogo() => CargarMaterialesObservada();
 
-        // Serializa las cargas sobre el contexto de sesión y descarta resultados
-        // de cargas anteriores (el texto puede cambiar mientras una carga corre).
-        private static readonly SemaphoreSlim _cargaLock = new(1, 1);
+        // Serializa las cargas de ESTE formulario (no de todos): dos catálogos
+        // abiertos pueden cargar en paralelo y cada uno descarta sus resultados
+        // obsoletos con su propio token.
+        private readonly SemaphoreSlim _cargaLock = new(1, 1);
         private CancellationTokenSource? _cargaCts;
+        private bool _cerrando;
 
-        private async void CargarMateriales()
+        /// <summary>
+        /// Cancela la carga en curso al cerrar/liberar el formulario. No libera el
+        /// CTS ni el semáforo: la carga que los usa los libera en su propio finally,
+        /// después de que la operación pendiente termine.
+        /// </summary>
+        private void CancelarCargaPendiente()
         {
-            _cargaCts?.Cancel();
-            var cts = new CancellationTokenSource();
-            _cargaCts = cts;
+            _cerrando = true;
+            var cts = _cargaCts;
+            _cargaCts = null;
 
             try
             {
-                await _cargaLock.WaitAsync(cts.Token);
+                cts?.Cancel();
             }
-            catch (OperationCanceledException)
+            catch (Exception ex)
             {
-                return;
+                // Cancelar al cierre es best-effort: un callback que falle no debe
+                // impedir el cierre del formulario.
+                System.Diagnostics.Debug.WriteLine($"CancelarCargaPendiente: {ex.Message}");
             }
+        }
 
+        private bool VidaUtil => !_cerrando && !IsDisposed && !Disposing;
+
+        /// <summary>
+        /// Boundary observada para callers void legados que no pueden hacer
+        /// <c>await</c> (RecalcularTodo/IRecalculable y RecargarCatalogo invocado
+        /// desde otros formularios): arranca el núcleo y observa cualquier fallo
+        /// residual sin <c>_ =</c> explícito ni un async void auxiliar. El núcleo
+        /// ya captura todo desde la primera operación riesgosa.
+        /// </summary>
+        private void CargarMaterialesObservada()
+        {
+            CargarMaterialesAsync().ContinueWith(
+                fallo => System.Diagnostics.Debug.WriteLine($"Carga de materiales falló: {fallo.Exception}"),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+
+        internal async Task CargarMaterialesAsync()
+        {
+            if (!VidaUtil) return;
+
+            CancellationTokenSource? cts = null;
+            bool lockAdquirido = false;
             try
             {
+                var anterior = _cargaCts;
+                cts = new CancellationTokenSource();
+                _cargaCts = cts;
+                anterior?.Cancel();
+
+                try
+                {
+                    await _cargaLock.WaitAsync(cts.Token);
+                    lockAdquirido = true;
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                if (!VidaUtil || cts.IsCancellationRequested) return;
+
                 btnRefrescar.Enabled = false;
                 lblStatus.Text = "Cargando materiales...";
                 var _gridState = DataGridViewStateHelper.Capture(dgvMateriales);
@@ -61,7 +113,7 @@ namespace SOPRO.WinForms.Forms
                     OnlyMasterItems = chkSoloMaestros.Checked,
                 }, cts.Token);
 
-                if (cts.IsCancellationRequested) return;
+                if (!VidaUtil || cts.IsCancellationRequested) return;
 
                 if (!result.IsSuccess)
                 {
@@ -84,31 +136,45 @@ namespace SOPRO.WinForms.Forms
 
                 lblStatus.Text = $"{materiales.Count} material(es) encontrado(s)";
             }
-            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            catch (OperationCanceledException) when (cts?.IsCancellationRequested == true)
             {
-                // Carga superada por una más reciente: no tocar la UI.
+                // Carga superada por una más reciente o cierre del formulario: no tocar la UI.
             }
             catch (Exception ex)
             {
+                if (!VidaUtil) return;
+
                 MessageBox.Show($"Error al cargar materiales:\n{ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                 lblStatus.Text = "Error al cargar materiales";
             }
             finally
             {
-                btnRefrescar.Enabled = true;
-                _cargaLock.Release();
+                if (lockAdquirido && cts is not null)
+                {
+                    _cargaLock.Release();
+
+                    // Solo la carga vigente rehabilita el botón: una carga cancelada
+                    // no debe pisar el estado que dejó la que la reemplazó.
+                    if (VidaUtil && ReferenceEquals(_cargaCts, cts))
+                        btnRefrescar.Enabled = true;
+                }
+
+                if (cts is not null && ReferenceEquals(_cargaCts, cts))
+                    _cargaCts = null;
+
+                cts?.Dispose();
             }
         }
 
-        private void btnNuevo_Click(object sender, EventArgs e)
+        private async void btnNuevo_Click(object sender, EventArgs e)
         {
             using var form = new FormEditarMaterial(_sessionInfo, factory: _factory);
             if (form.ShowDialog() == DialogResult.OK)
-                CargarMateriales();
+                await CargarMaterialesAsync();
         }
 
-        private void btnEditar_Click(object sender, EventArgs e)
+        private async void btnEditar_Click(object sender, EventArgs e)
         {
             // La propiedad se decide por alcance, no por Origen: ListMaterials solo
             // devuelve filas del proyecto de la sesión (ProyectoId = proyecto), así
@@ -123,7 +189,7 @@ namespace SOPRO.WinForms.Forms
 
             using var form = new FormEditarMaterial(_sessionInfo, _materialSeleccionado, _factory);
             if (form.ShowDialog() == DialogResult.OK)
-                CargarMateriales();
+                await CargarMaterialesAsync();
         }
 
         private async void btnEliminar_Click(object sender, EventArgs e)
@@ -208,7 +274,7 @@ namespace SOPRO.WinForms.Forms
 
                 MessageBox.Show("Material(es) eliminado(s) exitosamente.", "Eliminado",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
-                CargarMateriales();
+                await CargarMaterialesAsync();
             }
             catch (OperationCanceledException)
             {
@@ -239,7 +305,7 @@ namespace SOPRO.WinForms.Forms
             => CatalogoBatchDeletionHelper.IdsSeleccionados<MaterialListItem>(dgvMateriales, m => m.Id);
 
 
-        private void btnConfigColumnas_Click(object sender, EventArgs e)
+        private async void btnConfigColumnas_Click(object sender, EventArgs e)
         {
             if (!_proyectoId.HasValue)
             {
@@ -252,11 +318,11 @@ namespace SOPRO.WinForms.Forms
             {
                 _columnasConfig = ColumnasMaterialHelper.ObtenerColumnas(_context, _proyectoId.Value);
                 ConfigurarGrid();
-                CargarMateriales();
+                await CargarMaterialesAsync();
             }
         }
 
-        private void btnRefrescar_Click(object sender, EventArgs e) => CargarMateriales();
+        private async void btnRefrescar_Click(object sender, EventArgs e) => await CargarMaterialesAsync();
 
         private void btnCerrar_Click(object sender, EventArgs e) => Close();
 
@@ -274,18 +340,18 @@ namespace SOPRO.WinForms.Forms
             if (e.RowIndex >= 0) btnEditar_Click(sender, e);
         }
 
-        private void txtBuscar_TextChanged(object sender, EventArgs e) => CargarMateriales();
+        private async void txtBuscar_TextChanged(object sender, EventArgs e) => await CargarMaterialesAsync();
 
-        private void chkSoloProyecto_CheckedChanged(object sender, EventArgs e)
+        private async void chkSoloProyecto_CheckedChanged(object sender, EventArgs e)
         {
             if (chkSoloProyecto.Checked) chkSoloMaestros.Checked = false;
-            CargarMateriales();
+            await CargarMaterialesAsync();
         }
 
-        private void chkSoloMaestros_CheckedChanged(object sender, EventArgs e)
+        private async void chkSoloMaestros_CheckedChanged(object sender, EventArgs e)
         {
             if (chkSoloMaestros.Checked) chkSoloProyecto.Checked = false;
-            CargarMateriales();
+            await CargarMaterialesAsync();
         }
 
         private void ActualizarEstadoBotones()
@@ -303,7 +369,7 @@ namespace SOPRO.WinForms.Forms
             EstadoConsolidacionCambiado?.Invoke(this, EventArgs.Empty);
         }
 
-        private void btnImportar_Click(object sender, EventArgs e)
+        private async void btnImportar_Click(object sender, EventArgs e)
         {
             if (!_proyectoId.HasValue)
             {
@@ -326,7 +392,7 @@ namespace SOPRO.WinForms.Forms
                 if (selector.ShowDialog(this) != DialogResult.OK) return;
 
                 OpenFormsRefreshHelper.RefrescarCatalogoPorTipo(TipoComponenteMatriz.Material);
-                CargarMateriales();
+                await CargarMaterialesAsync();
                 MessageBox.Show($"{selector.CantidadImportada} material(es) importado(s) al catálogo.",
                     "Importar", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }

@@ -22,7 +22,7 @@ namespace SOPRO.WinForms.Forms
     public partial class FormCatalogoMateriales
     {
 
-        public void RecalcularTodo() => CargarMateriales();
+        public void RecalcularTodo() => CargarMaterialesObservada();
 
         private void OnDecimalesActualizados_Cat(object sender, EventArgs e)
         {

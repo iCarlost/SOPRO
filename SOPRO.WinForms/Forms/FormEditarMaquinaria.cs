@@ -106,14 +106,17 @@ namespace SOPRO.WinForms.Forms
         
         private async void btnCalcular_Click(object sender, EventArgs e)
         {
-            // Si es nuevo, guardar primero para tener el objeto en BD con Id
-            if (_esNuevo)
-            {
-                if (!ValidarYGuardar())
-                    return;
+            if (!IniciarOperacion())
+                return;
 
-                try
+            try
+            {
+                // Si es nuevo, guardar primero para tener el objeto en BD con Id
+                if (_esNuevo)
                 {
+                    if (!ValidarYGuardar())
+                        return;
+
                     var dto = new MaquinariaEditDto
                     {
                         Clave = txtClave.Text,
@@ -132,24 +135,33 @@ namespace SOPRO.WinForms.Forms
 
                     var result = await CatalogItemService.SaveMaquinariaAsync(_context, dto);
 
+                    if (IsDisposed || Disposing) return;
+
                     _maquinaria = _context.Maquinaria
                         .First(x => x.Id == result.EntityId);
                     _esNuevo = false;
                 }
-                catch (Exception ex)
+
+                // Abrir calculadora con el objeto ya persistido en BD; nunca tras el cierre.
+                if (IsDisposed || Disposing) return;
+
+                using var form = new FormCalculoCostoHorario(_context, _maquinaria);
+                if (form.ShowDialog() == DialogResult.OK && !IsDisposed && !Disposing)
                 {
-                    MessageBox.Show(
-                        $"Error al guardar antes de calcular:\n{ex.Message}",
-                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
+                    CargarDatos();
                 }
             }
-
-            // Abrir calculadora con el objeto ya persistido en BD
-            using var form = new FormCalculoCostoHorario(_context, _maquinaria);
-            if (form.ShowDialog() == DialogResult.OK)
+            catch (Exception ex)
             {
-                CargarDatos();
+                if (IsDisposed || Disposing) return;
+
+                MessageBox.Show(
+                    $"Error al calcular el costo horario:\n{ex.Message}",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                FinalizarOperacion();
             }
         }
         
@@ -203,68 +215,95 @@ namespace SOPRO.WinForms.Forms
             }
         }
         
-        private bool _guardando;
+        // Guard compartido por cálculo y guardado: una sola operación riesgosa a la
+        // vez en este editor. Se toma antes de la primera validación/escritura y se
+        // libera en el finally, sin tocar controles si el form ya se liberó.
+        private bool _operacionEnCurso;
+
+        private bool IniciarOperacion()
+        {
+            if (_operacionEnCurso) return false;
+
+            _operacionEnCurso = true;
+
+            if (!IsDisposed && !Disposing)
+            {
+                btnGuardar.Enabled = false;
+                btnCalcular.Enabled = false;
+            }
+
+            return true;
+        }
+
+        private void FinalizarOperacion()
+        {
+            _operacionEnCurso = false;
+
+            if (IsDisposed || Disposing) return;
+
+            btnGuardar.Enabled = true;
+            btnCalcular.Enabled = rbCostoCalculado.Checked;
+        }
 
         private async void btnGuardar_Click(object sender, EventArgs e)
         {
-            if (_guardando) return;
-            _guardando = true;
-            btnGuardar.Enabled = false;
+            if (!IniciarOperacion())
+                return;
+
             try
             {
-                if (ValidarYGuardar())
+                if (!ValidarYGuardar())
+                    return;
+
+                var dto = new MaquinariaEditDto
                 {
-                    try
-                    {
-                        var dto = new MaquinariaEditDto
-                        {
-                            Clave = txtClave.Text,
-                            Descripcion = txtDescripcion.Text,
-                            PotenciaNominal = nudPotencia.Value,
-                            TipoCombustible = (TipoCombustible)cboTipoCombustible.SelectedItem,
-                            CostoHorario = rbCostoManual.Checked ? nudCostoHorario.Value : _maquinaria?.CostoHorario ?? nudCostoHorario.Value,
-                            EsCostoCalculado = rbCostoCalculado.Checked,
-                            Notas = txtNotas.Text,
-                            GuardarEnMaestro = rbMaestro.Checked,
-                            ProyectoId = _proyectoId,
-                            MaterialCombustibleId = _maquinaria?.MaterialCombustibleId,
-                            MaterialAceiteId = _maquinaria?.MaterialAceiteId,
-                            ManoDeObraOperadorId = _maquinaria?.ManoDeObraOperadorId
-                        };
+                    Clave = txtClave.Text,
+                    Descripcion = txtDescripcion.Text,
+                    PotenciaNominal = nudPotencia.Value,
+                    TipoCombustible = (TipoCombustible)cboTipoCombustible.SelectedItem,
+                    CostoHorario = rbCostoManual.Checked ? nudCostoHorario.Value : _maquinaria?.CostoHorario ?? nudCostoHorario.Value,
+                    EsCostoCalculado = rbCostoCalculado.Checked,
+                    Notas = txtNotas.Text,
+                    GuardarEnMaestro = rbMaestro.Checked,
+                    ProyectoId = _proyectoId,
+                    MaterialCombustibleId = _maquinaria?.MaterialCombustibleId,
+                    MaterialAceiteId = _maquinaria?.MaterialAceiteId,
+                    ManoDeObraOperadorId = _maquinaria?.ManoDeObraOperadorId
+                };
 
-                        var result = await CatalogItemService.SaveMaquinariaAsync(_context, dto, _esNuevo ? null : _maquinaria);
+                var result = await CatalogItemService.SaveMaquinariaAsync(_context, dto, _esNuevo ? null : _maquinaria);
 
-                        if (result.TriggeredRecalculation)
-                            OpenFormsRefreshHelper.RefrescarPresupuestosAbiertos();
+                if (IsDisposed || Disposing) return;
 
-                        OpenFormsRefreshHelper.RefrescarCatalogosMaquinariaAbiertos();
+                if (result.TriggeredRecalculation)
+                    OpenFormsRefreshHelper.RefrescarPresupuestosAbiertos();
 
-                        MessageBox.Show(
-                            result.IsNew ? "Registro creado exitosamente." : "Registro actualizado exitosamente.",
-                            "Guardado",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Information
-                        );
+                OpenFormsRefreshHelper.RefrescarCatalogosMaquinariaAbiertos();
 
-                        DialogResult = DialogResult.OK;
-                        Close();
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show(
-                            $"Error al guardar:\n{ex.Message}",
-                            "Error",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Error
-                        );
-                    }
-                }
+                MessageBox.Show(
+                    result.IsNew ? "Registro creado exitosamente." : "Registro actualizado exitosamente.",
+                    "Guardado",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information
+                );
+
+                DialogResult = DialogResult.OK;
+                Close();
+            }
+            catch (Exception ex)
+            {
+                if (IsDisposed || Disposing) return;
+
+                MessageBox.Show(
+                    $"Error al guardar:\n{ex.Message}",
+                    "Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error
+                );
             }
             finally
             {
-                _guardando = false;
-                if (!IsDisposed && !Disposing)
-                    btnGuardar.Enabled = true;
+                FinalizarOperacion();
             }
         }
         

@@ -36,7 +36,7 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
 
-            BeginInvoke(new Action(GuardarDependenciasActuales));
+            BeginInvoke(new Action(GuardarDependenciasTrasBorradoFila));
         }
 
         private void dgvDependencias_CellBeginEdit(object? sender, DataGridViewCellCancelEventArgs e)
@@ -104,19 +104,23 @@ namespace SOPRO.WinForms.Forms
             }
         }
 
-        private void dgvDependencias_CellEndEdit(object? sender, DataGridViewCellEventArgs e)
+        private async void dgvDependencias_CellEndEdit(object? sender, DataGridViewCellEventArgs e)
         {
-            if (_cargando || e.RowIndex < 0 || EstaBloqueadoParaOperar)
+            // Frontera async void de WinForms: con la vista cerrada no se ejecuta nada.
+            if (!PuedeTocarUiPrograma)
                 return;
-
-            if (_cancelandoEdicionDependencia)
-            {
-                _cancelandoEdicionDependencia = false;
-                return;
-            }
 
             try
             {
+                if (_cargando || e.RowIndex < 0 || EstaBloqueadoParaOperar)
+                    return;
+
+                if (_cancelandoEdicionDependencia)
+                {
+                    _cancelandoEdicionDependencia = false;
+                    return;
+                }
+
                 if (e.RowIndex >= dgvDependencias.Rows.Count)
                     return;
 
@@ -128,7 +132,7 @@ namespace SOPRO.WinForms.Forms
                     return;
 
                 NormalizarDependenciaEditada(row);
-                _ = GuardarDependenciasActualesAsync(e.RowIndex, e.ColumnIndex, row);
+                await GuardarDependenciasActualesAsync(e.RowIndex, e.ColumnIndex, row);
             }
             catch (IndexOutOfRangeException)
             {
@@ -138,6 +142,14 @@ namespace SOPRO.WinForms.Forms
             catch (InvalidOperationException)
             {
                 // DataGridView puede quedar transitoriamente sin fila enlazada al cancelar edición con ESC.
+                _cancelandoEdicionDependencia = false;
+            }
+            catch (Exception ex)
+            {
+                // Frontera async void de WinForms: una falla imprevista del callee no puede
+                // escapar al bucle de mensajes. El guardado ya clasifica las fallas de
+                // persistencia; esto sólo cubre lo que ocurra antes de su primera captura.
+                System.Diagnostics.Debug.WriteLine($"dgvDependencias_CellEndEdit: {ex}");
                 _cancelandoEdicionDependencia = false;
             }
             finally
@@ -187,10 +199,36 @@ namespace SOPRO.WinForms.Forms
             dgvDependencias.Refresh();
         }
 
-        private async void GuardarDependenciasActuales()
+        /// <summary>
+        /// Frontera async void exigida por <c>BeginInvoke</c> (que sólo acepta
+        /// <see cref="Action"/>): existe únicamente para que ninguna excepción del
+        /// guardado escape al bucle de mensajes. El núcleo captura desde su primera
+        /// operación riesgosa.
+        /// </summary>
+        private async void GuardarDependenciasTrasBorradoFila()
         {
-            await GuardarDependenciasActualesAsync();
+            try
+            {
+                await GuardarDependenciasActualesAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"GuardarDependenciasTrasBorradoFila: {ex}");
+            }
         }
+
+        /// <summary>
+        /// La UI de este formulario todavía puede tocarse: ni cerrada ni en proceso de
+        /// cierre. Un handler o una recarga diferida puede reanudar después de
+        /// <c>Dispose</c>.
+        /// </summary>
+        private bool PuedeTocarUiPrograma => !IsDisposed && !Disposing;
+
+        /// <summary>
+        /// Seam de pruebas: núcleo Task del guardado de dependencias de la actividad
+        /// seleccionada (los eventos reales lo invocan desde sus fronteras async void).
+        /// </summary>
+        internal Task GuardarDependenciasActividadAsync() => GuardarDependenciasActualesAsync();
 
         /// <summary>
         /// Guarda las dependencias de la actividad seleccionada en un contexto CORTO
@@ -198,50 +236,48 @@ namespace SOPRO.WinForms.Forms
         /// un DELETE afectaría 0 filas), regenera periodos/distribuciones en otro
         /// contexto y publica una lectura FRESCA de sólo lectura. Un fallo no informa
         /// éxito: suspende por resultado incierto y relee para verificar.
+        /// La captura (selección, proyección y estado del grid) ocurre DENTRO del
+        /// primer try: un formulario cerrado no puede hacer escapar la excepción.
         /// </summary>
         private async Task GuardarDependenciasActualesAsync(
             int undoRowIndex = -1,
             int undoColumnIndex = -1,
             DependenciaEditableRow? filaUndo = null)
         {
-            if (_cargando || _ocupado || EstaBloqueadoParaOperar)
+            // Núcleo del guardado: con la vista cerrada no hay nada que capturar ni guardar.
+            if (!PuedeTocarUiPrograma)
                 return;
-
-            var actividad = GetActividadSeleccionada();
-            if (actividad == null || _programaActual == null)
-                return;
-
-            if (actividad.EsResumen)
-            {
-                lblEstado.Text = "Los agrupadores no admiten dependencias directas. Captura dependencias en conceptos.";
-                return;
-            }
 
             List<DependencyEditDto> deps;
             DataGridViewStateSnapshot state;
+            int actividadId;
+            string actividadClave;
+            int programaIdDep;
+            TipoPeriodoPrograma tipoPeriodoDep;
+            string dbPathDep;
+
             try
             {
-                deps = _dependenciasEditables
-                    .Select(x =>
-                    {
-                        NormalizarDependenciaEditada(x);
-                        return x;
-                    })
-                    .Where(x => x.ActividadOrigenId.HasValue && x.ActividadOrigenId.Value > 0)
-                    .GroupBy(x => x.ActividadOrigenId!.Value)
-                    .Select(g => g.First())
-                    .Select(x => new DependencyEditDto
-                    {
-                        ActividadOrigenId = x.ActividadOrigenId!.Value,
-                        ActividadDestinoId = actividad.Id,
-                        TipoDependencia = Enum.TryParse<TipoDependenciaActividad>(x.TipoDependencia, true, out var tipo)
-                            ? tipo.Normalizar()
-                            : TipoDependenciaActividad.FS,
-                        DesfaseDias = Math.Max(0, x.DesfaseDias)
-                    })
-                    .ToList();
+                if (_cargando || _ocupado || EstaBloqueadoParaOperar)
+                    return;
 
+                var actividad = GetActividadSeleccionada();
+                if (actividad == null || _programaActual == null)
+                    return;
+
+                if (actividad.EsResumen)
+                {
+                    lblEstado.Text = "Los agrupadores no admiten dependencias directas. Captura dependencias en conceptos.";
+                    return;
+                }
+
+                actividadId = actividad.Id;
+                actividadClave = actividad.Clave;
+                programaIdDep = _programaActual.ProgramaObraId;
+                tipoPeriodoDep = ObtenerTipoPeriodoSeleccionado();
+                dbPathDep = _context.DatabasePath;
                 state = DataGridViewStateHelper.Capture(dgvActividades);
+                deps = ProyectarDependenciasEditables(actividadId);
             }
             catch (IndexOutOfRangeException)
             {
@@ -253,23 +289,29 @@ namespace SOPRO.WinForms.Forms
                 _cancelandoEdicionDependencia = false;
                 return;
             }
-
-            var programaIdDep = _programaActual.ProgramaObraId;
-            var tipoPeriodoDep = ObtenerTipoPeriodoSeleccionado();
-            var dbPathDep = _context.DatabasePath;
+            catch (ArgumentException)
+            {
+                // Datos del grid inconsistentes (p. ej. un tipo de dependencia nulo):
+                // aún no hay ninguna escritura, así que no hay nada que reconciliar.
+                _cancelandoEdicionDependencia = false;
+                return;
+            }
 
             try
             {
-                SetOcupado(true, $"Actualizando dependencias de '{actividad.Clave}'...");
+                SetOcupado(true, $"Actualizando dependencias de '{actividadClave}'...");
 
                 (bool Ok, string Error) result;
                 using (var contextoDependencias = _factory.Create(dbPathDep))
                 {
-                    result = _persistenceService.SaveDependencies(contextoDependencias, actividad.Id, deps);
+                    result = _persistenceService.SaveDependencies(contextoDependencias, actividadId, deps);
                 }
 
                 if (!result.Ok)
                 {
+                    if (!PuedeTocarUiPrograma)
+                        return;
+
                     Notificador.Advertir(result.Error);
                     RecargarProgramaVerificado(state, escrituraConfirmada: false);
                     return;
@@ -285,25 +327,55 @@ namespace SOPRO.WinForms.Forms
 
                 // Cede el hilo antes de repoblar el grid (fuera del evento de edición).
                 await Task.Yield();
-                if (IsDisposed)
+                if (!PuedeTocarUiPrograma)
                     return;
 
                 if (!RecargarProgramaVerificado(state))
                     return;
 
-                lblEstado.Text = $"Dependencias de '{actividad.Clave}' actualizadas.";
+                lblEstado.Text = $"Dependencias de '{actividadClave}' actualizadas.";
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"GuardarDependenciasActualesAsync: {ex}");
+                if (!PuedeTocarUiPrograma)
+                    return;
+
                 SuspenderPorResultadoIncierto($"No se pudieron guardar las dependencias: {ex.Message}", ex);
                 RecargarProgramaVerificado(state);
             }
             finally
             {
+                // SetOcupado no toca controles con el formulario cerrado y siempre
+                // restablece el campo local de ocupado.
                 SetOcupado(false);
             }
         }
+
+        /// <summary>
+        /// Proyecta las filas editables del grid de dependencias al DTO de persistencia.
+        /// Normaliza cada fila (estado local) y descarta orígenes inválidos o duplicados.
+        /// </summary>
+        private List<DependencyEditDto> ProyectarDependenciasEditables(int actividadDestinoId)
+            => _dependenciasEditables
+                .Select(x =>
+                {
+                    NormalizarDependenciaEditada(x);
+                    return x;
+                })
+                .Where(x => x.ActividadOrigenId.HasValue && x.ActividadOrigenId.Value > 0)
+                .GroupBy(x => x.ActividadOrigenId!.Value)
+                .Select(g => g.First())
+                .Select(x => new DependencyEditDto
+                {
+                    ActividadOrigenId = x.ActividadOrigenId!.Value,
+                    ActividadDestinoId = actividadDestinoId,
+                    TipoDependencia = Enum.TryParse<TipoDependenciaActividad>(x.TipoDependencia, true, out var tipo)
+                        ? tipo.Normalizar()
+                        : TipoDependenciaActividad.FS,
+                    DesfaseDias = Math.Max(0, x.DesfaseDias)
+                })
+                .ToList();
 
         private void RegistrarUndoEdicionDependencia(
             int rowIndex,

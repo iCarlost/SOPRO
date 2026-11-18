@@ -48,7 +48,7 @@ namespace SOPRO.WinForms.Forms
                 "En Desarrollo", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
-        private void btnRefrescar_Click(object sender, EventArgs e) => CargarMatrices();
+        private async void btnRefrescar_Click(object sender, EventArgs e) => await CargarMatricesAsync();
         private void btnCerrar_Click(object sender, EventArgs e) => Close();
         private void btnExportarExcel_Click(object sender, EventArgs e) => ExportarCatalogoMatrices();
 
@@ -125,11 +125,11 @@ namespace SOPRO.WinForms.Forms
                 btnEditar_Click(sender, e);
         }
 
-        private void txtBuscar_TextChanged(object sender, EventArgs e) => CargarMatrices();
-        private void rbTodos_CheckedChanged(object sender, EventArgs e) { if (rbTodos.Checked) CargarMatrices(); }
-        private void rbSoloAPU_CheckedChanged(object sender, EventArgs e) { if (rbSoloAPU.Checked) CargarMatrices(); }
-        private void rbSoloBasicos_CheckedChanged(object sender, EventArgs e) { if (rbSoloBasicos.Checked) CargarMatrices(); }
-        private void rbSoloCuadrillas_CheckedChanged(object sender, EventArgs e) { if (rbSoloCuadrillas.Checked) CargarMatrices(); }
+        private async void txtBuscar_TextChanged(object sender, EventArgs e) => await CargarMatricesAsync();
+        private async void rbTodos_CheckedChanged(object sender, EventArgs e) { if (rbTodos.Checked) await CargarMatricesAsync(); }
+        private async void rbSoloAPU_CheckedChanged(object sender, EventArgs e) { if (rbSoloAPU.Checked) await CargarMatricesAsync(); }
+        private async void rbSoloBasicos_CheckedChanged(object sender, EventArgs e) { if (rbSoloBasicos.Checked) await CargarMatricesAsync(); }
+        private async void rbSoloCuadrillas_CheckedChanged(object sender, EventArgs e) { if (rbSoloCuadrillas.Checked) await CargarMatricesAsync(); }
 
         private void ActualizarEstadoBotones()
         {
