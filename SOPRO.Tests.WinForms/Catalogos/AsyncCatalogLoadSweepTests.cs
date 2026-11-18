@@ -24,6 +24,13 @@ namespace SOPRO.Tests.WinForms.Catalogos;
 [DoNotParallelize] // Forms WinForms y contexto de sincronización sobre un hilo STA.
 public class AsyncCatalogLoadSweepTests
 {
+    /// <summary>
+    /// Contexto WinForms de la prueba. <c>Application.DoEvents</c> lo sustituye por
+    /// uno genérico que despacha al pool, así que el bombeo lo reinstala para que
+    /// toda continuación de <c>await</c> siga en el hilo STA del formulario.
+    /// </summary>
+    private SynchronizationContext? _contextoUi;
+
     [TestMethod]
     public void CargaSuperadaCompletadaDespuesDeLaNueva_SeDescartaYPublicaSoloLaVigente()
     {
@@ -182,17 +189,35 @@ public class AsyncCatalogLoadSweepTests
     /// Bombea la cola de mensajes hasta que la condición se cumpla. El hilo de
     /// prueba instala un contexto WinForms para que las continuaciones de los
     /// <c>await</c> se despachen en el mismo hilo STA.
+    /// <para>
+    /// <c>Application.DoEvents</c> reemplaza el contexto ambiente por uno genérico
+    /// que despacha al pool. Sin reinstalarlo, tras una continuación que falló la
+    /// siguiente carga reanuda fuera del hilo del formulario y crea allí el handle
+    /// del grid; al cerrar, <c>DestroyWindow</c> esperaría indefinidamente a ese
+    /// hilo sin bucle de mensajes. Por eso se restaura antes de cada bombeo y al
+    /// salir, de modo que el hilo STA siga siendo el único dueño de la UI.
+    /// </para>
     /// </summary>
-    private static void BombearHasta(Func<bool> condicion, string mensaje)
+    private void BombearHasta(Func<bool> condicion, string mensaje)
     {
         var limite = DateTime.UtcNow.AddSeconds(30);
         while (!condicion() && DateTime.UtcNow < limite)
         {
+            RestaurarContextoUi();
             System.Windows.Forms.Application.DoEvents();
             Thread.Sleep(5);
         }
 
+        RestaurarContextoUi();
         Assert.IsTrue(condicion(), mensaje);
+    }
+
+    private void RestaurarContextoUi()
+    {
+        if (_contextoUi is null || ReferenceEquals(SynchronizationContext.Current, _contextoUi))
+            return;
+
+        SynchronizationContext.SetSynchronizationContext(_contextoUi);
     }
 
     private static string LeerEstado(Form form)
@@ -231,7 +256,7 @@ public class AsyncCatalogLoadSweepTests
         Descripcion = clave,
     };
 
-    private static void ConContexto(Action<SOPROContext, Proyecto> verificar)
+    private void ConContexto(Action<SOPROContext, Proyecto> verificar)
     {
         var root = Path.Combine(Path.GetTempPath(), $"sopro_async_catalogo_{Guid.NewGuid():N}");
         var dbPath = Path.Combine(root, "proyecto-temporal.soproproj");
@@ -241,7 +266,8 @@ public class AsyncCatalogLoadSweepTests
         SOPROContext? contexto = null;
         try
         {
-            SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
+            _contextoUi = new WindowsFormsSynchronizationContext();
+            SynchronizationContext.SetSynchronizationContext(_contextoUi);
 
             contexto = new SOPROContext(dbPath);
             contexto.Database.EnsureDeleted();
@@ -252,6 +278,7 @@ public class AsyncCatalogLoadSweepTests
         }
         finally
         {
+            _contextoUi = null;
             SynchronizationContext.SetSynchronizationContext(contextoPrevio);
             contexto?.Dispose();
 
