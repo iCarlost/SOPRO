@@ -146,7 +146,7 @@ namespace SOPRO.WinForms.Forms
             {
                 _columnasConfig = ColumnasMaquinariaHelper.ObtenerColumnas(_context, _proyectoId.Value);
                 ConfigurarGrid();
-                CargarMaquinaria();
+                SolicitarCargaMaquinaria();
             }
         }
     }

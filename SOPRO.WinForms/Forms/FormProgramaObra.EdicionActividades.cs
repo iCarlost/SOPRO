@@ -118,7 +118,16 @@ namespace SOPRO.WinForms.Forms
 
         private async void dgvActividades_CellEndEdit(object sender, DataGridViewCellEventArgs e)
         {
-            await ProcesarFinEdicionActividadAsync(e.RowIndex, e.ColumnIndex);
+            try
+            {
+                await ProcesarFinEdicionActividadAsync(e.RowIndex, e.ColumnIndex);
+            }
+            catch (Exception ex)
+            {
+                // Frontera async void de WinForms: el callee clasifica sus propias fallas;
+                // esto sólo evita que una excepción imprevista llegue al bucle de mensajes.
+                System.Diagnostics.Debug.WriteLine($"dgvActividades_CellEndEdit: {ex}");
+            }
         }
 
         /// <summary>
@@ -128,25 +137,55 @@ namespace SOPRO.WinForms.Forms
         /// afectaría 0 filas → DbUpdateConcurrencyException). Después del recálculo la
         /// vista se publica con una lectura FRESCA de sólo lectura. Un fallo nunca
         /// informa éxito: suspende por resultado incierto y relee para verificar.
+        /// La captura de la fila, la columna y el estado del grid ocurre DENTRO del
+        /// primer try: un formulario cerrado no puede hacer escapar la excepción.
         /// </summary>
         internal async Task ProcesarFinEdicionActividadAsync(int rowIndex, int columnIndex)
         {
-            if (_cargando || _ocupado || _programaActual == null || EstaBloqueadoParaOperar)
+            // Núcleo del guardado: con la vista cerrada no hay nada que capturar ni guardar.
+            if (!PuedeTocarUiPrograma)
                 return;
 
-            if (rowIndex < 0 || rowIndex >= dgvActividades.Rows.Count)
-                return;
+            ActivityGridRowDto dto;
+            string columnName;
+            DataGridViewStateSnapshot gridState;
+            string dbPath;
+            int programaObraId;
 
-            if (columnIndex < 0 || columnIndex >= dgvActividades.Columns.Count)
-                return;
+            try
+            {
+                if (_cargando || _ocupado || _programaActual == null || EstaBloqueadoParaOperar)
+                    return;
 
-            var row = dgvActividades.Rows[rowIndex];
-            if (row.DataBoundItem is not ActivityGridRowDto dto)
-                return;
+                if (rowIndex < 0 || rowIndex >= dgvActividades.Rows.Count)
+                    return;
 
-            var gridState = DataGridViewStateHelper.Capture(dgvActividades);
-            var columnName = dgvActividades.Columns[columnIndex].Name;
-            var dbPath = _context.DatabasePath;
+                if (columnIndex < 0 || columnIndex >= dgvActividades.Columns.Count)
+                    return;
+
+                if (dgvActividades.Rows[rowIndex].DataBoundItem is not ActivityGridRowDto fila)
+                    return;
+
+                dto = fila;
+                columnName = dgvActividades.Columns[columnIndex].Name;
+                gridState = DataGridViewStateHelper.Capture(dgvActividades);
+                dbPath = _context.DatabasePath;
+                programaObraId = _programaActual.ProgramaObraId;
+            }
+            catch (IndexOutOfRangeException)
+            {
+                return;
+            }
+            catch (InvalidOperationException)
+            {
+                // Grid sin fila enlazada (edición cancelada) o control ya liberado.
+                return;
+            }
+            catch (ArgumentException)
+            {
+                // Índice de fila/columna inválido tras una recarga del grid.
+                return;
+            }
 
             try
             {
@@ -157,7 +196,7 @@ namespace SOPRO.WinForms.Forms
                 var saveDto = new ActivityEditDto
                 {
                     Id = dto.Id,
-                    ProgramaObraId = _programaActual.ProgramaObraId,
+                    ProgramaObraId = programaObraId,
                     ActividadPadreId = dto.ActividadPadreId,
                     ConceptoPresupuestoId = dto.ConceptoPresupuestoId,
                     Clave = dto.Clave,
@@ -184,6 +223,9 @@ namespace SOPRO.WinForms.Forms
 
                 if (!result.Ok)
                 {
+                    if (!PuedeTocarUiPrograma)
+                        return;
+
                     Notificador.Advertir(result.Error);
                     _cargando = false;
                     RecargarProgramaVerificado(gridState, escrituraConfirmada: false);
@@ -196,7 +238,7 @@ namespace SOPRO.WinForms.Forms
 
                 // Recalcular solo esta actividad y redistribuirla — no todo el programa
                 var actividadId  = dto.Id;
-                var programaId   = _programaActual.ProgramaObraId;
+                var programaId   = programaObraId;
                 var tipoPeriodo  = ObtenerTipoPeriodoSeleccionado();
 
                 await Task.Run(() =>
@@ -215,7 +257,7 @@ namespace SOPRO.WinForms.Forms
                 // Cede el hilo para que DataGridView termine de confirmar la celda antes
                 // de reemplazar el DataSource; la recarga se publica fuera del evento.
                 await Task.Yield();
-                if (IsDisposed)
+                if (!PuedeTocarUiPrograma)
                     return;
 
                 if (!RecargarProgramaVerificado(gridState))
@@ -227,6 +269,9 @@ namespace SOPRO.WinForms.Forms
             {
                 System.Diagnostics.Debug.WriteLine($"ProcesarFinEdicionActividadAsync: {ex}");
                 _cargando = false;
+                if (!PuedeTocarUiPrograma)
+                    return;
+
                 SuspenderPorResultadoIncierto($"No se pudo guardar la actividad: {ex.Message}", ex);
                 RecargarProgramaVerificado(gridState);
             }
@@ -237,6 +282,8 @@ namespace SOPRO.WinForms.Forms
                 _undoActividadColumnName = string.Empty;
                 _undoActividadOldValue = null;
                 _cargando = false;
+                // SetOcupado no toca controles con el formulario cerrado y siempre
+                // restablece el campo local de ocupado.
                 SetOcupado(false);
             }
         }

@@ -13,6 +13,8 @@ using ClosedXML.Excel;
 using SOPRO.Application.Services;
 using SOPRO.Application.UseCases.Catalog;
 using SOPRO.Application.Models.Catalogs;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -21,52 +23,216 @@ namespace SOPRO.WinForms.Forms
     /// </summary>
     public partial class FormCatalogoManoObra
     {
+        // Carga del catálogo: una generación por solicitud (la última manda), la
+        // petición anterior se cancela y la exclusión LOCAL a esta instancia
+        // serializa las consultas completas sobre el _context de sesión. La
+        // cancelación no garantiza que EF haya terminado de leer, así que una
+        // carga nueva no inicia su consulta hasta que la anterior libera turno.
+        // No pretende coordinar a otros consumidores del mismo contexto.
+        private readonly SemaphoreSlim _cargaLock = new(1, 1);
+        private CancellationTokenSource? _cargaCts;
+        private int _cargaGeneracion;
+        private volatile bool _cargaCerrada;
 
-        public void RecargarCatalogo() => CargarManoDeObra();
+        /// <summary>
+        /// Seam interno de prueba: sustituye la consulta por una carga diferida
+        /// controlada. En producción queda en null y se usa el servicio real.
+        /// </summary>
+        internal Func<CatalogFilterInput, Task<List<ManoDeObra>>>? CargadorManoDeObraOverride { get; set; }
 
-        private async void CargarManoDeObra()
+        /// <summary>
+        /// Seam interno de prueba para observar el aviso de error sin abrir un
+        /// modal real. El comportamiento productivo no cambia.
+        /// </summary>
+        internal Action<string, string> NotificarErrorCarga { get; set; } = (mensaje, titulo) =>
+            MessageBox.Show(mensaje, titulo, MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+        public void RecargarCatalogo() => SolicitarCargaManoDeObra();
+
+        /// <summary>
+        /// Frontera de UI: arranca la carga y OBSERVA su tarea. Un formulario ya
+        /// cerrado no inicia nada, y cualquier fallo (incluido uno completado de
+        /// forma síncrona) queda absorbido y registrado como observado; nunca se
+        /// descarta una tarea sin observación.
+        /// </summary>
+        private void SolicitarCargaManoDeObra()
         {
+            if (EstaCerrada)
+                return;
+
+            ObservarCarga(CargarManoDeObraAsync());
+        }
+
+        internal static void ObservarCarga(Task carga)
+        {
+            if (carga.IsCompleted)
+            {
+                // Rama síncrona: leer Exception marca la falla como observada.
+                _ = carga.Exception;
+                return;
+            }
+
+            _ = carga.ContinueWith(
+                static t => _ = t.Exception,
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+
+        /// <summary>
+        /// Carga el catálogo con generación por instancia: descarta resultados
+        /// obsoletos, no publica en un formulario cerrado y nunca inicia una
+        /// segunda consulta sobre el mismo contexto antes de liberar el turno.
+        /// Devuelve <c>true</c> solo cuando el resultado se publicó. Las fallas
+        /// esperadas se informan aquí; una falla inesperada la observa la
+        /// frontera <see cref="SolicitarCargaManoDeObra"/>.
+        /// </summary>
+        internal async Task<bool> CargarManoDeObraAsync()
+        {
+            // Un formulario ya cerrado no captura controles ni arranca consultas.
+            if (EstaCerrada)
+                return false;
+
+            var generacion = Interlocked.Increment(ref _cargaGeneracion);
+            var cts = new CancellationTokenSource();
+            bool turno = false;
             try
             {
+                CancelarSinFalla(Interlocked.Exchange(ref _cargaCts, cts));
+
+                // Los filtros se capturan antes de ceder el hilo: la UI puede
+                // cambiar mientras esta carga espera turno o espera la consulta.
+                CatalogFilterInput filtro;
+                try
+                {
+                    filtro = new CatalogFilterInput
+                    {
+                        ProyectoId = _proyectoId,
+                        SoloProyecto = chkSoloProyecto.Checked,
+                        SoloMaestros = chkSoloMaestros.Checked,
+                        SearchText = txtBuscar.Text
+                    };
+                }
+                catch (ObjectDisposedException)
+                {
+                    // El formulario se descartó entre la guarda y la captura.
+                    return false;
+                }
+                try
+                {
+                    await _cargaLock.WaitAsync(cts.Token).ConfigureAwait(true);
+                    turno = true;
+                }
+                catch (OperationCanceledException)
+                {
+                    return false;
+                }
+
+                if (EsCargaObsoleta(generacion, cts))
+                    return false;
+
                 btnRefrescar.Enabled = false;
                 lblStatus.Text = "Cargando mano de obra...";
-                var _gridState = DataGridViewStateHelper.Capture(dgvManoObra);
+                var estadoGrid = DataGridViewStateHelper.Capture(dgvManoObra);
 
-                var lista = await _catalogLoadService.LoadManoDeObraAsync(_context, new CatalogFilterInput
+                List<ManoDeObra> lista;
+                try
                 {
-                    ProyectoId = _proyectoId,
-                    SoloProyecto = chkSoloProyecto.Checked,
-                    SoloMaestros = chkSoloMaestros.Checked,
-                    SearchText = txtBuscar.Text
-                });
+                    var cargador = CargadorManoDeObraOverride;
+                    lista = cargador is null
+                        ? await _catalogLoadService.LoadManoDeObraAsync(_context, filtro).ConfigureAwait(true)
+                        : await cargador(filtro).ConfigureAwait(true);
+                }
+                catch (OperationCanceledException)
+                {
+                    return false;
+                }
+                catch (Exception ex)
+                {
+                    // Ni un resultado obsoleto ni un formulario cerrado muestran
+                    // modal: la carga ya no le pertenece a la UI.
+                    if (EsCargaObsoleta(generacion, cts))
+                        return false;
+
+                    NotificarErrorCarga($"Error al cargar mano de obra:\n{ex.Message}", "Error");
+                    lblStatus.Text = "Error al cargar mano de obra";
+                    return false;
+                }
+
+                if (EsCargaObsoleta(generacion, cts))
+                    return false;
 
                 SuspendLayout();
                 using (GridRedrawHelper.Suspend(dgvManoObra))
                 {
                     dgvManoObra.DataSource = null;
                     dgvManoObra.DataSource = lista;
-                    DataGridViewStateHelper.Restore(dgvManoObra, _gridState);
+                    DataGridViewStateHelper.Restore(dgvManoObra, estadoGrid);
                 }
                 ResumeLayout();
                 lblStatus.Text = $"{lista.Count} registro(s) encontrado(s)";
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error al cargar mano de obra:\n{ex.Message}", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-                lblStatus.Text = "Error al cargar mano de obra";
+                return true;
             }
             finally
             {
-                btnRefrescar.Enabled = true;
+                if (turno)
+                {
+                    // Solo la carga vigente devuelve el botón a la UI; una carga
+                    // superada deja el estado al cargo de su sucesora y un form
+                    // cerrado no se toca.
+                    if (!EsCargaObsoleta(generacion, cts))
+                        btnRefrescar.Enabled = true;
+
+                    _cargaLock.Release();
+                }
+
+                Interlocked.CompareExchange(ref _cargaCts, null, cts);
+                cts.Dispose();
             }
+        }
+
+        private bool EstaCerrada => _cargaCerrada || IsDisposed || Disposing;
+
+        private bool EsCargaObsoleta(int generacion, CancellationTokenSource cts)
+            => EstaCerrada
+               || cts.IsCancellationRequested
+               || generacion != Volatile.Read(ref _cargaGeneracion);
+
+        private static void CancelarSinFalla(CancellationTokenSource? cts)
+        {
+            if (cts is null)
+                return;
+
+            try
+            {
+                cts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // La carga dueña ya liberó su CTS.
+            }
+            catch (AggregateException)
+            {
+                // Un callback de cancelación falló; la carga ya está invalidada.
+            }
+        }
+
+        /// <summary>
+        /// Invalida las cargas pendientes al cerrar/descartar el formulario. El
+        /// CTS queda a cargo de su carga (que lo libera al terminar).
+        /// </summary>
+        private void CerrarCargaCatalogo()
+        {
+            _cargaCerrada = true;
+            Interlocked.Increment(ref _cargaGeneracion);
+            CancelarSinFalla(Interlocked.Exchange(ref _cargaCts, null));
         }
 
         // ── Botones CRUD ──────────────────────────────────────────────────────
         private void btnNuevo_Click(object sender, EventArgs e)
         {
             using var form = CrearEditorManoObra(manoDeObra: null);
-            if (form.ShowDialog() == DialogResult.OK) CargarManoDeObra();
+            if (form.ShowDialog() == DialogResult.OK) SolicitarCargaManoDeObra();
         }
 
         private void btnEditar_Click(object sender, EventArgs e)
@@ -88,7 +254,7 @@ namespace SOPRO.WinForms.Forms
                 return;
             }
             using var form = CrearEditorManoObra(_manoDeObraSeleccionada);
-            if (form.ShowDialog() == DialogResult.OK) CargarManoDeObra();
+            if (form.ShowDialog() == DialogResult.OK) SolicitarCargaManoDeObra();
         }
 
         private async void btnEliminar_Click(object sender, EventArgs e)
@@ -169,7 +335,7 @@ namespace SOPRO.WinForms.Forms
                 InsumosModificados?.Invoke(null, EventArgs.Empty);
                 MessageBox.Show("Registro(s) eliminado(s) exitosamente.", "Eliminado",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
-                CargarManoDeObra();
+                SolicitarCargaManoDeObra();
             }
             catch (OperationCanceledException)
             {
@@ -200,7 +366,7 @@ namespace SOPRO.WinForms.Forms
             => CatalogoBatchDeletionHelper.IdsSeleccionados<ManoDeObra>(dgvManoObra, m => m.Id);
 
 
-        private void btnRefrescar_Click(object sender, EventArgs e) => CargarManoDeObra();
+        private void btnRefrescar_Click(object sender, EventArgs e) => SolicitarCargaManoDeObra();
         private void btnCerrar_Click(object sender, EventArgs e) => Close();
 
         private void btnImportar_Click(object sender, EventArgs e)
@@ -227,7 +393,7 @@ namespace SOPRO.WinForms.Forms
                 if (selector.ShowDialog(this) != DialogResult.OK) return;
 
                 OpenFormsRefreshHelper.RefrescarCatalogoPorTipo(TipoComponenteMatriz.ManoDeObra);
-                CargarManoDeObra();
+                SolicitarCargaManoDeObra();
                 MessageBox.Show($"{selector.CantidadImportada} registro(s) de mano de obra importado(s) al catálogo.",
                     "Importar", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
@@ -252,18 +418,18 @@ namespace SOPRO.WinForms.Forms
             if (e.RowIndex >= 0) btnEditar_Click(sender, e);
         }
 
-        private void txtBuscar_TextChanged(object sender, EventArgs e) => CargarManoDeObra();
+        private void txtBuscar_TextChanged(object sender, EventArgs e) => SolicitarCargaManoDeObra();
 
         private void chkSoloProyecto_CheckedChanged(object sender, EventArgs e)
         {
             if (chkSoloProyecto.Checked) chkSoloMaestros.Checked = false;
-            CargarManoDeObra();
+            SolicitarCargaManoDeObra();
         }
 
         private void chkSoloMaestros_CheckedChanged(object sender, EventArgs e)
         {
             if (chkSoloMaestros.Checked) chkSoloProyecto.Checked = false;
-            CargarManoDeObra();
+            SolicitarCargaManoDeObra();
         }
 
         private void ActualizarEstadoBotones()

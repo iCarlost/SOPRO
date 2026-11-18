@@ -32,7 +32,7 @@ namespace SOPRO.WinForms.Forms
             }
         }
 
-        private void dgvMatrices_KeyDown(object sender, KeyEventArgs e)
+        private async void dgvMatrices_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Insert && !e.Control && !e.Shift && !e.Alt)
             {
@@ -52,7 +52,7 @@ namespace SOPRO.WinForms.Forms
             {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
-                _ = EliminarMatricesSeleccionadasAsync();
+                await EliminarMatricesSeleccionadasAsync();
                 return;
             }
 

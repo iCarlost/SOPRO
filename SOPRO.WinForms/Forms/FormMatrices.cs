@@ -117,7 +117,7 @@ namespace SOPRO.WinForms.Forms
             ConfigurarModoEmbebido();
             ConfigurarGrid();
 
-            Load += (_, __) => CargarMatrices();
+            Load += async (_, __) => await CargarMatricesAsync();
             dgvMatrices.ColumnHeaderMouseClick += (_, e) => NotificarColumnaSeleccionada(e.ColumnIndex);
             dgvMatrices.ColumnWidthChanged += DgvMatrices_ColumnWidthChanged;
             FormDatosProyecto.DecimalesActualizados += OnDecimalesActualizados_Mat;

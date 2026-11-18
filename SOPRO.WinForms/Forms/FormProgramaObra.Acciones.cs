@@ -293,6 +293,12 @@ namespace SOPRO.WinForms.Forms
         private void SetOcupado(bool ocupado, string mensaje = "")
         {
             _ocupado = ocupado;
+
+            // Un handler diferido puede reanudar después del cierre: el estado local se
+            // restablece siempre, pero los controles no se tocan con el formulario liberado.
+            if (IsDisposed || Disposing)
+                return;
+
             UseWaitCursor  = ocupado;
             ActualizarHabilitacionPrograma();
             if (!string.IsNullOrEmpty(mensaje))

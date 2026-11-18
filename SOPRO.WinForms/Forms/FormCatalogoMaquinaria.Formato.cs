@@ -136,7 +136,8 @@ namespace SOPRO.WinForms.Forms
 
             ConfigurarGrid();
             ConfigurarFormatoCeldas();
-            this.Load += (s, e) => CargarMaquinaria();
+            this.Load += (s, e) => SolicitarCargaMaquinaria();
+            this.Disposed += (s, e) => CerrarCargaCatalogo();
 
             SuscribirBusInsumos();
 

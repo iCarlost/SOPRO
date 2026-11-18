@@ -177,7 +177,7 @@ namespace SOPRO.WinForms.Forms
             {
                 _columnasConfig = ColumnasManoObraHelper.ObtenerColumnas(_context, _proyectoId.Value);
                 ConfigurarGrid();
-                CargarManoDeObra();
+                SolicitarCargaManoDeObra();
             }
         }
 

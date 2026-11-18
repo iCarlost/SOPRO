@@ -11,6 +11,8 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace SOPRO.WinForms.Forms
@@ -56,29 +58,136 @@ namespace SOPRO.WinForms.Forms
                 return false;
             }
 
-            CargarMatrices();
+            SolicitarCargaMatrices();
             return true;
         }
 
-        private async void CargarMatrices()
+        // Serializa las cargas sobre el contexto de ESTA instancia (no un lock
+        // global): la consulta usa el DbContext de la sesión y no es seguro
+        // solaparla con otra carga del mismo formulario. La generación descarta
+        // resultados obsoletos; el token solo cancela la espera, no la consulta EF.
+        private readonly SemaphoreSlim _cargaLock = new(1, 1);
+        private CancellationTokenSource? _cargaCts;
+        private int _cargaGeneracion;
+
+        /// <summary>
+        /// Seam interno de pruebas: sustituye la consulta del catálogo para
+        /// controlar el orden de finalización sin abrir otra capa. En producción
+        /// la carga usa <see cref="MatrixCatalogViewService"/>.
+        /// </summary>
+        internal Func<MatrixCatalogFilterInput, Task<MatrixCatalogLoadResult>>? CargaMatricesParaPrueba { get; set; }
+
+        /// <summary>
+        /// Seam interno de pruebas: simula un fallo al resolver la selección del
+        /// grid (primera operación riesgosa del borrado).
+        /// </summary>
+        internal Func<IReadOnlyList<Matriz>>? SeleccionMatricesParaPrueba { get; set; }
+
+        /// <summary>
+        /// Seam interno de pruebas: evita abrir un MessageBox real al verificar el
+        /// mensaje recuperable del borrado.
+        /// </summary>
+        internal Action<string>? MostrarMensajeEliminacionParaPrueba { get; set; }
+
+        /// <summary>
+        /// Límite seguro para los llamadores síncronos (eventos estáticos, API
+        /// embebida y recalculables): la carga captura sus propias excepciones y
+        /// nunca publica en un formulario cerrado.
+        /// </summary>
+        private void SolicitarCargaMatrices()
+        {
+            if (!EsUiViva()) return;
+            ObservarCarga(CargarMatricesAsync());
+        }
+
+        private static void ObservarCarga(Task carga)
+        {
+            if (carga.IsCompleted)
+            {
+                _ = carga.Exception;
+                return;
+            }
+
+            _ = carga.ContinueWith(
+                static t => _ = t.Exception,
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+
+        private bool EsUiViva() => !IsDisposed && !Disposing;
+
+        private bool EsCargaVigente(int generacion) => generacion == _cargaGeneracion && EsUiViva();
+
+        private void CancelarCargaPendiente()
         {
             try
             {
+                _cargaCts?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // La carga anterior ya terminó y liberó su token.
+            }
+        }
+
+        private MatrixCatalogFilterInput CapturarFiltroCarga()
+        {
+            TipoMatriz? tipo = null;
+            if (rbSoloAPU.Checked) tipo = TipoMatriz.APU;
+            else if (rbSoloBasicos.Checked) tipo = TipoMatriz.Basico;
+            else if (rbSoloCuadrillas.Checked) tipo = TipoMatriz.Cuadrilla;
+
+            return new MatrixCatalogFilterInput
+            {
+                ProyectoId = _proyectoId,
+                SearchText = txtBuscar.Text,
+                Tipo = tipo
+            };
+        }
+
+        internal async Task CargarMatricesAsync()
+        {
+            if (!EsUiViva()) return;
+
+            int generacion = ++_cargaGeneracion;
+            var cts = new CancellationTokenSource();
+            var anterior = Interlocked.Exchange(ref _cargaCts, cts);
+            try
+            {
+                anterior?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // La carga anterior ya terminó y liberó su token.
+            }
+
+            bool lockTomado = false;
+
+            try
+            {
+                // La petición describe el estado que el usuario tenía al dispararla,
+                // aunque otra carga esté en curso.
+                var gridState = DataGridViewStateHelper.Capture(dgvMatrices);
+                var filtro = CapturarFiltroCarga();
+
+                // Espera la carga en curso; si una petición más nueva la supera,
+                // el token libera esta espera sin tocar la consulta de la otra.
+                await _cargaLock.WaitAsync(cts.Token);
+                lockTomado = true;
+
+                if (!EsCargaVigente(generacion)) return;
+
                 btnRefrescar.Enabled = false;
                 lblStatus.Text = "Cargando matrices...";
-                var _gridState = DataGridViewStateHelper.Capture(dgvMatrices);
 
-                TipoMatriz? tipo = null;
-                if (rbSoloAPU.Checked) tipo = TipoMatriz.APU;
-                else if (rbSoloBasicos.Checked) tipo = TipoMatriz.Basico;
-                else if (rbSoloCuadrillas.Checked) tipo = TipoMatriz.Cuadrilla;
+                var result = CargaMatricesParaPrueba is null
+                    ? await _matrixCatalogViewService.LoadAsync(_context, filtro)
+                    : await CargaMatricesParaPrueba(filtro);
 
-                var result = await _matrixCatalogViewService.LoadAsync(_context, new MatrixCatalogFilterInput
-                {
-                    ProyectoId = _proyectoId,
-                    SearchText = txtBuscar.Text,
-                    Tipo = tipo
-                });
+                // Cancelar no implica que EF haya terminado: sólo la generación
+                // vigente publica, y sólo si la UI sigue viva.
+                if (!EsCargaVigente(generacion)) return;
 
                 _rowsActuales = result.Rows;
                 _listaActual = _rowsActuales.Select(r => r.Source).ToList();
@@ -88,33 +197,41 @@ namespace SOPRO.WinForms.Forms
                 {
                     dgvMatrices.DataSource = null;
                     dgvMatrices.DataSource = _rowsActuales;
-                    DataGridViewStateHelper.Restore(dgvMatrices, _gridState);
+                    DataGridViewStateHelper.Restore(dgvMatrices, gridState);
                 }
                 ResumeLayout();
 
                 lblStatus.Text = result.StatusText;
                 ActualizarEstadoBotones();
             }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+                // Carga superada por una más reciente o cierre del formulario.
+            }
             catch (Exception ex)
             {
+                if (!EsCargaVigente(generacion)) return;
                 MessageBox.Show($"Error al cargar matrices:\n{ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                 lblStatus.Text = "Error al cargar matrices";
             }
             finally
             {
-                btnRefrescar.Enabled = true;
+                if (lockTomado) _cargaLock.Release();
+                if (ReferenceEquals(_cargaCts, cts)) _cargaCts = null;
+                if (EsCargaVigente(generacion)) btnRefrescar.Enabled = true;
+                cts.Dispose();
             }
         }
 
-        private void btnConfigReporte_Click(object sender, EventArgs e)
+        private async void btnConfigReporte_Click(object sender, EventArgs e)
         {
             using var form = new FormColumnasAPU(_context, _proyectoId, FormColumnasAPU.ModoColumnas.Matrices);
             if (form.ShowDialog() == DialogResult.OK || form.CambiosRealizados)
             {
                 _columnasConfig = ColumnasMatrizHelper.ObtenerColumnas(_context, _proyectoId);
                 ConfigurarGrid();
-                CargarMatrices();
+                await CargarMatricesAsync();
             }
         }
 
@@ -125,50 +242,62 @@ namespace SOPRO.WinForms.Forms
         private const string MensajeCambiosSinGuardarMatrices =
             "Hay cambios sin guardar en el proyecto. Guarde o descarte esos cambios antes de eliminar matrices.";
 
-        private async Task EliminarMatricesSeleccionadasAsync()
+        internal const string MensajeEliminacionRecuperable =
+            "No se pudo completar la eliminación de matrices. Vuelva a intentarlo.";
+
+        internal async Task EliminarMatricesSeleccionadasAsync()
         {
-            var seleccionadas = SeleccionGridHelper.FilasSeleccionadas(dgvMatrices)
-                .Where(r => !r.IsNewRow)
-                .Select(r => (r.DataBoundItem as MatrixGridRowDisplay)?.Source)
-                .Where(x => x != null)
-                .DistinctBy(x => x!.Id)
-                .Cast<Matriz>()
-                .ToList();
+            if (!EsUiViva()) return;
 
-            if (!seleccionadas.Any())
-            {
-                if (_matrizSeleccionada == null)
-                {
-                    MessageBox.Show("Seleccione una o más matrices para eliminar.", "Selección Requerida",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
-                }
-                seleccionadas.Add(_matrizSeleccionada);
-            }
-
-            // El comando escribe por un contexto nuevo: si la UI tiene ediciones
-            // pendientes en el contexto compartido, se aborta sin guardar ni limpiar.
-            if (CatalogoBatchDeletionHelper.HayCambiosSinGuardar(_context))
-            {
-                MessageBox.Show(MensajeCambiosSinGuardarMatrices,
-                    "Cambios sin guardar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            var ids = seleccionadas
-                .Select(m => m.Id)
-                .Distinct()
-                .OrderBy(id => id)
-                .ToList();
-
+            // El try cubre desde la primera sentencia: resolver la selección, leer
+            // el grid, comprobar cambios pendientes y cada MessageBox son
+            // operaciones riesgosas que antes quedaban fuera del límite.
             try
             {
+                var seleccionadas = SeleccionMatricesParaPrueba is not null
+                    ? SeleccionMatricesParaPrueba().ToList()
+                    : SeleccionGridHelper.FilasSeleccionadas(dgvMatrices)
+                        .Where(r => !r.IsNewRow)
+                        .Select(r => (r.DataBoundItem as MatrixGridRowDisplay)?.Source)
+                        .Where(x => x != null)
+                        .DistinctBy(x => x!.Id)
+                        .Cast<Matriz>()
+                        .ToList();
+
+                if (!seleccionadas.Any())
+                {
+                    if (_matrizSeleccionada == null)
+                    {
+                        MessageBox.Show("Seleccione una o más matrices para eliminar.", "Selección Requerida",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+                    seleccionadas.Add(_matrizSeleccionada);
+                }
+
+                // El comando escribe por un contexto nuevo: si la UI tiene ediciones
+                // pendientes en el contexto compartido, se aborta sin guardar ni limpiar.
+                if (CatalogoBatchDeletionHelper.HayCambiosSinGuardar(_context))
+                {
+                    MessageBox.Show(MensajeCambiosSinGuardarMatrices,
+                        "Cambios sin guardar", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                var ids = seleccionadas
+                    .Select(m => m.Id)
+                    .Distinct()
+                    .OrderBy(id => id)
+                    .ToList();
+
                 // La previsualización describe el mismo lote que ejecutará el comando:
                 // referencias auxiliares externas que se quitarán, recálculo y filas
                 // del presupuesto que bloquean. La confirmación nunca promete un
                 // borrado que luego vaya a rechazarse por una dependencia esperada.
                 var previewResult = await _previewMatricesBatchDeletion.Execute(
                     _sessionInfo, new PreviewMatricesBatchDeletionRequest(ids));
+
+                if (!EsUiViva()) return;
 
                 if (!previewResult.IsSuccess)
                 {
@@ -194,6 +323,8 @@ namespace SOPRO.WinForms.Forms
                 var result = await _deleteMatricesBatch.Execute(
                     _sessionInfo, new DeleteMatricesBatchRequest(ids));
 
+                if (!EsUiViva()) return;
+
                 if (!result.IsSuccess)
                 {
                     MessageBox.Show(result.Error!.Message, "Error",
@@ -212,11 +343,26 @@ namespace SOPRO.WinForms.Forms
             {
                 // Operación cancelada: no mostrar error.
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                MessageBox.Show($"Error al eliminar la(s) matriz(ces):\n{ex.Message}", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                // Mensaje recuperable y sin detalles técnicos: el fallo de una
+                // operación de borrado no debe exponer la excepción al usuario.
+                MostrarErrorEliminacionRecuperable();
             }
+        }
+
+        private void MostrarErrorEliminacionRecuperable()
+        {
+            if (!EsUiViva()) return;
+
+            if (MostrarMensajeEliminacionParaPrueba is not null)
+            {
+                MostrarMensajeEliminacionParaPrueba(MensajeEliminacionRecuperable);
+                return;
+            }
+
+            MessageBox.Show(MensajeEliminacionRecuperable, "Eliminación no completada",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 }

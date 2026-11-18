@@ -89,6 +89,7 @@ namespace SOPRO.WinForms.Forms
                 return;
 
             _suscripcionesGlobalesLiberadas = true;
+            CancelarCargaPendiente();
 
             FormDatosProyecto.DecimalesActualizados -= OnDecimalesActualizados_Mat;
             FormCatalogoMateriales.InsumosModificados -= _onInsumos;
@@ -98,7 +99,7 @@ namespace SOPRO.WinForms.Forms
             FormEditarMatriz.MatrizGuardada -= _onInsumos;
         }
         // ── IRecalculable ────────────────────────────────────────────────────
-        public void RecalcularTodo() => CargarMatrices();
+        public void RecalcularTodo() => SolicitarCargaMatrices();
 
         private void OnDecimalesActualizados_Mat(object sender, EventArgs e)
         {

@@ -28,7 +28,7 @@ namespace SOPRO.WinForms.Forms
             if (dgvMatrices != null) { dgvMatrices.Dock = DockStyle.Fill; dgvMatrices.BringToFront(); }
         }
 
-        public void RecargarMatrices() => CargarMatrices();
+        public void RecargarMatrices() => SolicitarCargaMatrices();
 
         public bool ConsolidacionDisponible
         {

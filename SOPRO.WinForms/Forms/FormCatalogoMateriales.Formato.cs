@@ -135,7 +135,9 @@ namespace SOPRO.WinForms.Forms
 
             ConfigurarGrid();
             ConfigurarFormatoCeldas();
-            this.Load += (s, e) => CargarMateriales();
+            this.Load += async (s, e) => await CargarMaterialesAsync();
+            this.FormClosed += (s, e) => CancelarCargaPendiente();
+            this.Disposed += (s, e) => CancelarCargaPendiente();
             this.Disposed += (s, e) => CerrarMenuContextual();
 
             dgvMateriales.ColumnHeaderMouseClick += (s, e) =>

@@ -21,7 +21,7 @@ namespace SOPRO.WinForms.Forms
     public partial class FormCatalogoManoObra
     {
 
-        public void RecalcularTodo() => CargarManoDeObra();
+        public void RecalcularTodo() => SolicitarCargaManoDeObra();
 
         private void OnDecimalesActualizados_Cat(object sender, EventArgs e)
         {

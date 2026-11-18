@@ -156,10 +156,16 @@ namespace SOPRO.WinForms.Forms
             }
 
             _startupUpdateCheckStarted = true;
-            var correlationId = DiagnosticsCorrelationId.Generate();
+
+            // Generate nunca lanza por contrato, pero la comprobación completa debe
+            // quedar dentro del try: el respaldo garantiza una correlación válida
+            // incluso si la generación fallara.
+            var correlationId = DiagnosticsCorrelationId.Fallback;
 
             try
             {
+                correlationId = DiagnosticsCorrelationId.Generate();
+
                 var currentVersion = GetCurrentApplicationVersion();
                 var result = await _updateChecker(currentVersion, CancellationToken.None);
 
