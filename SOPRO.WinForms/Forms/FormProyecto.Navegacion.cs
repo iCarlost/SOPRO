@@ -129,15 +129,15 @@ namespace SOPRO.WinForms.Forms
                 case "nodePlantillaReporte":
                     Abrir("Plantilla de Reporte", new FormPlantillaReporte(_context, _proyecto), n); break;
                 case "nodeMateriales":
-                    Abrir("Materiales", new FormCatalogoMateriales(_context, _proyecto.Id), n); break;
+                    Abrir("Materiales", CrearCatalogoMateriales(), n); break;
                 case "nodeManoObra":
                     Abrir("Mano de Obra", CrearCatalogoManoObra(), n); break;
                 case "nodeHerramienta":
-                    Abrir("Herramienta", new FormCatalogoHerramientas(_context, _proyecto.Id), n); break;
+                    Abrir("Herramienta", CrearCatalogoHerramientas(), n); break;
                 case "nodeEquipo":
-                    Abrir("Equipo", new FormCatalogoMaquinaria(_context, _proyecto.Id), n); break;
+                    Abrir("Equipo", CrearCatalogoMaquinaria(), n); break;
                 case "nodeMatrices":
-                    Abrir("Matrices", new FormMatrices(_context, _proyecto.Id), n); break;
+                    Abrir("Matrices", CrearCatalogoMatrices(), n); break;
                 case "nodeProgramaObra":
                     Abrir("Programa de Obra", new FormProgramaObra(_context, _proyecto, _diagnosticsSink, _productVersion), n); break;
                 case "nodeProgramaInsumos":

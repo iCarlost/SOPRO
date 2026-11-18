@@ -160,7 +160,7 @@ namespace SOPRO.WinForms.Forms
 
         private void AbrirEditorMatriz_ManoDeObra(Matriz matriz)
         {
-            using var form = new FormEditarMatriz(_context, _proyectoId ?? 0, matriz);
+            using var form = CrearEditorMatriz(matriz);
             form.ShowDialog(this);
         }
 
