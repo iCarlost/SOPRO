@@ -74,6 +74,24 @@ internal sealed class FailingDiagnosticsFileStore : IDiagnosticsFileStore
 
     public bool FailEnumerate { get; set; }
 
+    public bool FailDelete { get; set; }
+
+    public string? FailDeleteFileName { get; set; }
+
+    public string? ReparsePath { get; set; }
+
+    public int EnumerateCount { get; private set; }
+
+    public int DeleteCount { get; private set; }
+
+    public int LockCount { get; private set; }
+
+    public bool FailRead { get; set; }
+
+    public bool FailWrite { get; set; }
+
+    public Action<string>? AfterDelete { get; set; }
+
     public void CreateDirectory(string path)
     {
         if (FailCreateDirectory)
@@ -91,17 +109,46 @@ internal sealed class FailingDiagnosticsFileStore : IDiagnosticsFileStore
     public FileStream OpenAppend(string path) =>
         FailAppend ? throw new IOException("append inyectado") : _inner.OpenAppend(path);
 
-    public FileStream OpenExclusiveLock(string path) =>
-        FailLock ? throw new IOException("lock inyectado") : _inner.OpenExclusiveLock(path);
+    public FileStream OpenExclusiveLock(string path)
+    {
+        LockCount++;
+        return FailLock ? throw new IOException("lock inyectado") : _inner.OpenExclusiveLock(path);
+    }
 
     public void Move(string source, string destination) => _inner.Move(source, destination);
 
-    public void Delete(string path) => _inner.Delete(path);
+    public void Delete(string path)
+    {
+        if (FailDelete || string.Equals(Path.GetFileName(path), FailDeleteFileName, StringComparison.Ordinal)) throw new IOException("texto de fallo de borrado");
+        _inner.Delete(path);
+        DeleteCount++;
+        AfterDelete?.Invoke(path);
+    }
 
     public IReadOnlyList<string> EnumerateFiles(string directory, string searchPattern) =>
         FailEnumerate
             ? throw new IOException("enumerate inyectado")
-            : _inner.EnumerateFiles(directory, searchPattern);
+            : EnumerateAndCount(directory, searchPattern);
+
+    private IReadOnlyList<string> EnumerateAndCount(string directory, string searchPattern)
+    {
+        EnumerateCount++;
+        return _inner.EnumerateFiles(directory, searchPattern);
+    }
 
     public DateTime GetLastWriteTimeUtc(string path) => _inner.GetLastWriteTimeUtc(path);
+
+    public byte[] ReadAllBytes(string path) => FailRead ? throw new IOException("texto de fallo de lectura") : _inner.ReadAllBytes(path);
+
+    public bool IsReparsePoint(string path) =>
+        string.Equals(System.IO.Path.GetFullPath(path), ReparsePath is null ? null : System.IO.Path.GetFullPath(ReparsePath), StringComparison.OrdinalIgnoreCase)
+            || _inner.IsReparsePoint(path);
+
+    public void WriteNewFileAndFlush(string path, byte[] bytes)
+    {
+        if (FailWrite) throw new UnauthorizedAccessException("texto de fallo de escritura");
+        _inner.WriteNewFileAndFlush(path, bytes);
+    }
+
+    public void MoveNew(string source, string destination) => _inner.MoveNew(source, destination);
 }

@@ -31,7 +31,13 @@ Al abrir un Issue de soporte, incluye:
 2. Sistema operativo y version de .NET.
 3. Pasos para reproducir el problema.
 4. Comportamiento esperado vs. obtenido.
-5. Logs o capturas de pantalla si aplican.
+5. Una captura de pantalla solo si no muestra informacion sensible.
+
+### Registros de diagnóstico
+
+SOPRO guarda registros localmente en `%LOCALAPPDATA%\SOPRO\logs\`. La retención es best-effort: hasta 1 MiB por archivo, 10 archivos y 7 días. Incluyen datos estructurados de eventos (por ejemplo, fecha, nivel, origen, operación, versión y correlación); las excepciones se limitan al tipo y otros datos estructurales. No se guardan mensajes ni trazas de excepción. Los registros no se envían automáticamente.
+
+Puedes revisarlos y exportar manualmente una instantánea desde **Registros locales** en la pantalla principal. La vista previa corresponde al archivo exportado; revisa su contenido antes de adjuntarlo. Una exportación puede contener información sensible indirecta y una copia exportada no se elimina al borrar los registros de SOPRO. **No publiques registros en Issues públicos.** Si el equipo de soporte los necesita, comparte solo la copia revisada por un canal privado acordado. También puedes borrar los registros locales desde esa pantalla; el borrado no elimina copias exportadas.
 
 ## Seguridad
 
