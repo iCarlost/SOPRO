@@ -68,9 +68,26 @@ internal sealed class FailingDiagnosticsFileStore : IDiagnosticsFileStore
 
     public bool FailCreateDirectory { get; init; }
 
-    public bool FailAppend { get; init; }
+    public bool FailAppend { get; set; }
 
-    public bool FailLock { get; init; }
+    public bool FailLock { get; set; }
+
+    /// <summary>
+    /// Falla el candado con un <see cref="IOException"/> permanente (sin código de
+    /// contención) para distinguirlo del timeout reintentable.
+    /// </summary>
+    public bool FailLockPermanent { get; set; }
+
+    /// <summary>
+    /// Denegación permanente de candado (permisos), distinta del timeout por contención.
+    /// </summary>
+    public bool DenyLock { get; set; }
+
+    /// <summary>
+    /// Fallos de candado restantes antes de permitir la adquisición. Permite simular
+    /// contención transitoria de forma determinista sin depender de esperas reales.
+    /// </summary>
+    public int RemainingLockFailures { get; set; }
 
     public bool FailEnumerate { get; set; }
 
@@ -112,7 +129,45 @@ internal sealed class FailingDiagnosticsFileStore : IDiagnosticsFileStore
     public FileStream OpenExclusiveLock(string path)
     {
         LockCount++;
-        return FailLock ? throw new IOException("lock inyectado") : _inner.OpenExclusiveLock(path);
+        if (FailLock)
+        {
+            throw CreateLockContentionIOException();
+        }
+
+        if (FailLockPermanent)
+        {
+            throw new IOException("lock io permanente");
+        }
+
+        if (DenyLock)
+        {
+            throw new UnauthorizedAccessException("lock denegado");
+        }
+
+        if (RemainingLockFailures > 0)
+        {
+            RemainingLockFailures--;
+            throw CreateLockContentionIOException();
+        }
+
+        return _inner.OpenExclusiveLock(path);
+    }
+
+    private static IOException CreateLockContentionIOException()
+    {
+        var hresult = OperatingSystem.IsWindows()
+            ? unchecked((int)0x80070020)
+            : unchecked((int)0x8007000B);
+        return new LockContentionIOException(hresult);
+    }
+
+    private sealed class LockContentionIOException : IOException
+    {
+        public LockContentionIOException(int hresult)
+            : base("lock contention inyectado")
+        {
+            HResult = hresult;
+        }
     }
 
     public void Move(string source, string destination) => _inner.Move(source, destination);

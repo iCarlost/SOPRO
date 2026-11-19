@@ -174,9 +174,10 @@ public sealed class FileDiagnosticsSinkTests
     {
         using var temp = new DiagnosticsTempDirectory();
         var clock = new MutableTimeProvider(ClockBase);
+        var failures = new List<int>();
         var timeout = TimeSpan.FromSeconds(10);
-        var sinkA = CreateSink(temp, clock, lockTimeout: timeout);
-        var sinkB = CreateSink(temp, clock, lockTimeout: timeout);
+        var sinkA = CreateSink(temp, clock, lockTimeout: timeout, failures: failures);
+        var sinkB = CreateSink(temp, clock, lockTimeout: timeout, failures: failures);
 
         const int perSink = 50;
         var tasks = new[]
@@ -198,10 +199,15 @@ public sealed class FileDiagnosticsSinkTests
         };
 
         Task.WaitAll(tasks);
+        sinkA.Flush();
+        sinkB.Flush();
+        sinkA.Dispose();
+        sinkB.Dispose();
 
         var lines = ReadJsonLines(temp.PathFor("sopro-20261117.log"));
         Assert.AreEqual(perSink * 2, lines.Count);
         Assert.AreEqual(perSink * 2, lines.Select(line => line.GetProperty("correlationId").GetString()).Distinct().Count());
+        Assert.AreEqual(0, failures.Count);
     }
 
     [TestMethod]
@@ -462,7 +468,446 @@ public sealed class FileDiagnosticsSinkTests
         stopwatch.Stop();
 
         Assert.IsTrue(stopwatch.Elapsed < TimeSpan.FromSeconds(3), $"Espera no acotada: {stopwatch.Elapsed}");
-        Assert.IsTrue(failures.Count >= 1);
+        Assert.AreEqual(0, failures.Count, "Encolar por timeout no es un fallo: la línea se conserva.");
+        Assert.AreEqual(0, Directory.GetFiles(temp.Root, "sopro-*.log").Length);
+
+        store.FailLock = false;
+        sink.Flush();
+
+        var ids = ReadJsonLines(temp.PathFor("sopro-20261117.log"))
+            .Select(line => line.GetProperty("correlationId").GetString())
+            .ToList();
+        CollectionAssert.AreEqual(new[] { "corr-1" }, ids);
+        Assert.AreEqual(0, failures.Count);
+    }
+
+    [TestMethod]
+    public void Write_TrasTimeoutDeCandado_RecuperaAmbasLineasEnFifo()
+    {
+        using var temp = new DiagnosticsTempDirectory();
+        var clock = new MutableTimeProvider(ClockBase);
+        var failures = new List<int>();
+        var store = new FailingDiagnosticsFileStore { RemainingLockFailures = 100 };
+        var sink = CreateSink(
+            temp,
+            clock,
+            store: store,
+            lockTimeout: TimeSpan.FromMilliseconds(30),
+            failures: failures);
+
+        sink.Write(CreateEvent(clock.GetUtcNow(), "uno"));
+        Assert.AreEqual(0, Directory.GetFiles(temp.Root, "sopro-*.log").Length, "La línea debe quedar pendiente.");
+
+        store.RemainingLockFailures = 0;
+        sink.Write(CreateEvent(clock.GetUtcNow(), "dos"));
+
+        var ids = ReadJsonLines(temp.PathFor("sopro-20261117.log"))
+            .Select(line => line.GetProperty("correlationId").GetString())
+            .ToList();
+        CollectionAssert.AreEqual(new[] { "uno", "dos" }, ids);
+        Assert.AreEqual(0, failures.Count, "La recuperación transitoria no debe reportarse como fallo.");
+    }
+
+    [TestMethod]
+    public void Flush_TrasTimeoutDeCandado_VolcaLaColaUnaSolaVez()
+    {
+        using var temp = new DiagnosticsTempDirectory();
+        var clock = new MutableTimeProvider(ClockBase);
+        var failures = new List<int>();
+        var store = new FailingDiagnosticsFileStore { RemainingLockFailures = 100 };
+        var sink = CreateSink(
+            temp,
+            clock,
+            store: store,
+            lockTimeout: TimeSpan.FromMilliseconds(30),
+            failures: failures);
+
+        sink.Write(CreateEvent(clock.GetUtcNow(), "pendiente"));
+        sink.Flush();
+        Assert.AreEqual(0, failures.Count, "El timeout de Flush conserva la línea: no hay descarte.");
+        Assert.AreEqual(0, Directory.GetFiles(temp.Root, "sopro-*.log").Length);
+
+        store.RemainingLockFailures = 0;
+
+        sink.Flush();
+        sink.Flush();
+
+        var ids = ReadJsonLines(temp.PathFor("sopro-20261117.log"))
+            .Select(line => line.GetProperty("correlationId").GetString())
+            .ToList();
+        CollectionAssert.AreEqual(new[] { "pendiente" }, ids);
+        Assert.AreEqual(0, failures.Count);
+    }
+
+    [TestMethod]
+    public void Write_ConContencionRealDeCandado_EncolaYRecuperaAlLiberar()
+    {
+        using var temp = new DiagnosticsTempDirectory();
+        var clock = new MutableTimeProvider(ClockBase);
+        var failures = new List<int>();
+        var sink = CreateSink(temp, clock, lockTimeout: TimeSpan.FromMilliseconds(30), failures: failures);
+
+        var lockPath = temp.PathFor("sopro-diagnostics.lock");
+        using (var held = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+        {
+            sink.Write(CreateEvent(clock.GetUtcNow(), "bloqueada"));
+            Assert.AreEqual(0, Directory.GetFiles(temp.Root, "sopro-*.log").Length);
+        }
+
+        sink.Flush();
+
+        var ids = ReadJsonLines(temp.PathFor("sopro-20261117.log"))
+            .Select(line => line.GetProperty("correlationId").GetString())
+            .ToList();
+        CollectionAssert.AreEqual(new[] { "bloqueada" }, ids);
+        Assert.AreEqual(0, failures.Count, "La contención transitoria recuperada no es un fallo.");
+    }
+
+    [TestMethod]
+    public void Write_ConCandadoDenegado_NotificaYNoEncola()
+    {
+        using var temp = new DiagnosticsTempDirectory();
+        var clock = new MutableTimeProvider(ClockBase);
+        var failures = new List<int>();
+        var store = new FailingDiagnosticsFileStore { DenyLock = true };
+        var sink = CreateSink(
+            temp,
+            clock,
+            store: store,
+            lockTimeout: TimeSpan.FromMilliseconds(20),
+            failures: failures);
+
+        sink.Write(CreateEvent(clock.GetUtcNow(), "denegada"));
+
+        Assert.AreEqual(1, failures.Count, "La denegación permanente se notifica una vez.");
+        Assert.AreEqual(0, Directory.GetFiles(temp.Root, "sopro-*.log").Length);
+
+        store.DenyLock = false;
+        sink.Flush();
+
+        Assert.AreEqual(0, Directory.GetFiles(temp.Root, "sopro-*.log").Length, "Una denegación no debe encolar la línea.");
+        Assert.AreEqual(1, failures.Count);
+    }
+
+    [TestMethod]
+    public void Write_ConFalloPermanenteDeIO_NotificaYNoEncola()
+    {
+        using var temp = new DiagnosticsTempDirectory();
+        var clock = new MutableTimeProvider(ClockBase);
+        var failures = new List<int>();
+        var store = new FailingDiagnosticsFileStore { FailLockPermanent = true };
+        var sink = CreateSink(
+            temp,
+            clock,
+            store: store,
+            lockTimeout: TimeSpan.FromMilliseconds(20),
+            failures: failures);
+
+        sink.Write(CreateEvent(clock.GetUtcNow(), "permanente"));
+
+        Assert.AreEqual(1, failures.Count, "Un IOException permanente se notifica una vez.");
+        Assert.AreEqual(0, Directory.GetFiles(temp.Root, "sopro-*.log").Length);
+
+        store.FailLockPermanent = false;
+        sink.Flush();
+
+        Assert.AreEqual(0, Directory.GetFiles(temp.Root, "sopro-*.log").Length, "Un fallo permanente no debe encolarse ni reintentarse.");
+        Assert.AreEqual(1, failures.Count);
+    }
+
+    [TestMethod]
+    public void Write_ConFalloDeAppendEnCola_NoAnexaLaLineaActual()
+    {
+        using var temp = new DiagnosticsTempDirectory();
+        var clock = new MutableTimeProvider(ClockBase);
+        var failures = new List<int>();
+        var store = new FailingDiagnosticsFileStore { FailLock = true };
+        var sink = CreateSink(
+            temp,
+            clock,
+            store: store,
+            lockTimeout: TimeSpan.FromMilliseconds(20),
+            failures: failures);
+
+        sink.Write(CreateEvent(clock.GetUtcNow(), "pendiente"));
+        Assert.AreEqual(0, failures.Count);
+
+        store.FailLock = false;
+        store.FailAppend = true;
+        sink.Write(CreateEvent(clock.GetUtcNow(), "actual"));
+
+        Assert.AreEqual(1, failures.Count, "El fallo ambiguo del volcado se notifica una vez.");
+
+        store.FailAppend = false;
+        sink.Flush();
+
+        Assert.AreEqual(0, Directory.GetFiles(temp.Root, "sopro-*.log").Length, "La línea actual no debe anexarse tras un lote cortado.");
+        Assert.AreEqual(1, failures.Count);
+    }
+
+    [TestMethod]
+    public void Write_AlCambiarDeDia_ElVolcadoYLaLineaActualUsanElDiaActivo()
+    {
+        using var temp = new DiagnosticsTempDirectory();
+        var clock = new MutableTimeProvider(ClockBase);
+        var failures = new List<int>();
+        var store = new FailingDiagnosticsFileStore { RemainingLockFailures = 100 };
+        var sink = CreateSink(
+            temp,
+            clock,
+            maxFiles: 1,
+            retentionDays: 30,
+            store: store,
+            lockTimeout: TimeSpan.FromMilliseconds(30),
+            failures: failures);
+
+        sink.Write(CreateEvent(clock.GetUtcNow(), "vieja"));
+        store.RemainingLockFailures = 0;
+        clock.Advance(TimeSpan.FromDays(1));
+        sink.Write(CreateEvent(clock.GetUtcNow(), "nueva"));
+
+        var files = Directory.GetFiles(temp.Root, "sopro-*.log");
+        Assert.AreEqual(1, files.Length, "maxFiles=1 deja solo el archivo activo.");
+        Assert.AreEqual("sopro-20261118.log", System.IO.Path.GetFileName(files[0]));
+
+        var ids = ReadJsonLines(temp.PathFor("sopro-20261118.log"))
+            .Select(line => line.GetProperty("correlationId").GetString())
+            .ToList();
+        CollectionAssert.AreEqual(new[] { "vieja", "nueva" }, ids);
+        Assert.AreEqual(0, failures.Count);
+    }
+
+    [TestMethod]
+    public void Write_ConCandadoPermanenteYColaLlena_DescartaElMasNuevoYNotifica()
+    {
+        using var temp = new DiagnosticsTempDirectory();
+        var clock = new MutableTimeProvider(ClockBase);
+        var failures = new List<int>();
+        var store = new FailingDiagnosticsFileStore { FailLock = true };
+        var sink = CreateSink(
+            temp,
+            clock,
+            store: store,
+            lockTimeout: TimeSpan.FromMilliseconds(20),
+            failures: failures,
+            maxPendingLines: 2);
+
+        var stopwatch = Stopwatch.StartNew();
+        for (var index = 0; index < 5; index++)
+        {
+            sink.Write(CreateEvent(clock.GetUtcNow(), $"e{index}"));
+        }
+
+        stopwatch.Stop();
+        Assert.IsTrue(stopwatch.Elapsed < TimeSpan.FromSeconds(3), $"Escritura no acotada: {stopwatch.Elapsed}");
+        Assert.AreEqual(3, failures.Count, "Solo los tres rechazos por overflow deben notificarse.");
+
+        store.FailLock = false;
+        sink.Flush();
+
+        var ids = ReadJsonLines(temp.PathFor("sopro-20261117.log"))
+            .Select(line => line.GetProperty("correlationId").GetString())
+            .ToList();
+        CollectionAssert.AreEqual(new[] { "e0", "e1" }, ids);
+        Assert.AreEqual(3, failures.Count);
+    }
+
+    [TestMethod]
+    public void Write_ConLimiteDeBytesPendientes_RechazaElMasNuevo()
+    {
+        using var temp = new DiagnosticsTempDirectory();
+        var clock = new MutableTimeProvider(ClockBase);
+        var failures = new List<int>();
+        var store = new FailingDiagnosticsFileStore { FailLock = true };
+        var sink = CreateSink(
+            temp,
+            clock,
+            store: store,
+            lockTimeout: TimeSpan.FromMilliseconds(20),
+            failures: failures,
+            maxPendingLines: 10,
+            maxPendingBytes: 64);
+
+        for (var index = 0; index < 3; index++)
+        {
+            sink.Write(CreateEvent(clock.GetUtcNow(), $"b{index}"));
+        }
+
+        Assert.AreEqual(3, failures.Count, "Cada rechazo por límite de bytes debe notificarse.");
+
+        store.FailLock = false;
+        sink.Flush();
+
+        Assert.AreEqual(0, Directory.GetFiles(temp.Root, "sopro-*.log").Length, "Ninguna línea cabe en el límite de bytes.");
+        Assert.AreEqual(3, failures.Count);
+    }
+
+    [TestMethod]
+    public void Write_LineasPendientesAplicanLaRotacionPorTamanoAlVolcarse()
+    {
+        using var temp = new DiagnosticsTempDirectory();
+        var clock = new MutableTimeProvider(ClockBase);
+        var store = new FailingDiagnosticsFileStore { RemainingLockFailures = 100 };
+        var sink = CreateSink(
+            temp,
+            clock,
+            maxFileBytes: 200,
+            maxFiles: 3,
+            store: store,
+            lockTimeout: TimeSpan.FromMilliseconds(30));
+
+        sink.Write(CreateEvent(clock.GetUtcNow(), "primera"));
+        sink.Write(CreateEvent(clock.GetUtcNow(), "segunda"));
+        store.RemainingLockFailures = 0;
+        sink.Flush();
+
+        Assert.AreEqual(
+            "primera",
+            ReadJsonLines(temp.PathFor("sopro-20261117.1.log"))[0].GetProperty("correlationId").GetString());
+        Assert.AreEqual(
+            "segunda",
+            ReadJsonLines(temp.PathFor("sopro-20261117.log"))[0].GetProperty("correlationId").GetString());
+    }
+
+    [TestMethod]
+    public void Dispose_VolcaLaColaCompletaDe33LineasMasAllaDelTopeDeWrite()
+    {
+        using var temp = new DiagnosticsTempDirectory();
+        var clock = new MutableTimeProvider(ClockBase);
+        var failures = new List<int>();
+        var store = new FailingDiagnosticsFileStore { FailLock = true };
+        var sink = CreateSink(
+            temp,
+            clock,
+            store: store,
+            lockTimeout: TimeSpan.FromMilliseconds(10),
+            failures: failures);
+
+        const int count = 33;
+        for (var index = 0; index < count; index++)
+        {
+            sink.Write(CreateEvent(clock.GetUtcNow(), $"p{index:D2}"));
+        }
+
+        Assert.AreEqual(0, failures.Count);
+        Assert.AreEqual(0, Directory.GetFiles(temp.Root, "sopro-*.log").Length);
+
+        store.FailLock = false;
+        sink.Dispose();
+
+        var lines = ReadJsonLines(temp.PathFor("sopro-20261117.log"));
+        Assert.AreEqual(count, lines.Count, "Dispose debe volcar toda la cola, no solo el tope de Write.");
+        Assert.AreEqual(count, lines.Select(line => line.GetProperty("correlationId").GetString()).Distinct().Count());
+        Assert.AreEqual(0, failures.Count);
+    }
+
+    [TestMethod]
+    public void Flush_VolcaLaColaCompletaDe64Lineas()
+    {
+        using var temp = new DiagnosticsTempDirectory();
+        var clock = new MutableTimeProvider(ClockBase);
+        var failures = new List<int>();
+        var store = new FailingDiagnosticsFileStore { FailLock = true };
+        var sink = CreateSink(
+            temp,
+            clock,
+            store: store,
+            lockTimeout: TimeSpan.FromMilliseconds(10),
+            failures: failures);
+
+        const int count = 64;
+        for (var index = 0; index < count; index++)
+        {
+            sink.Write(CreateEvent(clock.GetUtcNow(), $"f{index:D2}"));
+        }
+
+        Assert.AreEqual(0, failures.Count, "La cola admite exactamente 64 líneas.");
+        Assert.AreEqual(0, Directory.GetFiles(temp.Root, "sopro-*.log").Length);
+
+        store.FailLock = false;
+        sink.Flush();
+
+        var lines = ReadJsonLines(temp.PathFor("sopro-20261117.log"));
+        Assert.AreEqual(count, lines.Count, "Flush debe volcar toda la cola acotada.");
+        Assert.AreEqual(count, lines.Select(line => line.GetProperty("correlationId").GetString()).Distinct().Count());
+        Assert.AreEqual(0, failures.Count);
+    }
+
+    [TestMethod]
+    public void Dispose_TrasTimeoutDeCandado_VolcaLaColaYNoLanza()
+    {
+        using var temp = new DiagnosticsTempDirectory();
+        var clock = new MutableTimeProvider(ClockBase);
+        var failures = new List<int>();
+        var store = new FailingDiagnosticsFileStore { RemainingLockFailures = 100 };
+        var sink = CreateSink(temp, clock, store: store, lockTimeout: TimeSpan.FromMilliseconds(30), failures: failures);
+
+        sink.Write(CreateEvent(clock.GetUtcNow(), "dispose"));
+        Assert.AreEqual(0, failures.Count);
+        store.RemainingLockFailures = 0;
+        sink.Dispose();
+        sink.Dispose();
+
+        var ids = ReadJsonLines(temp.PathFor("sopro-20261117.log"))
+            .Select(line => line.GetProperty("correlationId").GetString())
+            .ToList();
+        CollectionAssert.AreEqual(new[] { "dispose" }, ids);
+        Assert.AreEqual(0, failures.Count, "Sin descarte no hay notificación.");
+    }
+
+    [TestMethod]
+    public void Dispose_ConCandadoPermanente_NoLanzaYNotificaElDescarte()
+    {
+        using var temp = new DiagnosticsTempDirectory();
+        var clock = new MutableTimeProvider(ClockBase);
+        var failures = new List<int>();
+        var store = new FailingDiagnosticsFileStore { FailLock = true };
+        var sink = CreateSink(temp, clock, store: store, lockTimeout: TimeSpan.FromMilliseconds(20), failures: failures);
+
+        sink.Write(CreateEvent(clock.GetUtcNow(), "uno"));
+        sink.Write(CreateEvent(clock.GetUtcNow(), "dos"));
+        Assert.AreEqual(0, failures.Count, "Las líneas encoladas aún no se han descartado.");
+
+        var stopwatch = Stopwatch.StartNew();
+        sink.Dispose();
+        stopwatch.Stop();
+
+        Assert.IsTrue(stopwatch.Elapsed < TimeSpan.FromSeconds(3), $"Dispose no acotado: {stopwatch.Elapsed}");
+        Assert.AreEqual(0, Directory.GetFiles(temp.Root, "sopro-*.log").Length);
+        Assert.AreEqual(1, failures.Count, "El descarte de pendientes en Dispose se notifica una vez.");
+    }
+
+    [TestMethod]
+    public void Write_ConCallbackDeFalloRecursivo_NoSeReentraSinControl()
+    {
+        using var temp = new DiagnosticsTempDirectory();
+        var clock = new MutableTimeProvider(ClockBase);
+        var store = new FailingDiagnosticsFileStore { FailLock = true };
+        var callbackCount = 0;
+        FileDiagnosticsSink? sink = null;
+        sink = new FileDiagnosticsSink(
+            store,
+            temp.Root,
+            clock,
+            1024 * 1024,
+            10,
+            7,
+            TimeSpan.FromMilliseconds(20),
+            () =>
+            {
+                callbackCount++;
+                sink!.Write(CreateEvent(clock.GetUtcNow(), "reentrante"));
+            },
+            maxPendingLines: 1);
+
+        sink.Write(CreateEvent(clock.GetUtcNow(), "uno"));
+        Assert.AreEqual(0, callbackCount, "Encolar no notifica.");
+
+        sink.Write(CreateEvent(clock.GetUtcNow(), "dos"));
+        Assert.AreEqual(1, callbackCount, "El rechazo por overflow notifica una vez, sin reentrada en cascada.");
+
+        sink.Dispose();
+        Assert.AreEqual(2, callbackCount, "El descarte en Dispose notifica una vez, sin reentrada.");
         Assert.AreEqual(0, Directory.GetFiles(temp.Root, "sopro-*.log").Length);
     }
 
@@ -486,7 +931,9 @@ public sealed class FileDiagnosticsSinkTests
         TimeSpan? lockTimeout = null,
         List<int>? failures = null,
         IDiagnosticsFileStore? store = null,
-        string? root = null)
+        string? root = null,
+        int maxPendingLines = FileDiagnosticsSink.DefaultMaxPendingLines,
+        long maxPendingBytes = FileDiagnosticsSink.DefaultMaxPendingBytes)
     {
         return new FileDiagnosticsSink(
             store ?? new DiagnosticsFileStore(),
@@ -504,7 +951,9 @@ public sealed class FileDiagnosticsSinkTests
                     {
                         failures.Add(1);
                     }
-                });
+                },
+            maxPendingLines,
+            maxPendingBytes);
     }
 
     private static DiagnosticsEvent CreateEvent(

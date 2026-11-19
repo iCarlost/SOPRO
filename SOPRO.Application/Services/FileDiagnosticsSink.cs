@@ -10,20 +10,34 @@ namespace SOPRO.Application.Services;
 /// <summary>
 /// Sink de archivo local en formato JSON Lines (UTF-8, un evento por línea).
 /// Es thread-safe dentro del proceso y coordina append, rotación y purga entre
-/// instancias con un candado de archivo exclusivo de espera acotada. Un fallo de
-/// E/S del propio sink nunca se propaga: se notifica, como máximo, mediante un
-/// delegado sin texto libre.
+/// instancias con un candado de archivo exclusivo de espera acotada. Si el candado
+/// no se obtiene dentro del plazo, la línea ya serializada queda en una cola FIFO
+/// por instancia —acotada en cantidad y bytes— y se vuelca al siguiente candado
+/// disponible, sin prometer orden global entre instancias. Un fallo de E/S del
+/// propio sink nunca se propaga: se notifica, como máximo, mediante un delegado
+/// sin texto libre.
 /// </summary>
 public sealed class FileDiagnosticsSink : IDiagnosticsSink, IDisposable
 {
     internal const long DefaultMaxFileBytes = 1024 * 1024;
     internal const int DefaultMaxFiles = 10;
     internal const int DefaultRetentionDays = 7;
+    internal const int DefaultMaxPendingLines = 64;
+    internal const long DefaultMaxPendingBytes = 256 * 1024;
     internal static readonly TimeSpan DefaultLockTimeout = TimeSpan.FromMilliseconds(750);
 
     private const int LockRetryDelayMilliseconds = 10;
+    private const int DrainMaxLinesPerAttempt = 32;
+    private const long DrainMaxBytesPerAttempt = 128 * 1024;
+    private const int WindowsSharingViolation = 0x20;
+    private const int WindowsLockViolation = 0x21;
+    private const int UnixWouldBlock = 11;
+    private const int UnixAgainMacOs = 35;
     private const string LogSearchPattern = "sopro-*.log";
     private const string LockFileName = "sopro-diagnostics.lock";
+
+    [ThreadStatic]
+    private static bool s_reportingFailure;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -39,10 +53,22 @@ public sealed class FileDiagnosticsSink : IDiagnosticsSink, IDisposable
     private readonly int _retentionDays;
     private readonly TimeSpan _lockTimeout;
     private readonly Action? _onSinkFailure;
+    private readonly int _maxPendingLines;
+    private readonly long _maxPendingBytes;
+    private readonly Queue<byte[]> _pending = new();
 
+    private long _pendingBytes;
     private bool _purgePending = true;
     private string? _lastPurgedPath;
     private bool _disposed;
+
+    private enum LockAcquisition
+    {
+        Acquired,
+        Busy,
+        Denied,
+        Failed
+    }
 
     public FileDiagnosticsSink(
         string? rootDirectory = null,
@@ -51,7 +77,9 @@ public sealed class FileDiagnosticsSink : IDiagnosticsSink, IDisposable
         int maxFiles = DefaultMaxFiles,
         int retentionDays = DefaultRetentionDays,
         TimeSpan? lockTimeout = null,
-        Action? onSinkFailure = null)
+        Action? onSinkFailure = null,
+        int maxPendingLines = DefaultMaxPendingLines,
+        long maxPendingBytes = DefaultMaxPendingBytes)
         : this(
             new DiagnosticsFileStore(),
             rootDirectory ?? Path.Combine(WorkspacePaths.LocalDataFolder, "logs"),
@@ -60,7 +88,9 @@ public sealed class FileDiagnosticsSink : IDiagnosticsSink, IDisposable
             maxFiles,
             retentionDays,
             lockTimeout ?? DefaultLockTimeout,
-            onSinkFailure)
+            onSinkFailure,
+            maxPendingLines,
+            maxPendingBytes)
     {
     }
 
@@ -72,7 +102,9 @@ public sealed class FileDiagnosticsSink : IDiagnosticsSink, IDisposable
         int maxFiles,
         int retentionDays,
         TimeSpan lockTimeout,
-        Action? onSinkFailure)
+        Action? onSinkFailure,
+        int maxPendingLines = DefaultMaxPendingLines,
+        long maxPendingBytes = DefaultMaxPendingBytes)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
@@ -80,6 +112,8 @@ public sealed class FileDiagnosticsSink : IDiagnosticsSink, IDisposable
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxFileBytes);
         ArgumentOutOfRangeException.ThrowIfLessThan(maxFiles, 1);
         ArgumentOutOfRangeException.ThrowIfNegative(retentionDays);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxPendingLines);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxPendingBytes);
 
         _store = store;
         _rootDirectory = rootDirectory;
@@ -89,6 +123,8 @@ public sealed class FileDiagnosticsSink : IDiagnosticsSink, IDisposable
         _retentionDays = retentionDays;
         _lockTimeout = lockTimeout < TimeSpan.Zero ? TimeSpan.Zero : lockTimeout;
         _onSinkFailure = onSinkFailure;
+        _maxPendingLines = maxPendingLines;
+        _maxPendingBytes = maxPendingBytes;
     }
 
     public void Write(DiagnosticsEvent diagnosticsEvent)
@@ -118,50 +154,219 @@ public sealed class FileDiagnosticsSink : IDiagnosticsSink, IDisposable
     }
 
     /// <summary>
-    /// Cada escritura se vacía a disco de forma sincrónica, por lo que no queda
-    /// estado pendiente. El método existe para cumplir el contrato y nunca lanza.
+    /// Intenta un único volcado de la cola pendiente, acotado por los límites de la
+    /// propia cola. Nunca lanza ni espera más allá del plazo de candado configurado.
     /// </summary>
     public void Flush()
     {
+        try
+        {
+            lock (_gate)
+            {
+                if (_disposed || _pending.Count == 0)
+                {
+                    return;
+                }
+
+                _store.CreateDirectory(_rootDirectory);
+                var acquisition = TryAcquireProcessLock(out var processLock);
+                using var processLockScope = processLock;
+                if (acquisition is LockAcquisition.Denied or LockAcquisition.Failed)
+                {
+                    ReportFailure();
+                    return;
+                }
+
+                if (acquisition != LockAcquisition.Acquired)
+                {
+                    return;
+                }
+
+                DrainPending(_maxPendingLines, _maxPendingBytes);
+            }
+        }
+        catch (Exception)
+        {
+            ReportFailure();
+        }
     }
 
     public void Dispose()
     {
-        lock (_gate)
+        try
         {
-            _disposed = true;
+            lock (_gate)
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                DrainPendingOnDispose();
+                var discarded = _pending.Count > 0;
+                _disposed = true;
+                _pending.Clear();
+                _pendingBytes = 0;
+
+                if (discarded)
+                {
+                    ReportFailure();
+                }
+            }
+        }
+        catch (Exception)
+        {
+            ReportFailure();
+        }
+    }
+
+    private void DrainPendingOnDispose()
+    {
+        if (_pending.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            _store.CreateDirectory(_rootDirectory);
+            var acquisition = TryAcquireProcessLock(out var processLock);
+            using var processLockScope = processLock;
+            if (acquisition is LockAcquisition.Denied or LockAcquisition.Failed)
+            {
+                ReportFailure();
+                return;
+            }
+
+            if (acquisition == LockAcquisition.Acquired)
+            {
+                DrainPending(_maxPendingLines, _maxPendingBytes);
+            }
+        }
+        catch (Exception)
+        {
+            ReportFailure();
         }
     }
 
     private void WriteLine(byte[] line)
     {
-        var logPath = ComposeTodayPathUtc();
-
         _store.CreateDirectory(_rootDirectory);
 
-        using var processLock = TryAcquireProcessLock();
-        if (processLock is null)
+        var acquisition = TryAcquireProcessLock(out var processLock);
+        using var processLockScope = processLock;
+        if (acquisition is LockAcquisition.Denied or LockAcquisition.Failed)
         {
             ReportFailure();
             return;
         }
 
-        if (_purgePending || !string.Equals(_lastPurgedPath, logPath, StringComparison.Ordinal))
+        if (acquisition != LockAcquisition.Acquired)
         {
-            Purge(logPath);
-            _lastPurgedPath = logPath;
-            _purgePending = false;
+            EnqueuePending(line);
+            return;
         }
 
-        if (RotateIfNeeded(logPath, line.Length))
+        if (!DrainPending(DrainMaxLinesPerAttempt, DrainMaxBytesPerAttempt))
         {
-            Purge(logPath);
-            _lastPurgedPath = logPath;
+            // El volcado se cortó por un fallo ambiguo: no se anexa la línea actual
+            // sobre una cola que pudo quedar parcialmente escrita.
+            return;
         }
 
-        using var stream = _store.OpenAppend(logPath);
+        // Si el volcado se detuvo por el tope del intento, la línea actual se
+        // encola detrás del resto para no alterar el FIFO por instancia.
+        if (_pending.Count > 0)
+        {
+            EnqueuePending(line);
+            return;
+        }
+
+        AppendLine(ComposeTodayPathUtc(), line);
+    }
+
+    private void AppendLine(string destinationPath, byte[] line)
+    {
+        EnsurePurged(destinationPath);
+
+        if (RotateIfNeeded(destinationPath, line.Length))
+        {
+            Purge(destinationPath);
+            _lastPurgedPath = destinationPath;
+        }
+
+        using var stream = _store.OpenAppend(destinationPath);
         stream.Write(line, 0, line.Length);
         stream.Flush(flushToDisk: true);
+    }
+
+    private void EnsurePurged(string destinationPath)
+    {
+        if (_purgePending || !string.Equals(_lastPurgedPath, destinationPath, StringComparison.Ordinal))
+        {
+            Purge(destinationPath);
+            _lastPurgedPath = destinationPath;
+            _purgePending = false;
+        }
+    }
+
+    private void EnqueuePending(byte[] line)
+    {
+        if (_pending.Count >= _maxPendingLines || _pendingBytes + line.Length > _maxPendingBytes)
+        {
+            ReportFailure();
+            return;
+        }
+
+        _pending.Enqueue(line);
+        _pendingBytes += line.Length;
+    }
+
+    /// <summary>
+    /// Vuelca la cola en orden FIFO hasta el tope indicado, usando el archivo del día
+    /// activo al momento del volcado. Solo el timeout de candado garantiza reintento;
+    /// un fallo de append/rotación durante el volcado es ambiguo (pudo quedar una
+    /// escritura parcial), así que se notifica, se descarta esa línea y se detiene el
+    /// lote. Devuelve <c>false</c> cuando el lote se cortó por ese fallo.
+    /// </summary>
+    private bool DrainPending(int maxLines, long maxBytes)
+    {
+        if (_pending.Count == 0)
+        {
+            return true;
+        }
+
+        var destinationPath = ComposeTodayPathUtc();
+        var processedLines = 0;
+        var processedBytes = 0L;
+
+        while (_pending.Count > 0
+               && processedLines < maxLines
+               && processedBytes < maxBytes)
+        {
+            var line = _pending.Peek();
+            processedLines++;
+            processedBytes += line.Length;
+
+            try
+            {
+                AppendLine(destinationPath, line);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // La escritura pudo quedar parcial: se descarta esa línea y se corta
+                // el lote para no anexar posteriores sobre una cola dudosa.
+                _pending.Dequeue();
+                _pendingBytes -= line.Length;
+                ReportFailure();
+                return false;
+            }
+
+            _pending.Dequeue();
+            _pendingBytes -= line.Length;
+        }
+
+        return true;
     }
 
     private string ComposeTodayPathUtc()
@@ -170,8 +375,9 @@ public sealed class FileDiagnosticsSink : IDiagnosticsSink, IDisposable
         return Path.Combine(_rootDirectory, $"sopro-{day}.log");
     }
 
-    private FileStream? TryAcquireProcessLock()
+    private LockAcquisition TryAcquireProcessLock(out FileStream? processLock)
     {
+        processLock = null;
         var lockPath = Path.Combine(_rootDirectory, LockFileName);
         var stopwatch = Stopwatch.StartNew();
 
@@ -179,22 +385,41 @@ public sealed class FileDiagnosticsSink : IDiagnosticsSink, IDisposable
         {
             try
             {
-                return _store.OpenExclusiveLock(lockPath);
+                processLock = _store.OpenExclusiveLock(lockPath);
+                return LockAcquisition.Acquired;
             }
-            catch (IOException)
+            catch (IOException exception)
             {
+                if (!IsLockContention(exception))
+                {
+                    return LockAcquisition.Failed;
+                }
+
                 if (stopwatch.Elapsed >= _lockTimeout)
                 {
-                    return null;
+                    return LockAcquisition.Busy;
                 }
 
                 Thread.Sleep(LockRetryDelayMilliseconds);
             }
             catch (UnauthorizedAccessException)
             {
-                return null;
+                return LockAcquisition.Denied;
             }
         }
+    }
+
+    /// <summary>
+    /// Solo los códigos nativos de contención de archivo justifican reintentar y
+    /// encolar. Cualquier otro <see cref="IOException"/> es permanente y se reporta
+    /// sin retención. No se inspeccionan mensajes.
+    /// </summary>
+    private static bool IsLockContention(IOException exception)
+    {
+        var code = exception.HResult & 0xFFFF;
+        return OperatingSystem.IsWindows()
+            ? code is WindowsSharingViolation or WindowsLockViolation
+            : code is UnixWouldBlock or UnixAgainMacOs;
     }
 
     /// <summary>
@@ -382,11 +607,12 @@ public sealed class FileDiagnosticsSink : IDiagnosticsSink, IDisposable
 
     private void ReportFailure()
     {
-        if (_onSinkFailure is null)
+        if (_onSinkFailure is null || s_reportingFailure)
         {
             return;
         }
 
+        s_reportingFailure = true;
         try
         {
             _onSinkFailure();
@@ -394,6 +620,10 @@ public sealed class FileDiagnosticsSink : IDiagnosticsSink, IDisposable
         catch (Exception)
         {
             // El sink jamás debe fallar por su propio reporte.
+        }
+        finally
+        {
+            s_reportingFailure = false;
         }
     }
 
