@@ -15,9 +15,6 @@ namespace SOPRO.WinForms.Forms
     /// </summary>
     public sealed class FormDiagnosticoFatal : Form
     {
-        private static readonly Font FuenteTitulo = new Font("Segoe UI", 16F, FontStyle.Bold, GraphicsUnit.Point);
-        private static readonly Font FuenteMensaje = new Font("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point);
-
         private readonly Action<string> _abrirCarpeta;
 
         private readonly Panel panelHeader;
@@ -56,6 +53,7 @@ namespace SOPRO.WinForms.Forms
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterScreen;
             TopMost = true;
+            SoproDialogTheme.AplicarIconoSOPRO(this);
 
             SuspendLayout();
 
@@ -187,7 +185,7 @@ namespace SOPRO.WinForms.Forms
                 AutoSize = true,
                 BackColor = Color.Transparent,
                 ForeColor = SoproTheme.Colors.Surface,
-                Font = FuenteTitulo,
+                Font = SoproTheme.Fonts.DialogTitle,
                 Location = new Point(20, 16),
                 Text = _textoTitulo
             };
@@ -201,7 +199,7 @@ namespace SOPRO.WinForms.Forms
                 Location = new Point(24, 22),
                 Size = new Size(452, 22),
                 ForeColor = SoproTheme.Colors.Ink,
-                Font = FuenteMensaje,
+                Font = SoproTheme.Fonts.DialogBody,
                 Text = _mensajePrincipal
             };
         }
@@ -264,6 +262,9 @@ namespace SOPRO.WinForms.Forms
             button.Cursor = Cursors.Hand;
             button.FlatStyle = FlatStyle.Flat;
             button.UseVisualStyleBackColor = false;
+            // Icono y texto centrados como UN bloque (mismo ajuste que los
+            // demas dialogos SOPRO): el Inline nativo recorta el texto largo.
+            button.SoproLayout = SoproButtonLayout.Small;
             button.Font = SoproTheme.Fonts.Button;
             button.SoproContentPadding = new Padding(16, 0, 16, 0);
             button.SoproIconTextSpacing = 8;
@@ -291,6 +292,10 @@ namespace SOPRO.WinForms.Forms
             }
 
             button.SoproAutoSizeToContent = true;
+            // El layout Small no recalcula el ancho automaticamente: el cromo
+            // compartido fija el ancho al contenido con la misma medicion.
+            SoproDialogTheme.AjustarAnchoContenido(button);
+            SoproTheme.ApplyRoundedCorners(button, SoproUiMetrics.ThemeRadiusPx);
             button.SizeChanged += (_, __) => AlinearBotonesPie();
         }
 

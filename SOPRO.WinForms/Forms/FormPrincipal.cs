@@ -7,7 +7,9 @@ using SOPRO.Data.Context;
 using SOPRO.WinForms.Diagnostics;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
+using SOPRO.WinForms.UI.Controls;
 using System;
+using System.Drawing;
 using System.Diagnostics;
 using System.Reflection;
 using System.Threading;
@@ -105,16 +107,30 @@ namespace SOPRO.WinForms.Forms
             _initialProjectPath = initialProjectPath;
 
             InitializeComponent();
-            var btnRegistros = new Button
+            var btnRegistros = new SoproButton
             {
                 Name = "btnRegistrosLocales",
                 Text = "Registros locales…",
                 AccessibleName = "Revisar registros locales",
                 Dock = DockStyle.Right,
                 Size = new System.Drawing.Size(180, 38),
-                UseVisualStyleBackColor = true,
-                TabIndex = 0
+                UseVisualStyleBackColor = false,
+                TabIndex = 0,
+                Cursor = Cursors.Hand,
+                FlatStyle = FlatStyle.Flat,
+                Font = SoproTheme.Fonts.Button,
+                SoproIcon = SoproIconType.Carpeta,
+                SoproIconSize = 16,
+                SoproIconTextSpacing = 8,
+                SoproContentPadding = new Padding(14, 0, 14, 0),
+                ForeColor = SoproTheme.Colors.Ink2,
+                BackColor = SoproTheme.Colors.Surface
             };
+            btnRegistros.FlatAppearance.BorderSize = 1;
+            btnRegistros.FlatAppearance.BorderColor = SoproTheme.Colors.SurfaceBorder;
+            btnRegistros.FlatAppearance.MouseOverBackColor = SoproTheme.Colors.HoverBg;
+            btnRegistros.FlatAppearance.MouseDownBackColor = SoproTheme.Colors.SelBg;
+            SoproTheme.ApplyRoundedCorners(btnRegistros, SoproUiMetrics.ThemeRadiusPx);
             btnRegistros.Click += (_, _) => { using var dialog = new FormRegistrosLocales(); dialog.ShowDialog(this); };
             var panelDiagnostics = new Panel { Dock = DockStyle.Bottom, Height = 48, Padding = new Padding(0, 5, 0, 5), TabIndex = 0 };
             panelDiagnostics.Controls.Add(btnRegistros);
