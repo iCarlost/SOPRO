@@ -5,19 +5,27 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using SOPRO.WinForms.Helpers;
+using SOPRO.WinForms.UI.Controls;
 
 namespace SOPRO.WinForms.Forms
 {
+    /// <summary>
+    /// Gestor de registros locales de diagnóstico. Code-only (sin diseñador),
+    /// con el cromo compartido de dialogos SOPRO. No altera los flujos async,
+    /// la semántica de operaciones ni los mensajes de estado.
+    /// </summary>
     internal sealed class FormRegistrosLocales : Form
     {
         private readonly DiagnosticsLogService _service = new();
         private readonly ListBox _files = new() { Dock = DockStyle.Fill, AccessibleName = "Archivos de registro" };
         private readonly TextBox _preview = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, AccessibleName = "Vista previa completa del archivo" };
         private readonly Label _summary = new() { AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(0, 0, 0, 8) };
-        private readonly Label _status = new() { AutoSize = true, Dock = DockStyle.Bottom, Padding = new Padding(0, 8, 0, 0), AccessibleRole = AccessibleRole.StatusBar };
-        private readonly Button _export = new() { Text = "Exportar archivo…", AutoSize = true };
-        private readonly Button _delete = new() { Text = "Borrar todos…", AutoSize = true };
-        private readonly Button _refresh = new() { Text = "Actualizar", AutoSize = true };
+        private readonly Label _status = new() { AutoSize = false, Dock = DockStyle.Fill, AccessibleRole = AccessibleRole.StatusBar, AutoEllipsis = true };
+        private readonly SoproButton _export;
+        private readonly SoproButton _delete;
+        private readonly SoproButton _refresh;
+        private readonly Panel _pie;
         private DiagnosticsLogSnapshot? _snapshot;
         private CancellationTokenSource? _operationCancellation;
         private bool _busy;
@@ -26,6 +34,9 @@ namespace SOPRO.WinForms.Forms
         public FormRegistrosLocales()
         {
             Text = "Registros locales"; StartPosition = FormStartPosition.CenterParent; MinimumSize = new Size(760, 480); Size = new Size(900, 600);
+            AutoScaleMode = AutoScaleMode.Dpi;
+            BackColor = SoproTheme.Colors.CenterBg;
+            SoproDialogTheme.AplicarIconoSOPRO(this);
             FormClosing += (_, e) =>
             {
                 if (!_busy) return;
@@ -35,23 +46,149 @@ namespace SOPRO.WinForms.Forms
                 _operationCancellation?.Cancel();
             };
             AccessibleDescription = "Revisión y exportación manual de registros de diagnóstico locales.";
-            var split = new SplitContainer { Dock = DockStyle.Fill, SplitterDistance = 250, FixedPanel = FixedPanel.Panel1 };
-            var previewPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
-            previewPanel.Controls.Add(_preview);
-            var listPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10) };
-            listPanel.Controls.Add(_files);
+
+            _export = SoproDialogTheme.CrearBotonSecundario("Exportar archivo…", SoproIconType.Copiar);
+            _delete = SoproDialogTheme.CrearBotonSecundario("Borrar todos…", SoproIconType.Papelera);
+            _refresh = SoproDialogTheme.CrearBotonSecundario("Actualizar", SoproIconType.Recalcular);
+
+            var encabezado = SoproDialogTheme.CrearEncabezado(
+                "Registros locales",
+                "Revisión y exportación manual de registros de diagnóstico locales.");
+            _pie = SoproDialogTheme.CrearPie();
+
+            _status.ForeColor = SoproTheme.Colors.Muted;
+            _status.Font = SoproTheme.Fonts.Subtitle;
+            _status.TextAlign = ContentAlignment.MiddleLeft;
+            _status.Margin = new Padding(SoproDialogTheme.MargenHorizontalContenido, 0, 12, 0);
+
+            // Pie con TableLayoutPanel: columna de estado (100%) y columna de
+            // botones (AutoSize) en CELDAS DISJUNTAS. Sin superposiciones ni
+            // recalculos manuales: la etiqueta nunca cubre a los botones y los
+            // botones quedan siempre dentro del pie.
+            var flujoBotones = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Anchor = AnchorStyles.None,
+                Margin = new Padding(0),
+                Padding = new Padding(0, 0, SoproDialogTheme.MargenDerechoPie, 0)
+            };
+            _refresh.Margin = new Padding(0, 0, SoproDialogTheme.SeparacionBotones, 0);
+            _export.Margin = new Padding(0, 0, SoproDialogTheme.SeparacionBotones, 0);
+            _delete.Margin = new Padding(0);
+            flujoBotones.Controls.Add(_refresh);
+            flujoBotones.Controls.Add(_export);
+            flujoBotones.Controls.Add(_delete);
+
+            var tablaPie = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1,
+                BackColor = SoproTheme.Colors.HeaderBg,
+                Margin = new Padding(0)
+            };
+            tablaPie.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tablaPie.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            tablaPie.RowStyles.Add(new RowStyle(SizeType.Absolute, SoproDialogTheme.AltoPie));
+            tablaPie.Controls.Add(_status, 0, 0);
+            tablaPie.Controls.Add(flujoBotones, 1, 0);
+            _pie.Controls.Add(tablaPie);
+
+            // Tamaño explícito ANTES de SplitterDistance: sobre el tamaño por
+            // defecto del SplitContainer (150px) la distancia se recortaba a
+            // ~121px y Panel1 quedaba congelado en ese ancho (FixedPanel).
+            var split = new SplitContainer { Dock = DockStyle.Fill, Size = new Size(900, 400), SplitterDistance = 250, FixedPanel = FixedPanel.Panel1, BackColor = SoproTheme.Colors.GridLine };
+
+            var tarjetaLista = SoproDialogTheme.CrearTarjeta();
+            tarjetaLista.Controls.Add(_files);
+            var listPanel = new Panel { Dock = DockStyle.Fill, Padding = SoproUiMetrics.PanelPadding, BackColor = SoproTheme.Colors.CenterBg };
+            listPanel.Controls.Add(tarjetaLista);
+
+            var tarjetaVista = SoproDialogTheme.CrearTarjeta();
+            tarjetaVista.Controls.Add(_preview);
+            var previewPanel = new Panel { Dock = DockStyle.Fill, Padding = SoproUiMetrics.PanelPadding, BackColor = SoproTheme.Colors.CenterBg };
+            previewPanel.Controls.Add(tarjetaVista);
             split.Panel1.Controls.Add(listPanel); split.Panel2.Controls.Add(previewPanel);
-            var heading = new Label { Text = "Selecciona un archivo para ver su contenido completo. La exportación guarda exactamente el archivo seleccionado.", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(10) };
-            var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(6) };
-            buttons.Controls.AddRange(new Control[] { _delete, _export, _refresh });
-            Controls.Add(split); Controls.Add(buttons); Controls.Add(_status); Controls.Add(_summary); Controls.Add(heading);
+
+            ConfigurarLista();
+
+            var heading = new Label { Text = "Selecciona un archivo para ver su contenido completo. La exportación guarda exactamente el archivo seleccionado.", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(SoproDialogTheme.MargenHorizontalContenido, 14, SoproDialogTheme.MargenHorizontalContenido, 6), ForeColor = SoproTheme.Colors.Muted, Font = SoproTheme.Fonts.Subtitle };
+            _summary.Padding = new Padding(SoproDialogTheme.MargenHorizontalContenido, 0, SoproDialogTheme.MargenHorizontalContenido, 8);
+            _summary.ForeColor = SoproTheme.Colors.Ink2;
+            _summary.Font = SoproTheme.Fonts.GridHeader;
+            _summary.AccessibleName = "Resumen de registros";
+
             _files.SelectedIndexChanged += (_, _) => { if (_files.SelectedItem is DiagnosticsLogEntry entry) _preview.Text = entry.PreviewText; else _preview.Clear(); UpdateButtons(); };
-            _files.Format += (_, e) => { if (e.ListItem is DiagnosticsLogEntry entry) e.Value = $"{entry.FileName}  ·  {entry.LastWriteTimeUtc.ToLocalTime():g}  ·  {entry.Length:N0} bytes"; };
             _refresh.Click += async (_, _) => await LoadSnapshotAsync();
             _export.Click += async (_, _) => await ExportSelectedAsync();
             _delete.Click += async (_, _) => await DeleteAsync();
             Shown += async (_, _) => await LoadSnapshotAsync();
+
+            Controls.Add(split); Controls.Add(_pie); Controls.Add(_summary); Controls.Add(heading); Controls.Add(encabezado);
+            UpdateButtons();
         }
+
+        private void ConfigurarLista()
+        {
+            _files.BorderStyle = BorderStyle.None;
+            _files.BackColor = SoproTheme.Colors.Surface;
+            _files.ForeColor = SoproTheme.Colors.Ink2;
+            _files.Font = SoproTheme.Fonts.GridCell;
+            _files.IntegralHeight = false;
+            _files.DrawMode = DrawMode.OwnerDrawFixed;
+            _files.ItemHeight = SoproDialogTheme.CalcularAltoItemLista(_files);
+            _files.FontChanged += (_, _) => _files.ItemHeight = SoproDialogTheme.CalcularAltoItemLista(_files);
+            _files.DpiChangedAfterParent += (_, _) => _files.ItemHeight = SoproDialogTheme.CalcularAltoItemLista(_files);
+            _files.DrawItem += DibujarItemLista;
+        }
+
+        private void DibujarItemLista(object? sender, DrawItemEventArgs e)
+        {
+            var graphics = e.Graphics;
+            if (graphics == null || e.Index < 0 || e.Index >= _files.Items.Count) return;
+
+            bool seleccionado = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+            Color fondo = seleccionado
+                ? SoproTheme.Colors.SelBg
+                : (e.Index % 2 == 1 ? SoproTheme.Colors.RowAlt : SoproTheme.Colors.Surface);
+
+            using (var brush = new SolidBrush(fondo))
+                graphics.FillRectangle(brush, e.Bounds);
+
+            using (var line = new Pen(SoproTheme.Colors.GridLine))
+                graphics.DrawLine(line, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right - 1, e.Bounds.Bottom - 1);
+
+            if (seleccionado)
+            {
+                int anchoAcento = Math.Max(2, (int)Math.Round(3 * (_files.DeviceDpi / 96.0)));
+                using var acento = new SolidBrush(SoproTheme.Colors.RibbonActive);
+                graphics.FillRectangle(acento, new Rectangle(e.Bounds.Left, e.Bounds.Top, anchoAcento, e.Bounds.Height));
+            }
+
+            if ((e.State & DrawItemState.Focus) == DrawItemState.Focus)
+            {
+                using var foco = new Pen(SoproTheme.Colors.BrandLt);
+                graphics.DrawRectangle(foco, e.Bounds.Left + 1, e.Bounds.Top + 1, e.Bounds.Width - 3, e.Bounds.Height - 3);
+            }
+
+            if (_files.Items[e.Index] is not DiagnosticsLogEntry entrada) return;
+
+            TextRenderer.DrawText(
+                graphics,
+                FormatearEntrada(entrada),
+                _files.Font,
+                new Rectangle(e.Bounds.Left + SoproDialogTheme.MargenLateralItemLista, e.Bounds.Top, Math.Max(1, e.Bounds.Width - SoproDialogTheme.MargenLateralItemLista - 4), e.Bounds.Height),
+                seleccionado ? SoproTheme.Colors.Ink : SoproTheme.Colors.Ink2,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+        }
+
+        /// <summary>Fila tal como se muestra en la lista (misma cadena que la vista previa de la lista nativa).</summary>
+        internal static string FormatearEntrada(DiagnosticsLogEntry entrada)
+            => $"{entrada.FileName}  ·  {entrada.LastWriteTimeUtc.ToLocalTime():g}  ·  {entrada.Length:N0} bytes";
 
         private async Task LoadSnapshotAsync()
         {

@@ -103,6 +103,12 @@ namespace SOPRO.WinForms.Helpers
             /// al pie de la banda de comandos.
             /// </summary>
             public static readonly Font RibbonGroupCaption = new Font(FontFamily, 8.5F, FontStyle.Regular, GraphicsUnit.Point);
+
+            /// <summary>Titulo de la banda de encabezado de un dialogo SOPRO.</summary>
+            public static readonly Font DialogTitle = new Font(FontFamily, 16F, FontStyle.Bold, GraphicsUnit.Point);
+
+            /// <summary>Cuerpo de mensaje de un dialogo SOPRO.</summary>
+            public static readonly Font DialogBody = new Font(FontFamily, 10.5F, FontStyle.Regular, GraphicsUnit.Point);
         }
 
         // =====================================================================
@@ -891,8 +897,10 @@ namespace SOPRO.WinForms.Helpers
         /// <summary>
         /// Aplica un recorte redondeado al control y lo recalcula ante cambios
         /// de tamano o de DPI (AutoScaleMode.Font en 100/125/150%).
+        /// Internal: los botones de los dialogos SOPRO comparten este recorte
+        /// para mantener la misma esquina redondeada que los del encabezado.
         /// </summary>
-        private static void ApplyRoundedCorners(Control control, int radiusPx)
+        internal static void ApplyRoundedCorners(Control control, int radiusPx)
         {
             if (control == null) return;
 
