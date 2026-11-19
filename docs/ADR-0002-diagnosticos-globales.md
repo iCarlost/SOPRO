@@ -33,8 +33,8 @@ El cambio es estructural, pero no requiere crear un proyecto o una capa nueva. L
 - El evento es inmutable, con campos fijos (sin campo de metadatos libres), e incluye timestamp UTC, severidad, origen, operación, versión de producto, versión de esquema cuando aplique e identificador de correlación.
 - Si hay excepción, el payload es conservador: nombre completo del tipo, `HResult` y cadena de tipos de las excepciones internas (máximo 8, aplanando `AggregateException`). No se registran `Exception.Message`, `Exception.StackTrace` ni `Exception.ToString()`, porque ese texto puede arrastrar rutas, nombres de proyecto y datos de usuario.
 - La privacidad no depende solo de expresiones regulares: el contrato solo admite campos fijos y no tiene campo de metadatos libres, además de excluir el texto libre de excepciones. Sobre esos campos se sustituye el perfil por `%USERPROFILE%`, se eliminan caracteres de control, se redactan patrones obvios de secretos y se trunca la longitud.
-- El logger será thread-safe, append/flush y tolerante a fallos: un error del propio logger nunca se propaga ni bloquea la UI. Cada escritura se vacía a disco de forma sincrónica.
-- El sink de archivo toma un candado interproceso exclusivo (`FileShare.None` sobre `sopro-diagnostics.lock`) con espera acotada alrededor de la selección del archivo, el append, la rotación y la purga. Si no lo obtiene, descarta el evento y reporta el fallo solo de forma interna; nunca escribe fuera del candado.
+- El logger será thread-safe, append/flush y tolerante a fallos: un error del propio logger nunca se propaga ni bloquea la UI. Cada línea anexada con éxito se vacía a disco de forma sincrónica; las líneas retenidas por timeout de candado siguen la política FIFO del punto siguiente.
+- El sink de archivo toma un candado interproceso exclusivo (`FileShare.None` sobre `sopro-diagnostics.lock`) con espera acotada alrededor de la selección del archivo, el append, la rotación y la purga. Bajo contención transitoria la línea ya serializada queda en una cola FIFO **por instancia**, acotada a 64 líneas/256 KiB, que se vacía antes de la escritura en curso y por completo en `Flush`/`Dispose`. El desbordamiento de esa cola y los fallos permanentes notifican mediante el callback opcional de fallo ya existente; nunca se escribe fuera del candado y no hay garantía de orden global entre procesos.
 
 ### Almacenamiento y retención
 
@@ -98,7 +98,7 @@ Se adoptó el sink en las rutas priorizadas:
 
 Se añadió el aviso de primera ejecución, la exportación manual con vista previa, el borrado explícito y la documentación en `README.md`/`SUPPORT.md`.
 
-El barrido de `async void` y fire-and-forget residual queda fuera de este ADR y se tratará en otro issue.
+El barrido de `async void` y fire-and-forget residual se completó con el issue [#151](https://github.com/iCarlost/SOPRO/issues/151) y el PR [#152](https://github.com/iCarlost/SOPRO/pull/152); la estabilización de pruebas y la retención bajo contención se endurecieron después en #155/#156 y #157/#158.
 
 ## Alternativas descartadas
 
@@ -122,4 +122,4 @@ El barrido de `async void` y fire-and-forget residual queda fuera de este ADR y 
 
 ## Consecuencias
 
-Se obtendrá un diagnóstico local reproducible para fallos en campo, con una política conservadora ante estados desconocidos. El usuario deberá cerrar y reabrir la aplicación tras un fatal, y los registros locales en claro seguirán siendo información sensible indirecta; esto se mitiga con sanitización, retención limitada, ausencia de red y exportación manual.
+Se obtiene un diagnóstico local reproducible para fallos en campo, con una política conservadora ante estados desconocidos. El usuario deberá cerrar y reabrir la aplicación tras un fatal, y los registros locales en claro seguirán siendo información sensible indirecta; esto se mitiga con sanitización, retención limitada, ausencia de red y exportación manual. La aplicación no cablea hoy el callback opcional de fallo del sink, de modo que el descarte por desbordamiento o fallo permanente del archivo no se propaga a la UI.
