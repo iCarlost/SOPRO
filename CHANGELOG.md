@@ -6,6 +6,21 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 
 ## [No publicado]
 
+## [1.20.0] - 2026-11-18
+
+### Agregado
+- Diagnóstico local persistente para fallos de la aplicación, con rotación y retención acotadas, sin envío automático por red.
+- Hooks globales para fallos de UI, excepciones no controladas y tareas no observadas, con diálogo fatal cuando no es seguro continuar.
+- Controles de privacidad y soporte para revisar, exportar y borrar los registros locales; aviso informativo en la primera ejecución.
+
+### Cambiado
+- Las rutas críticas de apertura y migración de proyectos, updater, recálculo, FSR y matrices registran eventos estructurados para soporte.
+- Las cargas de Materiales, Mano de Obra, Maquinaria y Matrices se serializan por formulario, descartan resultados obsoletos y no publican sobre ventanas cerradas.
+
+### Corregido
+- Excepciones y tareas no observadas en operaciones asíncronas de Programa de Obra, catálogos y eliminación de matrices.
+- Reentrada entre Calcular y Guardar en el editor de maquinaria, y apertura de la calculadora después de cerrar el formulario.
+
 ## [1.17.0] - 2026-11-09
 
 ### Agregado
