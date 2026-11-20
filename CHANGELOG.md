@@ -6,6 +6,14 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 
 ## [No publicado]
 
+## [1.20.1] - 2026-11-20
+
+### Cambiado
+- Formularios de registros locales y aviso de privacidad del diagnóstico reestilizados con el tema visual de la aplicación.
+
+### Corregido
+- El registro de diagnóstico local conserva eventos en una cola acotada durante la contención del bloqueo de escritura y los vuelca en orden al liberarse, en lugar de descartarlos inmediatamente.
+
 ## [1.20.0] - 2026-11-18
 
 ### Agregado
