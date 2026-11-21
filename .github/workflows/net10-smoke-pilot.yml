@@ -1,0 +1,73 @@
+name: SOPRO net10 smoke pilot
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+permissions:
+  contents: read
+# Workflow aislado: no comparte concurrencia con ci.yml y no se dispara por
+# push. En pull_request solo el job con la etiqueta exacta 'net10-smoke-pilot'
+# se ejecuta; otras etiquetas dejan el run en skipped. Sin permisos write ni
+# secretos. El label debe existir y lo aplica un mantenedor.
+concurrency:
+  group: sopro-net10-smoke-pilot-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  net10-smoke-pilot:
+    name: Net10 smoke pilot (PR label / manual, non-blocking)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.label.name == 'net10-smoke-pilot')
+    runs-on: windows-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      # En pull_request se prueba el HEAD del PR (no el merge commit). Se indica
+      # el repositorio head para PRs desde forks. Esto ejecuta código del PR en
+      # un job con token de solo lectura y sin secretos; el label es la puerta
+      # de aprobación del mantenedor.
+      - name: Checkout PR head (not merge)
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          persist-credentials: false
+      - name: Checkout manual ref
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 10.0.400
+      # El wrapper falla ante cualquier exit inesperado, resultados ausentes o
+      # resultados incoherentes con el código. BLOCKED (3) es la única salida
+      # no-PASS aceptada, porque significa incapacidad del runner antes de
+      # arrancar la app. FAIL (1) y cualquier otro código hacen fallar el step.
+      - name: Run net10 smoke pilot
+        shell: pwsh
+        run: |
+          $work = Join-Path $env:RUNNER_TEMP 'sopro-net10-smoke'
+          & ./tools/net10-smoke/Invoke-Pilot.ps1 `
+            -RepoRoot $env:GITHUB_WORKSPACE `
+            -WorkDir $work `
+            -KeepRunDir
+          exit $LASTEXITCODE
+      # Evidencia mínima y sin binarios. No se sube ef-events.log (puede
+      # contener SQL de la app); solo snapshots del hook, logs de sondas y el
+      # resumen. Retención corta.
+      - name: Upload minimal smoke evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sopro-net10-smoke-pilot
+          retention-days: 3
+          path: |
+            ${{ runner.temp }}/sopro-net10-smoke/sopro-smoke-*/results.json
+            ${{ runner.temp }}/sopro-net10-smoke/sopro-smoke-*/logs/probe-*.log
+            ${{ runner.temp }}/sopro-net10-smoke/sopro-smoke-*/probes/**/hook-*.txt
+            ${{ runner.temp }}/sopro-net10-smoke/sopro-smoke-*/probes/app/project-signal.txt
+            ${{ runner.temp }}/sopro-net10-smoke/sopro-smoke-*/probes/app/window-signal.txt
+          if-no-files-found: warn
