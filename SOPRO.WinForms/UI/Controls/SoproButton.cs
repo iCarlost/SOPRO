@@ -87,6 +87,7 @@ namespace SOPRO.WinForms.UI.Controls
         }
 
         [Category("SOPRO")]
+        [DefaultValue(typeof(Color), "120, 120, 120")]
         public Color SoproDisabledIconColor
         {
             get => _disabledIconColor;
@@ -167,6 +168,7 @@ namespace SOPRO.WinForms.UI.Controls
         }
 
         [Category("SOPRO")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public Padding SoproContentPadding
         {
             get => _soproContentPadding;

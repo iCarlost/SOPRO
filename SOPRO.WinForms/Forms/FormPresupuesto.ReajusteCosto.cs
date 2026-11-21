@@ -9,6 +9,7 @@ using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Services;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -61,6 +62,7 @@ namespace SOPRO.WinForms.Forms
         /// Seam de prueba: se ejecuta después de confirmar el comando y antes de volcar
         /// la instantánea del concepto hoja, para simular un fallo postcommit.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal Action? AntesDeAplicarReajusteCostoConfirmadoParaPrueba { get; set; }
 
         /// <summary>
@@ -68,6 +70,7 @@ namespace SOPRO.WinForms.Forms
         /// lectura del panel visible al reconciliar una matriz afectada por un commit
         /// confirmado. Permite simular que la recarga no pudo aplicarse.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal Func<bool>? IntentarRecargarMatrizVisibleDesdeBdParaPrueba { get; set; }
 
         internal bool ReajusteCostoBloqueadoPorResultadoIncierto => _reajusteCostoBloqueadoPorResultadoIncierto;

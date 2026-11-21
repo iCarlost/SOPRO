@@ -7,6 +7,7 @@
 // - Grid en mm (líneas menores) y cada 10mm (líneas mayores)
 // - Hit-testing y handles en coordenadas px, convertidas a dmm
 // ============================================================
+using System.ComponentModel;
 using System.Drawing.Drawing2D;
 
 namespace SOPRO.WinForms.Forms.Disenador;
@@ -16,19 +17,31 @@ public class CanvasPanel : Panel
     // ── Dimensiones físicas del canvas ───────────────────────
     // AnchoHojaDmm: ancho imprimible en dmm (lo fija el Form)
     // AltoZonaDmm:  alto de esta franja en dmm
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int AnchoHojaDmm { get; set; } = Unidades.MmADmm(195.9);
+
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int AltoZonaDmm  { get; set; } = Unidades.MmADmm(40);
 
     // Escala px/dmm — se recalcula cuando cambia el tamaño del panel
     public double Escala { get; private set; } = 1.0;
 
     // ── Dependencias ─────────────────────────────────────────
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public ImagenCache          Cache { get; set; } = new();
+
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public CanvasCommandService Cmd   { get; set; } = new();
 
     // ── Estado ───────────────────────────────────────────────
     public List<ElementoCanvas>    Elementos            { get; } = new();
     public ElementoCanvas?         ElementoSeleccionado { get; private set; }
+
+    [DefaultValue(ZonaCanvas.Encabezado)]
     public ZonaCanvas              Zona                 { get; set; }
 
     public event Action<ElementoCanvas?>? SeleccionCambiada;
@@ -71,6 +84,8 @@ public class CanvasPanel : Panel
     /// Cuando es false, el canvas ignora todos los clics.
     /// Solo el dropdown de zona puede activarlo.
     /// </summary>
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool EsActivo { get; set; } = true;
 
     // ── Recalcular escala ────────────────────────────────────

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using SOPRO.Application.DTOs.Programacion;
@@ -70,6 +71,7 @@ namespace SOPRO.WinForms.Controls
         }
 
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public GanttVisualSettings VisualSettings
         {
             get => _visualSettings.Clone();
@@ -80,6 +82,8 @@ namespace SOPRO.WinForms.Controls
             }
         }
 
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public GanttRenderModel? RenderModel
         {
             get => _renderModel;
@@ -92,6 +96,8 @@ namespace SOPRO.WinForms.Controls
             }
         }
 
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int? SelectedActivityId
         {
             get => _selectedActivityId;
@@ -103,6 +109,7 @@ namespace SOPRO.WinForms.Controls
             }
         }
 
+        [DefaultValue(GanttFooterDisplayMode.Ninguno)]
         public GanttFooterDisplayMode FooterDisplayMode
         {
             get => _footerDisplayMode;
@@ -117,6 +124,7 @@ namespace SOPRO.WinForms.Controls
             }
         }
 
+        [DefaultValue(GanttSegmentLabelPosition.Arriba)]
         public GanttSegmentLabelPosition SegmentLabelPosition
         {
             get => _segmentLabelPosition;
@@ -131,6 +139,7 @@ namespace SOPRO.WinForms.Controls
         }
 
 
+        [DefaultValue(64)]
         public int TimelineCellWidth
         {
             get => _timelineCellWidth;

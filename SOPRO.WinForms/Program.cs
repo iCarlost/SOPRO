@@ -20,6 +20,16 @@ namespace SOPRO.WinForms
             // antes de instalar los hooks, no se continúa con estado desconocido.
             try
             {
+                // Mitigación temporal del salto EF Core 8 -> 10: Microsoft.Data.Sqlite 10
+                // devuelve en UTC las fechas TEXT con offset, interpreta como UTC las
+                // lecturas de DateTimeOffset sin offset y convierte a UTC la escritura
+                // de DateTimeOffset en columnas REAL. SOPRO persiste DateTime sin offset
+                // con reloj local y espera la semántica previa.
+                // Debe fijarse una sola vez y antes del primer uso de SQLite.
+                // Retirar cuando la persistencia se migre explícitamente a UTC.
+                AppContext.SetSwitch(
+                    "Microsoft.Data.Sqlite.Pre10TimeZoneHandling", isEnabled: true);
+
                 ApplicationConfiguration.Initialize();
                 System.Windows.Forms.Application.EnableVisualStyles();
                 System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);

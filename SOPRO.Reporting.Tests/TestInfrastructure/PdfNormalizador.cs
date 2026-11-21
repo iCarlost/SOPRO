@@ -126,6 +126,20 @@ internal static class PdfNormalizador
     }
 
     /// <summary>
+    /// Neutraliza solo las formas volatiles que viven dentro de los campos tipograficos y
+    /// del paquete XMP (subset tags, fechas y UUIDs), sin exigir el diccionario Info ya
+    /// normalizado de <see cref="NeutralizarNoDeterminismoResidual"/>. Lo usa el comparador
+    /// semantico sobre el PDF crudo del renderer (que aun no tiene /ModDate).
+    /// </summary>
+    internal static byte[] NeutralizarFormasVolatiles(byte[] bytes)
+    {
+        var text = Encoding.Latin1.GetString(bytes);
+        text = ParchearTagsFuente(text);
+        text = ParchearMetadataXmp(text);
+        return Encoding.Latin1.GetBytes(text);
+    }
+
+    /// <summary>
     /// Parche concreto y acotado de las cuatro fuentes residuales de no-determinismo (ver resumen
     /// de la clase). Todos los reemplazos conservan la longitud original byte a byte:
     ///   - tags de fuente: solo en entradas /BaseFont y /FontName ("ZWKAGD+" -> "SOPROX+");
@@ -136,10 +150,8 @@ internal static class PdfNormalizador
     /// </summary>
     internal static byte[] NeutralizarNoDeterminismoResidual(byte[] bytes)
     {
-        var text = Encoding.Latin1.GetString(bytes);
-        text = ParchearTagsFuente(text);
+        var text = Encoding.Latin1.GetString(NeutralizarFormasVolatiles(bytes));
         text = ParchearInfoPdf(text);
-        text = ParchearMetadataXmp(text);
         return Encoding.Latin1.GetBytes(text);
     }
 

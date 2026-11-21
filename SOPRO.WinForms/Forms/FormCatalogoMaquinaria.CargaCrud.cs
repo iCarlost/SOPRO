@@ -5,6 +5,7 @@ using SOPRO.WinForms.Services;
 using SOPRO.Data.Repositories;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -38,12 +39,14 @@ namespace SOPRO.WinForms.Forms
         /// Seam interno de prueba: sustituye la consulta por una carga diferida
         /// controlada. En producción queda en null y se usa el servicio real.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal Func<CatalogFilterInput, Task<List<Maquinaria>>>? CargadorMaquinariaOverride { get; set; }
 
         /// <summary>
         /// Seam interno de prueba para observar el aviso de error sin abrir un
         /// modal real. El comportamiento productivo no cambia.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal Action<string, string> NotificarErrorCarga { get; set; } = (mensaje, titulo) =>
             MessageBox.Show(mensaje, titulo, MessageBoxButtons.OK, MessageBoxIcon.Error);
 

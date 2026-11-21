@@ -173,6 +173,46 @@ jobs:
         with:
           dotnet-version: 10.0.400
 
+      # net8.0 esta EOL: SOPRO.Calculation se sigue compilando para net8.0, asi
+      # que la solucion necesita su targeting pack. El SDK 8 solo aporta pack y
+      # runtime 8; global.json mantiene 10.0.400 como SDK de compilacion.
+      - name: Setup .NET 8 SDK for net8.0 targeting pack
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 8.0.x
+
+      # Paridad PDF EF8 vs net10: se compila el MISMO harness test-only en un
+      # checkout separado del baseline EF8 FIJADO POR SHA (no el SHA base del PR,
+      # que es mutable). Ese baseline ejecuta sus goldens legacy EF8 originales y
+      # exporta dos PDFs de referencia SOLO a RUNNER_TEMP; no se publican artefactos.
+      - name: Checkout pinned EF8 reference baseline
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: 2acdea1cb3aafbd4e8ed32025996ca40d74af91c
+          path: ef8-baseline
+          persist-credentials: false
+
+      - name: Install EF8 parity harness in baseline checkout
+        shell: pwsh
+        run: |
+          Copy-Item -LiteralPath "SOPRO.Reporting.Tests/TestInfrastructure/Ef8PdfParityReference.cs" `
+            -Destination "ef8-baseline/SOPRO.Reporting.Tests/TestInfrastructure/Ef8PdfParityReference.cs" -Force
+
+      - name: Run EF8 legacy goldens and export PDF references
+        shell: pwsh
+        run: |
+          $baseline = (git -C ef8-baseline rev-parse HEAD).Trim()
+          if ($baseline -ne '2acdea1cb3aafbd4e8ed32025996ca40d74af91c') {
+            throw "El checkout EF8 no quedo en el SHA fijo; HEAD real: '$baseline'."
+          }
+          Write-Host "Baseline EF8 HEAD real: $baseline"
+          $env:SOPRO_EF8_EXPORT_DIR = Join-Path $env:RUNNER_TEMP 'sopro-ef8-pdf-reference'
+          $env:SOPRO_EF8_BASELINE_COMMIT = $baseline
+          dotnet test ef8-baseline/SOPRO.Reporting.Tests/SOPRO.Reporting.Tests.csproj `
+            --configuration Release --nologo `
+            --filter "FullyQualifiedName~CatalogoMatricesPdfRendererTests|FullyQualifiedName~Ef8PdfParityReference"
+          exit $LASTEXITCODE
+
       - name: Restore solution
         run: dotnet restore SOPRO.sln --nologo
 
@@ -180,9 +220,17 @@ jobs:
         run: dotnet build SOPRO.sln --configuration Release --no-restore --nologo
 
       - name: Run solution tests
-        run: >
-          dotnet test SOPRO.sln --configuration Release --no-build --no-restore --nologo
-          --blame-hang-timeout 600s --blame-hang-dump-type none
+        shell: pwsh
+        run: |
+          $baseline = (git -C ef8-baseline rev-parse HEAD).Trim()
+          if ($baseline -ne '2acdea1cb3aafbd4e8ed32025996ca40d74af91c') {
+            throw "El checkout EF8 no quedo en el SHA fijo; HEAD real: '$baseline'."
+          }
+          $env:SOPRO_EF8_REFERENCE_DIR = Join-Path $env:RUNNER_TEMP 'sopro-ef8-pdf-reference'
+          $env:SOPRO_EF8_BASELINE_COMMIT = $baseline
+          dotnet test SOPRO.sln --configuration Release --no-build --no-restore --nologo `
+            --blame-hang-timeout 600s --blame-hang-dump-type none
+          exit $LASTEXITCODE
 
   calculation-tests:
     name: Calculation tests (${{ matrix.os }})
@@ -205,6 +253,14 @@ jobs:
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 10.0.400
+
+      # net8.0 esta EOL: SOPRO.Tests compila contra el target net8.0 de
+      # SOPRO.Calculation. El SDK 8 aporta su targeting pack;
+      # global.json mantiene 10.0.400 como SDK de compilacion.
+      - name: Setup .NET 8 SDK for net8.0 targeting pack
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 8.0.x
 
       - name: Restore tests
         run: dotnet restore SOPRO.Tests/SOPRO.Tests.csproj --nologo
@@ -232,6 +288,14 @@ jobs:
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 10.0.400
+
+      # net8.0 esta EOL: se instala el SDK 8 solo para aportar el targeting pack
+      # net8.0 con el que se compila SOPRO.Calculation. El SDK de compilacion
+      # sigue siendo 10.0.400 (global.json); ambos conviven sin cambiar el pin.
+      - name: Setup .NET 8 SDK for net8.0 targeting pack
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 8.0.x
 
       - name: Restore package
         run: dotnet restore SOPRO.Calculation/SOPRO.Calculation.csproj --nologo
@@ -307,6 +371,17 @@ jobs:
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 10.0.400
+
+      # net8.0 esta EOL y se conserva solo por compatibilidad de consumo: este
+      # SDK 8 ejecuta el consumidor net8 (runtime 8.0) y aporta el targeting pack
+      # net8.0 con el que se compila. Es indispensable aqui porque
+      # consumers/nuget.config limpia los origenes (`<clear />`): el pack no
+      # puede descargarse de NuGet y debe existir en disco.
+      # global.json mantiene 10.0.400 como unico SDK de compilacion.
+      - name: Setup .NET 8 SDK for net8.0 consumer
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 8.0.x
 
       - name: Download validated package artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

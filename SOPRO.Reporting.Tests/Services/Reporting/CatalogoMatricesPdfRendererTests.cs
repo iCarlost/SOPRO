@@ -19,9 +19,12 @@ namespace SOPRO.Reporting.Tests.Services.Reporting;
 /// (dictamen Oracle N7-18c). La cultura se propaga por parámetro, sin estado
 /// mutable en el renderer.
 ///
-/// El contrato de paridad es la comparación de bytes NORMALIZADOS (mismo
+/// El contrato de paridad en EF8 es la comparación de bytes NORMALIZADOS (mismo
 /// <see cref="PdfNormalizador"/> que los tests legacy): sha256 del PDF
-/// normalizado + manifiesto, contra los goldens versionados.
+/// normalizado + manifiesto, contra los goldens versionados. En net10 el SHA
+/// byte-exacto deja de ser estable (la compresión depende del runtime) y el gate
+/// pasa a ser equivalencia estructural completa contra el PDF generado por el
+/// baseline EF8 fijo; el manifiesto se compara ignorando solo TamanoBytes.
 /// </summary>
 [TestClass]
 public class CatalogoMatricesPdfRendererTests
@@ -69,6 +72,15 @@ public class CatalogoMatricesPdfRendererTests
 
             var normalizado = PdfNormalizador.Normalizar(tmp, "sintetico", "seeds-sintetico");
 
+#if NET10_0_OR_GREATER
+            // Un PdfSharp/target distinto cambia la compresion del PDF, no su semantica. En
+            // net10 el SHA byte-exacto deja de ser el contrato y el gate es la equivalencia
+            // estructural contra el PDF EF8 de referencia (atado al SHA legacy versionado).
+            Ef8PdfParity.AssertParidad(
+                "sintetico", "CatalogoMatricesPdf.Legacy.sha256", File.ReadAllBytes(tmp));
+            Snapshots.AssertManifestExceptTamano(
+                "CatalogoMatricesPdf.Legacy.manifest.json", normalizado.ManifestJson);
+#else
             Snapshots.AssertSha256("CatalogoMatricesPdf.Legacy.sha256", normalizado.Sha256, "sintético");
             Snapshots.AssertOrRegenerar("CatalogoMatricesPdf.Legacy.manifest.json",
                 normalizado.ManifestJson, rutaGolden =>
@@ -79,6 +91,7 @@ public class CatalogoMatricesPdfRendererTests
                     Assert.AreEqual("CATÁLOGO DE MATRICES", m.Titulo);
                     Console.WriteLine($"Golden regenerado: {rutaGolden}");
                 });
+#endif
         }
         finally
         {
@@ -144,6 +157,15 @@ public class CatalogoMatricesPdfRendererTests
             var normalizado = PdfNormalizador.Normalizar(
                 tmp, "proyecto-sintetico", "proyecto-sintetico-vial-demo");
 
+#if NET10_0_OR_GREATER
+            // Ver la nota del escenario sintético: en net10 el gate es equivalencia
+            // estructural contra el PDF EF8 (completo, paginas, recursos y streams decodificadas).
+            Ef8PdfParity.AssertParidad(
+                "proyecto-sintetico", "CatalogoMatricesPdf.ProyectoSintetico.Legacy.sha256",
+                File.ReadAllBytes(tmp));
+            Snapshots.AssertManifestExceptTamano(
+                "CatalogoMatricesPdf.ProyectoSintetico.Legacy.manifest.json", normalizado.ManifestJson);
+#else
             Snapshots.AssertSha256("CatalogoMatricesPdf.ProyectoSintetico.Legacy.sha256", normalizado.Sha256, "proyecto sintético");
             Snapshots.AssertOrRegenerar("CatalogoMatricesPdf.ProyectoSintetico.Legacy.manifest.json",
                 normalizado.ManifestJson, rutaGolden =>
@@ -153,6 +175,7 @@ public class CatalogoMatricesPdfRendererTests
                     Assert.IsTrue(m.Paginas >= 1, "El reporte sintético debe tener al menos una página.");
                     Console.WriteLine($"Golden regenerado: {rutaGolden}");
                 });
+#endif
         }
         finally
         {

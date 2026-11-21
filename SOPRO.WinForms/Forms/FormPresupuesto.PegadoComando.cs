@@ -6,6 +6,7 @@ using SOPRO.WinForms.Diagnostics;
 using SOPRO.WinForms.Helpers;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Windows.Forms;
 
@@ -112,12 +113,14 @@ namespace SOPRO.WinForms.Forms
         /// aplican a la vista antes de forzar el fallo (0 = sin fallo). Permite ejercitar
         /// la recuperación con una vista YA parcialmente aplicada, no en pre-aplicación.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal int PruebaFilasAplicadasAntesDeFallo { get; set; }
 
         /// <summary>
         /// Conector de prueba: fuerza el fallo del preflight de la recarga desde la base
         /// después de un commit, sin tocar la base ni mostrar diálogos.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal bool PruebaForzarFalloDeRecarga { get; set; }
 
         /// <summary>
@@ -125,6 +128,7 @@ namespace SOPRO.WinForms.Forms
         /// de la vista. Solo se invoca cuando la vista va a fallar; encapsulado para no
         /// exponer rutas de mutación fuera del escenario de recuperación.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal Action? PruebaAccionAntesDelFalloDeVista { get; set; }
 
         /// <summary>
