@@ -56,6 +56,30 @@ public class PdfStructuralComparadorSentinelTests
     }
 
     [TestMethod]
+    public void DecoyFontNameDentroDeStream_Falla()
+    {
+        // El tag de subconjunto solo es volatil en /BaseFont y /FontName reales.
+        // Un /FontName/ABCDEF+ dentro de una stream es contenido semantico.
+        Assert.ThrowsExactly<PdfStructuralMismatchException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(contenido: "BT (/FontName/ABCDEF+) Tj ET",
+                    comprimirContenido: false, filtroContenido: null),
+                ConstruirPdf(contenido: "BT (/FontName/ZZZZZZ+) Tj ET",
+                    comprimirContenido: false, filtroContenido: null),
+                "decoy en stream"));
+    }
+
+    [TestMethod]
+    public void DecoyFontNameDentroDeStringDeDiccionario_Falla()
+    {
+        Assert.ThrowsExactly<PdfStructuralMismatchException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(titulo: "/FontName/ABCDEF+"),
+                ConstruirPdf(titulo: "/FontName/ZZZZZZ+"),
+                "decoy en /Title"));
+    }
+
+    [TestMethod]
     public void DistintasFechasDelInfo_SonEquivalentes()
     {
         PdfStructuralComparador.AssertEquivalent(
@@ -90,6 +114,232 @@ public class PdfStructuralComparadorSentinelTests
             ConstruirPdf(idContenido: "<11111111111111111111111111111111><22222222222222222222222222222222>"),
             ConstruirPdf(idContenido: "<33333333333333333333333333333333><44444444444444444444444444444444>"),
             "IDs distintos");
+    }
+
+    [TestMethod]
+    public void DistintosXmpVolatiles_SonEquivalentes()
+    {
+        PdfStructuralComparador.AssertEquivalent(
+            ConstruirPdf(xmp: Xmp(
+                "2026-11-21T10:10:03-07:00",
+                "11111111-1111-1111-1111-111111111111",
+                "Documento")),
+            ConstruirPdf(xmp: Xmp(
+                "2027-01-02T03:04:05+02:00",
+                "22222222-2222-2222-2222-222222222222",
+                "Documento")),
+            "XMP volatil");
+    }
+
+    [TestMethod]
+    public void DistintoContenidoFijoDelXmp_Falla()
+    {
+        Assert.ThrowsExactly<PdfStructuralMismatchException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(xmp: Xmp(
+                    "2026-11-21T10:10:03-07:00",
+                    "11111111-1111-1111-1111-111111111111",
+                    "Uno")),
+                ConstruirPdf(xmp: Xmp(
+                    "2026-11-21T10:10:03-07:00",
+                    "11111111-1111-1111-1111-111111111111",
+                    "Dos")),
+                "XMP fijo"));
+    }
+
+    [TestMethod]
+    public void FechaXmpFueraDeLosElementosConocidos_Falla()
+    {
+        string xmp = XmpBase(
+            "<xmp:CreateDate>2026-11-21T10:10:03-07:00</xmp:CreateDate>"
+            + "<pdf:Keywords>2026-11-21T10:10:03-07:00</pdf:Keywords>");
+        Assert.ThrowsExactly<InvalidDataException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(xmp: xmp), ConstruirPdf(xmp: xmp), "XMP fecha fuera"));
+    }
+
+    [TestMethod]
+    public void XmpConCData_Falla()
+    {
+        string xmp = XmpBase(
+            "<xmp:CreateDate>2026-11-21T10:10:03-07:00</xmp:CreateDate>"
+            + "<dc:description><![CDATA[<xmp:CreateDate>2026-11-21T10:10:03-07:00</xmp:CreateDate>]]></dc:description>");
+        Assert.ThrowsExactly<InvalidDataException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(xmp: xmp), ConstruirPdf(xmp: xmp), "XMP CDATA"));
+    }
+
+    [TestMethod]
+    public void XmpConComentario_Falla()
+    {
+        string xmp = XmpBase(
+            "<xmp:CreateDate>2026-11-21T10:10:03-07:00</xmp:CreateDate>"
+            + "<!-- <xmp:CreateDate>2026-11-21T10:10:03-07:00</xmp:CreateDate> -->");
+        Assert.ThrowsExactly<InvalidDataException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(xmp: xmp), ConstruirPdf(xmp: xmp), "XMP comentario"));
+    }
+
+    [TestMethod]
+    public void XmpConComentarioAntesDeLaRaiz_Falla()
+    {
+        string xmp = "<!-- <xmp:CreateDate>2026-11-21T10:10:03-07:00</xmp:CreateDate> -->"
+            + XmpBase("<xmp:CreateDate>2026-11-21T10:10:03-07:00</xmp:CreateDate>");
+        Assert.ThrowsExactly<InvalidDataException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(xmp: xmp), ConstruirPdf(xmp: xmp), "XMP comentario raiz"));
+    }
+
+    [TestMethod]
+    public void XmpElementoConocidoConAtributos_Falla()
+    {
+        string xmp = XmpBase(
+            "<xmp:CreateDate foo=\"bar\">2026-11-21T10:10:03-07:00</xmp:CreateDate>");
+        Assert.ThrowsExactly<InvalidDataException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(xmp: xmp), ConstruirPdf(xmp: xmp), "XMP atributos"));
+    }
+
+    [TestMethod]
+    public void XmpElementoConocidoConFechaZ_Falla()
+    {
+        string xmp = XmpBase(
+            "<xmp:CreateDate>2026-11-21T10:10:03Z</xmp:CreateDate>");
+        Assert.ThrowsExactly<InvalidDataException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(xmp: xmp), ConstruirPdf(xmp: xmp), "XMP fecha Z"));
+    }
+
+    [TestMethod]
+    public void XmpElementoConocidoAnidadoEnDescripcion_Falla()
+    {
+        string xmp = XmpBase(
+            "<dc:description><xmp:CreateDate>2026-11-21T10:10:03-07:00</xmp:CreateDate></dc:description>");
+        Assert.ThrowsExactly<InvalidDataException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(xmp: xmp), ConstruirPdf(xmp: xmp), "XMP anidado en descripcion"));
+    }
+
+    [TestMethod]
+    public void XmpElementoConocidoConContenidoAnidado_Falla()
+    {
+        string xmp = XmpBase(
+            "<xmp:CreateDate><rdf:li>2026-11-21T10:10:03-07:00</rdf:li></xmp:CreateDate>");
+        Assert.ThrowsExactly<InvalidDataException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(xmp: xmp), ConstruirPdf(xmp: xmp), "XMP contenido anidado"));
+    }
+
+    [TestMethod]
+    public void XmpConEtiquetaFalsaEscapadaEnTitulo_Falla()
+    {
+        // No debe confundirse contenido escapado con un elemento real ni reemplazarlo.
+        string xmp = XmpBase(
+            "<dc:title>&lt;xmp:CreateDate&gt;2026-11-21T10:10:03-07:00&lt;/xmp:CreateDate&gt;</dc:title>");
+        Assert.ThrowsExactly<InvalidDataException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(xmp: xmp), ConstruirPdf(xmp: xmp), "etiqueta falsa escapada"));
+    }
+
+    [TestMethod]
+    public void BaseFontEnDiccionarioAjeno_Falla()
+    {
+        Assert.ThrowsExactly<PdfStructuralMismatchException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(extraPagina: "/BaseFont/ABCDEF+Segoe#20UI"),
+                ConstruirPdf(extraPagina: "/BaseFont/ZZZZZZ+Segoe#20UI"),
+                "BaseFont en diccionario ajeno"));
+    }
+
+    [TestMethod]
+    public void FontNameEnDiccionarioAjeno_Falla()
+    {
+        Assert.ThrowsExactly<PdfStructuralMismatchException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(extraPagina: "/FontName/ABCDEF+Segoe#20UI"),
+                ConstruirPdf(extraPagina: "/FontName/ZZZZZZ+Segoe#20UI"),
+                "FontName en diccionario ajeno"));
+    }
+
+    [TestMethod]
+    public void TitulosConReferenciasDeCaracterDistintas_Fallan()
+    {
+        Assert.ThrowsExactly<PdfStructuralMismatchException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(xmp: XmpBase("<dc:title>&#x0100;</dc:title>")),
+                ConstruirPdf(xmp: XmpBase("<dc:title>&#x0101;</dc:title>")),
+                "titulos con entidades distintas"));
+    }
+
+    [TestMethod]
+    public void FechaXmpConEntidad_Falla()
+    {
+        // La fecha resuelta por XML seria valida, pero la forma cruda con entidad es ambigua.
+        string xmp = XmpBase(
+            "<xmp:CreateDate>&#50;026-11-21T10:10:03-07:00</xmp:CreateDate>");
+        Assert.ThrowsExactly<InvalidDataException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(xmp: xmp), ConstruirPdf(xmp: xmp), "fecha XMP con entidad"));
+    }
+
+    [TestMethod]
+    public void XmpConEspaciosNoVolatilesDistintos_Falla()
+    {
+        Assert.ThrowsExactly<PdfStructuralMismatchException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(xmp: XmpBase("<dc:title>Uno</dc:title>")),
+                ConstruirPdf(xmp: XmpBase("<dc:title>Uno </dc:title>")),
+                "espacio no volatil en XMP"));
+
+        Assert.ThrowsExactly<PdfStructuralMismatchException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(xmp: XmpBase("<dc:title>Uno</dc:title><dc:creator>Dos</dc:creator>")),
+                ConstruirPdf(xmp: XmpBase("<dc:title>Uno</dc:title>\n<dc:creator>Dos</dc:creator>")),
+                "salto de linea no volatil en XMP"));
+    }
+
+    [TestMethod]
+    public void XmpConXpacketDistinto_Falla()
+    {
+        string cuerpo = "<xmp:CreateDate>2026-11-21T10:10:03-07:00</xmp:CreateDate>";
+        string conIdUno = "<?xpacket begin=\"\" id=\"W5M0\"?>"
+            + XmpBase(cuerpo) + "<?xpacket end=\"w\"?>";
+        string conIdDos = "<?xpacket begin=\"\" id=\"W5M1\"?>"
+            + XmpBase(cuerpo) + "<?xpacket end=\"w\"?>";
+        Assert.ThrowsExactly<PdfStructuralMismatchException>(() =>
+            PdfStructuralComparador.AssertEquivalent(
+                ConstruirPdf(xmp: conIdUno), ConstruirPdf(xmp: conIdDos), "xpacket distinto"));
+    }
+
+    [TestMethod]
+    public void XmpConXpacketYFechasVolatiles_EsEquivalente()
+    {
+        string conFechaUno = "<?xpacket begin=\"\" id=\"W5M0\"?>"
+            + XmpBase("<xmp:CreateDate>2026-11-21T10:10:03-07:00</xmp:CreateDate>")
+            + "<?xpacket end=\"w\"?>";
+        string conFechaDos = "<?xpacket begin=\"\" id=\"W5M0\"?>"
+            + XmpBase("<xmp:CreateDate>2027-01-02T03:04:05+02:00</xmp:CreateDate>")
+            + "<?xpacket end=\"w\"?>";
+        PdfStructuralComparador.AssertEquivalent(
+            ConstruirPdf(xmp: conFechaUno), ConstruirPdf(xmp: conFechaDos),
+            "xpacket con fechas volatiles");
+    }
+
+    [TestMethod]
+    public void FechaXmpConAnioFueraDe20xx_Falla()
+    {
+        // PdfNormalizador legacy solo acepta años 20xx; 1999/2126 son forma desconocida.
+        foreach (string fecha in new[]
+                 {
+                     "2126-11-21T10:10:03-07:00",
+                     "1999-01-02T03:04:05+02:00",
+                 })
+        {
+            string xmp = Xmp(fecha, "11111111-1111-1111-1111-111111111111", "Doc");
+            Assert.ThrowsExactly<InvalidDataException>(() =>
+                PdfStructuralComparador.AssertEquivalent(
+                    ConstruirPdf(xmp: xmp), ConstruirPdf(xmp: xmp), "anio XMP fuera de 20xx"));
+        }
     }
 
     [TestMethod]
@@ -332,6 +582,9 @@ public class PdfStructuralComparadorSentinelTests
         int? longitud1Override = null,
         string? idContenido =
             "<00112233445566778899AABBCCDDEEFF><FFEEDDCCBBAA99887766554433221100>",
+        string? titulo = null,
+        string? xmp = null,
+        string? extraPagina = null,
         int? startxrefOverride = null,
         int desplazamientoXref = 0,
         bool incluirXref = true,
@@ -367,13 +620,15 @@ public class PdfStructuralComparadorSentinelTests
         string valorCreation = creationDate ?? "(" + fechaInfo + ")";
         string info = "/CreationDate" + valorCreation
             + (incluirModDate ? "/ModDate(" + fechaInfo + ")" : "")
+            + (titulo is null ? "" : "/Title(" + titulo + ")")
             + "/Producer(PDFsharp 6.2.4-gdi)";
         Objeto(1, info, null);
         Objeto(2, "/Type/Catalog/Pages 3 0 R", null);
         Objeto(3, "/Type/Pages/Count 1/Kids[4 0 R]", null);
         Objeto(4,
             "/Type/Page/MediaBox[" + mediaBox + "]/Parent 3 0 R/Contents 5 0 R"
-            + "/Resources<</Font<</F1 6 0 R>>/XObject<</Im1 8 0 R>>>>",
+            + "/Resources<</Font<</F1 6 0 R>>/XObject<</Im1 8 0 R>>>>"
+            + (extraPagina ?? ""),
             null);
 
         string dictContenido = filtroContenido is null ? "" : "/Filter/" + filtroContenido;
@@ -400,6 +655,13 @@ public class PdfStructuralComparadorSentinelTests
             Objeto(10, "/Type/ObjStm/N 0/First 0", Array.Empty<byte>());
 
         int ultimoObjeto = objectStream ? 10 : 9;
+        if (xmp is not null)
+        {
+            int numeroXmp = objectStream ? 11 : 10;
+            Objeto(numeroXmp, "/Type/Metadata/Subtype/XML", Encoding.Latin1.GetBytes(xmp));
+            ultimoObjeto = numeroXmp;
+        }
+
         int inicioXref = (int)salida.Length;
         if (incluirXref)
         {
@@ -424,6 +686,26 @@ public class PdfStructuralComparadorSentinelTests
 
         return salida.ToArray();
     }
+
+    private static string Xmp(string fecha, string uuid, string titulo) =>
+        XmpBase(
+            "<xmp:CreateDate>" + fecha + "</xmp:CreateDate>"
+            + "<xmp:ModifyDate>" + fecha + "</xmp:ModifyDate>"
+            + "<xmpMM:DocumentID>uuid:" + uuid + "</xmpMM:DocumentID>"
+            + "<xmpMM:InstanceID>uuid:" + uuid + "</xmpMM:InstanceID>"
+            + "<dc:title>" + titulo + "</dc:title>");
+
+    private static string XmpBase(string contenido) =>
+        "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">"
+        + "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
+        + "<rdf:Description rdf:about=\"\""
+        + " xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\""
+        + " xmlns:xmpMM=\"http://ns.adobe.com/xap/1.0/mm/\""
+        + " xmlns:stEvt=\"http://ns.adobe.com/xap/1.0/sType/ResourceEvent#\""
+        + " xmlns:dc=\"http://purl.org/dc/elements/1.1/\""
+        + " xmlns:pdf=\"http://ns.adobe.com/pdf/1.3/\">"
+        + contenido
+        + "</rdf:Description></rdf:RDF></x:xmpmeta>";
 
     private static byte[] FuentePorDefecto() =>
         Encoding.Latin1.GetBytes(string.Concat(Enumerable.Repeat("fuente-ttf-ABCDEFGH;", 28)));

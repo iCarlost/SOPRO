@@ -16,11 +16,14 @@ La apertura exige **ambas** señales, asociadas a ruta/PID:
    fixture y la tabla `Proyectos`.
 2. Ventana WinForms del mismo PID cuyo título contenga el nombre del proyecto.
 El watchdog no termina sin ambas. `.lock` o cargar SQLite no prueban apertura.
+La señal EF exige `SELECT ... FROM` la tabla esperada; INSERT/UPDATE/DELETE/CREATE
+no cuentan. Hay una prueba negativa `insert-only` que debe agotar timeout sin señal.
 `project-signal.txt`/`window-signal.txt` solo contienen PID, evento, ruta, tabla,
-título y flags; nunca SQL general.
+título y flags; nunca SQL general. El hook no escribe SQL en disco.
 ## Modos
-`-StaticOnly` (local, sin riesgo): hook, switch, proveedor SQLite 10, observador
-EF y ventana WinForms pura. No arranca SOPRO, no usa HKCU, no escribe perfil.
+`-StaticOnly` (local, sin riesgo): hook, switch, observador EF y ventana
+WinForms pura mediante una sonda de control generada efímeramente. No arranca
+SOPRO, no usa HKCU, no escribe perfil.
 ```powershell
 pwsh ./tools/net10-smoke/Invoke-Smoke.ps1 -RepoRoot <worktree> -WorkDir $env:TEMP -StaticOnly -KeepRunDir
 ```
@@ -47,12 +50,12 @@ mantenedor; no se crea aquí. Si GitHub no dispara un workflow nuevo desde el PR
 `results.json` incluye `checks`, `processes` (PID/exit/timeout) y
 `failureEvidence`. Se sube solo `results.json`, `logs/probe-*.log`,
 `probes/**/hook-*.txt`, `probes/app/project-signal.txt` y
-`probes/app/window-signal.txt`; sin `ef-events.log`, binarios ni logs de la app;
-retención 3 días.
+`probes/app/window-signal.txt`; sin SQL en disco/artefactos, binarios ni logs de
+la app; retención 3 días.
 ## Fechas
-`provider` es un control de `Microsoft.Data.Sqlite` 10, no de SOPRO. Compara
-`UtcTicks` pre10/modern y se etiqueta `scope=provider-only`. Cualquier diferencia
-UTC es **inconclusa respecto a SOPRO**; no se usa como PASS de la app.
+El control de fechas provider se eliminó por redundante/inconcluso: no se mide
+ni se atribuye comportamiento de fechas a SOPRO. La suite existente mantiene la
+cobertura de fechas; el piloto no la declara PASS.
 ## Seguridad y límites
 - Sin HKCU, perfil real, instalador ni secretos. Las guardas de entorno evitan
   ejecuciones accidentales; no son frontera de seguridad.
@@ -63,3 +66,6 @@ UTC es **inconclusa respecto a SOPRO**; no se usa como PASS de la app.
 - La app se fuerza a terminar tras las señales; no valida cierre ordenado.
 - Single-file deja `e_sqlite3.dll` junto al exe. El hook no soporta trimming/AOT.
 - No se declara apertura real hasta un PASS con evidencias en CI.
+- Cobertura retirada: control provider de fechas y sondas puras redundantes. El
+  control generado solo valida switch/EF/ventana; la app real cubre publish,
+  switch, SQLite nativo, EF y ventana.

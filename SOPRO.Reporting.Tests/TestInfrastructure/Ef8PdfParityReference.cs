@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using PdfSharp.Pdf.IO;
 using SOPRO.Application.Contracts;
@@ -200,6 +202,83 @@ public class Ef8PdfParityGateTests
         byte[] candidato = PdfParityEscenarios.RenderizarProyectoSintetico();
         Ef8PdfParity.AssertParidad(
             "proyecto-sintetico", PdfParityConstantes.ProyectoSinteticoGoldenSha, candidato);
+    }
+
+    [TestMethod]
+    public void XmpDeReferenciasReales_VolatilesPasanYContenidoFijoFalla()
+    {
+        string? directorio = Environment.GetEnvironmentVariable(PdfParityConstantes.ReferenceDirEnvVar);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(directorio),
+            "Esta prueba requiere SOPRO_EF8_REFERENCE_DIR (referencias EF8 exportadas por CI).");
+        string rutaManifiesto = Path.Combine(directorio!, "export.json");
+        Assert.IsTrue(File.Exists(rutaManifiesto), $"Falta '{rutaManifiesto}'.");
+        var manifiesto = JsonSerializer.Deserialize<Ef8ReferenceManifest>(
+            File.ReadAllText(rutaManifiesto))!;
+
+        foreach (Ef8ReferenceFile entrada in manifiesto.Files)
+        {
+            byte[] pdf = File.ReadAllBytes(Path.Combine(directorio!, entrada.Pdf));
+
+            // Mutacion volatil en la stream XMP real (misma longitud): debe pasar.
+            byte[] fechaMutada = MutarAnioCreateDate(pdf);
+            PdfStructuralComparador.AssertEquivalent(pdf, fechaMutada, entrada.Escenario + " fecha XMP");
+
+            // Mutacion de contenido fijo del XMP real: debe fallar.
+            byte[] tituloMutado = ReemplazarUnaVez(
+                pdf, "xml:lang=\"x-default\">C", "xml:lang=\"x-default\">D");
+            Assert.ThrowsExactly<PdfStructuralMismatchException>(() =>
+                PdfStructuralComparador.AssertEquivalent(
+                    pdf, tituloMutado, entrada.Escenario + " titulo XMP"));
+
+            // Mutacion del id del PI xpacket real: debe fallar (no es volatil).
+            byte[] xpacketMutado = ReemplazarUnaVez(pdf, "id=\"W5M0", "id=\"Z5M0");
+            Assert.ThrowsExactly<PdfStructuralMismatchException>(() =>
+                PdfStructuralComparador.AssertEquivalent(
+                    pdf, xpacketMutado, entrada.Escenario + " xpacket"));
+        }
+    }
+
+    /// <summary>
+    /// Muta el año de la primera/única fecha legacy xmp:CreateDate de la referencia real,
+    /// conservando la longitud. No codifica un año concreto: lo extrae del PDF.
+    /// </summary>
+    private static byte[] MutarAnioCreateDate(byte[] pdf)
+    {
+        string texto = Encoding.Latin1.GetString(pdf);
+        MatchCollection coincidencias = Regex.Matches(
+            texto, @"xmp:CreateDate>(?<anio>20\d{2})");
+        Assert.AreEqual(1, coincidencias.Count,
+            "Se esperaba exactamente un xmp:CreateDate con año legacy 20xx en la referencia real.");
+
+        Match coincidencia = coincidencias[0];
+        int anio = int.Parse(
+            coincidencia.Groups["anio"].Value, CultureInfo.InvariantCulture);
+        int mutado = anio == 2099 ? 2098 : anio + 1;
+        Assert.AreNotEqual(anio, mutado);
+        string nuevo = mutado.ToString("D4", CultureInfo.InvariantCulture);
+        int inicio = coincidencia.Groups["anio"].Index;
+        string resultado = texto.Substring(0, inicio)
+            + nuevo
+            + texto.Substring(inicio + 4);
+        return Encoding.Latin1.GetBytes(resultado);
+    }
+
+    /// <summary>
+    /// Reemplaza una unica aparicion conservando la longitud, para mutar la stream XMP
+    /// real sin romper los offsets/xref del PDF.
+    /// </summary>
+    private static byte[] ReemplazarUnaVez(byte[] pdf, string buscar, string reemplazo)
+    {
+        Assert.AreEqual(buscar.Length, reemplazo.Length,
+            "La mutacion de prueba debe conservar la longitud.");
+        string texto = Encoding.Latin1.GetString(pdf);
+        int primera = texto.IndexOf(buscar, StringComparison.Ordinal);
+        Assert.IsTrue(primera >= 0, $"No se encontro '{buscar}' en la referencia real.");
+        Assert.AreEqual(-1, texto.IndexOf(buscar, primera + 1, StringComparison.Ordinal),
+            $"Se esperaba una unica aparicion de '{buscar}'.");
+        string mutado = texto.Substring(0, primera) + reemplazo
+            + texto.Substring(primera + buscar.Length);
+        return Encoding.Latin1.GetBytes(mutado);
     }
 }
 

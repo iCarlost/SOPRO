@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 /// <summary>
 /// Hook externo de observación para el smoke test de #160.
@@ -34,7 +35,6 @@ internal static class StartupHook
         new EfEventObserver();
     private static IDisposable? s_allListenersSubscription;
     private static string s_probeDir = string.Empty;
-    private static int s_efEvents;
     private static int s_projectOpened;
     private static int s_signalConnection;
     private static int s_signalCommand;
@@ -127,7 +127,6 @@ internal static class StartupHook
         Append(sb, "sqliteNativeLoaded", NativeLoaded() ? "true" : "false");
         Append(sb, "nativeModulePath", NativeModulePath());
         Append(sb, "efDiagnosticsSubscribed", s_allListenersSubscription is null ? "false" : "true");
-        Append(sb, "efEvents", Volatile.Read(ref s_efEvents).ToString(CultureInfo.InvariantCulture));
         Append(sb, "projectOpenSignal", Volatile.Read(ref s_projectOpened) == 1 ? "true" : "false");
         var expectedTitle = Environment.GetEnvironmentVariable("SOPRO_SMOKE_EXPECT_TITLE");
         Append(sb, "titlePresent", !string.IsNullOrWhiteSpace(expectedTitle) && TitlePresent(expectedTitle!) ? "true" : "false");
@@ -237,32 +236,6 @@ internal static class StartupHook
         var raw = Environment.GetEnvironmentVariable(variable);
         return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
     }
-    private static void WriteEfEvent(string eventName, string dataSource, string sql)
-    {
-        try
-        {
-            var line = string.Join("&", new[]
-            {
-                "pid=" + Environment.ProcessId.ToString(CultureInfo.InvariantCulture),
-                "utc=" + Uri.EscapeDataString(DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture)),
-                "event=" + Uri.EscapeDataString(eventName),
-                "dataSource=" + Uri.EscapeDataString(dataSource ?? string.Empty),
-                "sql=" + Uri.EscapeDataString(sql ?? string.Empty)
-            });
-            lock (EfGate)
-            {
-                Directory.CreateDirectory(s_probeDir);
-                File.AppendAllText(
-                    Path.Combine(s_probeDir, "ef-events.log"),
-                    line + Environment.NewLine,
-                    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                Interlocked.Increment(ref s_efEvents);
-            }
-        }
-        catch
-        {
-        }
-    }
     private static void WriteFilteredSignal(string eventName, string dataSource, string sql)
     {
         var expectedDb = Environment.GetEnvironmentVariable("SOPRO_SMOKE_EXPECT_DB");
@@ -286,7 +259,7 @@ internal static class StartupHook
         }
         else if (string.Equals(eventName, CommandExecutedEvent, StringComparison.Ordinal))
         {
-            if (sql.IndexOf(expectedTable, StringComparison.OrdinalIgnoreCase) < 0)
+            if (!IsSelectFromTable(sql, expectedTable))
             {
                 return;
             }
@@ -337,6 +310,18 @@ internal static class StartupHook
         {
             return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
         }
+    }
+    private static bool IsSelectFromTable(string sql, string table)
+    {
+        if (string.IsNullOrWhiteSpace(sql) || string.IsNullOrWhiteSpace(table))
+        {
+            return false;
+        }
+
+        var escaped = Regex.Escape(table);
+        var token = "(?:\"" + escaped + "\"|\\[" + escaped + "\\]|`" + escaped + "`|\\b" + escaped + "\\b)";
+        var pattern = @"(?is)^\s*SELECT\b.*?\bFROM\s+(?:(?:""[^""]+""|\[[^\]]+\]|\w+)\s*\.\s*)?" + token;
+        return Regex.IsMatch(sql, pattern, RegexOptions.CultureInvariant);
     }
     private static string ExtractDataSource(object? payload)
     {
@@ -430,7 +415,6 @@ internal static class StartupHook
             }
             var dataSource = ExtractDataSource(value.Value);
             var sql = ExtractSql(value.Value);
-            WriteEfEvent(eventName, dataSource, sql);
             WriteFilteredSignal(eventName, dataSource, sql);
             if (IsExpectedProjectQuery(eventName, dataSource, sql))
             {
@@ -454,7 +438,7 @@ internal static class StartupHook
                 expectedTable = "Proyectos";
             }
             return PathsEqual(dataSource, expectedDb) &&
-                   sql.IndexOf(expectedTable, StringComparison.OrdinalIgnoreCase) >= 0;
+                   IsSelectFromTable(sql, expectedTable);
         }
         public void OnCompleted()
         {

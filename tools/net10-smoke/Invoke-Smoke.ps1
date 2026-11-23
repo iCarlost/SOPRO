@@ -374,7 +374,7 @@ $winFormsProject = Join-Path $RepoRoot 'SOPRO.WinForms\SOPRO.WinForms.csproj'
 $programFile = Join-Path $RepoRoot 'SOPRO.WinForms\Program.cs'
 $dataProject = Join-Path $RepoRoot 'SOPRO.Data\SOPRO.Data.csproj'
 $hookSource = Join-Path $PSScriptRoot 'src\StartupProbe\StartupHook.cs'
-$hostSource = Join-Path $PSScriptRoot 'src\SmokeHost\Program.cs'
+$hostSource = Join-Path $PSScriptRoot 'src\ControlProbe\ControlProbe.cs'
 foreach ($required in @(
     $solution, $winFormsProject, $programFile, $dataProject, $hookSource, $hostSource
 )) {
@@ -451,7 +451,7 @@ $hookProject = New-GeneratedProject `
     (Join-Path $generatedDir 'StartupProbe') 'StartupProbe' $hookSource `
     'net10.0' 'Library' 'SoproSmoke.StartupHook' $false ''
 $hostProject = New-GeneratedProject `
-    (Join-Path $generatedDir 'SmokeHost') 'SmokeHost' $hostSource `
+    (Join-Path $generatedDir 'ControlProbe') 'ControlProbe' $hostSource `
     'net10.0-windows' 'Exe' 'SoproSmoke.Host' $true $sqlitePackageVersion
 $hookOut = Join-Path $script:RunDir 'hook'
 $hostOut = Join-Path $script:RunDir 'host'
@@ -506,40 +506,23 @@ finally {
     Remove-Item Env:SOPRO_SMOKE_WATCHDOG_SECONDS -ErrorAction SilentlyContinue
     Remove-Item Env:SOPRO_SMOKE_GRACE_SECONDS -ErrorAction SilentlyContinue
 }
-Write-Step 'Pruebas puras: control del proveedor SQLite 10 (NO SOPRO)'
-$providerFixture = Join-Path $script:RunDir 'fixture-provider.soproproj'
-Copy-CanonicalFixtureSnapshot $fixturePath $providerFixture 'provider'
-foreach ($mode in @('pre10', 'modern')) {
-    $modeProbe = Join-Path $probeRoot ("provider-$mode")
-    New-Item -ItemType Directory -Path $modeProbe | Out-Null
-    $env:SOPRO_SMOKE_PROBE_DIR = $modeProbe
-    $env:SOPRO_SMOKE_WATCHDOG_SECONDS = '0'
-    $modeLog = Join-Path $logDir ("probe-provider-$mode.log")
-    $modeExit = Invoke-External $hostExe @('provider', '--db', $providerFixture, '--expect', $mode) $modeLog
-    $modeText = [IO.File]::ReadAllText($modeLog)
-    $resultOk = $modeExit -eq 0 -and $modeText -match 'RESULT=PASS'
-    $scopeOk = $modeText -match 'observer=provider-control' -and
-        $modeText -match 'scope=provider-only'
-    $offsetMatch = [regex]::Match($modeText, '(?m)^literal\.offsetMinutes=(-?\d+)')
-    $localMatch = [regex]::Match($modeText, '(?m)^literal\.expectedOffsetMinutes=(-?\d+)')
-    $utcMatch = [regex]::Match($modeText, '(?m)^literal\.utcTicks=(\d+)')
-    $expectedUtcMatch = [regex]::Match($modeText, '(?m)^literal\.expectedUtcTicks=(\d+)')
-    $offsetOk = $offsetMatch.Success -and $localMatch.Success
-    if ($mode -eq 'pre10') {
-        $offsetOk = $offsetOk -and $offsetMatch.Groups[1].Value -eq $localMatch.Groups[1].Value
-    }
-    else {
-        $offsetOk = $offsetOk -and $offsetMatch.Groups[1].Value -eq '0'
-    }
-    $utcOk = $utcMatch.Success -and $expectedUtcMatch.Success -and
-        $utcMatch.Groups[1].Value -eq $expectedUtcMatch.Groups[1].Value
-    $providerOk = $resultOk -and $scopeOk -and $offsetOk -and $utcOk
-    Add-Check ("provider-control-$mode") $providerOk `
-        "exit=$modeExit result=$($resultOk) scope=$($scopeOk) offset=$($offsetOk) utc=$($utcOk) log=$modeLog"
-    if (-not $providerOk) {
-        Add-FailureEvidence $modeLog
-    }
-}
+Write-Step 'Pruebas negativas: WAL, copia y propiedad'
+$fixtureCopy = Join-Path $script:RunDir 'fixture-static.soproproj'
+Copy-CanonicalFixtureSnapshot $fixturePath $fixtureCopy 'static'
+$walProbe = Join-Path $script:RunDir 'wal-negative.db'
+[IO.File]::WriteAllText($walProbe, 'x')
+[IO.File]::WriteAllText($walProbe + '-wal', 'x')
+$walError = ''
+try { Assert-FixtureWalClean $walProbe } catch { $walError = $_.Exception.Message }
+$walRejected = $walError -like '*WAL no vacío*' -and $walError -like '*No se copia un fixture*'
+Add-Check 'fixture-wal-rejection' $walRejected "error=$walError"
+$notOwned = Join-Path $script:RunDir 'sopro-smoke-fake'
+New-Item -ItemType Directory -Path $notOwned | Out-Null
+$cleanupRefused = -not (Remove-OwnedRunDir $notOwned $script:RunDir)
+$notOwnedExists = Test-Path -LiteralPath $notOwned
+if ($notOwnedExists) { Remove-Item -LiteralPath $notOwned -Recurse -Force }
+Add-Check 'cleanup-requires-marker' ($cleanupRefused -and $notOwnedExists) `
+    "refused=$cleanupRefused exists=$notOwnedExists"
 $env:DOTNET_STARTUP_HOOKS = $hookDll
 try {
     Write-Step 'Pruebas puras: observador EF Core (ruta/PID/SQL)'
@@ -555,35 +538,9 @@ try {
     $efRunExit = Invoke-External $hostExe @('ef', '--db', $efProbeData, '--hold', '30') $efRunLog
     $efStart = Read-KeyValues (Join-Path $efObserverProbe 'hook-startup.txt')
     $efReady = Read-KeyValues (Join-Path $efObserverProbe 'hook-ready.txt')
-    $efEvents = @(Read-EfEvents (Join-Path $efObserverProbe 'ef-events.log'))
     $efPid = $efStart['pid']
     $efFullPath = Normalize-Path $efProbeData
     Add-ProcessEvidence 'ef' $efPid $efRunExit $false $efObserverProbe
-    $connectionEvents = @($efEvents | Where-Object {
-        $_.event -eq 'Microsoft.EntityFrameworkCore.Database.Connection.ConnectionOpened' -and
-        $_.pid -eq $efPid -and
-        [string]::Equals((Normalize-Path $_.dataSource), $efFullPath, [StringComparison]::OrdinalIgnoreCase)
-    })
-    $queryEvents = @($efEvents | Where-Object {
-        $_.event -eq 'Microsoft.EntityFrameworkCore.Database.Command.CommandExecuted' -and
-        $_.pid -eq $efPid -and
-        [string]::Equals((Normalize-Path $_.dataSource), $efFullPath, [StringComparison]::OrdinalIgnoreCase) -and
-        $_.sql -match 'FROM\s+[\["]?Entidades[\]"]?'
-    })
-    $efObserverOk = $efRunExit -eq 0 -and $connectionEvents.Count -gt 0 -and $queryEvents.Count -gt 0
-    Add-Check 'ef-observer-connection-path-pid' `
-        ($efRunExit -eq 0 -and $connectionEvents.Count -gt 0) `
-        "exit=$efRunExit pid=$efPid connectionOpened=$($connectionEvents.Count) events=$($efEvents.Count)"
-    Add-Check 'ef-observer-query-path-pid' `
-        ($efRunExit -eq 0 -and $queryEvents.Count -gt 0) `
-        "queryExecuted=$($queryEvents.Count) ruta=$efFullPath"
-    Add-Check 'ef-watchdog-project-signal' `
-        ($efRunExit -eq 0 -and $efReady['projectOpenSignal'] -eq 'true' -and
-         (Test-Path (Join-Path $efObserverProbe 'hook-ready.txt')) -and
-         -not (Test-Path (Join-Path $efObserverProbe 'hook-timeout.txt'))) `
-        "exit=$efRunExit projectOpenSignal=$($efReady['projectOpenSignal']) timeout=$(Test-Path (Join-Path $efObserverProbe 'hook-timeout.txt'))"
-    $efSubscribeError = Join-Path $efObserverProbe 'hook-ef-subscribe-error.txt'
-    Add-Check 'ef-hook-no-subscribe-error' (-not (Test-Path -LiteralPath $efSubscribeError)) $efSubscribeError
     $efSignalPath = Join-Path $efObserverProbe 'project-signal.txt'
     $efSignal = @(Read-EfEvents $efSignalPath)
     $efSignalConnection = @($efSignal | Where-Object {
@@ -602,9 +559,22 @@ try {
     } else { '' }
     $efSignalNoSql = $efSignalRaw -notmatch '(?i)\bsql\s*=' -and
         $efSignalRaw -notmatch '(?i)\b(SELECT|INSERT|UPDATE|DELETE|CREATE|PRAGMA)\b'
-    Add-Check 'ef-filtered-signal-no-sql' `
-        ($efSignalConnection.Count -gt 0 -and $efSignalCommand.Count -gt 0 -and
-         $efSignalNoSql -and $efSignalRaw -match 'sqlDisclosed=false') `
+    $efObserverOk = $efRunExit -eq 0 -and $efSignalConnection.Count -gt 0 -and
+        $efSignalCommand.Count -gt 0 -and $efSignalNoSql
+    Add-Check 'ef-observer-connection-path-pid' `
+        ($efRunExit -eq 0 -and $efSignalConnection.Count -gt 0) `
+        "exit=$efRunExit pid=$efPid connectionOpened=$($efSignalConnection.Count)"
+    Add-Check 'ef-observer-query-path-pid' `
+        ($efRunExit -eq 0 -and $efSignalCommand.Count -gt 0) `
+        "queryExecuted=$($efSignalCommand.Count) ruta=$efFullPath"
+    Add-Check 'ef-watchdog-project-signal' `
+        ($efRunExit -eq 0 -and $efReady['projectOpenSignal'] -eq 'true' -and
+         (Test-Path (Join-Path $efObserverProbe 'hook-ready.txt')) -and
+         -not (Test-Path (Join-Path $efObserverProbe 'hook-timeout.txt'))) `
+        "exit=$efRunExit projectOpenSignal=$($efReady['projectOpenSignal']) timeout=$(Test-Path (Join-Path $efObserverProbe 'hook-timeout.txt'))"
+    $efSubscribeError = Join-Path $efObserverProbe 'hook-ef-subscribe-error.txt'
+    Add-Check 'ef-hook-no-subscribe-error' (-not (Test-Path -LiteralPath $efSubscribeError)) $efSubscribeError
+    Add-Check 'ef-filtered-signal-no-sql' ($efObserverOk -and $efSignalRaw -match 'sqlDisclosed=false') `
         "connection=$($efSignalConnection.Count) command=$($efSignalCommand.Count) noSql=$efSignalNoSql archivo=$efSignalPath"
     if (-not $efObserverOk -or (Test-Path -LiteralPath $efSubscribeError)) {
         Add-FailureEvidence $efRunLog
@@ -612,6 +582,41 @@ try {
         Add-FailureEvidence (Join-Path $efObserverProbe 'hook-startup.txt')
         Add-FailureEvidence (Join-Path $efObserverProbe 'hook-timeout.txt')
         Add-FailureEvidence $efSignalPath
+    }
+    Write-Step 'Prueba negativa: INSERT no debe generar señal'
+    $insertDb = Join-Path $script:RunDir 'efprobe-insert.sqlite'
+    $insertProbe = Join-Path $probeRoot 'ef-insert-negative'
+    New-Item -ItemType Directory -Path $insertProbe | Out-Null
+    $env:SOPRO_SMOKE_PROBE_DIR = $insertProbe
+    $env:SOPRO_SMOKE_EXPECT_DB = $insertDb
+    $env:SOPRO_SMOKE_EXPECT_TABLE = 'Entidades'
+    $env:SOPRO_SMOKE_WATCHDOG_SECONDS = '5'
+    $env:SOPRO_SMOKE_GRACE_SECONDS = '1'
+    $insertLog = Join-Path $logDir 'probe-ef-insert-negative.log'
+    $insertExit = Invoke-External $hostExe @('insert-only', '--db', $insertDb) $insertLog
+    $insertLogText = if (Test-Path -LiteralPath $insertLog) {
+        [IO.File]::ReadAllText($insertLog, [Text.Encoding]::UTF8)
+    } else { '' }
+    $insertCompleted = $insertLogText -match '(?m)^INSERTONLY=OK\s*$'
+    $insertStart = Read-KeyValues (Join-Path $insertProbe 'hook-startup.txt')
+    $insertTimeout = Read-KeyValues (Join-Path $insertProbe 'hook-timeout.txt')
+    $insertSignal = @(Read-EfEvents (Join-Path $insertProbe 'project-signal.txt'))
+    $insertCommand = @($insertSignal | Where-Object {
+        $_.event -eq 'Microsoft.EntityFrameworkCore.Database.Command.CommandExecuted' -and
+        $_.pid -eq $insertStart['pid'] -and $_.table -eq 'Entidades'
+    })
+    Add-ProcessEvidence 'ef-insert-negative' $insertStart['pid'] $insertExit $true $insertProbe
+    Add-Check 'ef-insert-does-not-signal' `
+        ($insertExit -eq 86 -and $insertCompleted -and
+         (Test-Path (Join-Path $insertProbe 'hook-timeout.txt')) -and
+         -not (Test-Path (Join-Path $insertProbe 'hook-ready.txt')) -and
+         $insertTimeout['projectOpenSignal'] -eq 'false' -and
+         $insertCommand.Count -eq 0) `
+        "exit=$insertExit completed=$insertCompleted timeout=$(Test-Path (Join-Path $insertProbe 'hook-timeout.txt')) ready=$(Test-Path (Join-Path $insertProbe 'hook-ready.txt')) command=$($insertCommand.Count)"
+    if ($insertCommand.Count -gt 0 -or $insertExit -ne 86 -or -not $insertCompleted) {
+        Add-FailureEvidence $insertLog
+        Add-FailureEvidence (Join-Path $insertProbe 'project-signal.txt')
+        Add-FailureEvidence (Join-Path $insertProbe 'hook-timeout.txt')
     }
 }
 finally {
@@ -780,6 +785,14 @@ else {
         Add-Check 'app-switch-enabled' `
             ($appReady['switchEnabled'] -eq 'true' -and $appExitSnapshot['switchEnabled'] -eq 'true') `
             "ready=$($appReady['switchEnabled']) exit=$($appExitSnapshot['switchEnabled'])"
+        Add-Check 'app-native-sqlite-path' `
+            ($appReady['sqliteNativeLoaded'] -eq 'true' -and
+             (Assert-PathUnder $appReady['nativeModulePath'] (Join-Path $script:RunDir 'publish'))) `
+            "module=$($appReady['nativeModulePath'])"
+        $appLocalOk = Assert-PathUnder $appStart['localAppData'] $profileLocal
+        $appDocsOk = Assert-PathUnder $appStart['documents'] $profileDocuments
+        Add-Check 'app-profile-is-runner' ($appLocalOk -and $appDocsOk) `
+            "local=$($appStart['localAppData']) docs=$($appStart['documents'])"
         Add-Check 'app-hook-no-subscribe-error' `
             (-not (Test-Path -LiteralPath (Join-Path $appProbe 'hook-ef-subscribe-error.txt'))) `
             (Join-Path $appProbe 'hook-ef-subscribe-error.txt')
@@ -832,7 +845,6 @@ else {
         if ($appFailureChecks.Count -gt 0) {
             Add-FailureEvidence (Join-Path $appProbe 'hook-startup.txt')
             Add-FailureEvidence (Join-Path $appProbe 'hook-ready.txt')
-            Add-FailureEvidence (Join-Path $appProbe 'ef-events.log')
             Add-FailureEvidence $appSignalPath
             Add-FailureEvidence $appWindowPath
             Add-FailureEvidence (Join-Path $appProbe 'hook-timeout.txt')
@@ -904,8 +916,8 @@ $summary = [pscustomobject]@{
         expectedFechaInicio = $expectedFechaInicio
     }
     dateControl = [pscustomobject]@{
-        scope = 'provider-only'
-        note = 'Mide Microsoft.Data.Sqlite 10; no mide SOPRO. Cualquier diferencia UTC pre10/modern es inconclusa respecto al comportamiento de fechas de la app.'
+        scope = 'not-measured'
+        note = 'El control de fechas provider se eliminó; no se mide ni se atribuye comportamiento de fechas a SOPRO.'
     }
     passed = ($script:Checks.Count - $failed.Count)
     failed = $failed.Count

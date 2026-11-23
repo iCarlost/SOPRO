@@ -4,6 +4,8 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.Linq;
 
 namespace SOPRO.Reporting.Tests.TestInfrastructure;
 
@@ -18,11 +20,17 @@ namespace SOPRO.Reporting.Tests.TestInfrastructure;
 ///     (/Length1-3) SI se comparan;
 ///   - la tabla xref y el startxref como valores absolutos (se validan pero no se comparan
 ///     entre documentos: los objetos se leen del cuerpo);
-///   - metadatos volatiles normalizados por <see cref="PdfNormalizador"/> (fechas/UUIDs de
-///     Info y XMP, tags de subconjunto tipografico y offset de zona);
+///   - el offset de zona / fechas volatiles del Info y las fechas/UUIDs del XMP,
+///     siempre validados antes de ignorarlos;
 ///   - /ID del trailer y los valores /CreationDate /ModDate del objeto Info (varian por segundo),
 ///     pero SOLO despues de validar su tipo y forma; una forma desconocida es fail-closed.
 ///     La PRESENCIA de /ID si se compara: solo sus valores son volatiles.
+///   - el tag de subconjunto tipografico se normaliza UNICAMENTE cuando es valor de
+///     /BaseFont o /FontName de un diccionario de fuente; nunca dentro de streams, strings
+///     ni contenido arbitrario (un decoy /FontName/ABCDEF+ en contenido sigue siendo
+///     semantico y debe fallar si cambia).
+///   - las fechas/UUIDs volatiles se normalizan UNICAMENTE en la stream /Type/Metadata
+///     /Subtype/XML, con validacion de forma y fail-closed.
 /// Los comentarios PDF (p. ej. la version de .NET que firma PdfSharp) no forman parte del
 /// modelo de objetos y no se comparan.
 ///
@@ -48,14 +56,10 @@ internal static class PdfStructuralComparador
         if (pdf.Length == 0)
             throw new InvalidDataException("El PDF esta vacio.");
 
-        // Primera pasada sobre el PDF crudo: valida estructura/cierre/xref y la forma de los
-        // metadatos volatiles ANTES de neutralizar o ignorar nada.
-        _ = new LectorPdf(Encoding.Latin1.GetString(pdf)).LeerDocumento();
-
-        // Reutiliza el normalizador legacy (ya probado por el test centinela) para fijar
-        // tags de subconjunto, fechas/UUIDs XMP y offset de zona del Info.
-        byte[] neutralizado = PdfNormalizador.NeutralizarFormasVolatiles(pdf);
-        PdfDocumento documento = new LectorPdf(Encoding.Latin1.GetString(neutralizado)).LeerDocumento();
+        // Una unica pasada sobre el PDF crudo: valida estructura/cierre/xref y la forma de los
+        // metadatos volatiles antes de ignorarlos. Los tags de subconjunto y el XMP se
+        // normalizan despues, SOLO en sus campos reales (nunca por regex global del archivo).
+        PdfDocumento documento = new LectorPdf(Encoding.Latin1.GetString(pdf)).LeerDocumento();
         return LectorPdf.Serializar(documento);
     }
 
@@ -907,7 +911,7 @@ internal sealed class LectorPdf
             case PdfStream stream:
                 return "stream{"
                     + SerializarDiccionario(stream.Diccionario, false, ClavesStreamIgnoradas)
-                    + "}#" + Convert.ToHexString(SHA256.HashData(stream.Datos));
+                    + "}#" + Convert.ToHexString(SHA256.HashData(NormalizarXmpSiMetadata(stream)));
             default:
                 throw new InvalidDataException($"Valor PDF no reconocido: {valor.GetType().Name}.");
         }
@@ -919,6 +923,13 @@ internal sealed class LectorPdf
         IReadOnlyCollection<string> clavesIgnoradas,
         bool conservarIdComoVolatil = false)
     {
+        bool esDiccionarioFuente = diccionario.TryGet("Type", out PdfValor tipoDic)
+            && tipoDic is PdfNombre tipoDicNombre
+            && tipoDicNombre.Valor == "Font";
+        bool esFontDescriptor = diccionario.TryGet("Type", out PdfValor tipoDesc)
+            && tipoDesc is PdfNombre tipoDescNombre
+            && tipoDescNombre.Valor == "FontDescriptor";
+
         var partes = new List<string>();
         foreach (var entrada in diccionario.Entradas)
         {
@@ -931,6 +942,20 @@ internal sealed class LectorPdf
             if (esInfo && (entrada.Key == "CreationDate" || entrada.Key == "ModDate"))
             {
                 partes.Add(EscaparNombre(entrada.Key) + "=<volatil>");
+                continue;
+            }
+            if (entrada.Key == "BaseFont" && esDiccionarioFuente
+                && entrada.Value is PdfNombre baseFont)
+            {
+                partes.Add(EscaparNombre(entrada.Key) + "=name:"
+                    + EscaparNombre(NormalizarTagFuente(baseFont.Valor)));
+                continue;
+            }
+            if (entrada.Key == "FontName" && esFontDescriptor
+                && entrada.Value is PdfNombre fontName)
+            {
+                partes.Add(EscaparNombre(entrada.Key) + "=name:"
+                    + EscaparNombre(NormalizarTagFuente(fontName.Valor)));
                 continue;
             }
             partes.Add(EscaparNombre(entrada.Key) + "=" + SerializarValor(entrada.Value, false));
@@ -960,6 +985,261 @@ internal sealed class LectorPdf
             }
         }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Neutraliza el tag de subconjunto SOLO cuando el valor es un nombre de fuente real
+    /// (campo /BaseFont o /FontName). No se aplica a strings ni contenido arbitrario.
+    /// </summary>
+    private static string NormalizarTagFuente(string valor)
+    {
+        if (valor.Length > 7
+            && valor[0] >= 'A' && valor[0] <= 'Z'
+            && valor[1] >= 'A' && valor[1] <= 'Z'
+            && valor[2] >= 'A' && valor[2] <= 'Z'
+            && valor[3] >= 'A' && valor[3] <= 'Z'
+            && valor[4] >= 'A' && valor[4] <= 'Z'
+            && valor[5] >= 'A' && valor[5] <= 'Z'
+            && valor[6] == '+')
+        {
+            return "SOPROX+" + valor.Substring(7);
+        }
+        return valor;
+    }
+
+    private const string FechaXmpFija = "2000-01-01T00:00:00+00:00";
+    private const string UuidFijo = "uuid:00000000-0000-0000-0000-000000000000";
+
+    private static readonly XNamespace XmpNs = "http://ns.adobe.com/xap/1.0/";
+    private static readonly XNamespace XmpMmNs = "http://ns.adobe.com/xap/1.0/mm/";
+    private static readonly XNamespace StEvtNs =
+        "http://ns.adobe.com/xap/1.0/sType/ResourceEvent#";
+    private static readonly XNamespace RdfNs = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+
+    /// <summary>Unica forma legacy de fecha XMP emitida por PdfSharp (año 20xx, offset, nunca Z).</summary>
+    private static readonly Regex FechaXmpLegacy = new(
+        "^20\\d{2}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}[+-]\\d{2}:\\d{2}$",
+        RegexOptions.Compiled);
+
+    private static readonly Regex UuidXmp = new(
+        "^uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        RegexOptions.Compiled);
+
+    private static readonly Regex FechaXmpEnTexto = new(
+        "20\\d{2}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:Z|[+-]\\d{2}:\\d{2})",
+        RegexOptions.Compiled);
+
+    private static readonly Regex UuidEnTexto = new(
+        "uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+        RegexOptions.Compiled);
+
+    private sealed record ElementoXmpVolatil(
+        XName Nombre, string EtiquetaCruda, string ValorFijo, Regex Forma);
+
+    private static readonly ElementoXmpVolatil[] ElementosXmpVolatiles =
+    {
+        new(XmpNs + "CreateDate", "xmp:CreateDate", FechaXmpFija, FechaXmpLegacy),
+        new(XmpNs + "ModifyDate", "xmp:ModifyDate", FechaXmpFija, FechaXmpLegacy),
+        new(XmpNs + "MetadataDate", "xmp:MetadataDate", FechaXmpFija, FechaXmpLegacy),
+        new(XmpMmNs + "DocumentID", "xmpMM:DocumentID", UuidFijo, UuidXmp),
+        new(XmpMmNs + "InstanceID", "xmpMM:InstanceID", UuidFijo, UuidXmp),
+        new(StEvtNs + "when", "stEvt:when", FechaXmpFija, FechaXmpLegacy),
+        new(StEvtNs + "instanceID", "stEvt:instanceID", UuidFijo, UuidXmp),
+    };
+
+    private static bool EsMetadataXml(PdfDiccionario diccionario) =>
+        diccionario.TryGet("Type", out PdfValor tipo)
+        && tipo is PdfNombre nombreTipo
+        && nombreTipo.Valor == "Metadata"
+        && diccionario.TryGet("Subtype", out PdfValor subtipo)
+        && subtipo is PdfNombre nombreSubtipo
+        && nombreSubtipo.Valor == "XML";
+
+    /// <summary>
+    /// XDocument se usa SOLO para validar estructura. Los bytes del XMP se conservan y
+    /// unicamente se sustituyen los valores volatiles validados, con la misma longitud que
+    /// la forma legacy. Se rechaza fail-closed: DOCTYPE, comentarios, CDATA, instrucciones
+    /// de proceso ajenas a xpacket, elementos conocidos fuera de rdf:Description, con
+    /// atributos, contenido anidado, entidades/forma ambigua, etiquetas legacy no
+    /// identificables sin ambiguedad, y fechas que no sean la forma exacta con offset.
+    /// </summary>
+    private static byte[] NormalizarXmpSiMetadata(PdfStream stream)
+    {
+        if (!EsMetadataXml(stream.Diccionario)) return stream.Datos;
+
+        string texto = Encoding.Latin1.GetString(stream.Datos);
+        XDocument documento;
+        try
+        {
+            documento = XDocument.Parse(texto, LoadOptions.PreserveWhitespace);
+        }
+        catch (XmlException ex)
+        {
+            throw new InvalidDataException("XMP no es XML bien formado (fail-closed).", ex);
+        }
+
+        if (documento.DocumentType is not null)
+            throw new InvalidDataException("XMP con DOCTYPE no admitido (fail-closed).");
+
+        foreach (XNode nodo in documento.Nodes().Concat(documento.DescendantNodes()))
+        {
+            switch (nodo)
+            {
+                case XComment:
+                    throw new InvalidDataException("XMP con comentarios no admitido (fail-closed).");
+                case XCData:
+                    throw new InvalidDataException("XMP con CDATA no admitido (fail-closed).");
+                case XProcessingInstruction instruccion when instruccion.Target != "xpacket":
+                    throw new InvalidDataException(
+                        $"XMP con instruccion de proceso no admitida: '{instruccion.Target}'.");
+            }
+        }
+
+        List<(int Inicio, int Fin)> rangosPi = RangosInstruccionesProceso(texto);
+
+        // Validacion estructural y correspondencia exacta elemento XML <-> etiqueta cruda.
+        foreach (ElementoXmpVolatil especificacion in ElementosXmpVolatiles)
+        {
+            List<XElement> elementos = documento.Descendants()
+                .Where(e => e.Name == especificacion.Nombre).ToList();
+            int enCrudo = ContarFueraDePi(
+                texto, "<" + especificacion.EtiquetaCruda + ">", rangosPi);
+            if (elementos.Count != enCrudo)
+            {
+                throw new InvalidDataException(
+                    $"XMP con forma ambigua para <{especificacion.EtiquetaCruda}>: "
+                    + $"{elementos.Count} elemento(s) XML frente a {enCrudo} etiqueta(s) legacy.");
+            }
+
+            foreach (XElement elemento in elementos)
+            {
+                if (elemento.Parent?.Name != RdfNs + "Description")
+                    throw new InvalidDataException(
+                        $"Elemento XMP <{especificacion.EtiquetaCruda}> fuera de rdf:Description (fail-closed).");
+                if (elemento.Attributes().Any())
+                    throw new InvalidDataException(
+                        $"Elemento XMP <{especificacion.EtiquetaCruda}> con atributos no admitidos (fail-closed).");
+                if (elemento.Elements().Any())
+                    throw new InvalidDataException(
+                        $"Elemento XMP <{especificacion.EtiquetaCruda}> con contenido anidado (fail-closed).");
+            }
+        }
+
+        // Solo se reemplaza el contenido crudo validado; el resto de bytes no se toca.
+        var reemplazos = new List<(int Inicio, int Longitud, string Valor)>();
+        foreach (ElementoXmpVolatil especificacion in ElementosXmpVolatiles)
+        {
+            List<XElement> elementos = documento.Descendants()
+                .Where(e => e.Name == especificacion.Nombre).ToList();
+            string etiquetaApertura = "<" + especificacion.EtiquetaCruda + ">";
+            string etiquetaCierre = "</" + especificacion.EtiquetaCruda + ">";
+            int cursor = 0;
+
+            foreach (XElement elemento in elementos)
+            {
+                int apertura = BuscarFueraDePi(texto, etiquetaApertura, cursor, rangosPi);
+                if (apertura < 0)
+                    throw new InvalidDataException(
+                        $"No se localizo <{especificacion.EtiquetaCruda}> en el XMP crudo (fail-closed).");
+
+                int inicioValor = apertura + etiquetaApertura.Length;
+                int cierre = texto.IndexOf(etiquetaCierre, inicioValor, StringComparison.Ordinal);
+                if (cierre < 0)
+                    throw new InvalidDataException(
+                        $"XMP sin cierre para <{especificacion.EtiquetaCruda}> (fail-closed).");
+                if (texto.IndexOf('<', inicioValor) != cierre)
+                    throw new InvalidDataException(
+                        $"XMP con contenido anidado/ambiguo en <{especificacion.EtiquetaCruda}> (fail-closed).");
+
+                string crudo = texto.Substring(inicioValor, cierre - inicioValor);
+                if (!string.Equals(crudo, elemento.Value, StringComparison.Ordinal))
+                {
+                    throw new InvalidDataException(
+                        $"XMP con entidades o forma ambigua en <{especificacion.EtiquetaCruda}> (fail-closed).");
+                }
+
+                if (crudo.Length > 0)
+                {
+                    if (crudo.Length != especificacion.ValorFijo.Length)
+                        throw new InvalidDataException(
+                            $"XMP con longitud no legacy en <{especificacion.EtiquetaCruda}> (fail-closed).");
+                    if (!especificacion.Forma.IsMatch(crudo))
+                        throw new InvalidDataException(
+                            $"XMP con forma desconocida en <{especificacion.EtiquetaCruda}>.");
+                    reemplazos.Add((inicioValor, crudo.Length, especificacion.ValorFijo));
+                }
+
+                cursor = cierre + etiquetaCierre.Length;
+            }
+        }
+
+        foreach (var reemplazo in reemplazos.OrderByDescending(r => r.Inicio))
+        {
+            texto = texto.Substring(0, reemplazo.Inicio)
+                + reemplazo.Valor
+                + texto.Substring(reemplazo.Inicio + reemplazo.Longitud);
+        }
+
+        // Ninguna fecha/UUID ajena puede quedar (incluye formas Z o valores no normalizados).
+        foreach (Match fecha in FechaXmpEnTexto.Matches(texto))
+        {
+            if (fecha.Value != FechaXmpFija)
+                throw new InvalidDataException(
+                    $"Fecha ISO fuera de los elementos XMP conocidos: '{fecha.Value}'.");
+        }
+        foreach (Match uuid in UuidEnTexto.Matches(texto))
+        {
+            if (uuid.Value != UuidFijo)
+                throw new InvalidDataException(
+                    $"UUID fuera de los elementos XMP conocidos: '{uuid.Value}'.");
+        }
+
+        return Encoding.Latin1.GetBytes(texto);
+    }
+
+    private static List<(int Inicio, int Fin)> RangosInstruccionesProceso(string texto)
+    {
+        var rangos = new List<(int Inicio, int Fin)>();
+        int indice = 0;
+        while (true)
+        {
+            int inicio = texto.IndexOf("<?", indice, StringComparison.Ordinal);
+            if (inicio < 0) return rangos;
+            int fin = texto.IndexOf("?>", inicio + 2, StringComparison.Ordinal);
+            if (fin < 0)
+                throw new InvalidDataException("XMP con instruccion de proceso sin cierre (fail-closed).");
+            int despues = fin + 2;
+            rangos.Add((inicio, despues));
+            indice = despues;
+        }
+    }
+
+    private static int BuscarFueraDePi(
+        string texto, string patron, int desde, List<(int Inicio, int Fin)> rangosPi)
+    {
+        int indice = desde;
+        while (true)
+        {
+            int encontrado = texto.IndexOf(patron, indice, StringComparison.Ordinal);
+            if (encontrado < 0) return -1;
+            bool dentroDePi = rangosPi.Any(r => encontrado >= r.Inicio && encontrado < r.Fin);
+            if (!dentroDePi) return encontrado;
+            indice = encontrado + patron.Length;
+        }
+    }
+
+    private static int ContarFueraDePi(
+        string texto, string patron, List<(int Inicio, int Fin)> rangosPi)
+    {
+        int total = 0;
+        int desde = 0;
+        while (true)
+        {
+            int encontrado = BuscarFueraDePi(texto, patron, desde, rangosPi);
+            if (encontrado < 0) return total;
+            total++;
+            desde = encontrado + patron.Length;
+        }
     }
 
     // ── Utilidades lexicas ─────────────────────────────────────────────────

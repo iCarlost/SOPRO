@@ -55,9 +55,8 @@ jobs:
             -WorkDir $work `
             -KeepRunDir
           exit $LASTEXITCODE
-      # Evidencia mínima y sin binarios. No se sube ef-events.log (puede
-      # contener SQL de la app); solo snapshots del hook, logs de sondas y el
-      # resumen. Retención corta.
+      # Evidencia mínima y sin binarios. Solo señales filtradas (sin SQL) y
+      # logs de sondas; retención corta.
       - name: Upload minimal smoke evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
