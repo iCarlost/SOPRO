@@ -12,7 +12,7 @@
 
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.102.2" />
-    <PackageReference Include="PDFsharp-MigraDoc-GDI" Version="6.2.4" />
+    <PackageReference Include="PDFsharp-MigraDoc-GDI" Version="6.5.0" />
   </ItemGroup>
 
 </Project>
