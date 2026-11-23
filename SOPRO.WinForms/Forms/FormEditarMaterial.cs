@@ -1,5 +1,6 @@
 using SOPRO.WinForms.Helpers;
 using System;
+using System.ComponentModel;
 using System.Windows.Forms;
 using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
@@ -24,6 +25,7 @@ namespace SOPRO.WinForms.Forms
         /// STA lo sustituyen para ejercitar el flujo sin abrir ventanas modales.
         /// No es un hook estático: cada editor tiene el suyo.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal Func<string, string, MessageBoxButtons, MessageBoxIcon, DialogResult> MostrarDialogo
         { get; set; } = static (mensaje, titulo, botones, icono) =>
             MessageBox.Show(mensaje, titulo, botones, icono);

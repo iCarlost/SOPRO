@@ -337,6 +337,7 @@ public class PestanasCierreTests
             };
         }
 
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool CancelarCierre { get; set; }
 
         public int IntentosCierre { get; private set; }

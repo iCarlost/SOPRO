@@ -18,6 +18,7 @@ using SOPRO.WinForms.Services;
 using SOPRO.WinForms.Undo;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -442,6 +443,7 @@ namespace SOPRO.WinForms.Forms
             => _columnasBloqueadasPorResultadoIncierto = true;
 
         /// <summary>Seam de prueba por instancia: sustituye los avisos modales de columnas.</summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal Action<string>? MostrarMensajeColumnasParaPrueba { get; set; }
 
         private bool PuedeMutarColumnas(out string? motivo)

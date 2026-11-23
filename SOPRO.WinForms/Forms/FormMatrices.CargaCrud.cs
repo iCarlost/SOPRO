@@ -9,6 +9,7 @@ using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
 using System.Threading;
@@ -75,18 +76,21 @@ namespace SOPRO.WinForms.Forms
         /// controlar el orden de finalización sin abrir otra capa. En producción
         /// la carga usa <see cref="MatrixCatalogViewService"/>.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal Func<MatrixCatalogFilterInput, Task<MatrixCatalogLoadResult>>? CargaMatricesParaPrueba { get; set; }
 
         /// <summary>
         /// Seam interno de pruebas: simula un fallo al resolver la selección del
         /// grid (primera operación riesgosa del borrado).
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal Func<IReadOnlyList<Matriz>>? SeleccionMatricesParaPrueba { get; set; }
 
         /// <summary>
         /// Seam interno de pruebas: evita abrir un MessageBox real al verificar el
         /// mensaje recuperable del borrado.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal Action<string>? MostrarMensajeEliminacionParaPrueba { get; set; }
 
         /// <summary>

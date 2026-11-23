@@ -72,6 +72,33 @@ internal static class Snapshots
         }
     }
 
+    /// <summary>
+    /// Compara un manifiesto PDF contra su golden ignorando UNICAMENTE TamanoBytes (el tamano
+    /// del PDF normalizado depende de la compresion del runtime y no es paridad semantica).
+    /// Es de solo lectura: el modo de regeneracion no aplica a los goldens byte-exactos.
+    /// </summary>
+    public static void AssertManifestExceptTamano(string goldenFileName, string actualJson)
+    {
+        if (GoldenPaths.Regenerating)
+            Assert.Fail(
+                $"'{goldenFileName}' solo se regenera desde el checkout EF8; la suite net10 compara en solo lectura.");
+
+        string ruta = GoldenPaths.Resolve(goldenFileName);
+        if (!File.Exists(ruta))
+            Assert.Fail($"Falta el golden '{goldenFileName}'.");
+
+        var esperado = JsonNode.Parse(File.ReadAllText(ruta))!.AsObject();
+        var actual = JsonNode.Parse(actualJson)!.AsObject();
+        esperado.Remove("TamanoBytes");
+        actual.Remove("TamanoBytes");
+        if (!esperado.IsDeepEqual(actual))
+        {
+            Assert.Fail(
+                $"El manifiesto del PDF no coincide con '{goldenFileName}' (ignorando TamanoBytes)."
+                + $"{Environment.NewLine}{PrimeraDiferencia(esperado, actual, goldenFileName)}");
+        }
+    }
+
     public static void AssertSha256(string goldenFileName, string sha256Hex, string contexto)
     {
         string ruta = GoldenPaths.Resolve(goldenFileName);

@@ -3,6 +3,7 @@ using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Windows.Forms;
 
@@ -24,6 +25,7 @@ namespace SOPRO.WinForms.Forms
         /// Seam de prueba: se ejecuta después de confirmar el comando y antes de volcar
         /// la instantánea, para simular trabajo ajeno que aparece postcommit.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal Action? AntesDeAplicarReajusteCostoGrupalConfirmadoParaPrueba { get; set; }
 
         /// <summary>

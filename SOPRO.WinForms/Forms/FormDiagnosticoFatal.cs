@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
@@ -100,54 +101,63 @@ namespace SOPRO.WinForms.Forms
             ResumeLayout();
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal string TextoTitulo
         {
             get => _textoTitulo;
             set { _textoTitulo = value ?? string.Empty; AplicarTextos(); }
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal string MensajePrincipal
         {
             get => _mensajePrincipal;
             set { _mensajePrincipal = value ?? string.Empty; AplicarTextos(); }
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal string MensajeAyuda
         {
             get => _mensajeAyuda;
             set { _mensajeAyuda = value ?? string.Empty; AplicarTextos(); }
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal string TextoCaptionCodigo
         {
             get => _textoCaptionCodigo;
             set { _textoCaptionCodigo = value ?? string.Empty; AplicarTextos(); }
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal string TextoCaptionRegistros
         {
             get => _textoCaptionRegistros;
             set { _textoCaptionRegistros = value ?? string.Empty; AplicarTextos(); }
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal string TextoBotonAbrirCarpeta
         {
             get => _textoBotonAbrirCarpeta;
             set { _textoBotonAbrirCarpeta = value ?? string.Empty; AplicarTextos(); }
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal string TextoBotonCerrar
         {
             get => _textoBotonCerrar;
             set { _textoBotonCerrar = value ?? string.Empty; AplicarTextos(); }
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal string CodigoReferencia
         {
             get => _codigoReferencia;
             set { _codigoReferencia = value ?? string.Empty; AplicarTextos(); }
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal string CarpetaRegistros
         {
             get => _carpetaRegistros;

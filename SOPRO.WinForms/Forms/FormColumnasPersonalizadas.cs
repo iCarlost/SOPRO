@@ -5,6 +5,7 @@ using SOPRO.Data.Factories;
 using SOPRO.WinForms.Helpers;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
@@ -56,6 +57,7 @@ namespace SOPRO.WinForms.Forms
         internal bool RequiereBloqueoParent { get; private set; }
 
         /// <summary>Seam de prueba por instancia: sustituye los avisos modales del diálogo.</summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal Action<string>? MostrarMensajeParaPrueba { get; set; }
 
         public FormColumnasPersonalizadas(
