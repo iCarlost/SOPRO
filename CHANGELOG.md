@@ -6,6 +6,13 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 
 ## [No publicado]
 
+## [1.21.0] - 2026-11-23
+
+### Cambiado
+- La aplicación y sus componentes se compilan sobre .NET 10; el acceso a datos utiliza EF Core 10, sin cambios en el esquema de base de datos.
+- El arranque activa la compatibilidad de fechas anterior de Microsoft.Data.Sqlite (`Pre10TimeZoneHandling`) para preservar el comportamiento existente al leer fechas.
+- El paquete NuGet `SOPRO.Calculation` se mantiene dirigido a net8.0 para conservar la compatibilidad de consumo existente.
+
 ## [1.20.1] - 2026-11-20
 
 ### Cambiado
