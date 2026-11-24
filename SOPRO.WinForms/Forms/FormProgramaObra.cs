@@ -172,6 +172,7 @@ namespace SOPRO.WinForms.Forms
             _productVersion = productVersion;
             FormatoHelper.EstablecerProyecto(_proyecto);
             InitializeComponent();
+            AplicarSuperficiesRedondeadas();
             ConfigurarFormulario();
             ConfigurarGrids();
             InicializarFormatoProgramaObra();
@@ -181,6 +182,17 @@ namespace SOPRO.WinForms.Forms
             // Suscribirse a cambios de configuración de decimales
             FormDatosProyecto.DecimalesActualizados += OnDecimalesActualizados;
             this.FormClosed += (s, e) => FormDatosProyecto.DecimalesActualizados -= OnDecimalesActualizados;
+        }
+
+        /// <summary>
+        /// Prototipo de superficies redondeadas: recorta solo el chrome que no
+        /// aloja grids. El grid de actividades, el Gantt y los paneles del split
+        /// quedan intactos, igual que colores, layout y ribbon.
+        /// </summary>
+        private void AplicarSuperficiesRedondeadas()
+        {
+            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
+            SoproTheme.ApplyRoundedCorners(toolPrograma, SoproUiMetrics.SurfaceRadiusPx);
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)

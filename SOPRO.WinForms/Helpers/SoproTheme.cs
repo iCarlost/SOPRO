@@ -145,6 +145,9 @@ namespace SOPRO.WinForms.Helpers
             // chrome de FormProyecto (un solo look en toda la app).
             panelTop.BackColor = Colors.HeaderDark;
             panelTop.Height = SoproUiMetrics.HeaderHeight;
+            // Solo esquinas inferiores redondeadas: arriba queda al ras de la
+            // ventana y el separador inferior sigue el recorte de la Región.
+            ApplyBottomRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
 
             panelTop.Paint += (_, e) =>
             {
@@ -921,6 +924,34 @@ namespace SOPRO.WinForms.Helpers
             RefreshRegion();
         }
 
+        /// <summary>
+        /// Variante de <see cref="ApplyRoundedCorners"/> para bandas acopladas
+        /// al borde superior de la ventana: redondea SOLO las dos esquinas
+        /// inferiores (las superiores quedan cuadradas y al ras) y recalcula
+        /// la Región ante cambios de tamaño, creación de handle y DPI,
+        /// liberando siempre la Región previa que sustituye.
+        /// </summary>
+        internal static void ApplyBottomRoundedCorners(Control control, int radiusPx)
+        {
+            if (control == null) return;
+
+            void RefreshRegion()
+            {
+                if (control.IsDisposed || control.Width <= 0 || control.Height <= 0) return;
+
+                int radius = ScaleRadius(control, radiusPx);
+                using var path = CreateBottomRoundedPath(new Rectangle(0, 0, control.Width, control.Height), radius);
+                var previous = control.Region;
+                control.Region = new Region(path);
+                previous?.Dispose();
+            }
+
+            control.SizeChanged += (_, __) => RefreshRegion();
+            control.HandleCreated += (_, __) => RefreshRegion();
+            control.DpiChangedAfterParent += (_, __) => RefreshRegion();
+            RefreshRegion();
+        }
+
         private static int ScaleRadius(Control control, int radiusPx)
         {
             int dpi = control.DeviceDpi > 0 ? control.DeviceDpi : 96;
@@ -942,6 +973,34 @@ namespace SOPRO.WinForms.Helpers
             path.AddArc(arc, 0, 90);
             arc.X = bounds.X;
             path.AddArc(arc, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+
+        /// <summary>
+        /// Rectángulo con las DOS esquinas inferiores redondeadas y las
+        /// superiores cuadradas (arco inferior-izquierda: 180°→90°, arco
+        /// inferior-derecha: 90°→0°, recorrido en el sentido del contorno).
+        /// </summary>
+        private static GraphicsPath CreateBottomRoundedPath(Rectangle bounds, int radius)
+        {
+            var path = new GraphicsPath();
+            int diametro = Math.Max(1, radius * 2);
+            diametro = Math.Min(diametro, Math.Min(bounds.Width, bounds.Height));
+            int radio = diametro / 2;
+            if (radio < 1)
+            {
+                path.AddRectangle(bounds);
+                return path;
+            }
+
+            int w = bounds.Width;
+            int h = bounds.Height;
+            path.AddLine(bounds.X, bounds.Y, bounds.X, h - radio);
+            path.AddArc(new Rectangle(bounds.X, h - radio * 2, radio * 2, radio * 2), 180, -90);
+            path.AddLine(bounds.X + radio, h, w - radio, h);
+            path.AddArc(new Rectangle(w - radio * 2, h - radio * 2, radio * 2, radio * 2), 90, -90);
+            path.AddLine(w, h - radio, bounds.Right, bounds.Y);
             path.CloseFigure();
             return path;
         }

@@ -113,6 +113,7 @@ namespace SOPRO.WinForms.Forms
             string? productVersion)
         {
             InitializeComponent();
+            AplicarSuperficiesRedondeadas();
             dgvHerramientas.AplicarEstiloSOPRO();
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _repository = new Repository<Herramienta>(_context);
@@ -139,6 +140,18 @@ namespace SOPRO.WinForms.Forms
                 NotificarColumnaSeleccionada(e.ColumnIndex);
             };
             dgvHerramientas.ColumnWidthChanged += DgvHerramientas_ColumnWidthChanged;
+        }
+
+        /// <summary>
+        /// Superficies redondeadas: solo el chrome que no aloja grids.
+        /// panelHeader/panelBotones son los nombres heredados del encabezado y
+        /// la barra de acciones; dgvHerramientas, panelBusqueda y statusStrip
+        /// quedan intactos.
+        /// </summary>
+        private void AplicarSuperficiesRedondeadas()
+        {
+            SoproTheme.ApplyRoundedCorners(panelHeader, SoproUiMetrics.SurfaceRadiusPx);
+            SoproTheme.ApplyRoundedCorners(panelBotones, SoproUiMetrics.SurfaceRadiusPx);
         }
 
         internal FormEditarMatriz CrearEditorMatriz(Matriz? matriz = null)

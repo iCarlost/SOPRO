@@ -52,6 +52,7 @@ namespace SOPRO.WinForms.Forms
             FormatoHelper.EstablecerProyecto(_proyecto);
             _cargando = true;
             InitializeComponent();
+            AplicarSuperficiesRedondeadas();
             ConfigurarComboModeloFinanciamiento();
             new EditableReportTitleHelper(_context, panelTop, lblTitulo, () => _proyecto.Id, ReportTitleModuleKeys.Financiamiento).Attach();
             ConfigurarGrid();
@@ -65,6 +66,16 @@ namespace SOPRO.WinForms.Forms
 
 
         // ── Tabla de flujo de caja ────────────────────────────────────────────
+
+        /// <summary>
+        /// Recorta solo el chrome que no aloja grids. Los grids quedan
+        /// intactos, igual que colores, layout y toolbar.
+        /// </summary>
+        private void AplicarSuperficiesRedondeadas()
+        {
+            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
+            SoproTheme.ApplyRoundedCorners(panelToolbar, SoproUiMetrics.SurfaceRadiusPx);
+        }
 
 
         // ── Resultado ─────────────────────────────────────────────────────────

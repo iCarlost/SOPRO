@@ -115,6 +115,7 @@ namespace SOPRO.WinForms.Forms
             _columnasConfig = ColumnasMatrizHelper.ObtenerColumnas(_context, _proyectoId);
 
             ConfigurarModoEmbebido();
+            AplicarSuperficiesRedondeadas();
             ConfigurarGrid();
 
             Load += async (_, __) => await CargarMatricesAsync();
@@ -147,6 +148,16 @@ namespace SOPRO.WinForms.Forms
             // retendrían esta instancia y su contexto ya liberado, y una guarda de
             // matriz en otro proyecto dispararía el manejador obsoleto.
             this.Disposed += (s, e) => LiberarSuscripcionesGlobales();
+        }
+
+        /// <summary>
+        /// Superficies redondeadas: solo el chrome que no aloja grids.
+        /// dgvMatrices, panelFiltros y statusStrip quedan intactos.
+        /// </summary>
+        private void AplicarSuperficiesRedondeadas()
+        {
+            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
+            SoproTheme.ApplyRoundedCorners(panelToolbar, SoproUiMetrics.SurfaceRadiusPx);
         }
 
 

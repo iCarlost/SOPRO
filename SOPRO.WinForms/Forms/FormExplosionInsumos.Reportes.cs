@@ -111,6 +111,7 @@ namespace SOPRO.WinForms.Forms
             _context = context;
             _proyectoId = proyectoId;
             InitializeComponent();
+            AplicarSuperficiesRedondeadas();
 
             // Cargar proyecto
             _proyecto = _context.Proyectos.Find(_proyectoId);

@@ -59,6 +59,7 @@ namespace SOPRO.WinForms.Forms
             FormatoHelper.EstablecerProyecto(_proyecto);
 
             InitializeComponent();
+            AplicarSuperficiesRedondeadas();
             new EditableReportTitleHelper(_context, panelTop, lblTitulo, () => _proyecto.Id, ReportTitleModuleKeys.Indirectos).Attach();
 
             // Aplicar estilo consistente
@@ -72,6 +73,16 @@ namespace SOPRO.WinForms.Forms
         {
             lblProyecto.Text = $"📁 {_proyecto.Nombre}";
             CargarDatos();
+        }
+
+        /// <summary>
+        /// Recorta solo el chrome que no aloja grids. Los grids quedan
+        /// intactos, igual que colores, layout y toolbar.
+        /// </summary>
+        private void AplicarSuperficiesRedondeadas()
+        {
+            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
+            SoproTheme.ApplyRoundedCorners(panelToolbar, SoproUiMetrics.SurfaceRadiusPx);
         }
 
 
