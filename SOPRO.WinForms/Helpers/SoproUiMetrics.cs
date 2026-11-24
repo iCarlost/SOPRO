@@ -48,7 +48,7 @@ namespace SOPRO.WinForms.Helpers
         // Radio compacto (en px logicos) del chrome de baja altura del panel
         // embebido de matrices: sus controles son cortos y un radio mayor los
         // hace verse pastilla en lugar de rectangulos con esquina redondeada.
-        public const int CompactRadiusPx = 8;
+        public const int CompactRadiusPx = 6;
 
         // Radio de redondeo (en px logicos) de las SUPERFICIES estructurales
         // (bandas de encabezado/toolbar de los modulos, header del panel de
