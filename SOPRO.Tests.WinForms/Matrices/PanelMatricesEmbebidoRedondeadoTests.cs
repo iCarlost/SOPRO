@@ -51,8 +51,8 @@ public class PanelMatricesEmbebidoRedondeadoTests
                 $"Precondición: '{control.Name}' debe tener tamaño suficiente para el radio del tema ({control.Size}).");
             Assert.IsNotNull(control.Region,
                 $"'{control.Name}' debe tener Región de esquinas redondeadas aplicada.");
-            // La esquina (1,1) queda fuera del arco del radio aplicado (14 en la
-            // cabecera como superficie, 10 en chips/flechas a 96 DPI)
+            // La esquina (1,1) queda fuera del arco del radio compacto (8 en
+            // todo el panel embebido a 96 DPI)
             // y el centro y los puntos medios de los bordes quedan dentro: así se
             // demuestra el redondeo (y que la Región sigue cubriendo todo el borde)
             // sin depender de la apariencia en pantalla.
@@ -74,28 +74,34 @@ public class PanelMatricesEmbebidoRedondeadoTests
     }
 
     [TestMethod]
-    public void JerarquiaDeRadios_Cabecera14_YControlesPequenos10()
+    public void JerarquiaDeRadios_PanelEmbebidoCompacto8_YTokensGlobales()
     {
         using EscenarioRedondeado escenario = new();
         var panel = escenario.Panel;
 
         Assert.IsTrue(SoproUiMetrics.SurfaceRadiusPx > SoproUiMetrics.ThemeRadiusPx,
             "Las superficies estructurales deben redondearse más que los controles pequeños.");
+        Assert.IsTrue(SoproUiMetrics.ThemeRadiusPx > SoproUiMetrics.CompactRadiusPx,
+            "El radio compacto del panel embebido debe ser el menor de la jerarquía.");
 
         Control cabecera = escenario.ControlPrivado("_panelHeader");
         Control anterior = escenario.ControlPrivado("_btnAnterior");
 
-        // Radio 14 en la cabecera (superficie): el punto (4,4) queda fuera del
-        // arco (centro (14,14), distancia ~14.14 > 14).
-        Assert.IsFalse(cabecera.Region!.IsVisible(4, 4),
-            "La cabecera debe usar el radio de superficie (14), no el de controles (10).");
+        // Radio COMPACTO (8) en toda la chrome del panel embebido: sus
+        // controles son de baja altura y un radio mayor los hace ver pastilla.
+        // Punto (4,4): a 14 quedaría fuera del arco (dist ~14.14); a 8 queda
+        // dentro (dist ~5.66 < 8).
+        Assert.IsTrue(cabecera.Region!.IsVisible(4, 4),
+            "La cabecera del panel embebido debe usar el radio compacto (8), no el de superficie (14).");
+        Assert.IsFalse(cabecera.Region.IsVisible(1, 1),
+            "La cabecera del panel embebido sigue con esquinas redondeadas.");
 
-        // Radio 10 en controles pequeños: el punto (4,4) queda dentro del arco
-        // (centro (10,10), distancia ~8.49 < 10).
-        Assert.IsTrue(anterior.Region!.IsVisible(4, 4),
-            "La flecha debe usar el radio de controles pequeños (10).");
-        Assert.IsTrue(panel.ChipApuParaPrueba!.Region!.IsVisible(4, 4),
-            "El chip de tipo debe usar el radio de controles pequeños (10).");
+        // Punto (2,3): distingue compacto 8 (dist ~7.81 < 8, visible) del radio
+        // de controles 10 (dist ~10.63 > 10, recortado).
+        Assert.IsTrue(anterior.Region!.IsVisible(2, 3),
+            "La flecha debe usar el radio compacto (8), no el de controles (10).");
+        Assert.IsTrue(panel.ChipApuParaPrueba!.Region!.IsVisible(2, 3),
+            "El chip de tipo debe usar el radio compacto (8), no el de controles (10).");
     }
 
     [TestMethod]

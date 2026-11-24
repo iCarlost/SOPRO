@@ -45,6 +45,11 @@ namespace SOPRO.WinForms.Helpers
         // (chips, flechas, botones de dialogo y de accion).
         public const int ThemeRadiusPx = 10;
 
+        // Radio compacto (en px logicos) del chrome de baja altura del panel
+        // embebido de matrices: sus controles son cortos y un radio mayor los
+        // hace verse pastilla en lugar de rectangulos con esquina redondeada.
+        public const int CompactRadiusPx = 8;
+
         // Radio de redondeo (en px logicos) de las SUPERFICIES estructurales
         // (bandas de encabezado/toolbar de los modulos, header del panel de
         // matrices y chips de porcentaje): lenguaje de tarjeta del mockup.

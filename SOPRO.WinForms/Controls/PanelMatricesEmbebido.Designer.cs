@@ -241,8 +241,8 @@ namespace SOPRO.WinForms.Controls
             };
             _btnAnterior.FlatAppearance.BorderColor = ColorHeaderBotonBorde;
             _btnSiguiente.FlatAppearance.BorderColor = ColorHeaderBotonBorde;
-            SoproTheme.ApplyRoundedCorners(_btnAnterior, SoproUiMetrics.ThemeRadiusPx);
-            SoproTheme.ApplyRoundedCorners(_btnSiguiente, SoproUiMetrics.ThemeRadiusPx);
+            SoproTheme.ApplyRoundedCorners(_btnAnterior, SoproUiMetrics.CompactRadiusPx);
+            SoproTheme.ApplyRoundedCorners(_btnSiguiente, SoproUiMetrics.CompactRadiusPx);
             _btnAnterior.Click += BtnAnterior_Click;
             _btnSiguiente.Click += BtnSiguiente_Click;
             _toolTip.SetToolTip(_btnAnterior, "Ir al concepto anterior del presupuesto.");
@@ -286,7 +286,7 @@ namespace SOPRO.WinForms.Controls
             header.SetColumnSpan(_lblInfoMatriz, 3);
             header.Controls.Add(_lblInfoMatriz, 0, 1);
             _panelHeader = header;
-            SoproTheme.ApplyRoundedCorners(_panelHeader, SoproUiMetrics.SurfaceRadiusPx);
+            SoproTheme.ApplyRoundedCorners(_panelHeader, SoproUiMetrics.CompactRadiusPx);
         }
 
         /// <summary>
@@ -339,7 +339,7 @@ namespace SOPRO.WinForms.Controls
                 UseVisualStyleBackColor = false
             };
             chip.FlatAppearance.BorderSize = 1;
-            SoproTheme.ApplyRoundedCorners(chip, SoproUiMetrics.ThemeRadiusPx);
+            SoproTheme.ApplyRoundedCorners(chip, SoproUiMetrics.CompactRadiusPx);
             return chip;
         }
 
@@ -616,7 +616,7 @@ namespace SOPRO.WinForms.Controls
             // Botones que abren los selectores de insumos: esquinas redondeadas
             // del tema (mismo radio aprobado del resto del chrome), recalculado
             // ante cambios de tamaño/DPI por el helper central.
-            SoproTheme.ApplyRoundedCorners(btn, SoproUiMetrics.ThemeRadiusPx);
+            SoproTheme.ApplyRoundedCorners(btn, SoproUiMetrics.CompactRadiusPx);
             return btn;
         }
 
