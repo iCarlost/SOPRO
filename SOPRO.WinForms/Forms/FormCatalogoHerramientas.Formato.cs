@@ -150,8 +150,8 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         private void AplicarSuperficiesRedondeadas()
         {
-            SoproTheme.ApplyRoundedCorners(panelHeader, SoproUiMetrics.ThemeRadiusPx);
-            SoproTheme.ApplyRoundedCorners(panelBotones, SoproUiMetrics.ThemeRadiusPx);
+            SoproTheme.ApplyRoundedCorners(panelHeader, SoproUiMetrics.SurfaceRadiusPx);
+            SoproTheme.ApplyRoundedCorners(panelBotones, SoproUiMetrics.SurfaceRadiusPx);
         }
 
         internal FormEditarMatriz CrearEditorMatriz(Matriz? matriz = null)

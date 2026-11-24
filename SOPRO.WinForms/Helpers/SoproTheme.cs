@@ -147,7 +147,7 @@ namespace SOPRO.WinForms.Helpers
             panelTop.Height = SoproUiMetrics.HeaderHeight;
             // Solo esquinas inferiores redondeadas: arriba queda al ras de la
             // ventana y el separador inferior sigue el recorte de la Región.
-            ApplyBottomRoundedCorners(panelTop, SoproUiMetrics.ThemeRadiusPx);
+            ApplyBottomRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
 
             panelTop.Paint += (_, e) =>
             {

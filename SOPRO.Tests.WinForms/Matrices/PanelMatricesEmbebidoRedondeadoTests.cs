@@ -51,7 +51,8 @@ public class PanelMatricesEmbebidoRedondeadoTests
                 $"Precondición: '{control.Name}' debe tener tamaño suficiente para el radio del tema ({control.Size}).");
             Assert.IsNotNull(control.Region,
                 $"'{control.Name}' debe tener Región de esquinas redondeadas aplicada.");
-            // La esquina (1,1) queda fuera del arco del radio del tema (8 a 96 DPI)
+            // La esquina (1,1) queda fuera del arco del radio aplicado (14 en la
+            // cabecera como superficie, 10 en chips/flechas a 96 DPI)
             // y el centro y los puntos medios de los bordes quedan dentro: así se
             // demuestra el redondeo (y que la Región sigue cubriendo todo el borde)
             // sin depender de la apariencia en pantalla.
@@ -70,6 +71,31 @@ public class PanelMatricesEmbebidoRedondeadoTests
             "Tras el cambio de tamaño la cabecera sigue con esquinas redondeadas.");
         Assert.IsTrue(cabecera.Region.IsVisible(cabecera.Width - 1, cabecera.Height / 2),
             "La Región de la cabecera debe recalcularse y cubrir el nuevo borde derecho.");
+    }
+
+    [TestMethod]
+    public void JerarquiaDeRadios_Cabecera14_YControlesPequenos10()
+    {
+        using EscenarioRedondeado escenario = new();
+        var panel = escenario.Panel;
+
+        Assert.IsTrue(SoproUiMetrics.SurfaceRadiusPx > SoproUiMetrics.ThemeRadiusPx,
+            "Las superficies estructurales deben redondearse más que los controles pequeños.");
+
+        Control cabecera = escenario.ControlPrivado("_panelHeader");
+        Control anterior = escenario.ControlPrivado("_btnAnterior");
+
+        // Radio 14 en la cabecera (superficie): el punto (4,4) queda fuera del
+        // arco (centro (14,14), distancia ~14.14 > 14).
+        Assert.IsFalse(cabecera.Region!.IsVisible(4, 4),
+            "La cabecera debe usar el radio de superficie (14), no el de controles (10).");
+
+        // Radio 10 en controles pequeños: el punto (4,4) queda dentro del arco
+        // (centro (10,10), distancia ~8.49 < 10).
+        Assert.IsTrue(anterior.Region!.IsVisible(4, 4),
+            "La flecha debe usar el radio de controles pequeños (10).");
+        Assert.IsTrue(panel.ChipApuParaPrueba!.Region!.IsVisible(4, 4),
+            "El chip de tipo debe usar el radio de controles pequeños (10).");
     }
 
     [TestMethod]

@@ -70,8 +70,8 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         private void AplicarSuperficiesRedondeadas()
         {
-            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.ThemeRadiusPx);
-            SoproTheme.ApplyRoundedCorners(toolStripTop, SoproUiMetrics.ThemeRadiusPx);
+            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
+            SoproTheme.ApplyRoundedCorners(toolStripTop, SoproUiMetrics.SurfaceRadiusPx);
         }
 
 

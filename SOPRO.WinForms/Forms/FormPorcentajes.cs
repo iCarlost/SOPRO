@@ -34,7 +34,7 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         private void AplicarSuperficiesRedondeadas()
         {
-            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.ThemeRadiusPx);
+            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
         }
 
         private void FormPorcentajes_Load(object sender, EventArgs e)

@@ -286,7 +286,7 @@ namespace SOPRO.WinForms.Controls
             header.SetColumnSpan(_lblInfoMatriz, 3);
             header.Controls.Add(_lblInfoMatriz, 0, 1);
             _panelHeader = header;
-            SoproTheme.ApplyRoundedCorners(_panelHeader, SoproUiMetrics.ThemeRadiusPx);
+            SoproTheme.ApplyRoundedCorners(_panelHeader, SoproUiMetrics.SurfaceRadiusPx);
         }
 
         /// <summary>

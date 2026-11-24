@@ -280,7 +280,7 @@ namespace SOPRO.WinForms.Forms
 
             private GraphicsPath CrearTrayectoRedondeado(Rectangle limites)
             {
-                int radio = Math.Max(2, (int)Math.Round(SoproUiMetrics.ThemeRadiusPx * (DeviceDpi > 0 ? DeviceDpi : 96) / 96f));
+                int radio = Math.Max(2, (int)Math.Round(SoproUiMetrics.SurfaceRadiusPx * (DeviceDpi > 0 ? DeviceDpi : 96) / 96f));
                 int diametro = Math.Min(radio * 2, Math.Min(limites.Width, limites.Height));
                 diametro = Math.Max(1, diametro);
 

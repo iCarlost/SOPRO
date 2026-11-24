@@ -41,8 +41,14 @@ namespace SOPRO.WinForms.Helpers
 
         // --- Metricas de tema (FormPrincipal: encabezado, tarjetas y botones) ---
 
-        // Radio de redondeo (en px logicos) usado por los botones del tema.
-        public const int ThemeRadiusPx = 8;
+        // Radio de redondeo (en px logicos) de los CONTROLES pequenos del tema
+        // (chips, flechas, botones de dialogo y de accion).
+        public const int ThemeRadiusPx = 10;
+
+        // Radio de redondeo (en px logicos) de las SUPERFICIES estructurales
+        // (bandas de encabezado/toolbar de los modulos, header del panel de
+        // matrices y chips de porcentaje): lenguaje de tarjeta del mockup.
+        public const int SurfaceRadiusPx = 14;
 
         // Alto del encabezado superior (header) del tema.
         public const int HeaderHeight = 88;

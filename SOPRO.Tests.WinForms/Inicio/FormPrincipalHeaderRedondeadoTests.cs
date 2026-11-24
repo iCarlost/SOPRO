@@ -41,11 +41,15 @@ public class FormPrincipalHeaderRedondeadoTests
             "La esquina superior derecha debe seguir visible (cuadrada, al ras).");
 
         // Esquinas inferiores REDONDEADAS: los puntos pegados a la esquina
-        // quedan fuera del arco del radio del tema (8 a 96 DPI).
+        // quedan fuera del arco del radio de superficie (14 a 96 DPI).
         Assert.IsFalse(panelTop.Region.IsVisible(1, alto - 1),
             "La esquina inferior izquierda debe quedar recortada por el arco.");
         Assert.IsFalse(panelTop.Region.IsVisible(ancho - 2, alto - 1),
             "La esquina inferior derecha debe quedar recortada por el arco.");
+        // Punto que distingue el radio 14 del de controles (10): a 10 px el
+        // arco dejaría visible (4, alto-4); a 14 px queda fuera.
+        Assert.IsFalse(panelTop.Region.IsVisible(4, alto - 4),
+            "La banda debe usar el radio de superficie (14), no el de controles (10).");
 
         // Centro, borde inferior medio (separador) y flancos siguen visibles.
         Assert.IsTrue(panelTop.Region.IsVisible(ancho / 2, alto / 2),

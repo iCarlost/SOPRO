@@ -191,8 +191,8 @@ namespace SOPRO.WinForms.Forms
         /// </summary>
         private void AplicarSuperficiesRedondeadas()
         {
-            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.ThemeRadiusPx);
-            SoproTheme.ApplyRoundedCorners(toolPrograma, SoproUiMetrics.ThemeRadiusPx);
+            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
+            SoproTheme.ApplyRoundedCorners(toolPrograma, SoproUiMetrics.SurfaceRadiusPx);
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
