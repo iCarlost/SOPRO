@@ -115,6 +115,7 @@ namespace SOPRO.WinForms.Forms
             string? productVersion)
         {
             InitializeComponent();
+            AplicarSuperficiesRedondeadas();
             FormRenderHelper.OptimizeForGridRendering(this);
             btnExportarExcel.Visible = false;
             btnImportarExcel.Visible = false;
@@ -147,6 +148,16 @@ namespace SOPRO.WinForms.Forms
                 NotificarColumnaSeleccionada(e.ColumnIndex);
             };
             dgvMaquinaria.ColumnWidthChanged += DgvMaquinaria_ColumnWidthChanged;
+        }
+
+        /// <summary>
+        /// Superficies redondeadas: solo el chrome que no aloja grids.
+        /// dgvMaquinaria, panelFiltros y statusStrip quedan intactos.
+        /// </summary>
+        private void AplicarSuperficiesRedondeadas()
+        {
+            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.ThemeRadiusPx);
+            SoproTheme.ApplyRoundedCorners(panelToolbar, SoproUiMetrics.ThemeRadiusPx);
         }
 
         internal FormEditarMatriz CrearEditorMatriz(Matriz? matriz = null)

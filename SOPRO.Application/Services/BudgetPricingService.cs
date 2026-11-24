@@ -146,7 +146,18 @@ namespace SOPRO.Application.Services
                 TienePorcentajesActivos = hayPorc,
                 PorcentajesTexto = hayPorc
                     ? $"📊  Ind.OC {proyecto.PorcentajeIndirectosCentral:N2}%  Campo {proyecto.PorcentajeIndirectosCampo:N2}%  Fin {proyecto.PorcentajeFinanciamiento:N2}%  Util {proyecto.PorcentajeUtilidad:N2}%"
-                    : "⚠️  Sin porcentajes configurados  (usa Porcentajes o Módulo Indirectos)"
+                    : "⚠️  Sin porcentajes configurados  (usa Porcentajes o Módulo Indirectos)",
+                // Los mismos cuatro valores del texto, ya separados para la fila
+                // de chips del header (mismo formato N2; sin duplicar formato en UI).
+                PorcentajesChips = !hayPorc
+                    ? Array.Empty<BudgetHeaderPorcentajeChip>()
+                    : new[]
+                    {
+                        new BudgetHeaderPorcentajeChip { Etiqueta = "Ind.OC", Valor = $"{proyecto.PorcentajeIndirectosCentral:N2}%" },
+                        new BudgetHeaderPorcentajeChip { Etiqueta = "Campo",  Valor = $"{proyecto.PorcentajeIndirectosCampo:N2}%" },
+                        new BudgetHeaderPorcentajeChip { Etiqueta = "Fin",    Valor = $"{proyecto.PorcentajeFinanciamiento:N2}%" },
+                        new BudgetHeaderPorcentajeChip { Etiqueta = "Util",   Valor = $"{proyecto.PorcentajeUtilidad:N2}%" },
+                    }
             };
         }
 

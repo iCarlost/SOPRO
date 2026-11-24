@@ -71,7 +71,7 @@ namespace SOPRO.WinForms.Forms
             lblTitulo = new Label();
             lblProyecto = new Label();
             panelTop = new Panel();
-            lblPorcentajesInfo = new Label();
+            panelChipsPorcentajes = new FlowLayoutPanel();
             panelToolbar.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitContainer).BeginInit();
             splitContainer.Panel1.SuspendLayout();
@@ -319,19 +319,23 @@ namespace SOPRO.WinForms.Forms
             // 
             // lblProyecto
             // 
-            lblProyecto.AutoSize = true;
+            // Tamaño fijo con elipsis: el ancho lo ajusta en runtime
+            // AjustarAnchoProyectoPorChips (ChipsPorcentajes.cs) para ceder la
+            // franja inferior a la fila de chips anclada a la derecha.
+            lblProyecto.AutoEllipsis = true;
+            lblProyecto.AutoSize = false;
             lblProyecto.Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point, 0);
             lblProyecto.ForeColor = Color.White;
             lblProyecto.Location = new Point(18, 42);
             lblProyecto.Name = "lblProyecto";
-            lblProyecto.Size = new Size(54, 15);
+            lblProyecto.Size = new Size(121, 15);
             lblProyecto.TabIndex = 1;
             lblProyecto.Text = "Proyecto";
             //
             // panelTop
             //
             panelTop.BackColor = Color.FromArgb(51, 51, 76);
-            panelTop.Controls.Add(lblPorcentajesInfo);
+            panelTop.Controls.Add(panelChipsPorcentajes);
             panelTop.Controls.Add(lblProyecto);
             panelTop.Controls.Add(lblTitulo);
             panelTop.Dock = DockStyle.Top;
@@ -340,15 +344,22 @@ namespace SOPRO.WinForms.Forms
             panelTop.Size = new Size(1400, 68);
             panelTop.TabIndex = 0;
             // 
-            // lblPorcentajesInfo
-            // 
-            lblPorcentajesInfo.AutoSize = true;
-            lblPorcentajesInfo.Font = new Font("Segoe UI", 9F);
-            lblPorcentajesInfo.ForeColor = Color.FromArgb(180, 230, 180);
-            lblPorcentajesInfo.Location = new Point(854, 47);
-            lblPorcentajesInfo.Name = "lblPorcentajesInfo";
-            lblPorcentajesInfo.Size = new Size(0, 15);
-            lblPorcentajesInfo.TabIndex = 10;
+            // panelChipsPorcentajes
+            //
+            // Anclado al borde inferior: el alto del chip lo dicta la fuente en el
+            // DPI real (no la escala del formulario); anclar arriba hacía crecer la
+            // fila más allá del borde inferior del header y se recortaba.
+            panelChipsPorcentajes.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            panelChipsPorcentajes.AutoSize = true;
+            panelChipsPorcentajes.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            panelChipsPorcentajes.BackColor = Color.Transparent;
+            panelChipsPorcentajes.FlowDirection = FlowDirection.LeftToRight;
+            panelChipsPorcentajes.Location = new Point(1384, 40);
+            panelChipsPorcentajes.Margin = new Padding(0);
+            panelChipsPorcentajes.Name = "panelChipsPorcentajes";
+            panelChipsPorcentajes.Size = new Size(0, 24);
+            panelChipsPorcentajes.TabIndex = 10;
+            panelChipsPorcentajes.WrapContents = false;
             // 
             // FormPresupuesto
             // 
@@ -388,6 +399,6 @@ namespace SOPRO.WinForms.Forms
         private Label lblTitulo;
         private Label lblProyecto;
         private Panel panelTop;
-        private Label lblPorcentajesInfo;
+        private FlowLayoutPanel panelChipsPorcentajes;
     }
 }

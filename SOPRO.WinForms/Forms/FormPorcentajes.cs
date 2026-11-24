@@ -24,7 +24,17 @@ namespace SOPRO.WinForms.Forms
             _proyecto = proyecto ?? throw new ArgumentNullException(nameof(proyecto));
             FormatoHelper.EstablecerProyecto(_proyecto);
             InitializeComponent();
+            AplicarSuperficiesRedondeadas();
             //CrearBotonFinanciamiento();
+        }
+
+        /// <summary>
+        /// Recorta solo el chrome que no aloja grids. Los grids quedan
+        /// intactos, igual que colores, layout y toolbar.
+        /// </summary>
+        private void AplicarSuperficiesRedondeadas()
+        {
+            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.ThemeRadiusPx);
         }
 
         private void FormPorcentajes_Load(object sender, EventArgs e)

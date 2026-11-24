@@ -32,6 +32,15 @@ namespace SOPRO.WinForms.Forms
         public System.Windows.Forms.DataGridView GridPrincipal => dgvExplosion;
         public System.Windows.Forms.DataGridView GridBusqueda => dgvExplosion;
 
+        /// <summary>
+        /// Recorta solo el chrome que no aloja grids. Los grids quedan
+        /// intactos, igual que colores, layout y toolbar.
+        /// </summary>
+        private void AplicarSuperficiesRedondeadas()
+        {
+            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.ThemeRadiusPx);
+        }
+
 
 
 

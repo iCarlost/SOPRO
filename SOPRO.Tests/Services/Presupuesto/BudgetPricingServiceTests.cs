@@ -195,10 +195,19 @@ public class BudgetPricingServiceTests
         BudgetHeaderInfo info = BudgetPricingService.BuildHeaderInfo(proyecto);
 
         Assert.IsTrue(info.TienePorcentajesActivos);
-        StringAssert.Contains(info.PorcentajesTexto, "Ind.OC 10.12%");
-        StringAssert.Contains(info.PorcentajesTexto, "Campo 5.00%");
-        StringAssert.Contains(info.PorcentajesTexto, "Fin 2.00%");
-        StringAssert.Contains(info.PorcentajesTexto, "Util 10.00%");
+        Assert.AreEqual(4, info.PorcentajesChips.Count);
+        Assert.AreEqual("Ind.OC", info.PorcentajesChips[0].Etiqueta);
+        Assert.AreEqual($"{10.1234m:N2}%", info.PorcentajesChips[0].Valor);
+        Assert.AreEqual("Campo", info.PorcentajesChips[1].Etiqueta);
+        Assert.AreEqual($"{5m:N2}%", info.PorcentajesChips[1].Valor);
+        Assert.AreEqual("Fin", info.PorcentajesChips[2].Etiqueta);
+        Assert.AreEqual($"{2m:N2}%", info.PorcentajesChips[2].Valor);
+        Assert.AreEqual("Util", info.PorcentajesChips[3].Etiqueta);
+        Assert.AreEqual($"{10m:N2}%", info.PorcentajesChips[3].Valor);
+        StringAssert.Contains(info.PorcentajesTexto, $"Ind.OC {10.1234m:N2}%");
+        StringAssert.Contains(info.PorcentajesTexto, $"Campo {5m:N2}%");
+        StringAssert.Contains(info.PorcentajesTexto, $"Fin {2m:N2}%");
+        StringAssert.Contains(info.PorcentajesTexto, $"Util {10m:N2}%");
         Assert.IsFalse(info.PorcentajesTexto.Contains("Factor"));
         Assert.IsFalse(info.PorcentajesTexto.Contains("FSR"));
     }
@@ -216,6 +225,7 @@ public class BudgetPricingServiceTests
         BudgetHeaderInfo info = BudgetPricingService.BuildHeaderInfo(proyecto);
 
         Assert.IsFalse(info.TienePorcentajesActivos);
+        Assert.AreEqual(0, info.PorcentajesChips.Count);
         Assert.AreEqual(
             "⚠️  Sin porcentajes configurados  (usa Porcentajes o Módulo Indirectos)",
             info.PorcentajesTexto);

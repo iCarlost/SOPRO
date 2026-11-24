@@ -607,6 +607,10 @@ namespace SOPRO.WinForms.Controls
                 UseVisualStyleBackColor = false
             };
             btn.FlatAppearance.BorderSize = 0;
+            // Botones que abren los selectores de insumos: esquinas redondeadas
+            // del tema (mismo radio aprobado del resto del chrome), recalculado
+            // ante cambios de tamaño/DPI por el helper central.
+            SoproTheme.ApplyRoundedCorners(btn, SoproUiMetrics.ThemeRadiusPx);
             return btn;
         }
 

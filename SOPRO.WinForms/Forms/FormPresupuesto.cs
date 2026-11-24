@@ -648,6 +648,7 @@ namespace SOPRO.WinForms.Forms
             FormatoHelper.ConfiguracionCambiada += OnConfiguracionCambiada;
 
             InitializeComponent();
+            AplicarSuperficiesRedondeadas();
             InicializarBotonReajustarCosto();
             LoadWorkspacePanelState();
             splitContainer.SplitterMoving += SplitContainer_WorkspaceSplitterMoving;
@@ -747,6 +748,17 @@ namespace SOPRO.WinForms.Forms
             this.Disposed += (s, e) => LiberarSuscripcionesGlobales();
         }
 
+        /// <summary>
+        /// Prototipo de superficies redondeadas: recorta solo el chrome que no
+        /// aloja grids. Los grids (dgvPresupuesto y panelMatrices/APU) quedan
+        /// intactos, igual que colores, layout y ribbon.
+        /// </summary>
+        private void AplicarSuperficiesRedondeadas()
+        {
+            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.ThemeRadiusPx);
+            SoproTheme.ApplyRoundedCorners(panelToolbar, SoproUiMetrics.ThemeRadiusPx);
+            SoproTheme.ApplyRoundedCorners(workspaceToolbar, SoproUiMetrics.ThemeRadiusPx);
+        }
 
         private void LiberarSuscripcionesGlobales()
         {
@@ -1132,13 +1144,14 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Muestra en el header los porcentajes activos del proyecto.
+        /// Muestra en el header los porcentajes activos del proyecto, separados
+        /// en chips (uno por porcentaje) o el aviso de configuración pendiente.
         /// </summary>
         private void ActualizarInfoPorcentajes()
         {
             BudgetPricingService.RefreshProjectPercentages(_context, _proyecto);
             var info = BudgetPricingService.BuildHeaderInfo(_proyecto);
-            lblPorcentajesInfo.Text = info.PorcentajesTexto;
+            ReconstruirChipsPorcentajes(info);
         }
 
         /// <summary>
