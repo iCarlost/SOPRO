@@ -5,6 +5,7 @@ using System.Windows.Forms;
 using Microsoft.EntityFrameworkCore;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using SOPRO.Application.Services;
@@ -76,13 +77,13 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Recorta solo el chrome que no aloja grids. Los grids quedan
-        /// intactos, igual que colores, layout y toolbar.
+        /// Chrome flotante: header y toolbar flotan con aire, borde y sombra.
+        /// El TabControl, los grids y statusStrip quedan intactos.
         /// </summary>
         private void AplicarSuperficiesRedondeadas()
         {
-            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
-            SoproTheme.ApplyRoundedCorners(panelToolbar, SoproUiMetrics.SurfaceRadiusPx);
+            ChromeFlotanteHost.Hospedar(panelTop, this, "panelTopHost", BackColor);
+            ChromeFlotanteHost.Hospedar(panelToolbar, this, "panelToolbarHost", BackColor, insetSuperiorLogico: 0);
         }
 
 

@@ -1,8 +1,4 @@
-using System;
-using System.Drawing;
-using System.Windows.Forms;
 using SOPRO.WinForms.Controls;
-using SOPRO.WinForms.Helpers;
 
 namespace SOPRO.WinForms.Forms
 {
@@ -48,61 +44,20 @@ namespace SOPRO.WinForms.Forms
             if (_chromeFlotanteAplicado) return;
             _chromeFlotanteAplicado = true;
 
-            // Regiones redondeadas de las superficies (contrato del prototipo
-            // anterior): responden por sí solas a tamaño, handle y DPI.
-            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
-            SoproTheme.ApplyRoundedCorners(panelToolbar, SoproUiMetrics.SurfaceRadiusPx);
-            SoproTheme.ApplyRoundedCorners(workspaceToolbar, SoproUiMetrics.SurfaceRadiusPx);
-
-            // Se hospeda primero la toolbar para conservar los índices z del
-            // form: al re-agregar cada host queda exactamente donde estaba su
-            // superficie, así el orden de acople no se invierte.
-            _panelToolbarHost = Hospedar(
+            _panelToolbarHost = ChromeFlotanteHost.Hospedar(
                 panelToolbar, contenedor: this, nombre: "panelToolbarHost",
-                insetSuperior: 0,
-                separacionInferior: ChromeFlotanteHost.SeparacionInferiorLogica,
-                colorFondo: BackColor);
+                colorFondo: BackColor,
+                insetSuperiorLogico: 0);
 
-            _panelTopHost = Hospedar(
+            _panelTopHost = ChromeFlotanteHost.Hospedar(
                 panelTop, contenedor: this, nombre: "panelTopHost",
-                insetSuperior: ChromeFlotanteHost.InsetSuperiorLogico,
-                separacionInferior: ChromeFlotanteHost.SeparacionInferiorLogica,
                 colorFondo: BackColor);
 
-            _workspaceToolbarHost = Hospedar(
+            _workspaceToolbarHost = ChromeFlotanteHost.Hospedar(
                 workspaceToolbar, contenedor: panelMatrices, nombre: "workspaceToolbarHost",
-                insetSuperior: ChromeFlotanteHost.SeparacionWorkspaceLogica,
-                separacionInferior: ChromeFlotanteHost.SeparacionWorkspaceLogica,
-                colorFondo: panelMatrices.BackColor);
-        }
-
-        /// <summary>
-        /// Mueve la superficie a un <see cref="ChromeFlotanteHost"/> nuevo y deja
-        /// el host en el mismo índice z que ocupaba la superficie dentro de su
-        /// contenedor (reordena explícitamente para que el acople no dependa del
-        /// orden de llegada).
-        /// </summary>
-        private static ChromeFlotanteHost Hospedar(
-            Control superficie, Control contenedor, string nombre,
-            int insetSuperior, int separacionInferior, Color colorFondo)
-        {
-            // Índice z ANTES de crear el host: el constructor del host ya
-            // reparenta la superficie dentro de sí mismo.
-            int indice = contenedor.Controls.GetChildIndex(superficie);
-
-            var host = new ChromeFlotanteHost(
-                superficie,
-                SoproUiMetrics.SurfaceRadiusPx,
-                nombre,
-                insetSuperior,
-                separacionInferior,
-                colorFondo);
-
-            contenedor.Controls.Remove(superficie);
-            contenedor.Controls.Add(host);
-            contenedor.Controls.SetChildIndex(host, Math.Clamp(indice, 0, contenedor.Controls.Count - 1));
-
-            return host;
+                colorFondo: panelMatrices.BackColor,
+                insetSuperiorLogico: ChromeFlotanteHost.SeparacionWorkspaceLogica,
+                separacionInferiorLogica: ChromeFlotanteHost.SeparacionWorkspaceLogica);
         }
     }
 }

@@ -6,6 +6,15 @@ using SOPRO.WinForms.Helpers;
 
 namespace SOPRO.WinForms.Controls
 {
+    /// <summary>Borde de la ventana donde se acopla el host flotante.</summary>
+    internal enum ChromeFlotantePosicion
+    {
+        /// <summary>Banda superior (header, toolbar, filtros).</summary>
+        Arriba,
+        /// <summary>Banda inferior (barras de acciones). La sombra sigue cayendo hacia abajo, dentro del aire exterior.</summary>
+        Abajo,
+    }
+
     /// <summary>
     /// Host liviano que hace "flotar" una superficie del chrome (header, toolbar
     /// principal o toolbar del área de trabajo): reserva aire alrededor con su
@@ -56,6 +65,7 @@ namespace SOPRO.WinForms.Controls
         private readonly int _radioLogico;
         private readonly int _insetSuperiorLogico;
         private readonly int _separacionInferiorLogica;
+        private readonly ChromeFlotantePosicion _posicion;
         private bool _ajustandoAltura;
 
         public ChromeFlotanteHost(
@@ -64,16 +74,18 @@ namespace SOPRO.WinForms.Controls
             string nombre,
             int insetSuperiorLogico,
             int separacionInferiorLogica,
-            Color colorFondo)
+            Color colorFondo,
+            ChromeFlotantePosicion posicion = ChromeFlotantePosicion.Arriba)
         {
             _superficie = superficie ?? throw new ArgumentNullException(nameof(superficie));
             _radioLogico = radioLogico;
             _insetSuperiorLogico = insetSuperiorLogico;
             _separacionInferiorLogica = separacionInferiorLogica;
+            _posicion = posicion;
 
             Name = nombre;
             BackColor = colorFondo;
-            Dock = DockStyle.Top;
+            Dock = posicion == ChromeFlotantePosicion.Arriba ? DockStyle.Top : DockStyle.Bottom;
 
             SetStyle(
                 ControlStyles.AllPaintingInWmPaint
@@ -93,6 +105,50 @@ namespace SOPRO.WinForms.Controls
 
         /// <summary>Superficie flotante alojada (header, toolbar o toolbar del workspace).</summary>
         internal Control Superficie => _superficie;
+
+        /// <summary>
+        /// Mueve la superficie a un <see cref="ChromeFlotanteHost"/> nuevo y deja
+        /// el host en el mismo índice z que ocupaba la superficie dentro de su
+        /// contenedor (reordena explícitamente para que el acople no dependa del
+        /// orden de llegada). Aplica el recorte redondeado a la superficie:
+        /// el host pinta alrededor, la superficie se recorta.
+        /// </summary>
+        /// <param name="insetSuperiorLogico">Aire junto al borde exterior de la ventana (8 por omisión; 0 en bandas pegadas al header).</param>
+        /// <param name="separacionInferiorLogica">Aire junto al interior de la ventana (6 por omisión).</param>
+        internal static ChromeFlotanteHost Hospedar(
+            Control superficie,
+            Control contenedor,
+            string nombre,
+            Color colorFondo,
+            int insetSuperiorLogico = InsetSuperiorLogico,
+            int separacionInferiorLogica = SeparacionInferiorLogica,
+            ChromeFlotantePosicion posicion = ChromeFlotantePosicion.Arriba)
+        {
+            if (superficie.Parent != contenedor)
+                throw new InvalidOperationException(
+                    $"La superficie '{superficie.Name}' ya no pertenece a '{contenedor.Name}' (¿hospedada dos veces?).");
+
+            // Índice z ANTES de crear el host: el constructor del host ya
+            // reparenta la superficie dentro de sí mismo.
+            int indice = contenedor.Controls.GetChildIndex(superficie);
+
+            SoproTheme.ApplyRoundedCorners(superficie, SoproUiMetrics.SurfaceRadiusPx);
+
+            var host = new ChromeFlotanteHost(
+                superficie,
+                SoproUiMetrics.SurfaceRadiusPx,
+                nombre,
+                insetSuperiorLogico,
+                separacionInferiorLogica,
+                colorFondo,
+                posicion);
+
+            contenedor.Controls.Remove(superficie);
+            contenedor.Controls.Add(host);
+            contenedor.Controls.SetChildIndex(host, Math.Clamp(indice, 0, contenedor.Controls.Count - 1));
+
+            return host;
+        }
 
         /// <summary>Escala una medida lógica (96 DPI) al DPI indicado.</summary>
         internal static int EscalarPixeles(int pixelesLogicos, int dpi)
@@ -117,11 +173,12 @@ namespace SOPRO.WinForms.Controls
             if (IsDisposed) return;
 
             int dpi = DeviceDpi;
-            Padding = new Padding(
-                EscalarPixeles(InsetHorizontalLogico, dpi),
-                EscalarPixeles(_insetSuperiorLogico, dpi),
-                EscalarPixeles(InsetHorizontalLogico, dpi),
-                EscalarPixeles(_separacionInferiorLogica, dpi));
+            int lados = EscalarPixeles(InsetHorizontalLogico, dpi);
+            int aireExterior = EscalarPixeles(_insetSuperiorLogico, dpi);
+            int aireInterior = EscalarPixeles(_separacionInferiorLogica, dpi);
+            Padding = _posicion == ChromeFlotantePosicion.Arriba
+                ? new Padding(lados, aireExterior, lados, aireInterior)
+                : new Padding(lados, aireInterior, lados, aireExterior);
 
             AjustarAltura();
         }
