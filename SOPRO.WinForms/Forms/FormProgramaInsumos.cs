@@ -64,14 +64,13 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Prototipo de superficies redondeadas: recorta solo el chrome que no
-        /// aloja grids. El grid principal, el Gantt y los paneles del split
-        /// quedan intactos, igual que colores, layout y ribbon.
+        /// Chrome flotante: header y ribbon flotan con aire, borde y sombra. El
+        /// split del grid/Gantt y statusStrip quedan intactos.
         /// </summary>
         private void AplicarSuperficiesRedondeadas()
         {
-            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
-            SoproTheme.ApplyRoundedCorners(toolStripTop, SoproUiMetrics.SurfaceRadiusPx);
+            ChromeFlotanteHost.Hospedar(panelTop, this, "panelTopHost", BackColor);
+            ChromeFlotanteHost.Hospedar(toolStripTop, this, "toolStripTopHost", BackColor, insetSuperiorLogico: 0);
         }
 
 

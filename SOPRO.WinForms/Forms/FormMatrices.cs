@@ -9,6 +9,7 @@ using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.Data.Factories;
 using SOPRO.Data.Repositories;
+using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using SOPRO.WinForms.Undo;
@@ -151,13 +152,14 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Superficies redondeadas: solo el chrome que no aloja grids.
-        /// dgvMatrices, panelFiltros y statusStrip quedan intactos.
+        /// Chrome flotante: header, toolbar y banda de filtros flotan con aire,
+        /// borde y sombra. dgvMatrices y statusStrip quedan intactos.
         /// </summary>
         private void AplicarSuperficiesRedondeadas()
         {
-            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
-            SoproTheme.ApplyRoundedCorners(panelToolbar, SoproUiMetrics.SurfaceRadiusPx);
+            ChromeFlotanteHost.Hospedar(panelTop, this, "panelTopHost", BackColor);
+            ChromeFlotanteHost.Hospedar(panelToolbar, this, "panelToolbarHost", BackColor, insetSuperiorLogico: 0);
+            ChromeFlotanteHost.Hospedar(panelFiltros, this, "panelFiltrosHost", BackColor, insetSuperiorLogico: 0);
         }
 
 

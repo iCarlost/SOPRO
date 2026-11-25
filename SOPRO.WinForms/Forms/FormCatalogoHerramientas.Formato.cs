@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Helpers;
 using SOPRO.Data.Repositories;
 using System;
@@ -143,15 +144,15 @@ namespace SOPRO.WinForms.Forms
         }
 
         /// <summary>
-        /// Superficies redondeadas: solo el chrome que no aloja grids.
-        /// panelHeader/panelBotones son los nombres heredados del encabezado y
-        /// la barra de acciones; dgvHerramientas, panelBusqueda y statusStrip
-        /// quedan intactos.
+        /// Chrome flotante: header, barra de acciones y banda de búsqueda flotan
+        /// con aire, borde y sombra. panelHeader/panelBotones conservan sus
+        /// nombres heredados; dgvHerramientas y statusStrip quedan intactos.
         /// </summary>
         private void AplicarSuperficiesRedondeadas()
         {
-            SoproTheme.ApplyRoundedCorners(panelHeader, SoproUiMetrics.SurfaceRadiusPx);
-            SoproTheme.ApplyRoundedCorners(panelBotones, SoproUiMetrics.SurfaceRadiusPx);
+            ChromeFlotanteHost.Hospedar(panelHeader, this, "panelHeaderHost", BackColor);
+            ChromeFlotanteHost.Hospedar(panelBotones, this, "panelBotonesHost", BackColor, insetSuperiorLogico: 0);
+            ChromeFlotanteHost.Hospedar(panelBusqueda, this, "panelBusquedaHost", BackColor, insetSuperiorLogico: 0);
         }
 
         internal FormEditarMatriz CrearEditorMatriz(Matriz? matriz = null)

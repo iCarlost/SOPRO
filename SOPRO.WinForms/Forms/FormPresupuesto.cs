@@ -648,7 +648,7 @@ namespace SOPRO.WinForms.Forms
             FormatoHelper.ConfiguracionCambiada += OnConfiguracionCambiada;
 
             InitializeComponent();
-            AplicarSuperficiesRedondeadas();
+            AplicarChromeFlotante();
             InicializarBotonReajustarCosto();
             LoadWorkspacePanelState();
             splitContainer.SplitterMoving += SplitContainer_WorkspaceSplitterMoving;
@@ -746,18 +746,6 @@ namespace SOPRO.WinForms.Forms
             // descartarse sin pasar por OnFormClosed (p. ej. Dispose en pruebas),
             // y los eventos estáticos retendrían esta instancia y su contexto.
             this.Disposed += (s, e) => LiberarSuscripcionesGlobales();
-        }
-
-        /// <summary>
-        /// Prototipo de superficies redondeadas: recorta solo el chrome que no
-        /// aloja grids. Los grids (dgvPresupuesto y panelMatrices/APU) quedan
-        /// intactos, igual que colores, layout y ribbon.
-        /// </summary>
-        private void AplicarSuperficiesRedondeadas()
-        {
-            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
-            SoproTheme.ApplyRoundedCorners(panelToolbar, SoproUiMetrics.SurfaceRadiusPx);
-            SoproTheme.ApplyRoundedCorners(workspaceToolbar, SoproUiMetrics.SurfaceRadiusPx);
         }
 
         private void LiberarSuscripcionesGlobales()

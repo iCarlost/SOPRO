@@ -4,6 +4,7 @@ using SOPRO.Application.Services;
 using SOPRO.Application.Models.Presupuesto;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
 using System;
@@ -68,13 +69,13 @@ namespace SOPRO.WinForms.Forms
         // ── Tabla de flujo de caja ────────────────────────────────────────────
 
         /// <summary>
-        /// Recorta solo el chrome que no aloja grids. Los grids quedan
-        /// intactos, igual que colores, layout y toolbar.
+        /// Chrome flotante: header y toolbar flotan con aire, borde y sombra.
+        /// El grid de flujo, el panel de parámetros y statusStrip quedan intactos.
         /// </summary>
         private void AplicarSuperficiesRedondeadas()
         {
-            SoproTheme.ApplyRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
-            SoproTheme.ApplyRoundedCorners(panelToolbar, SoproUiMetrics.SurfaceRadiusPx);
+            ChromeFlotanteHost.Hospedar(panelTop, this, "panelTopHost", BackColor);
+            ChromeFlotanteHost.Hospedar(panelToolbar, this, "panelToolbarHost", BackColor, insetSuperiorLogico: 0);
         }
 
 
