@@ -36,6 +36,14 @@ namespace SOPRO.WinForms.Helpers
         internal const int MargenVerticalEncabezado = 5;
         internal const int SeparacionVerticalEncabezado = 2;
 
+        /// <summary>
+        /// Alto (px lógicos) de la franja de sombra bajo la banda oscura del
+        /// encabezado: el efecto flotante del cromo. La banda reserva esta
+        /// franja y la pinta con un desvanecido de la sombra del tema sobre el
+        /// fondo del centro, así que los consumidores no reservan nada extra.
+        /// </summary>
+        internal const int AltoSombraEncabezado = 10;
+
         // --- Cromo del formulario ---
 
         /// <summary>
@@ -102,14 +110,14 @@ namespace SOPRO.WinForms.Helpers
         // --- Encabezado / pie / tarjetas ---
 
         /// <summary>
-        /// Banda de encabezado oscura con titulo y subtitulo opcional, con la
-        /// linea inferior de 1px del cromo de la aplicacion. Composicion con
-        /// TableLayoutPanel y filas AutoSize: cada rotulo mide su texto con la
-        /// fuente real del monitor, en filas propias (sin solapes) y la banda
-        /// crece hasta contenerlos (minimo AltoEncabezado). Sin recortes ni
-        /// colapsos a un caracter: el ancho de cada fila es el del texto.
+        /// Banda de encabezado oscura con titulo y subtitulo opcionales,
+        /// medida con la fuente real del monitor. Sin <c>flotante</c> conserva
+        /// el cromo original: banda rectangular con linea inferior de 1px.
+        /// Con <c>flotante</c> (cromo de los editores de catalogo) pinta las
+        /// dos esquinas inferiores redondeadas y una sombra desvanecida sobre
+        /// el fondo del centro, reservando su franja via padding.
         /// </summary>
-        internal static TableLayoutPanel CrearEncabezado(string titulo, string? subtitulo)
+        internal static TableLayoutPanel CrearEncabezado(string titulo, string? subtitulo, bool flotante = false)
         {
             var tabla = new TableLayoutPanel
             {
@@ -118,20 +126,24 @@ namespace SOPRO.WinForms.Helpers
                 BackColor = SoproTheme.Colors.HeaderDark,
                 ColumnCount = 1,
                 RowCount = string.IsNullOrWhiteSpace(subtitulo) ? 1 : 2,
-                Padding = new Padding(20, MargenVerticalEncabezado, 20, MargenVerticalEncabezado),
+                Padding = flotante
+                    ? new Padding(20, MargenVerticalEncabezado, 20, MargenVerticalEncabezado + AltoSombraEncabezado)
+                    : new Padding(20, MargenVerticalEncabezado, 20, MargenVerticalEncabezado),
                 Margin = new Padding(0)
             };
             tabla.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             for (int fila = 0; fila < tabla.RowCount; fila++)
                 tabla.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            tabla.Paint += (_, e) =>
+            tabla.Paint += flotante ? PintarEncabezadoFlotante : PintarLineaInferiorEncabezado;
+            if (flotante)
             {
-                var rect = tabla.ClientRectangle;
-                if (rect.Width <= 0 || rect.Height <= 0) return;
-
-                using var pen = new Pen(SoproTheme.Colors.HeaderBottom);
-                e.Graphics.DrawLine(pen, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
-            };
+                // El radio y la sombra dependen del DPI: repinta al cambiarlo.
+                tabla.DpiChangedAfterParent += (_, _) =>
+                {
+                    if (!tabla.IsDisposed)
+                        tabla.Invalidate();
+                };
+            }
 
             var lblTitulo = new Label
             {
@@ -159,6 +171,62 @@ namespace SOPRO.WinForms.Helpers
             }
 
             return tabla;
+        }
+
+        /// <summary>Cromo original: banda rectangular con linea inferior de 1px.</summary>
+        private static void PintarLineaInferiorEncabezado(object? sender, PaintEventArgs e)
+        {
+            if (sender is not Control banda) return;
+
+            var rect = banda.ClientRectangle;
+            if (rect.Width <= 0 || rect.Height <= 0) return;
+
+            using var pen = new Pen(SoproTheme.Colors.HeaderBottom);
+            e.Graphics.DrawLine(pen, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
+        }
+
+        /// <summary>
+        /// Pintura del encabezado flotante. Orden determinista sobre el fondo
+        /// ya oscuro de la banda: (1) franja inferior con el fondo del centro,
+        /// (2) banda oscura con esquinas inferiores redondeadas, (3) contorno
+        /// de 1px que acompaña la esquina redondeada, (4) sombra desvanecida.
+        /// </summary>
+        private static void PintarEncabezadoFlotante(object? sender, PaintEventArgs e)
+        {
+            if (sender is not Control banda) return;
+
+            var rect = banda.ClientRectangle;
+            if (rect.Width <= 0 || rect.Height <= 0) return;
+
+            float escala = banda.DeviceDpi > 0 ? banda.DeviceDpi / 96f : 1f;
+            int altoSombra = Math.Max(1, (int)Math.Round(AltoSombraEncabezado * escala));
+            int radio = SoproTheme.ScaleRadius(banda, SoproUiMetrics.SurfaceRadiusPx);
+            int altoBanda = rect.Height - altoSombra;
+            if (altoBanda <= 0) return;
+
+            var graphics = e.Graphics;
+
+            using (var fondo = new SolidBrush(SoproTheme.Colors.CenterBg))
+                graphics.FillRectangle(fondo, 0, altoBanda, rect.Width, rect.Height - altoBanda);
+
+            using (var path = SoproTheme.CreateBottomRoundedPath(new Rectangle(0, 0, rect.Width, altoBanda), radio))
+            {
+                using (var bandaOscura = new SolidBrush(SoproTheme.Colors.HeaderDark))
+                    graphics.FillPath(bandaOscura, path);
+
+                using var contorno = new Pen(SoproTheme.Colors.HeaderBottom);
+                graphics.DrawPath(contorno, path);
+            }
+
+            var franjaSombra = new Rectangle(0, altoBanda, rect.Width, altoSombra);
+            using (var sombra = new LinearGradientBrush(
+                franjaSombra,
+                Color.FromArgb(0x42, SoproTheme.Colors.HeaderBottom),
+                Color.Transparent,
+                LinearGradientMode.Vertical))
+            {
+                graphics.FillRectangle(sombra, franjaSombra);
+            }
         }
 
         /// <summary>Banda de pie con la linea superior de 1px del tema.</summary>
@@ -358,7 +426,7 @@ namespace SOPRO.WinForms.Helpers
 
             AplicarCromoDialogo(form, tamanoCliente, centroPantalla: false);
 
-            var encabezado = CrearEncabezado(titulo, subtitulo);
+            var encabezado = CrearEncabezado(titulo, subtitulo, flotante: true);
 
             var pie = CrearPie();
             void AlinearAcciones() => AlinearBotonesPie(pie, botonPrimario, botonSecundario);

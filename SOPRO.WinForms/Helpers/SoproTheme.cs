@@ -952,7 +952,7 @@ namespace SOPRO.WinForms.Helpers
             RefreshRegion();
         }
 
-        private static int ScaleRadius(Control control, int radiusPx)
+        internal static int ScaleRadius(Control control, int radiusPx)
         {
             int dpi = control.DeviceDpi > 0 ? control.DeviceDpi : 96;
             float scale = dpi / 96f;
@@ -982,7 +982,7 @@ namespace SOPRO.WinForms.Helpers
         /// superiores cuadradas (arco inferior-izquierda: 180°→90°, arco
         /// inferior-derecha: 90°→0°, recorrido en el sentido del contorno).
         /// </summary>
-        private static GraphicsPath CreateBottomRoundedPath(Rectangle bounds, int radius)
+        internal static GraphicsPath CreateBottomRoundedPath(Rectangle bounds, int radius)
         {
             var path = new GraphicsPath();
             int diametro = Math.Max(1, radius * 2);
