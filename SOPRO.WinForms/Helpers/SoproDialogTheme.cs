@@ -206,8 +206,14 @@ namespace SOPRO.WinForms.Helpers
 
             var graphics = e.Graphics;
 
+            // El control ya pintó su fondo con el token oscuro: se cubre TODO
+            // con el fondo del centro antes de rellenar la banda redondeada,
+            // para que las muescas de las esquinas (fuera del arco) no hereden
+            // el oscuro y el radio se vea de verdad. Los rótulos viven dentro
+            // del área oscura, así que su simulación de transparencia sigue
+            // fundiendo con el oscuro.
             using (var fondo = new SolidBrush(SoproTheme.Colors.CenterBg))
-                graphics.FillRectangle(fondo, 0, altoBanda, rect.Width, rect.Height - altoBanda);
+                graphics.FillRectangle(fondo, rect);
 
             using (var path = SoproTheme.CreateBottomRoundedPath(new Rectangle(0, 0, rect.Width, altoBanda), radio))
             {
