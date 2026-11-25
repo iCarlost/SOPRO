@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
+using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Forms;
 using SOPRO.WinForms.UI.Controls;
 
@@ -217,25 +218,45 @@ namespace SOPRO.WinForms.Helpers
 
         private static SoproButton CrearBoton(string texto, SoproIconType? icono, bool primario)
         {
-            var button = new SoproButton
-            {
-                Text = texto,
-                AutoSize = false,
-                Cursor = Cursors.Hand,
-                FlatStyle = FlatStyle.Flat,
-                UseVisualStyleBackColor = false,
-                // Icono y texto centrados como UN bloque con pintado propio: el
-                // ensamblado nativo Inline reparte icono/texto por separado y
-                // en textos largos recorta el rotulo y desalinea el icono.
-                SoproLayout = SoproButtonLayout.Small,
-                Font = SoproTheme.Fonts.Button,
-                SoproContentPadding = new Padding(16, 0, 16, 0),
-                SoproIconTextSpacing = 8,
-                SoproIconSize = 16,
-                SoproIcon = icono,
-                SoproFixedHeight = 34,
-                SoproMinimumAutoWidth = 110
-            };
+            var button = new SoproButton { Text = texto, SoproIcon = icono };
+            AplicarEstiloBoton(button, primario);
+            return button;
+        }
+
+        /// <summary>Aplica la presentación primaria (acento de marca) a un botón ya creado.</summary>
+        internal static void AplicarEstiloBotonPrimario(SoproButton button)
+            => AplicarEstiloBoton(button, primario: true);
+
+        /// <summary>Aplica la presentación secundaria (superficie con hairline) a un botón ya creado.</summary>
+        internal static void AplicarEstiloBotonSecundario(SoproButton button)
+            => AplicarEstiloBoton(button, primario: false);
+
+        /// <summary>
+        /// Aplica la presentación compartida de los botones de diálogo a un botón
+        /// YA creado (por ejemplo instanciado por el diseñador de un formulario):
+        /// métricas del layout Small, paleta primaria o secundaria y recorte
+        /// redondeado. Única fuente del estilo: CrearBotonPrimario/Secundario la
+        /// reutilizan y los formularios con controles del diseñador no duplican
+        /// la paleta.
+        /// </summary>
+        internal static void AplicarEstiloBoton(SoproButton button, bool primario)
+        {
+            if (button == null) throw new ArgumentNullException(nameof(button));
+
+            button.AutoSize = false;
+            button.Cursor = Cursors.Hand;
+            button.FlatStyle = FlatStyle.Flat;
+            button.UseVisualStyleBackColor = false;
+            // Icono y texto centrados como UN bloque con pintado propio: el
+            // ensamblado nativo Inline reparte icono/texto por separado y
+            // en textos largos recorta el rotulo y desalinea el icono.
+            button.SoproLayout = SoproButtonLayout.Small;
+            button.Font = SoproTheme.Fonts.Button;
+            button.SoproContentPadding = new Padding(16, 0, 16, 0);
+            button.SoproIconTextSpacing = 8;
+            button.SoproIconSize = 16;
+            button.SoproFixedHeight = 34;
+            button.SoproMinimumAutoWidth = 110;
 
             if (primario)
             {
@@ -257,7 +278,6 @@ namespace SOPRO.WinForms.Helpers
 
             AjustarAnchoContenido(button);
             SoproTheme.ApplyRoundedCorners(button, SoproUiMetrics.ThemeRadiusPx);
-            return button;
         }
 
         /// <summary>
@@ -282,6 +302,120 @@ namespace SOPRO.WinForms.Helpers
             int ancho = button.SoproContentPadding.Left + anchoIcono + espaciado + anchoTexto + button.SoproContentPadding.Right;
             button.Width = Math.Max(button.SoproMinimumAutoWidth, ancho);
             button.Height = button.SoproFixedHeight;
+        }
+
+        // --- Editores de catálogo (issue #176) ---
+
+        /// <summary>
+        /// Rótulo de un campo de captura: Subtitle en Muted, tamaño medido por
+        /// el propio texto. Anclado SOLO a la izquierda para que un
+        /// TableLayoutPanel lo centre verticalmente respecto al campo de su
+        /// fila, en cualquier DPI.
+        /// </summary>
+        internal static void AplicarEstiloRotulo(Control rotulo)
+        {
+            if (rotulo == null) throw new ArgumentNullException(nameof(rotulo));
+            rotulo.AutoSize = true;
+            rotulo.Anchor = AnchorStyles.Left;
+            rotulo.Font = SoproTheme.Fonts.Subtitle;
+            rotulo.ForeColor = SoproTheme.Colors.Muted;
+            rotulo.Margin = new Padding(0, 0, 12, 0);
+        }
+
+        /// <summary>Campo de captura: DialogBody en Ink.</summary>
+        internal static void AplicarEstiloCampo(Control campo)
+        {
+            if (campo == null) throw new ArgumentNullException(nameof(campo));
+            campo.Font = SoproTheme.Fonts.DialogBody;
+            campo.ForeColor = SoproTheme.Colors.Ink;
+            campo.Margin = new Padding(0, 4, 16, 4);
+        }
+
+        /// <summary>
+        /// Cromo completo de los editores de catálogo: encabezado oscuro con
+        /// título y subtítulo, tarjeta de contenido y pie de acciones con
+        /// Cancelar/Guardar alineados a la derecha. El contenido lo arma el
+        /// propio formulario (rejilla de campos y grupos particulares) y se
+        /// aloja dentro de la tarjeta. Restaura AcceptButton/CancelButton al
+        /// final: reacomodar los botones al pie los desparenta del Form y
+        /// WinForms limpia esa asignación al salir del formulario.
+        /// </summary>
+        internal static void AplicarCromoEditor(
+            Form form,
+            Size tamanoCliente,
+            string titulo,
+            string subtitulo,
+            Control contenidoTarjeta,
+            SoproButton botonPrimario,
+            SoproButton botonSecundario)
+        {
+            if (form == null) throw new ArgumentNullException(nameof(form));
+            if (contenidoTarjeta == null) throw new ArgumentNullException(nameof(contenidoTarjeta));
+            if (botonPrimario == null) throw new ArgumentNullException(nameof(botonPrimario));
+            if (botonSecundario == null) throw new ArgumentNullException(nameof(botonSecundario));
+
+            AplicarEstiloBoton(botonPrimario, primario: true);
+            AplicarEstiloBoton(botonSecundario, primario: false);
+
+            AplicarCromoDialogo(form, tamanoCliente, centroPantalla: false);
+
+            var encabezado = CrearEncabezado(titulo, subtitulo);
+
+            var pie = CrearPie();
+            void AlinearAcciones() => AlinearBotonesPie(pie, botonPrimario, botonSecundario);
+            pie.Resize += (_, _) => AlinearAcciones();
+            botonPrimario.SizeChanged += (_, _) => AlinearAcciones();
+            botonSecundario.SizeChanged += (_, _) => AlinearAcciones();
+            pie.Controls.Add(botonPrimario);
+            pie.Controls.Add(botonSecundario);
+
+            var tarjeta = CrearTarjeta();
+            tarjeta.Controls.Add(contenidoTarjeta);
+            var cuerpo = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = SoproTheme.Colors.CenterBg,
+                Padding = new Padding(MargenHorizontalContenido, 20, MargenHorizontalContenido, 20)
+            };
+            cuerpo.Controls.Add(tarjeta);
+
+            form.Controls.Add(cuerpo);
+            form.Controls.Add(pie);
+            form.Controls.Add(encabezado);
+
+            // El encabezado flota igual que el chrome del resto de módulos
+            // (aire exterior, cuatro esquinas redondeadas, borde y sombra de
+            // tres pasadas): se hospeda con el host compartido, que respeta el
+            // índice z de la banda para conservar el orden de acople.
+            ChromeFlotanteHost.Hospedar(encabezado, form, "encabezadoEditorHost", form.BackColor);
+
+            form.AcceptButton = botonPrimario;
+            form.CancelButton = botonSecundario;
+        }
+
+        /// <summary>
+        /// Rejilla base de campos de un editor: cuatro columnas
+        /// (rótulo/campo/rótulo/campo) con columnas de campo al 50 %. Sin
+        /// estilos de fila semilla: cada editor registra EXACTAMENTE las filas
+        /// de su contenido (AutoSize y una final de holgura), en su orden de
+        /// TabIndex.
+        /// </summary>
+        internal static TableLayoutPanel CrearRejillaCampos()
+        {
+            var tabla = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = SoproTheme.Colors.Surface,
+                ColumnCount = 4,
+                RowCount = 0,
+                Padding = new Padding(MargenHorizontalContenido, 20, MargenHorizontalContenido, 16),
+                Margin = new Padding(0)
+            };
+            tabla.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            tabla.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tabla.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            tabla.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            return tabla;
         }
 
         // --- Layout determinista (funciones puras, testeables) ---

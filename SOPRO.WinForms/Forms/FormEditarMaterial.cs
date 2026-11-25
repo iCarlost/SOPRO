@@ -1,6 +1,7 @@
 using SOPRO.WinForms.Helpers;
 using System;
 using System.ComponentModel;
+using System.Drawing;
 using System.Windows.Forms;
 using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
@@ -50,6 +51,7 @@ namespace SOPRO.WinForms.Forms
             _factory = factory ?? new ProjectDbContextFactory();
 
             ConfigurarFormulario();
+            AplicarCromoVisual();
             SeleccionTotalNumericUpDown.Configurar(nudPrecio);
 
             // Cualquier edición posterior de la clave invalida la consulta en curso
@@ -85,6 +87,73 @@ namespace SOPRO.WinForms.Forms
                 rbMaestro.Checked = true;
                 rbProyecto.Enabled = false;
             }
+        }
+
+        /// <summary>
+        /// Compone el cromo del diálogo con el tema compartido (encabezado,
+        /// tarjeta de contenido y pie de acciones) y reacomoda dentro de esa
+        /// estructura los controles declarados en el diseñador. Solo
+        /// presentación: no altera datos, eventos ni la semántica de guardado.
+        /// </summary>
+        private void AplicarCromoVisual()
+        {
+            SoproDialogTheme.AplicarCromoEditor(
+                this,
+                new Size(660, 440),
+                Text,
+                _esNuevo ? "Agrega un material al catálogo" : "Actualiza los datos del material",
+                CrearTablaCampos(),
+                btnGuardar,
+                btnCancelar);
+        }
+
+        /// <summary>
+        /// Rejilla de campos dentro de la tarjeta. Filas y columnas medidas por
+        /// el propio contenedor (AutoSize) con la fuente real en el DPI del
+        /// monitor: sin posiciones absolutas que se rompan a 125/150/200 %.
+        /// El orden de filas conserva el TabIndex del diseñador.
+        /// </summary>
+        private TableLayoutPanel CrearTablaCampos()
+        {
+            var tabla = SoproDialogTheme.CrearRejillaCampos();
+            tabla.RowCount = 6;
+            tabla.RowStyles.Clear();
+            tabla.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tabla.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tabla.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tabla.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tabla.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tabla.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+            foreach (var rotulo in new[] { lblClave, lblDescripcion, lblUnidad, lblPrecio, lblNotas })
+                SoproDialogTheme.AplicarEstiloRotulo(rotulo);
+
+            foreach (var campo in new Control[] { txtClave, txtDescripcion, txtUnidad, nudPrecio, txtNotas })
+                SoproDialogTheme.AplicarEstiloCampo(campo);
+
+            txtClave.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            txtDescripcion.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            txtUnidad.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            nudPrecio.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            nudPrecio.Margin = new Padding(0, 4, 0, 4);
+            txtNotas.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            txtNotas.Margin = new Padding(0, 4, 0, 0);
+
+            tabla.Controls.Add(lblClave, 0, 0);
+            tabla.Controls.Add(txtClave, 1, 0);
+            tabla.Controls.Add(lblDescripcion, 0, 1);
+            tabla.Controls.Add(txtDescripcion, 1, 1);
+            tabla.SetColumnSpan(txtDescripcion, 3);
+            tabla.Controls.Add(lblUnidad, 0, 2);
+            tabla.Controls.Add(txtUnidad, 1, 2);
+            tabla.Controls.Add(lblPrecio, 2, 2);
+            tabla.Controls.Add(nudPrecio, 3, 2);
+            tabla.Controls.Add(lblNotas, 0, 3);
+            tabla.SetColumnSpan(lblNotas, 4);
+            tabla.Controls.Add(txtNotas, 0, 4);
+            tabla.SetColumnSpan(txtNotas, 4);
+
+            return tabla;
         }
 
         private void CargarDatos()

@@ -26,6 +26,7 @@ namespace SOPRO.WinForms.Forms
             _esNuevo = herramienta == null;
             
             ConfigurarFormulario();
+            AplicarCromoVisual();
             CargarUnidades();
             SeleccionTotalNumericUpDown.Configurar(nudPrecio);
             
@@ -41,6 +42,79 @@ namespace SOPRO.WinForms.Forms
             lblTitulo.Text = _esNuevo ? "NUEVA HERRAMIENTA" : "EDITAR HERRAMIENTA";
         }
         
+        /// <summary>
+        /// Compone el cromo del diálogo con el tema compartido (encabezado,
+        /// tarjeta de contenido y pie de acciones) y reacomoda dentro de esa
+        /// estructura los controles declarados en el diseñador. Solo
+        /// presentación: no altera datos, eventos ni la semántica de guardado.
+        /// El encabezado legacy (panelHeader/lblTitulo) queda oculto y sin
+        /// consumo de layout, pero VIVO dentro del ownership del form:
+        /// ConfigurarFormulario sigue enlazándolo y nada se dispone aquí.
+        /// </summary>
+        private void AplicarCromoVisual()
+        {
+            panelHeader.Visible = false;
+
+            SoproDialogTheme.AplicarCromoEditor(
+                this,
+                new Size(640, 400),
+                Text,
+                _esNuevo ? "Agrega una herramienta al catálogo" : "Actualiza los datos de la herramienta",
+                CrearTablaCampos(),
+                btnGuardar,
+                btnCancelar);
+        }
+
+        /// <summary>
+        /// Rejilla de campos dentro de la tarjeta. Filas y columnas medidas por
+        /// el propio contenedor (AutoSize) con la fuente real en el DPI del
+        /// monitor: sin posiciones absolutas que se rompan a 125/150/200 %.
+        /// Con unidad %MO la fila de precio se oculta
+        /// (ActualizarEtiquetaPrecio) y la rejilla colapsa sin dejar huecos;
+        /// la descripción es multilínea aquí (txtDescripcion).
+        /// </summary>
+        private TableLayoutPanel CrearTablaCampos()
+        {
+            var tabla = SoproDialogTheme.CrearRejillaCampos();
+            tabla.RowCount = 5;
+            for (int fila = 0; fila < 4; fila++)
+                tabla.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tabla.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+            foreach (var rotulo in new[] { lblClave, lblDescripcion, lblUnidad, lblPrecio })
+                SoproDialogTheme.AplicarEstiloRotulo(rotulo);
+
+            foreach (var campo in new Control[] { txtClave, txtDescripcion, cboUnidad, nudPrecio })
+                SoproDialogTheme.AplicarEstiloCampo(campo);
+
+            // Hint de captura de porcentaje (antes gris cursiva): ayuda del tema.
+            lblHint.Font = SoproTheme.Fonts.Subtitle;
+            lblHint.ForeColor = SoproTheme.Colors.Muted;
+            lblHint.Anchor = AnchorStyles.Left;
+
+            txtClave.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            txtDescripcion.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            txtDescripcion.Margin = new Padding(0, 4, 0, 4);
+            cboUnidad.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            cboUnidad.Margin = new Padding(0, 4, 0, 4);
+            nudPrecio.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            nudPrecio.Margin = new Padding(0, 4, 0, 4);
+
+            tabla.Controls.Add(lblClave, 0, 0);
+            tabla.Controls.Add(txtClave, 1, 0);
+            tabla.Controls.Add(lblUnidad, 2, 0);
+            tabla.Controls.Add(cboUnidad, 3, 0);
+            tabla.Controls.Add(lblDescripcion, 0, 1);
+            tabla.Controls.Add(txtDescripcion, 1, 1);
+            tabla.SetColumnSpan(txtDescripcion, 3);
+            tabla.Controls.Add(lblPrecio, 0, 2);
+            tabla.Controls.Add(nudPrecio, 1, 2);
+            tabla.Controls.Add(lblHint, 0, 3);
+            tabla.SetColumnSpan(lblHint, 4);
+
+            return tabla;
+        }
+
         private void CargarUnidades()
         {
             cboUnidad.Items.Clear();
@@ -89,7 +163,7 @@ namespace SOPRO.WinForms.Forms
                 nudPrecio.Visible = false;
                 lblHint.Visible = false;
                 lblPrecio.Text = "Porcentaje (%):";
-                lblHint.Text = "💡 Ejemplo: 3.00 para 3% de la mano de obra total";
+                lblHint.Text = "Ejemplo: 3.00 para 3% de la mano de obra total";
                 nudPrecio.DecimalPlaces = 4;
                 nudPrecio.Maximum = 100;  // 100%
                 nudPrecio.Minimum = 0;

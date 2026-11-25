@@ -2,6 +2,7 @@ using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.WinForms.Helpers;
 using System;
+using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using SOPRO.Application.Services;
@@ -26,6 +27,7 @@ namespace SOPRO.WinForms.Forms
             _esNuevo = maquinaria == null;
             
             ConfigurarFormulario();
+            AplicarCromoVisual();
             SeleccionTotalNumericUpDown.Configurar(nudCostoHorario);
             
             if (_esNuevo)
@@ -58,6 +60,109 @@ namespace SOPRO.WinForms.Forms
             }
         }
         
+        /// <summary>
+        /// Compone el cromo del diálogo con el tema compartido (encabezado,
+        /// tarjeta de contenido y pie de acciones) y reacomoda dentro de esa
+        /// estructura los controles declarados en el diseñador. Solo
+        /// presentación: no altera datos, eventos ni la semántica de guardado
+        /// ni del guard compartido de calcular/guardar.
+        /// </summary>
+        private void AplicarCromoVisual()
+        {
+            // Acción secundaria dentro del grupo de costo: comparte la
+            // presentación de los botones de diálogo del tema. Se alinea al
+            // margen derecho del grupo DESPUÉS de que el estilo fija su ancho
+            // definitivo, y anclada a la derecha para seguir cabiendo completa
+            // si el grupo cambia con el DPI.
+            btnCalcular.SoproIcon = SoproIconType.Recalcular;
+            SoproDialogTheme.AplicarEstiloBotonSecundario(btnCalcular);
+            btnCalcular.Left = grpCosto.ClientSize.Width - btnCalcular.Width - 16;
+            btnCalcular.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+
+            SoproDialogTheme.AplicarCromoEditor(
+                this,
+                new Size(800, 660),
+                Text,
+                _esNuevo ? "Agrega una maquinaria al catálogo" : "Actualiza los datos de la maquinaria",
+                CrearTablaCampos(),
+                btnGuardar,
+                btnCancelar);
+        }
+
+        /// <summary>
+        /// Rejilla de campos dentro de la tarjeta. Filas y columnas medidas por
+        /// el propio contenedor (AutoSize) con la fuente real en el DPI del
+        /// monitor: sin posiciones absolutas que se rompan a 125/150/200 %.
+        /// El orden de filas conserva el TabIndex del diseñador. El grupo de
+        /// costo horario conserva su geometría interna y solo recibe tokens
+        /// del tema.
+        /// </summary>
+        private TableLayoutPanel CrearTablaCampos()
+        {
+            var tabla = SoproDialogTheme.CrearRejillaCampos();
+            tabla.RowCount = 7;
+            tabla.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tabla.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tabla.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            // Fila ABSOLUTA para el grupo de costo: el alto preferido del
+            // GroupBox se infla con el DPI y desplazaría el resto de la rejilla.
+            // El grupo mide 170 px (campo de costo en 12pt bold + fecha +
+            // advertencia) y su fila lo aloja sin recortes.
+            tabla.RowStyles.Add(new RowStyle(SizeType.Absolute, 175));
+            tabla.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tabla.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tabla.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+            foreach (var rotulo in new[] { lblClave, lblDescripcion, lblPotencia, lblTipoCombustible, lblNotas })
+                SoproDialogTheme.AplicarEstiloRotulo(rotulo);
+
+            foreach (var campo in new Control[] { txtClave, txtDescripcion, nudPotencia, cboTipoCombustible, txtNotas })
+                SoproDialogTheme.AplicarEstiloCampo(campo);
+
+            // Grupo de costo horario: mismo look de tarjeta del tema; su
+            // disposición interna (radios, costo, cálculo, fecha) no cambia.
+            grpCosto.Font = SoproTheme.Fonts.GroupTitle;
+            grpCosto.ForeColor = SoproTheme.Colors.Ink2;
+            label4.Font = SoproTheme.Fonts.Subtitle;
+            label4.ForeColor = SoproTheme.Colors.Muted;
+            label6.Font = SoproTheme.Fonts.Subtitle;
+            label6.ForeColor = SoproTheme.Colors.Muted;
+            lblFechaCalculo.Font = SoproTheme.Fonts.Subtitle;
+            lblFechaCalculo.ForeColor = SoproTheme.Colors.Muted;
+            lblAdvertencia.Font = SoproTheme.Fonts.Subtitle;
+            lblAdvertencia.ForeColor = SoproTheme.Colors.Muted;
+            rbCostoCalculado.Font = SoproTheme.Fonts.Subtitle;
+            rbCostoManual.Font = SoproTheme.Fonts.Subtitle;
+            rbCostoCalculado.ForeColor = SoproTheme.Colors.Ink2;
+            rbCostoManual.ForeColor = SoproTheme.Colors.Ink2;
+
+            txtClave.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            txtDescripcion.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            nudPotencia.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            cboTipoCombustible.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            cboTipoCombustible.Margin = new Padding(0, 4, 0, 4);
+            txtNotas.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            txtNotas.Margin = new Padding(0, 4, 0, 0);
+
+            tabla.Controls.Add(lblClave, 0, 0);
+            tabla.Controls.Add(txtClave, 1, 0);
+            tabla.Controls.Add(lblDescripcion, 0, 1);
+            tabla.Controls.Add(txtDescripcion, 1, 1);
+            tabla.SetColumnSpan(txtDescripcion, 3);
+            tabla.Controls.Add(lblPotencia, 0, 2);
+            tabla.Controls.Add(nudPotencia, 1, 2);
+            tabla.Controls.Add(lblTipoCombustible, 2, 2);
+            tabla.Controls.Add(cboTipoCombustible, 3, 2);
+            tabla.Controls.Add(grpCosto, 0, 3);
+            tabla.SetColumnSpan(grpCosto, 4);
+            tabla.Controls.Add(lblNotas, 0, 4);
+            tabla.SetColumnSpan(lblNotas, 4);
+            tabla.Controls.Add(txtNotas, 0, 5);
+            tabla.SetColumnSpan(txtNotas, 4);
+
+            return tabla;
+        }
+
         private void CargarDatos()
         {
             txtClave.Text = _maquinaria.Clave;
@@ -89,7 +194,7 @@ namespace SOPRO.WinForms.Forms
             {
                 nudCostoHorario.Enabled = false;
                 btnCalcular.Enabled = true;
-                lblAdvertencia.Text = "⚠ Use el botón 'Calcular' para determinar el costo horario";
+                lblAdvertencia.Text = "Use el botón 'Calcular' para determinar el costo horario";
                 lblAdvertencia.Visible = true;
             }
         }

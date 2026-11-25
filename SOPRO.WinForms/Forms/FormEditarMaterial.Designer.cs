@@ -27,8 +27,8 @@ namespace SOPRO.WinForms.Forms
             nudPrecio = new NumericUpDown();
             lblNotas = new Label();
             txtNotas = new TextBox();
-            btnGuardar = new Button();
-            btnCancelar = new Button();
+            btnGuardar = new global::SOPRO.WinForms.UI.Controls.SoproButton();
+            btnCancelar = new global::SOPRO.WinForms.UI.Controls.SoproButton();
             grpOrigen = new GroupBox();
             rbProyecto = new RadioButton();
             rbMaestro = new RadioButton();
@@ -141,29 +141,22 @@ namespace SOPRO.WinForms.Forms
             // 
             // btnGuardar
             // 
-            btnGuardar.BackColor = Color.FromArgb(76, 175, 80);
             btnGuardar.FlatStyle = FlatStyle.Flat;
-            btnGuardar.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-            btnGuardar.ForeColor = Color.White;
             btnGuardar.Location = new Point(400, 285);
             btnGuardar.Name = "btnGuardar";
             btnGuardar.Size = new Size(200, 40);
             btnGuardar.TabIndex = 11;
-            btnGuardar.Text = "💾 Guardar";
-            btnGuardar.UseVisualStyleBackColor = false;
+            btnGuardar.Text = "Guardar";
             btnGuardar.Click += btnGuardar_Click;
             // 
             // btnCancelar
             // 
-            btnCancelar.BackColor = Color.FromArgb(220, 220, 220);
             btnCancelar.FlatStyle = FlatStyle.Flat;
-            btnCancelar.Font = new Font("Segoe UI", 10F);
             btnCancelar.Location = new Point(280, 285);
             btnCancelar.Name = "btnCancelar";
             btnCancelar.Size = new Size(100, 40);
             btnCancelar.TabIndex = 12;
             btnCancelar.Text = "Cancelar";
-            btnCancelar.UseVisualStyleBackColor = false;
             btnCancelar.Click += btnCancelar_Click;
             btnCancelar.DialogResult = DialogResult.Cancel;
             // 
@@ -188,7 +181,7 @@ namespace SOPRO.WinForms.Forms
             rbProyecto.Size = new Size(188, 23);
             rbProyecto.TabIndex = 1;
             rbProyecto.TabStop = true;
-            rbProyecto.Text = "📁 Específico del Proyecto";
+            rbProyecto.Text = "Específico del Proyecto";
             rbProyecto.UseVisualStyleBackColor = true;
             // 
             // rbMaestro
@@ -199,7 +192,7 @@ namespace SOPRO.WinForms.Forms
             rbMaestro.Size = new Size(160, 23);
             rbMaestro.TabIndex = 0;
             rbMaestro.TabStop = true;
-            rbMaestro.Text = "🌐 Catálogo Maestro";
+            rbMaestro.Text = "Catálogo Maestro";
             rbMaestro.UseVisualStyleBackColor = true;
             // 
             // FormEditarMaterial
@@ -250,8 +243,8 @@ namespace SOPRO.WinForms.Forms
         private System.Windows.Forms.NumericUpDown nudPrecio;
         private System.Windows.Forms.Label lblNotas;
         private System.Windows.Forms.TextBox txtNotas;
-        private System.Windows.Forms.Button btnGuardar;
-        private System.Windows.Forms.Button btnCancelar;
+        private global::SOPRO.WinForms.UI.Controls.SoproButton btnGuardar;
+        private global::SOPRO.WinForms.UI.Controls.SoproButton btnCancelar;
         private GroupBox grpOrigen;
         private RadioButton rbProyecto;
         private RadioButton rbMaestro;
