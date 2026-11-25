@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
+using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Forms;
 using SOPRO.WinForms.UI.Controls;
 
@@ -35,14 +36,6 @@ namespace SOPRO.WinForms.Helpers
         internal const int MargenVerticalItemLista = 6;
         internal const int MargenVerticalEncabezado = 5;
         internal const int SeparacionVerticalEncabezado = 2;
-
-        /// <summary>
-        /// Alto (px lógicos) de la franja de sombra bajo la banda oscura del
-        /// encabezado: el efecto flotante del cromo. La banda reserva esta
-        /// franja y la pinta con un desvanecido de la sombra del tema sobre el
-        /// fondo del centro, así que los consumidores no reservan nada extra.
-        /// </summary>
-        internal const int AltoSombraEncabezado = 10;
 
         // --- Cromo del formulario ---
 
@@ -110,14 +103,14 @@ namespace SOPRO.WinForms.Helpers
         // --- Encabezado / pie / tarjetas ---
 
         /// <summary>
-        /// Banda de encabezado oscura con titulo y subtitulo opcionales,
-        /// medida con la fuente real del monitor. Sin <c>flotante</c> conserva
-        /// el cromo original: banda rectangular con linea inferior de 1px.
-        /// Con <c>flotante</c> (cromo de los editores de catalogo) pinta las
-        /// dos esquinas inferiores redondeadas y una sombra desvanecida sobre
-        /// el fondo del centro, reservando su franja via padding.
+        /// Banda de encabezado oscura con titulo y subtitulo opcional, con la
+        /// linea inferior de 1px del cromo de la aplicacion. Composicion con
+        /// TableLayoutPanel y filas AutoSize: cada rotulo mide su texto con la
+        /// fuente real del monitor, en filas propias (sin solapes) y la banda
+        /// crece hasta contenerlos (minimo AltoEncabezado). Sin recortes ni
+        /// colapsos a un caracter: el ancho de cada fila es el del texto.
         /// </summary>
-        internal static TableLayoutPanel CrearEncabezado(string titulo, string? subtitulo, bool flotante = false)
+        internal static TableLayoutPanel CrearEncabezado(string titulo, string? subtitulo)
         {
             var tabla = new TableLayoutPanel
             {
@@ -126,24 +119,20 @@ namespace SOPRO.WinForms.Helpers
                 BackColor = SoproTheme.Colors.HeaderDark,
                 ColumnCount = 1,
                 RowCount = string.IsNullOrWhiteSpace(subtitulo) ? 1 : 2,
-                Padding = flotante
-                    ? new Padding(20, MargenVerticalEncabezado, 20, MargenVerticalEncabezado + AltoSombraEncabezado)
-                    : new Padding(20, MargenVerticalEncabezado, 20, MargenVerticalEncabezado),
+                Padding = new Padding(20, MargenVerticalEncabezado, 20, MargenVerticalEncabezado),
                 Margin = new Padding(0)
             };
             tabla.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             for (int fila = 0; fila < tabla.RowCount; fila++)
                 tabla.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            tabla.Paint += flotante ? PintarEncabezadoFlotante : PintarLineaInferiorEncabezado;
-            if (flotante)
+            tabla.Paint += (_, e) =>
             {
-                // El radio y la sombra dependen del DPI: repinta al cambiarlo.
-                tabla.DpiChangedAfterParent += (_, _) =>
-                {
-                    if (!tabla.IsDisposed)
-                        tabla.Invalidate();
-                };
-            }
+                var rect = tabla.ClientRectangle;
+                if (rect.Width <= 0 || rect.Height <= 0) return;
+
+                using var pen = new Pen(SoproTheme.Colors.HeaderBottom);
+                e.Graphics.DrawLine(pen, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
+            };
 
             var lblTitulo = new Label
             {
@@ -171,68 +160,6 @@ namespace SOPRO.WinForms.Helpers
             }
 
             return tabla;
-        }
-
-        /// <summary>Cromo original: banda rectangular con linea inferior de 1px.</summary>
-        private static void PintarLineaInferiorEncabezado(object? sender, PaintEventArgs e)
-        {
-            if (sender is not Control banda) return;
-
-            var rect = banda.ClientRectangle;
-            if (rect.Width <= 0 || rect.Height <= 0) return;
-
-            using var pen = new Pen(SoproTheme.Colors.HeaderBottom);
-            e.Graphics.DrawLine(pen, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
-        }
-
-        /// <summary>
-        /// Pintura del encabezado flotante. Orden determinista sobre el fondo
-        /// ya oscuro de la banda: (1) franja inferior con el fondo del centro,
-        /// (2) banda oscura con esquinas inferiores redondeadas, (3) contorno
-        /// de 1px que acompaña la esquina redondeada, (4) sombra desvanecida.
-        /// </summary>
-        private static void PintarEncabezadoFlotante(object? sender, PaintEventArgs e)
-        {
-            if (sender is not Control banda) return;
-
-            var rect = banda.ClientRectangle;
-            if (rect.Width <= 0 || rect.Height <= 0) return;
-
-            float escala = banda.DeviceDpi > 0 ? banda.DeviceDpi / 96f : 1f;
-            int altoSombra = Math.Max(1, (int)Math.Round(AltoSombraEncabezado * escala));
-            int radio = SoproTheme.ScaleRadius(banda, SoproUiMetrics.SurfaceRadiusPx);
-            int altoBanda = rect.Height - altoSombra;
-            if (altoBanda <= 0) return;
-
-            var graphics = e.Graphics;
-
-            // El control ya pintó su fondo con el token oscuro: se cubre TODO
-            // con el fondo del centro antes de rellenar la banda redondeada,
-            // para que las muescas de las esquinas (fuera del arco) no hereden
-            // el oscuro y el radio se vea de verdad. Los rótulos viven dentro
-            // del área oscura, así que su simulación de transparencia sigue
-            // fundiendo con el oscuro.
-            using (var fondo = new SolidBrush(SoproTheme.Colors.CenterBg))
-                graphics.FillRectangle(fondo, rect);
-
-            using (var path = SoproTheme.CreateBottomRoundedPath(new Rectangle(0, 0, rect.Width, altoBanda), radio))
-            {
-                using (var bandaOscura = new SolidBrush(SoproTheme.Colors.HeaderDark))
-                    graphics.FillPath(bandaOscura, path);
-
-                using var contorno = new Pen(SoproTheme.Colors.HeaderBottom);
-                graphics.DrawPath(contorno, path);
-            }
-
-            var franjaSombra = new Rectangle(0, altoBanda, rect.Width, altoSombra);
-            using (var sombra = new LinearGradientBrush(
-                franjaSombra,
-                Color.FromArgb(0x42, SoproTheme.Colors.HeaderBottom),
-                Color.Transparent,
-                LinearGradientMode.Vertical))
-            {
-                graphics.FillRectangle(sombra, franjaSombra);
-            }
         }
 
         /// <summary>Banda de pie con la linea superior de 1px del tema.</summary>
@@ -432,7 +359,7 @@ namespace SOPRO.WinForms.Helpers
 
             AplicarCromoDialogo(form, tamanoCliente, centroPantalla: false);
 
-            var encabezado = CrearEncabezado(titulo, subtitulo, flotante: true);
+            var encabezado = CrearEncabezado(titulo, subtitulo);
 
             var pie = CrearPie();
             void AlinearAcciones() => AlinearBotonesPie(pie, botonPrimario, botonSecundario);
@@ -455,6 +382,12 @@ namespace SOPRO.WinForms.Helpers
             form.Controls.Add(cuerpo);
             form.Controls.Add(pie);
             form.Controls.Add(encabezado);
+
+            // El encabezado flota igual que el chrome del resto de módulos
+            // (aire exterior, cuatro esquinas redondeadas, borde y sombra de
+            // tres pasadas): se hospeda con el host compartido, que respeta el
+            // índice z de la banda para conservar el orden de acople.
+            ChromeFlotanteHost.Hospedar(encabezado, form, "encabezadoEditorHost", form.BackColor);
 
             form.AcceptButton = botonPrimario;
             form.CancelButton = botonSecundario;

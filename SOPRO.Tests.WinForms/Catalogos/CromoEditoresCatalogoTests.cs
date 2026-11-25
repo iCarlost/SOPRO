@@ -8,6 +8,7 @@ using SOPRO.Application.Services;
 using SOPRO.Application.UseCases.Materials;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
+using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Forms;
 using SOPRO.WinForms.UI.Controls;
 
@@ -149,6 +150,14 @@ public class CromoEditoresCatalogoTests
             ?? throw new AssertFailedException($"{editor}: falta la banda de encabezado acoplada arriba.");
         Control pie = form.Controls.OfType<Control>().SingleOrDefault(c => c.Dock == DockStyle.Bottom && c.Visible)
             ?? throw new AssertFailedException($"{editor}: falta la banda de pie acoplada abajo.");
+
+        // El encabezado flota con el mismo cromo del resto de módulos: host
+        // compartido con aire, esquinas redondeadas y sombra.
+        var hostFlotante = encabezado as ChromeFlotanteHost;
+        Assert.IsNotNull(hostFlotante,
+            $"{editor}: el encabezado debe estar alojado en un ChromeFlotanteHost compartido.");
+        Assert.IsInstanceOfType(hostFlotante.Superficie, typeof(TableLayoutPanel),
+            $"{editor}: la superficie del host flotante debe ser la banda de encabezado.");
 
         Button btnGuardar = LeerCampo<Button>(form, "btnGuardar");
         Button btnCancelar = LeerCampo<Button>(form, "btnCancelar");
