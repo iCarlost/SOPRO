@@ -26,7 +26,7 @@ namespace SOPRO.WinForms.Forms
             lblTipoCombustible = new Label();
             cboTipoCombustible = new ComboBox();
             grpCosto = new GroupBox();
-            btnCalcular = new Button();
+            btnCalcular = new global::SOPRO.WinForms.UI.Controls.SoproButton();
             lblAdvertencia = new Label();
             lblFechaCalculo = new Label();
             label6 = new Label();
@@ -39,8 +39,8 @@ namespace SOPRO.WinForms.Forms
             rbMaestro = new RadioButton();
             lblNotas = new Label();
             txtNotas = new TextBox();
-            btnGuardar = new Button();
-            btnCancelar = new Button();
+            btnGuardar = new global::SOPRO.WinForms.UI.Controls.SoproButton();
+            btnCancelar = new global::SOPRO.WinForms.UI.Controls.SoproButton();
             ((System.ComponentModel.ISupportInitialize)nudPotencia).BeginInit();
             grpCosto.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)nudCostoHorario).BeginInit();
@@ -142,43 +142,36 @@ namespace SOPRO.WinForms.Forms
             grpCosto.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
             grpCosto.Location = new Point(30, 150);
             grpCosto.Name = "grpCosto";
-            grpCosto.Size = new Size(700, 150);
+            grpCosto.Size = new Size(700, 170);
             grpCosto.TabIndex = 8;
             grpCosto.TabStop = false;
             grpCosto.Text = "Costo Horario";
             // 
             // btnCalcular
             // 
-            btnCalcular.BackColor = Color.FromArgb(255, 152, 0);
             btnCalcular.Enabled = false;
             btnCalcular.FlatStyle = FlatStyle.Flat;
-            btnCalcular.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-            btnCalcular.ForeColor = Color.White;
             btnCalcular.Location = new Point(500, 25);
             btnCalcular.Name = "btnCalcular";
             btnCalcular.Size = new Size(180, 40);
             btnCalcular.TabIndex = 7;
-            btnCalcular.Text = "\U0001f9ee Calcular Costo";
-            btnCalcular.UseVisualStyleBackColor = false;
+            btnCalcular.Text = "Calcular Costo";
             btnCalcular.Click += btnCalcular_Click;
             // 
             // lblAdvertencia
             // 
             lblAdvertencia.AutoSize = true;
-            lblAdvertencia.Font = new Font("Segoe UI", 8.5F, FontStyle.Italic);
-            lblAdvertencia.ForeColor = Color.FromArgb(255, 87, 34);
             lblAdvertencia.Location = new Point(20, 125);
             lblAdvertencia.Name = "lblAdvertencia";
             lblAdvertencia.Size = new Size(309, 15);
             lblAdvertencia.TabIndex = 6;
-            lblAdvertencia.Text = "⚠ Use el botón 'Calcular' para determinar el costo horario";
+            lblAdvertencia.Text = "Use el botón 'Calcular' para determinar el costo horario";
             lblAdvertencia.Visible = false;
             // 
             // lblFechaCalculo
             // 
             lblFechaCalculo.AutoSize = true;
             lblFechaCalculo.Font = new Font("Segoe UI", 9F);
-            lblFechaCalculo.ForeColor = Color.Gray;
             lblFechaCalculo.Location = new Point(470, 105);
             lblFechaCalculo.Name = "lblFechaCalculo";
             lblFechaCalculo.Size = new Size(29, 15);
@@ -189,7 +182,6 @@ namespace SOPRO.WinForms.Forms
             // 
             label6.AutoSize = true;
             label6.Font = new Font("Segoe UI", 9F);
-            label6.ForeColor = Color.Gray;
             label6.Location = new Point(360, 105);
             label6.Name = "label6";
             label6.Size = new Size(103, 15);
@@ -227,7 +219,7 @@ namespace SOPRO.WinForms.Forms
             rbCostoManual.Size = new Size(149, 23);
             rbCostoManual.TabIndex = 1;
             rbCostoManual.TabStop = true;
-            rbCostoManual.Text = "✏ Captura Manual";
+            rbCostoManual.Text = "Captura Manual";
             rbCostoManual.UseVisualStyleBackColor = true;
             rbCostoManual.CheckedChanged += rbCostoManual_CheckedChanged;
             // 
@@ -240,7 +232,7 @@ namespace SOPRO.WinForms.Forms
             rbCostoCalculado.Size = new Size(157, 23);
             rbCostoCalculado.TabIndex = 0;
             rbCostoCalculado.TabStop = true;
-            rbCostoCalculado.Text = "\U0001f9ee Calculado";
+            rbCostoCalculado.Text = "Calculado";
             rbCostoCalculado.UseVisualStyleBackColor = true;
             rbCostoCalculado.CheckedChanged += rbCostoCalculado_CheckedChanged;
             // 
@@ -265,7 +257,7 @@ namespace SOPRO.WinForms.Forms
             rbProyecto.Size = new Size(188, 23);
             rbProyecto.TabIndex = 1;
             rbProyecto.TabStop = true;
-            rbProyecto.Text = "📁 Específico del Proyecto";
+            rbProyecto.Text = "Específico del Proyecto";
             rbProyecto.UseVisualStyleBackColor = true;
             // 
             // rbMaestro
@@ -276,7 +268,7 @@ namespace SOPRO.WinForms.Forms
             rbMaestro.Size = new Size(160, 23);
             rbMaestro.TabIndex = 0;
             rbMaestro.TabStop = true;
-            rbMaestro.Text = "🌐 Catálogo Maestro";
+            rbMaestro.Text = "Catálogo Maestro";
             rbMaestro.UseVisualStyleBackColor = true;
             // 
             // lblNotas
@@ -302,29 +294,22 @@ namespace SOPRO.WinForms.Forms
             // 
             // btnGuardar
             // 
-            btnGuardar.BackColor = Color.FromArgb(76, 175, 80);
             btnGuardar.FlatStyle = FlatStyle.Flat;
-            btnGuardar.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-            btnGuardar.ForeColor = Color.White;
             btnGuardar.Location = new Point(530, 449);
             btnGuardar.Name = "btnGuardar";
             btnGuardar.Size = new Size(200, 40);
             btnGuardar.TabIndex = 12;
-            btnGuardar.Text = "💾 Guardar";
-            btnGuardar.UseVisualStyleBackColor = false;
+            btnGuardar.Text = "Guardar";
             btnGuardar.Click += btnGuardar_Click;
             // 
             // btnCancelar
             // 
-            btnCancelar.BackColor = Color.FromArgb(220, 220, 220);
             btnCancelar.FlatStyle = FlatStyle.Flat;
-            btnCancelar.Font = new Font("Segoe UI", 10F);
             btnCancelar.Location = new Point(410, 449);
             btnCancelar.Name = "btnCancelar";
             btnCancelar.Size = new Size(100, 40);
             btnCancelar.TabIndex = 13;
             btnCancelar.Text = "Cancelar";
-            btnCancelar.UseVisualStyleBackColor = false;
             btnCancelar.Click += btnCancelar_Click;
             btnCancelar.DialogResult = DialogResult.Cancel;
             // 
@@ -386,13 +371,13 @@ namespace SOPRO.WinForms.Forms
         private System.Windows.Forms.Label label6;
         private System.Windows.Forms.Label lblFechaCalculo;
         private System.Windows.Forms.Label lblAdvertencia;
-        private System.Windows.Forms.Button btnCalcular;
+        private global::SOPRO.WinForms.UI.Controls.SoproButton btnCalcular;
         private System.Windows.Forms.GroupBox grpOrigen;
         private System.Windows.Forms.RadioButton rbMaestro;
         private System.Windows.Forms.RadioButton rbProyecto;
         private System.Windows.Forms.Label lblNotas;
         private System.Windows.Forms.TextBox txtNotas;
-        private System.Windows.Forms.Button btnGuardar;
-        private System.Windows.Forms.Button btnCancelar;
+        private global::SOPRO.WinForms.UI.Controls.SoproButton btnGuardar;
+        private global::SOPRO.WinForms.UI.Controls.SoproButton btnCancelar;
     }
 }

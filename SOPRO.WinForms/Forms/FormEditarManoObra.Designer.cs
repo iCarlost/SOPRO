@@ -34,8 +34,8 @@ namespace SOPRO.WinForms.Forms
             rbMaestro = new RadioButton();
             lblNotas = new Label();
             txtNotas = new TextBox();
-            btnGuardar = new Button();
-            btnCancelar = new Button();
+            btnGuardar = new global::SOPRO.WinForms.UI.Controls.SoproButton();
+            btnCancelar = new global::SOPRO.WinForms.UI.Controls.SoproButton();
             lblInfo = new Label();
             ((System.ComponentModel.ISupportInitialize)nudSalarioBase).BeginInit();
             ((System.ComponentModel.ISupportInitialize)nudFSR).BeginInit();
@@ -197,7 +197,7 @@ namespace SOPRO.WinForms.Forms
             rbProyecto.Size = new Size(188, 23);
             rbProyecto.TabIndex = 1;
             rbProyecto.TabStop = true;
-            rbProyecto.Text = "📁 Específico del Proyecto";
+            rbProyecto.Text = "Específico del Proyecto";
             rbProyecto.UseVisualStyleBackColor = true;
             // 
             // rbMaestro
@@ -208,7 +208,7 @@ namespace SOPRO.WinForms.Forms
             rbMaestro.Size = new Size(160, 23);
             rbMaestro.TabIndex = 0;
             rbMaestro.TabStop = true;
-            rbMaestro.Text = "🌐 Catálogo Maestro";
+            rbMaestro.Text = "Catálogo Maestro";
             rbMaestro.UseVisualStyleBackColor = true;
             // 
             // lblNotas
@@ -234,29 +234,22 @@ namespace SOPRO.WinForms.Forms
             // 
             // btnGuardar
             // 
-            btnGuardar.BackColor = Color.FromArgb(76, 175, 80);
             btnGuardar.FlatStyle = FlatStyle.Flat;
-            btnGuardar.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-            btnGuardar.ForeColor = Color.White;
             btnGuardar.Location = new Point(430, 365);
             btnGuardar.Name = "btnGuardar";
             btnGuardar.Size = new Size(200, 40);
             btnGuardar.TabIndex = 15;
-            btnGuardar.Text = "💾 Guardar";
-            btnGuardar.UseVisualStyleBackColor = false;
+            btnGuardar.Text = "Guardar";
             btnGuardar.Click += btnGuardar_Click;
             // 
             // btnCancelar
             // 
-            btnCancelar.BackColor = Color.FromArgb(220, 220, 220);
             btnCancelar.FlatStyle = FlatStyle.Flat;
-            btnCancelar.Font = new Font("Segoe UI", 10F);
             btnCancelar.Location = new Point(310, 365);
             btnCancelar.Name = "btnCancelar";
             btnCancelar.Size = new Size(100, 40);
             btnCancelar.TabIndex = 16;
             btnCancelar.Text = "Cancelar";
-            btnCancelar.UseVisualStyleBackColor = false;
             btnCancelar.Click += btnCancelar_Click;
             btnCancelar.DialogResult = DialogResult.Cancel;
             // 
@@ -264,12 +257,11 @@ namespace SOPRO.WinForms.Forms
             // 
             lblInfo.AutoSize = true;
             lblInfo.Font = new Font("Segoe UI", 8F, FontStyle.Italic);
-            lblInfo.ForeColor = Color.Gray;
             lblInfo.Location = new Point(400, 192);
             lblInfo.Name = "lblInfo";
             lblInfo.Size = new Size(203, 13);
             lblInfo.TabIndex = 17;
-            lblInfo.Text = "(Se calcula automáticamente: Base × FSR)";
+            lblInfo.Text = "Cálculo automático: Base × FSR";
             // 
             // FormEditarManoObra
             // 
@@ -333,8 +325,8 @@ namespace SOPRO.WinForms.Forms
         private System.Windows.Forms.RadioButton rbProyecto;
         private System.Windows.Forms.Label lblNotas;
         private System.Windows.Forms.TextBox txtNotas;
-        private System.Windows.Forms.Button btnGuardar;
-        private System.Windows.Forms.Button btnCancelar;
+        private global::SOPRO.WinForms.UI.Controls.SoproButton btnGuardar;
+        private global::SOPRO.WinForms.UI.Controls.SoproButton btnCancelar;
         private System.Windows.Forms.Label lblInfo;
     }
 }

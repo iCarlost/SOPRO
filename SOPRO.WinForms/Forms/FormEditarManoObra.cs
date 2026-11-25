@@ -2,6 +2,7 @@ using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.WinForms.Helpers;
 using System;
+using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using SOPRO.Application.Contracts;
@@ -49,6 +50,7 @@ namespace SOPRO.WinForms.Forms
             _productVersion = productVersion;
             
             ConfigurarFormulario();
+            AplicarCromoVisual();
             SeleccionTotalNumericUpDown.Configurar(nudSalarioBase);
             
             if (_esNuevo)
@@ -81,6 +83,91 @@ namespace SOPRO.WinForms.Forms
             }
         }
         
+        /// <summary>
+        /// Compone el cromo del diálogo con el tema compartido (encabezado,
+        /// tarjeta de contenido y pie de acciones) y reacomoda dentro de esa
+        /// estructura los controles declarados en el diseñador. Solo
+        /// presentación: no altera datos, eventos ni la semántica de guardado.
+        /// </summary>
+        private void AplicarCromoVisual()
+        {
+            SoproDialogTheme.AplicarCromoEditor(
+                this,
+                new Size(680, 500),
+                Text,
+                _esNuevo ? "Agrega una mano de obra al catálogo" : "Actualiza los datos de la mano de obra",
+                CrearTablaCampos(),
+                btnGuardar,
+                btnCancelar);
+        }
+
+        /// <summary>
+        /// Rejilla de campos dentro de la tarjeta. Filas y columnas medidas por
+        /// el propio contenedor (AutoSize) con la fuente real en el DPI del
+        /// monitor: sin posiciones absolutas que se rompan a 125/150/200 %.
+        /// El orden de filas conserva el TabIndex del diseñador. Con unidad
+        /// %MO las filas de salario se ocultan (ConfigurarCamposSegunUnidad) y
+        /// la rejilla colapsa sus filas sin dejar huecos.
+        /// </summary>
+        private TableLayoutPanel CrearTablaCampos()
+        {
+            var tabla = SoproDialogTheme.CrearRejillaCampos();
+            tabla.RowCount = 8;
+            for (int fila = 0; fila < 7; fila++)
+                tabla.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tabla.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+            foreach (var rotulo in new[] { lblClave, lblDescripcion, lblUnidad, lblSalarioBase, lblFSR, lblNotas })
+                SoproDialogTheme.AplicarEstiloRotulo(rotulo);
+
+            foreach (var campo in new Control[] { txtClave, txtDescripcion, cboUnidad, nudSalarioBase, nudFSR, nudSalarioReal, txtNotas })
+                SoproDialogTheme.AplicarEstiloCampo(campo);
+
+            // El salario real es un valor calculado de solo lectura: se destaca
+            // con rótulo enfatizado, igual que en el diseño anterior.
+            lblSalarioReal.Font = SoproTheme.Fonts.GridHeader;
+            lblSalarioReal.ForeColor = SoproTheme.Colors.Ink2;
+
+            // Hint del cálculo (antes gris cursiva): rótulo de ayuda del tema.
+            lblInfo.Font = SoproTheme.Fonts.Subtitle;
+            lblInfo.ForeColor = SoproTheme.Colors.Muted;
+
+            txtClave.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            txtDescripcion.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            cboUnidad.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            cboUnidad.Margin = new Padding(0, 4, 0, 4);
+            nudSalarioBase.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            nudFSR.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            nudSalarioReal.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            nudSalarioReal.Margin = new Padding(0, 4, 0, 4);
+            txtNotas.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            txtNotas.Margin = new Padding(0, 4, 0, 0);
+
+            tabla.Controls.Add(lblClave, 0, 0);
+            tabla.Controls.Add(txtClave, 1, 0);
+            tabla.Controls.Add(lblUnidad, 2, 0);
+            tabla.Controls.Add(cboUnidad, 3, 0);
+            tabla.Controls.Add(lblDescripcion, 0, 1);
+            tabla.Controls.Add(txtDescripcion, 1, 1);
+            tabla.SetColumnSpan(txtDescripcion, 3);
+            tabla.Controls.Add(lblSalarioBase, 0, 2);
+            tabla.Controls.Add(nudSalarioBase, 1, 2);
+            tabla.Controls.Add(lblFSR, 2, 2);
+            tabla.Controls.Add(nudFSR, 3, 2);
+            tabla.Controls.Add(lblSalarioReal, 0, 3);
+            tabla.Controls.Add(nudSalarioReal, 1, 3);
+            // Hint en fila propia de ancho completo: nunca se envuelve ni se
+            // parte, en ningún DPI.
+            tabla.Controls.Add(lblInfo, 0, 4);
+            tabla.SetColumnSpan(lblInfo, 4);
+            tabla.Controls.Add(lblNotas, 0, 5);
+            tabla.SetColumnSpan(lblNotas, 4);
+            tabla.Controls.Add(txtNotas, 0, 6);
+            tabla.SetColumnSpan(txtNotas, 4);
+
+            return tabla;
+        }
+
         private void CargarDatos()
         {
             txtClave.Text = _manoDeObra.Clave;
