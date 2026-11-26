@@ -161,14 +161,15 @@ public class FormEditarMatrizCromoTests
             Assert.IsTrue(resumen.Top >= componentes.Bottom,
                 "Con ancho insuficiente el resumen debe apilarse debajo de los componentes.");
 
-            // Ancho restaurado: el escritorio de pruebas puede limitar el
-            // formulario al área útil (p. ej. 1024 px en CI), aunque se solicite
-            // más. Afirmar lado a lado solo si Windows realmente dio ese ancho.
+            // Ancho restaurado: Windows puede conceder menos que el solicitado.
+            // Verificar el reflow según el espacio real y los anchos actuales.
             form.ClientSize = new Size(2000, 830);
             Bombear();
             AfirmarSinCorteHorizontalEvitable(contenido);
             AfirmarResumenSiempreAlcanzable(contenido);
-            if (form.ClientSize.Width >= 1400)
+            int anchoNecesario = componentes.Left + componentes.Width + 12
+                + resumen.Width + 12 + SystemInformation.VerticalScrollBarWidth;
+            if (contenido.Width >= anchoNecesario)
             {
                 Assert.AreEqual(componentes.Top, resumen.Top,
                     "Con ancho de sobra el resumen vuelve al costado de los componentes.");
