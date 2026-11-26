@@ -57,6 +57,9 @@ namespace SOPRO.WinForms.Forms
         private Panel? _pie;
         private Label? _rotuloEncabezado;
         private bool _organizandoContenido;
+        private int _anchoBaseGrpDatos;
+        private int _anchoBaseGrpComponentes;
+        private int _anchoBaseGrpResumen;
 
         /// <summary>Aire entre bandas y grupos del contenido (px lógicos).</summary>
         private const int AireContenido = 12;
@@ -107,6 +110,9 @@ namespace SOPRO.WinForms.Forms
             FormatoHelper.ConfiguracionCambiada += OnConfiguracionCambiada;
             
             InitializeComponent();
+            _anchoBaseGrpDatos = grpDatos.Width;
+            _anchoBaseGrpComponentes = grpComponentes.Width;
+            _anchoBaseGrpResumen = grpResumen.Width;
             _grpDatosBackColorOriginal = grpDatos.BackColor;
             
             dgvComponentes.AplicarEstiloSOPRO();
@@ -222,10 +228,15 @@ ConfigurarGrid();
                 // Los grupos encogen hasta su contenido (sin recortar nada)
                 // cuando el panel es más angosto: el ancho exterior sobrante
                 // no genera scroll horizontal.
-                foreach (var grupo in new[] { grpDatos, grpComponentes, grpResumen })
+                foreach (var (grupo, anchoBase) in new[]
+                         {
+                             (grpDatos, _anchoBaseGrpDatos),
+                             (grpComponentes, _anchoBaseGrpComponentes),
+                             (grpResumen, _anchoBaseGrpResumen)
+                         })
                 {
                     grupo.Width = Math.Min(
-                        grupo.Width,
+                        anchoBase,
                         Math.Max(AnchoMinimoVisible(grupo), disponible - grupo.Left));
                 }
 

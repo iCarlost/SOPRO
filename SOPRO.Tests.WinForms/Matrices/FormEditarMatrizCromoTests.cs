@@ -53,15 +53,17 @@ public class FormEditarMatrizCromoTests
             Assert.IsNull(form.CancelButton, "El editor no debe adquirir CancelButton nuevo.");
             Assert.AreEqual(FormBorderStyle.Sizable, form.FormBorderStyle,
                 "El editor sigue siendo redimensionable.");
+
+            AfirmarPieConBotones(form);
+            AfirmarGridIntacto(form);
+            AfirmarCamposEnContenidoDesplazable(form);
+        }, form =>
+        {
             double escalaDpi = form.DeviceDpi / 96.0;
             Assert.AreEqual((int)Math.Round(1200 * escalaDpi), form.ClientSize.Width,
                 "El cromo conserva el ancho inicial de 1200 px lógicos del editor.");
             Assert.AreEqual((int)Math.Round(800 * escalaDpi), form.ClientSize.Height,
                 "El cromo conserva el alto inicial de 800 px lógicos; el contenido excedente usa scroll vertical.");
-
-            AfirmarPieConBotones(form);
-            AfirmarGridIntacto(form);
-            AfirmarCamposEnContenidoDesplazable(form);
         });
         Assert.AreSame(previo, LeerProyectoGlobalFormato(),
             "La prueba no debe dejar alterado el proyecto global de FormatoHelper.");
@@ -281,7 +283,9 @@ public class FormEditarMatrizCromoTests
             .GetField("_proyectoActual", BindingFlags.Static | BindingFlags.NonPublic)
             ?.GetValue(null);
 
-    private static void EjecutarConEditor(Action<FormEditarMatriz> prueba)
+    private static void EjecutarConEditor(
+        Action<FormEditarMatriz> prueba,
+        Action<FormEditarMatriz>? antesDeMostrar = null)
     {
         string root = Path.Combine(Path.GetTempPath(), $"sopro_matriz_cromo_{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
@@ -301,6 +305,7 @@ public class FormEditarMatrizCromoTests
                 Location = new System.Drawing.Point(-4000, -4000),
                 ShowInTaskbar = false,
             };
+            antesDeMostrar?.Invoke(form);
             form.Show();
             for (int i = 0; i < 5; i++)
                 System.Windows.Forms.Application.DoEvents();
