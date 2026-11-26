@@ -7,8 +7,10 @@ using SOPRO.Application.Services;
 using SOPRO.Core.Entities;
 using SOPRO.Data.Context;
 using SOPRO.Data.Factories;
+using SOPRO.WinForms.Controls;
 using SOPRO.WinForms.Helpers;
 using SOPRO.WinForms.Services;
+using SOPRO.WinForms.UI.Controls;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -46,7 +48,19 @@ namespace SOPRO.WinForms.Forms
         private readonly Color _colorApu = Color.FromArgb(245, 248, 252);
         private readonly Color _colorBasico = Color.FromArgb(255, 248, 220);
         private readonly Color _colorCuadrilla = Color.FromArgb(230, 242, 255);
-        
+
+        // Cromo compartido de fase 1 (issue #177): encabezado flotante, panel
+        // de contenido desplazable y pie de acciones. La geometría interna de
+        // los grupos existentes no cambia; solo su piel y su contenedor.
+        private ChromeFlotanteHost? _hostEncabezado;
+        private Panel? _panelContenido;
+        private Panel? _pie;
+        private Label? _rotuloEncabezado;
+        private bool _organizandoContenido;
+
+        /// <summary>Aire entre bandas y grupos del contenido (px lógicos).</summary>
+        private const int AireContenido = 12;
+
         private decimal _totalMaterial = 0;
         private decimal _baseManoObra = 0;
         private decimal _totalManoObra = 0;
@@ -107,8 +121,235 @@ ConfigurarGrid();
                 AplicarTipoInicialSiCorresponde();
                 AplicarConfiguracionTipo();
             }
+
+            // El cromo se aplica DESPUÉS de resolver/cargar el tipo, para que el
+            // título del encabezado naciente ya refleje la identidad correcta.
+            AplicarCromoVisual();
         }
         
+
+        /// <summary>
+        /// Piel del editor con el lenguaje compartido de fase 1: encabezado
+        /// flotante (host de módulos), panel de contenido desplazable y pie de
+        /// acciones. Cambio de piel, no de esqueleto: los grupos conservan su
+        /// geometría interna, tintes funcionales de tipo, nombres y eventos, y
+        /// el formulario conserva su redimensionado (sin FixedDialog ni
+        /// Accept/Cancel, que este editor no tenía). Se invoca tras resolver el
+        /// tipo, para que el título naciente sea el correcto.
+        /// </summary>
+        private void AplicarCromoVisual()
+        {
+            BackColor = SoproTheme.Colors.CenterBg;
+            SoproDialogTheme.AplicarIconoSOPRO(this);
+
+            var encabezado = SoproDialogTheme.CrearEncabezado(
+                Text,
+                "Datos generales, componentes y totales de la matriz",
+                out var rotuloTitulo);
+            _rotuloEncabezado = rotuloTitulo;
+
+            _pie = SoproDialogTheme.CrearPie();
+            SoproDialogTheme.AplicarEstiloBotonPrimario(btnGuardar);
+            SoproDialogTheme.AplicarEstiloBotonSecundario(btnCancelar);
+            void AlinearAcciones() => SoproDialogTheme.AlinearBotonesPie(_pie, btnGuardar, btnCancelar);
+            _pie.Resize += (_, _) => AlinearAcciones();
+            btnGuardar.SizeChanged += (_, _) => AlinearAcciones();
+            btnCancelar.SizeChanged += (_, _) => AlinearAcciones();
+            _pie.Controls.Add(btnGuardar);
+            _pie.Controls.Add(btnCancelar);
+
+            // Los grupos existentes se reacomodan DENTRO del panel desplazable:
+            // su tamaño y su contenido no cambian; en pantallas o DPI donde el
+            // editor completo no cabe, el panel se recorre en vez de recortar.
+            _panelContenido = new Panel
+            {
+                Dock = DockStyle.Fill,
+                AutoScroll = true,
+                BackColor = SoproTheme.Colors.CenterBg
+            };
+            _panelContenido.Controls.Add(grpDatos);
+            _panelContenido.Controls.Add(grpComponentes);
+            _panelContenido.Controls.Add(grpResumen);
+            // El reflow (apilar el resumen si el ancho no alcanza) responde a
+            // ClientSizeChanged: cubre redimensionado del usuario Y los
+            // altibajos de las barras de desplazamiento.
+            _panelContenido.ClientSizeChanged += (_, _) => OrganizarContenido();
+
+            Controls.Add(_panelContenido);
+            Controls.Add(_pie);
+            Controls.Add(encabezado);
+            _hostEncabezado = ChromeFlotanteHost.Hospedar(encabezado, this, "encabezadoMatrizHost", BackColor);
+
+            AplicarPielGrupos();
+
+            // Conservar el ClientSize y StartPosition del diseñador (1200×800,
+            // centrado). El contenido que no quepa se alcanza con scroll vertical.
+            OrganizarContenido();
+        }
+
+        /// <summary>
+        /// Regla compartida entre el ajuste del cliente y el reflow: los
+        /// componentes y el resumen caben lado a lado en el ancho de panel
+        /// indicado, reservando el ancho de la barra vertical para no oscilar.
+        /// </summary>
+        private static bool CabenLadoALado(int anchoPanel, int margenIzquierdo, int anchoComponentes, int anchoResumen)
+            => anchoPanel >= margenIzquierdo + anchoComponentes + AireContenido
+                + anchoResumen + AireContenido + SystemInformation.VerticalScrollBarWidth;
+
+        /// <summary>
+        /// Colocación de los grupos dentro del panel desplazable: el resumen
+        /// va al lado de los componentes SOLO si ambos caben sin solape ni
+        /// scroll horizontal; si no, se apila debajo. El resumen se alinea a
+        /// la derecha del panel, así que jamás desborda por sí mismo.
+        /// </summary>
+        private void OrganizarContenido()
+        {
+            // Solo con manejo creado: pre-manejo el panel no tiene tamaño real
+            // y encoger los grupos a su contenido corrompería sus anchos.
+            if (_organizandoContenido
+                || !IsHandleCreated
+                || _panelContenido == null || _panelContenido.IsDisposed
+                || grpDatos.IsDisposed)
+            {
+                return;
+            }
+
+            _organizandoContenido = true;
+            try
+            {
+                int disponible = Math.Max(0, _panelContenido.ClientRectangle.Width - AireContenido);
+
+                // Los grupos encogen hasta su contenido (sin recortar nada)
+                // cuando el panel es más angosto: el ancho exterior sobrante
+                // no genera scroll horizontal.
+                foreach (var grupo in new[] { grpDatos, grpComponentes, grpResumen })
+                {
+                    grupo.Width = Math.Min(
+                        grupo.Width,
+                        Math.Max(AnchoMinimoVisible(grupo), disponible - grupo.Left));
+                }
+
+                grpDatos.Location = new Point(grpDatos.Left, AireContenido);
+                int yContenido = grpDatos.Bottom + AireContenido;
+
+                grpComponentes.Location = new Point(grpComponentes.Left, yContenido);
+
+                bool ladoALado = CabenLadoALado(
+                    // El umbral ya reserva el ancho de la barra vertical: se
+                    // decide contra el ancho total del panel, no contra el
+                    // cliente (que se merma si la barra vertical está viva por
+                    // un estado previo), para que el reflow no oscile.
+                    _panelContenido.Width,
+                    grpComponentes.Left,
+                    grpComponentes.Width,
+                    grpResumen.Width);
+
+                grpResumen.Location = ladoALado
+                    ? new Point(_panelContenido.ClientSize.Width - AireContenido - grpResumen.Width, yContenido)
+                    : new Point(grpComponentes.Left, grpComponentes.Bottom + AireContenido);
+
+                // Mover los hijos deja la visibilidad de las barras pendiente
+                // de un layout ajeno: forzar el recálculo aquí para que el
+                // estado de scroll quede determinista tras cada reflow.
+                _panelContenido.PerformLayout();
+            }
+            finally
+            {
+                _organizandoContenido = false;
+            }
+        }
+
+        /// <summary>Ancho mínimo de un grupo: el hijo visible más a la derecha + aire interno.</summary>
+        private static int AnchoMinimoVisible(GroupBox grupo)
+        {
+            int derecho = 0;
+            foreach (Control hijo in grupo.Controls)
+            {
+                if (hijo.Visible)
+                    derecho = Math.Max(derecho, hijo.Right);
+            }
+
+            return derecho + 12;
+        }
+
+        /// <summary>
+        /// Tokens del tema sobre los grupos y controles existentes: rótulos
+        /// Muted, campos Ink, resumen con acento de marca y botones SOPRO. El
+        /// tinte funcional de <c>grpDatos</c> lo sigue gestionando
+        /// <see cref="ActualizarIdentidadVisual"/>.
+        /// </summary>
+        private void AplicarPielGrupos()
+        {
+            grpDatos.Font = SoproTheme.Fonts.GroupTitle;
+            grpDatos.ForeColor = SoproTheme.Colors.Ink2;
+            foreach (var rotulo in new[] { lblClave, lblDescripcion, lblTipo, lblUnidad })
+            {
+                rotulo.Font = SoproTheme.Fonts.Subtitle;
+                rotulo.ForeColor = SoproTheme.Colors.Muted;
+            }
+            foreach (var campo in new Control[] { txtClave, txtDescripcion, cboUnidad })
+            {
+                campo.Font = SoproTheme.Fonts.DialogBody;
+                campo.ForeColor = SoproTheme.Colors.Ink;
+            }
+            foreach (var radio in new[] { rbAPU, rbBasico, rbCuadrilla })
+            {
+                radio.Font = SoproTheme.Fonts.Subtitle;
+                radio.ForeColor = SoproTheme.Colors.Ink;
+            }
+
+            grpComponentes.Font = SoproTheme.Fonts.GroupTitle;
+            grpComponentes.ForeColor = SoproTheme.Colors.Ink2;
+            grpComponentes.BackColor = SoproTheme.Colors.Surface;
+            foreach (var boton in new[] { btnAgregarMaterial, btnAgregarManoObra, btnAgregarMaquinaria, btnAgregarBasico, btnAgregarHerramienta })
+            {
+                boton.SoproIcon = SoproIconType.Mas;
+                SoproDialogTheme.AplicarEstiloBotonSecundario(boton);
+            }
+
+            // Fila de altas en flujo: al ocultar botones según el tipo de
+            // matriz (APU/Básico/Cuadrilla), los visibles se compactan sin
+            // dejar huecos. El grid no se toca.
+            var filaAltas = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Location = new Point(20, 30),
+                Margin = new Padding(0),
+                BackColor = SoproTheme.Colors.Surface
+            };
+            foreach (var boton in new[] { btnAgregarMaterial, btnAgregarManoObra, btnAgregarMaquinaria, btnAgregarBasico, btnAgregarHerramienta })
+            {
+                boton.Margin = new Padding(0, 0, 8, 0);
+                filaAltas.Controls.Add(boton);
+            }
+            grpComponentes.Controls.Add(filaAltas);
+
+            grpResumen.Font = SoproTheme.Fonts.GroupTitle;
+            grpResumen.ForeColor = SoproTheme.Colors.Ink2;
+            grpResumen.BackColor = SoproTheme.Colors.Surface;
+            foreach (var rotulo in new[]
+                     {
+                         lblTotalMaterialLabel, lblTotalManoObraLabel, lblTotalMaquinariaLabel,
+                         lblTotalBasicosLabel, lblCostoDirectoLabel
+                     })
+            {
+                rotulo.Font = SoproTheme.Fonts.Subtitle;
+                rotulo.ForeColor = SoproTheme.Colors.Muted;
+            }
+            foreach (var valor in new[] { lblTotalMaterial, lblTotalManoObra, lblTotalMaquinaria, lblTotalBasicos })
+            {
+                valor.Font = SoproTheme.Fonts.GridHeader;
+                valor.ForeColor = SoproTheme.Colors.Ink;
+            }
+            lblCostoDirectoLabel.Font = SoproTheme.Fonts.Subtitle;
+            lblCostoDirectoLabel.ForeColor = SoproTheme.Colors.Muted;
+            lblCostoDirecto.Font = SoproTheme.Fonts.DialogTitle;
+            lblCostoDirecto.ForeColor = SoproTheme.Colors.BrandMd;
+            label1.BackColor = SoproTheme.Colors.SurfaceBorder;
+        }
 
         private void AplicarTipoInicialSiCorresponde()
         {
@@ -1098,6 +1339,11 @@ ConfigurarGrid();
             }
 
             grpDatos.ForeColor = SystemColors.ControlText;
+
+            // El encabezado flotante acompaña SIEMPRE a la identidad del tipo:
+            // Básica/Cuadrilla no pueden quedarse con el título de APU.
+            if (_rotuloEncabezado != null && !_rotuloEncabezado.IsDisposed)
+                _rotuloEncabezado.Text = Text;
         }
         
         private void btnCancelar_Click(object sender, EventArgs e)

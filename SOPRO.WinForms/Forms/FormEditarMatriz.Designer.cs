@@ -47,11 +47,11 @@ namespace SOPRO.WinForms.Forms
             lblClave = new Label();
             grpComponentes = new GroupBox();
             dgvComponentes = new DataGridView();
-            btnAgregarBasico = new Button();
-            btnAgregarHerramienta = new Button();
-            btnAgregarMaquinaria = new Button();
-            btnAgregarManoObra = new Button();
-            btnAgregarMaterial = new Button();
+            btnAgregarBasico = new global::SOPRO.WinForms.UI.Controls.SoproButton();
+            btnAgregarHerramienta = new global::SOPRO.WinForms.UI.Controls.SoproButton();
+            btnAgregarMaquinaria = new global::SOPRO.WinForms.UI.Controls.SoproButton();
+            btnAgregarManoObra = new global::SOPRO.WinForms.UI.Controls.SoproButton();
+            btnAgregarMaterial = new global::SOPRO.WinForms.UI.Controls.SoproButton();
             grpResumen = new GroupBox();
             lblCostoDirecto = new Label();
             lblCostoDirectoLabel = new Label();
@@ -64,8 +64,8 @@ namespace SOPRO.WinForms.Forms
             lblTotalManoObraLabel = new Label();
             lblTotalMaterial = new Label();
             lblTotalMaterialLabel = new Label();
-            btnGuardar = new Button();
-            btnCancelar = new Button();
+            btnGuardar = new global::SOPRO.WinForms.UI.Controls.SoproButton();
+            btnCancelar = new global::SOPRO.WinForms.UI.Controls.SoproButton();
             grpDatos.SuspendLayout();
             grpComponentes.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvComponentes).BeginInit();
@@ -99,7 +99,7 @@ namespace SOPRO.WinForms.Forms
             rbBasico.Name = "rbBasico";
             rbBasico.Size = new Size(94, 23);
             rbBasico.TabIndex = 8;
-            rbBasico.Text = "\U0001f9e9 Básico";
+            rbBasico.Text = "Básico";
             rbBasico.UseVisualStyleBackColor = true;
             rbBasico.CheckedChanged += rbTipo_CheckedChanged;
             // 
@@ -112,7 +112,7 @@ namespace SOPRO.WinForms.Forms
             rbAPU.Size = new Size(80, 23);
             rbAPU.TabIndex = 7;
             rbAPU.TabStop = true;
-            rbAPU.Text = "📊 APU";
+            rbAPU.Text = "APU";
             rbAPU.UseVisualStyleBackColor = true;
             rbAPU.CheckedChanged += rbTipo_CheckedChanged;
             // 
@@ -123,7 +123,7 @@ namespace SOPRO.WinForms.Forms
             rbCuadrilla.Name = "rbCuadrilla";
             rbCuadrilla.Size = new Size(111, 23);
             rbCuadrilla.TabIndex = 9;
-            rbCuadrilla.Text = "👷 Cuadrilla";
+            rbCuadrilla.Text = "Cuadrilla";
             rbCuadrilla.UseVisualStyleBackColor = true;
             rbCuadrilla.CheckedChanged += rbTipo_CheckedChanged;
             // 
@@ -217,72 +217,52 @@ namespace SOPRO.WinForms.Forms
             // 
             // btnAgregarBasico
             // 
-            btnAgregarBasico.BackColor = Color.FromArgb(156, 39, 176);
             btnAgregarBasico.FlatStyle = FlatStyle.Flat;
-            btnAgregarBasico.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
-            btnAgregarBasico.ForeColor = Color.White;
             btnAgregarBasico.Location = new Point(509, 30);
             btnAgregarBasico.Name = "btnAgregarBasico";
             btnAgregarBasico.Size = new Size(155, 40);
             btnAgregarBasico.TabIndex = 3;
-            btnAgregarBasico.Text = "➕ Básico";
-            btnAgregarBasico.UseVisualStyleBackColor = false;
+            btnAgregarBasico.Text = "Básico";
             btnAgregarBasico.Click += btnAgregarBasico_Click;
             // 
             // btnAgregarHerramienta
             // 
-            btnAgregarHerramienta.BackColor = Color.FromArgb(96, 125, 139);
             btnAgregarHerramienta.FlatStyle = FlatStyle.Flat;
-            btnAgregarHerramienta.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
-            btnAgregarHerramienta.ForeColor = Color.White;
             btnAgregarHerramienta.Location = new Point(672, 30);
             btnAgregarHerramienta.Name = "btnAgregarHerramienta";
             btnAgregarHerramienta.Size = new Size(155, 40);
             btnAgregarHerramienta.TabIndex = 4;
-            btnAgregarHerramienta.Text = "🛠️ Herramienta";
-            btnAgregarHerramienta.UseVisualStyleBackColor = false;
+            btnAgregarHerramienta.Text = "Herramienta";
             btnAgregarHerramienta.Click += btnAgregarHerramienta_Click;
             // 
             // btnAgregarMaquinaria
             // 
-            btnAgregarMaquinaria.BackColor = Color.FromArgb(255, 152, 0);
             btnAgregarMaquinaria.FlatStyle = FlatStyle.Flat;
-            btnAgregarMaquinaria.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
-            btnAgregarMaquinaria.ForeColor = Color.White;
             btnAgregarMaquinaria.Location = new Point(346, 30);
             btnAgregarMaquinaria.Name = "btnAgregarMaquinaria";
             btnAgregarMaquinaria.Size = new Size(155, 40);
             btnAgregarMaquinaria.TabIndex = 2;
-            btnAgregarMaquinaria.Text = "➕ Maquinaria";
-            btnAgregarMaquinaria.UseVisualStyleBackColor = false;
+            btnAgregarMaquinaria.Text = "Maquinaria";
             btnAgregarMaquinaria.Click += btnAgregarMaquinaria_Click;
             // 
             // btnAgregarManoObra
             // 
-            btnAgregarManoObra.BackColor = Color.FromArgb(76, 175, 80);
             btnAgregarManoObra.FlatStyle = FlatStyle.Flat;
-            btnAgregarManoObra.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
-            btnAgregarManoObra.ForeColor = Color.White;
             btnAgregarManoObra.Location = new Point(183, 30);
             btnAgregarManoObra.Name = "btnAgregarManoObra";
             btnAgregarManoObra.Size = new Size(155, 40);
             btnAgregarManoObra.TabIndex = 1;
-            btnAgregarManoObra.Text = "➕ Mano de Obra";
-            btnAgregarManoObra.UseVisualStyleBackColor = false;
+            btnAgregarManoObra.Text = "Mano de Obra";
             btnAgregarManoObra.Click += btnAgregarManoObra_Click;
             // 
             // btnAgregarMaterial
             // 
-            btnAgregarMaterial.BackColor = Color.FromArgb(33, 150, 243);
             btnAgregarMaterial.FlatStyle = FlatStyle.Flat;
-            btnAgregarMaterial.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
-            btnAgregarMaterial.ForeColor = Color.White;
             btnAgregarMaterial.Location = new Point(20, 30);
             btnAgregarMaterial.Name = "btnAgregarMaterial";
             btnAgregarMaterial.Size = new Size(155, 40);
             btnAgregarMaterial.TabIndex = 0;
-            btnAgregarMaterial.Text = "➕ Material";
-            btnAgregarMaterial.UseVisualStyleBackColor = false;
+            btnAgregarMaterial.Text = "Material";
             btnAgregarMaterial.Click += btnAgregarMaterial_Click;
             // 
             // grpResumen
@@ -421,28 +401,22 @@ namespace SOPRO.WinForms.Forms
             // 
             // btnGuardar
             // 
-            btnGuardar.BackColor = Color.FromArgb(76, 175, 80);
             btnGuardar.FlatStyle = FlatStyle.Flat;
-            btnGuardar.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-            btnGuardar.ForeColor = Color.White;
             btnGuardar.Location = new Point(1070, 700);
             btnGuardar.Name = "btnGuardar";
             btnGuardar.Size = new Size(110, 45);
             btnGuardar.TabIndex = 3;
-            btnGuardar.Text = "💾 Guardar";
-            btnGuardar.UseVisualStyleBackColor = false;
+            btnGuardar.Text = "Guardar";
             btnGuardar.Click += btnGuardar_Click;
             // 
             // btnCancelar
             // 
-            btnCancelar.BackColor = Color.FromArgb(220, 220, 220);
             btnCancelar.FlatStyle = FlatStyle.Flat;
             btnCancelar.Location = new Point(950, 700);
             btnCancelar.Name = "btnCancelar";
             btnCancelar.Size = new Size(110, 45);
             btnCancelar.TabIndex = 4;
             btnCancelar.Text = "Cancelar";
-            btnCancelar.UseVisualStyleBackColor = false;
             btnCancelar.Click += btnCancelar_Click;
             // 
             // FormEditarMatriz
@@ -484,11 +458,11 @@ namespace SOPRO.WinForms.Forms
         private System.Windows.Forms.Label lblClave;
         private System.Windows.Forms.GroupBox grpComponentes;
         private System.Windows.Forms.DataGridView dgvComponentes;
-        private System.Windows.Forms.Button btnAgregarBasico;
-        private System.Windows.Forms.Button btnAgregarHerramienta;
-        private System.Windows.Forms.Button btnAgregarMaquinaria;
-        private System.Windows.Forms.Button btnAgregarManoObra;
-        private System.Windows.Forms.Button btnAgregarMaterial;
+        private global::SOPRO.WinForms.UI.Controls.SoproButton btnAgregarBasico;
+        private global::SOPRO.WinForms.UI.Controls.SoproButton btnAgregarHerramienta;
+        private global::SOPRO.WinForms.UI.Controls.SoproButton btnAgregarMaquinaria;
+        private global::SOPRO.WinForms.UI.Controls.SoproButton btnAgregarManoObra;
+        private global::SOPRO.WinForms.UI.Controls.SoproButton btnAgregarMaterial;
         private System.Windows.Forms.GroupBox grpResumen;
         private System.Windows.Forms.Label lblCostoDirecto;
         private System.Windows.Forms.Label lblCostoDirectoLabel;
@@ -501,7 +475,7 @@ namespace SOPRO.WinForms.Forms
         private System.Windows.Forms.Label lblTotalManoObraLabel;
         private System.Windows.Forms.Label lblTotalMaterial;
         private System.Windows.Forms.Label lblTotalMaterialLabel;
-        private System.Windows.Forms.Button btnGuardar;
-        private System.Windows.Forms.Button btnCancelar;
+        private global::SOPRO.WinForms.UI.Controls.SoproButton btnGuardar;
+        private global::SOPRO.WinForms.UI.Controls.SoproButton btnCancelar;
     }
 }
