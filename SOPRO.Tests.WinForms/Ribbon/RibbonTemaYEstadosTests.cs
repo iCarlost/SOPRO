@@ -1214,11 +1214,12 @@ public partial class RibbonTemaYEstadosTests
             };
 
             form.Show();
-            // Algunos runners limitan ventanas fuera de pantalla al área de
-            // trabajo; fijar el tamaño de diseño mantiene estas pruebas
-            // deterministas. Las pruebas de overflow ajustan el ancho explícitamente.
-            form.WindowState = FormWindowState.Normal;
-            form.ClientSize = new Size(1600, 796);
+            // Algunos runners confinan la ventana a una pantalla menor que el
+            // ancho de diseño. Fijar la banda directamente permite probar el
+            // layout completo; cada prueba de overflow ajusta después su ancho.
+            Panel panelRibbon = LeerCampo<Panel>(form, "panelRibbon");
+            panelRibbon.Width = Escalar(panelRibbon, 1412);
+            form.ActualizarOverflowRibbon();
             ProcesarMensajes();
 
             prueba(form);
