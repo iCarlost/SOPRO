@@ -87,6 +87,64 @@ namespace SOPRO.WinForms.Helpers
         }
 
         /// <summary>
+        /// Tokens del ribbon claro de FormProyecto (issue #180): banda de comandos
+        /// sobre el encabezado claro unificado, con iconografía azul, texto en
+        /// tinta y estados suaves. Es un CONTEXTO específico del ribbon: no
+        /// reutilizar en otras superficies (los tokens Ribbon* históricos siguen
+        /// sirviendo al chrome oscuro, FormPrincipal y diálogos). La mayoría de
+        /// los valores derivan de la paleta existente; la excepción documentada
+        /// es <see cref="ActivoPresionado"/>, el paso azul-900 de la misma
+        /// familia de marca para distinguir presionado de hover.
+        /// </summary>
+        public static class RibbonClaro
+        {
+            /// <summary>Superficie de la banda de comandos (tarjeta clara).</summary>
+            public static readonly Color Superficie = Colors.Surface;
+
+            /// <summary>Texto neutro (toggles tipográficos, indicador con destino activo).</summary>
+            public static readonly Color Texto = Colors.Ink2;
+
+            /// <summary>Caption de grupo e indicador sin destino: apagado pero legible.</summary>
+            public static readonly Color Caption = Colors.Muted;
+
+            /// <summary>Acento de marca: iconografía y comandos del ribbon.</summary>
+            public static readonly Color Acento = Colors.BrandMd;
+
+            /// <summary>Acento profundo: hover del comando activo (un paso bajo el azul de marca).</summary>
+            public static readonly Color AcentoProfundo = Colors.Brand;
+
+            /// <summary>Fondo del comando activo (azul de marca, texto claro).</summary>
+            public static readonly Color Activo = Colors.RibbonActive;
+
+            /// <summary>
+            /// Presionado del comando ACTIVO: el paso azul-900 de la familia de
+            /// marca (#1e3a8a). Es el único valor no tomado tal cual de la paleta
+            /// global; distingue presionado de hover (que usa
+            /// <see cref="AcentoProfundo"/>) y profundiza la jerarquía
+            /// reposo→hover→presionado con el texto blanco cada vez más legible.
+            /// </summary>
+            public static readonly Color ActivoPresionado = Color.FromArgb(0x1E, 0x3A, 0x8A);
+
+            /// <summary>Hover suave sobre la superficie clara.</summary>
+            public static readonly Color Hover = Colors.HoverBg;
+
+            /// <summary>Presionado sobre la superficie clara (un paso más profundo que el hover).</summary>
+            public static readonly Color Presionado = Colors.SelBg;
+
+            /// <summary>Separador discreto entre grupos y borde del pozo de color.</summary>
+            public static readonly Color Separador = Colors.SurfaceBorder;
+
+            /// <summary>Pozo de muestra de color: ficha en reposo sobre la MISMA
+            /// superficie clara de la banda, sin marco exterior, con
+            /// hover/presionado en tinte azul progresivo y glifo en tinta
+            /// (contrato #180: nunca usar aqui el hover historico oscuro).</summary>
+            public static readonly Color Chip = Superficie;
+
+            /// <summary>Estado deshabilitado sobre la superficie clara (≥3:1 no textual).</summary>
+            public static readonly Color Deshabilitado = Colors.Muted;
+        }
+
+        /// <summary>
         /// Tipografia del tema. Todo Segoe UI: Bold para titulos/botones/encabezados.
         /// </summary>
         public static class Fonts
@@ -511,9 +569,9 @@ namespace SOPRO.WinForms.Helpers
 
         /// <summary>
         /// Aplica los tokens del tema al chrome del host <see cref="FormProyecto"/>:
-        /// header con gradiente (titulo/proyecto), separadores y color de icono
-        /// deshabilitado del ribbon, y superficies de la barra lateral/arbol.
-        /// No modifica logica, eventos ni geometria del formulario.
+        /// banda superior clara unificada (bloque de marca + comandos sobre la
+        /// misma superficie, con hairline inferior), barra lateral y ribbon.
+        /// No modifica logica, eventos ni manejadores del formulario.
         /// </summary>
         public static void ApplyFormProyecto(FormProyecto form)
         {
@@ -528,8 +586,8 @@ namespace SOPRO.WinForms.Helpers
         /// <summary>
         /// Selectores del ribbon (tipo de fuente y tamano). El ComboBox dibuja
         /// el elemento seleccionado con los colores del sistema (ignora su
-        /// BackColor), asi que se pinta en modo owner-draw para que respete
-        /// la paleta oscura del ribbon.
+        /// BackColor), asi que se pinta en modo owner-draw para que respete la
+        /// superficie clara del ribbon.
         /// </summary>
         private static void ApplyProyectoRibbonSelectors(FormProyecto form)
         {
@@ -537,8 +595,8 @@ namespace SOPRO.WinForms.Helpers
             if (combo != null)
             {
                 combo.FlatStyle = FlatStyle.Flat;
-                combo.BackColor = Colors.RibbonDown;
-                combo.ForeColor = Colors.RibbonText;
+                combo.BackColor = RibbonClaro.Superficie;
+                combo.ForeColor = RibbonClaro.Texto;
                 combo.DrawMode = DrawMode.OwnerDrawFixed;
                 combo.ItemHeight = CalcularItemHeightComboRibbon(combo);
                 combo.DrawItem -= DrawRibbonComboItem;
@@ -557,13 +615,13 @@ namespace SOPRO.WinForms.Helpers
             var numerico = form.nudTamano;
             if (numerico != null)
             {
-                numerico.BackColor = Colors.RibbonDown;
-                numerico.ForeColor = Colors.RibbonText;
+                numerico.BackColor = RibbonClaro.Superficie;
+                numerico.ForeColor = RibbonClaro.Texto;
 
-                // Los botones +/- los pinta el sistema: se tiñen con el fondo
-                // del grupo para que no rompan la banda oscura.
+                // Los botones +/- los pinta el sistema: se tiñen con la
+                // superficie del selector para que no rompan la banda clara.
                 if (numerico.Controls.Count > 0)
-                    numerico.Controls[0].BackColor = Colors.RibbonDown;
+                    numerico.Controls[0].BackColor = RibbonClaro.Superficie;
             }
         }
 
@@ -643,9 +701,18 @@ namespace SOPRO.WinForms.Helpers
         {
             if (sender is not ComboBox combo || e.Graphics == null) return;
 
-            bool seleccionado = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
-            Color fondo = seleccionado ? Colors.RibbonHover : combo.BackColor;
-            Color texto = seleccionado ? Colors.Surface : combo.ForeColor;
+            // La fila resaltada del desplegable usa el tinte azul suave del tema;
+            // la cara cerrada (e.Index == -1) se dibuja con el fondo del control
+            // para no verse como una selección permanente. Deshabilitado se
+            // distingue con el token apagado del ribbon claro.
+            bool seleccionado = (e.State & DrawItemState.Selected) == DrawItemState.Selected
+                && e.Index >= 0;
+            bool deshabilitado = (e.State & DrawItemState.Disabled) != 0;
+
+            Color fondo = seleccionado ? RibbonClaro.Presionado : combo.BackColor;
+            Color texto = deshabilitado
+                ? RibbonClaro.Deshabilitado
+                : seleccionado ? RibbonClaro.Texto : combo.ForeColor;
 
             using (var brush = new SolidBrush(fondo))
                 e.Graphics.FillRectangle(brush, e.Bounds);
@@ -675,10 +742,10 @@ namespace SOPRO.WinForms.Helpers
             var lblProyecto = form.lblProyecto;
 
             EnableDoubleBuffering(panelTop);
-            // Tema "B - Limpio neutro": header solido. RibbonBaseColor deriva de
-            // panelTop.BackColor, por lo que el ribbon sigue fundiendose con el
-            // header (ver RibbonBaseColor => panelTop.BackColor en FormProyecto.Ribbon.cs).
-            panelTop.BackColor = Colors.HeaderDark;
+            // Banda superior clara unificada (mockup #180): la marca y el ribbon
+            // comparten la MISMA superficie blanca, sin tarjeta incrustada ni
+            // header oscuro detras. El cierre inferior es un hairline neutro.
+            panelTop.BackColor = Colors.Surface;
 
             panelTop.Paint += (_, e) =>
             {
@@ -686,18 +753,20 @@ namespace SOPRO.WinForms.Helpers
                 if (rect.Width <= 0 || rect.Height <= 0) return;
 
                 // Sin gradiente ni angulo: relleno solido del header.
-                using (var brush = new SolidBrush(Colors.HeaderDark))
+                using (var brush = new SolidBrush(Colors.Surface))
                     e.Graphics.FillRectangle(brush, rect);
 
-                // Linea inferior de 1px bajo el header.
-                using var pen = new Pen(Colors.HeaderBottom);
+                // Hairline de 1px bajo la banda.
+                using var pen = new Pen(Colors.SidebarHairline);
                 e.Graphics.DrawLine(pen, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
             };
 
+            // Marca en tinta sobre la banda clara; el nombre del proyecto en
+            // tono apagado (misma jerarquia titulo/subtitulo que el mockup).
             lblTitulo.BackColor = Color.Transparent;
-            lblTitulo.ForeColor = Colors.Surface;
+            lblTitulo.ForeColor = Colors.Ink2;
             lblProyecto.BackColor = Color.Transparent;
-            lblProyecto.ForeColor = Colors.Surface;
+            lblProyecto.ForeColor = Colors.Muted;
         }
 
         private static void ApplyProyectoSidebar(FormProyecto form)
@@ -788,6 +857,8 @@ namespace SOPRO.WinForms.Helpers
 
         private static void ApplyProyectoRibbonChrome(FormProyecto form)
         {
+            // Separadores sutiles: un filete claro que separa los grupos sin
+            // competir con los comandos sobre la banda clara.
             foreach (var separator in new[]
             {
                 form.label1, form.label2, form.lblSepReporte, form.lblSepGlobal,
@@ -795,10 +866,11 @@ namespace SOPRO.WinForms.Helpers
             })
             {
                 if (separator != null)
-                    separator.BackColor = Colors.RibbonSeparatorDark;
+                    separator.BackColor = RibbonClaro.Separador;
             }
 
-            // Rotulos de grupo: al pie de la banda de comandos, en tono apagado.
+            // Rotulos de grupo: al pie de la banda de comandos, en tono apagado
+            // pero legible sobre la superficie clara.
             foreach (var caption in new[]
             {
                 form.lblGroupDatos, form.lblGroupExportar, form.lblGroupFuente,
@@ -807,7 +879,7 @@ namespace SOPRO.WinForms.Helpers
             {
                 if (caption == null) continue;
                 caption.Font = Fonts.RibbonGroupCaption;
-                caption.ForeColor = Colors.RibbonDisabledIcon;
+                caption.ForeColor = RibbonClaro.Caption;
             }
 
             foreach (var button in new[]
@@ -820,7 +892,7 @@ namespace SOPRO.WinForms.Helpers
             })
             {
                 if (button != null)
-                    button.SoproDisabledIconColor = Colors.RibbonDisabledIcon;
+                    button.SoproDisabledIconColor = RibbonClaro.Deshabilitado;
             }
 
             ApplyProyectoRibbonIndicadorDestino(form);
@@ -831,9 +903,10 @@ namespace SOPRO.WinForms.Helpers
         /// contraste y tooltip.
         ///
         /// 1. FormProyecto.Ribbon.cs colorea el indicador con <see cref="Color.Gray"/>
-        ///    cuando no hay destino activo. Sobre el ribbon oscuro ese gris se
+        ///    cuando no hay destino activo. Sobre la banda clara ese gris se
         ///    queda en ~3.9:1, por debajo del 4.5:1 de WCAG AA, asi que aqui se
-        ///    re-mapea al token apagado del tema (~6:1) sin tocar el ribbon.
+        ///    re-mapea al token de caption del ribbon claro (~7:1) sin tocar el
+        ///    ribbon. El tono de destino activo (tinta) lo fija el propio ribbon.
         /// 2. El tooltip se sincroniza con el texto real del indicador: asi
         ///    explica SIEMPRE a que se aplica el formato (columna o celdas) en
         ///    vez de un texto generico que puede quedar desfasado.
@@ -858,14 +931,15 @@ namespace SOPRO.WinForms.Helpers
         }
 
         /// <summary>
-        /// Re-mapea el gris heredado del indicador de destino al token apagado
-        /// del tema. El blanco (destino activo) se respeta: ya tiene contraste.
+        /// Re-mapea el gris heredado del indicador de destino al token de
+        /// caption del ribbon claro (apagado pero legible). El tono de tinta
+        /// (destino activo) se respeta: ya tiene contraste.
         /// </summary>
         private static void NormalizarColorIndicadorDestino(Label indicador)
         {
             if (indicador == null) return;
             if (indicador.ForeColor == Color.Gray)
-                indicador.ForeColor = Colors.RibbonDisabledIcon;
+                indicador.ForeColor = RibbonClaro.Caption;
         }
 
         private static void EnableDoubleBuffering(Control control)

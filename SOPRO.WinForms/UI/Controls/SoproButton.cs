@@ -52,6 +52,8 @@ namespace SOPRO.WinForms.UI.Controls
         private string _caption = string.Empty;
         private Font? _glyphFont;
         private Font? _captionFont;
+        private Color? _sampleGlyphColor;
+        private bool _dualFocusCue;
         private bool _updatingRegion;
 
         [Category("SOPRO")]
@@ -217,6 +219,55 @@ namespace SOPRO.WinForms.UI.Controls
             }
         }
 
+        /// <summary>
+        /// Estilo de foco OPT-IN: doble filete anidado tinta/blanco en lugar del
+        /// aro simple <see cref="SoproTheme.Colors.BrandLt"/>. Pensado para el
+        /// ribbon de FormProyecto, donde el comando activo usa fondo azul de
+        /// marca (el aro azul simple cae a ~1.8:1 sobre el propio azul). El
+        /// filete de tinta contrasta sobre superficies claras y el blanco sobre
+        /// el azul activo, de modo que el foco es visible en ambos cromatismas.
+        /// Por defecto (false) el pintado historico no cambia para los
+        /// consumidores existentes. Solo aplica con foco de teclado
+        /// (<see cref="Control.ShowFocusCues"/>).
+        /// </summary>
+        [Category("SOPRO")]
+        [DefaultValue(false)]
+        public bool SoproDualFocusCue
+        {
+            get => _dualFocusCue;
+            set
+            {
+                if (_dualFocusCue == value) return;
+                _dualFocusCue = value;
+                Invalidate();
+            }
+        }
+
+        /// <summary>
+        /// Color del glifo y del rotulo de las presentaciones de muestra
+        /// (<see cref="SoproButtonLayout.SampleLetter"/> y
+        /// <see cref="SoproButtonLayout.SampleSwatch"/>) cuando el boton esta
+        /// habilitado. Es un override OPT-IN pensado para superficies claras:
+        /// por defecto (null) se conserva el tono claro historico
+        /// (<see cref="SoproTheme.Colors.RibbonText"/>) del chrome oscuro, asi
+        /// que los consumidores existentes no cambian. El estado deshabilitado
+        /// sigue usando <see cref="SoproDisabledIconColor"/>. No afecta a las
+        /// presentaciones Inline/Large/Small ni a la barra/cuadro de muestra
+        /// (que siempre pinta el color elegido).
+        /// </summary>
+        [Category("SOPRO")]
+        [DefaultValue(null)]
+        public Color? SoproSampleGlyphColor
+        {
+            get => _sampleGlyphColor;
+            set
+            {
+                if (_sampleGlyphColor == value) return;
+                _sampleGlyphColor = value;
+                Invalidate();
+            }
+        }
+
         public SoproButton()
         {
             // Permite BackColor = Transparent (p. ej. fundir el boton con el
@@ -319,8 +370,23 @@ namespace SOPRO.WinForms.UI.Controls
 
             if (Focused && ShowFocusCues)
             {
-                using var focus = new Pen(SoproTheme.Colors.BrandLt);
-                graphics.DrawRectangle(focus, 1, 1, bounds.Width - 3, bounds.Height - 3);
+                if (_dualFocusCue)
+                {
+                    // Doble filete anidado tinta/blanco: sobre la superficie
+                    // clara el filete oscuro aporta el contraste y sobre el
+                    // comando activo (azul de marca) lo aporta el blanco, de
+                    // modo que el foco de teclado es visible en ambos
+                    // cromatismas (el aro azul simple cae a ~1.8:1 sobre azul).
+                    using var oscuro = new Pen(SoproTheme.Colors.Ink2);
+                    graphics.DrawRectangle(oscuro, 1, 1, bounds.Width - 3, bounds.Height - 3);
+                    using var claro = new Pen(SoproTheme.Colors.Surface);
+                    graphics.DrawRectangle(claro, 2, 2, bounds.Width - 5, bounds.Height - 5);
+                }
+                else
+                {
+                    using var focus = new Pen(SoproTheme.Colors.BrandLt);
+                    graphics.DrawRectangle(focus, 1, 1, bounds.Width - 3, bounds.Height - 3);
+                }
             }
 
             if (_layout == SoproButtonLayout.Large)
@@ -649,6 +715,14 @@ namespace SOPRO.WinForms.UI.Controls
 
             Color sampleColor = Enabled ? ForeColor : _disabledIconColor;
 
+            // Texto fijo de la presentacion (glifo y rotulo): usa el override
+            // opt-in si el consumidor define uno (superficies claras); si no,
+            // el tono claro historico del chrome oscuro. Deshabilitado usa
+            // siempre el token de deshabilitado.
+            Color textoMuestra = Enabled
+                ? (_sampleGlyphColor ?? SoproTheme.Colors.RibbonText)
+                : _disabledIconColor;
+
             if (letter)
             {
                 // La letra se dibuja siempre legible (independiente del color
@@ -658,7 +732,7 @@ namespace SOPRO.WinForms.UI.Controls
                     glyph,
                     _glyphFont!,
                     new Rectangle(x, glyphTop, glyphWidth, glyphDrawHeight),
-                    Enabled ? SoproTheme.Colors.RibbonText : _disabledIconColor,
+                    textoMuestra,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
                     TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
 
@@ -694,7 +768,7 @@ namespace SOPRO.WinForms.UI.Controls
                 caption,
                 _captionFont!,
                 new Rectangle(x + glyphWidth + gap, bounds.Top + ((bounds.Height - captionHeight) / 2), captionWidth + 2, captionHeight),
-                Enabled ? SoproTheme.Colors.RibbonText : _disabledIconColor,
+                textoMuestra,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
                 TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
         }

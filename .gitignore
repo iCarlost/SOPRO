@@ -461,3 +461,5 @@ publish/
 
 # Icono de identidad local (asset no publico; referenciado solo en build)
 SOPRO.WinForms/SOPRO.ico
+
+.slim/deepwork/
