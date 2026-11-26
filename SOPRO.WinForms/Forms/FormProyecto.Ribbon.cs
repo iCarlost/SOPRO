@@ -190,8 +190,8 @@ namespace SOPRO.WinForms.Forms
         private void ConfigurarIconosRibbon()
         {
             ConfigurarBotonIcono(btnBuscarRibbon, "Buscar", SoproIconType.Buscar, 16, showText: true);
-            ConfigurarBotonIcono(btnExcelRibbon, string.Empty, SoproIconType.Excel, 16, showText: false);
-            ConfigurarBotonIcono(btnPdfRibbon, string.Empty, SoproIconType.Pdf, 16, showText: false);
+            ConfigurarBotonIcono(btnExcelRibbon, "Excel", SoproIconType.Excel, 16, showText: true);
+            ConfigurarBotonIcono(btnPdfRibbon, "PDF", SoproIconType.Pdf, 16, showText: true);
             ConfigurarBotonIcono(btnWrapRibbon, "Ajustar", SoproIconType.AjustarTexto, 16, showText: true);
             ConfigurarBotonIcono(btnRecalcularRibbon, "Recalcular", SoproIconType.Recalcular, 16, showText: true);
             ConfigurarBotonIcono(btnDepurarRibbon, "Depurar", SoproIconType.Depurar, 16, showText: true);
@@ -1078,14 +1078,17 @@ namespace SOPRO.WinForms.Forms
 
             btn.UseVisualStyleBackColor = false;
             btn.FlatStyle = FlatStyle.Flat;
-            // Pozo de muestra integrado a la banda clara (contrato #180): ficha
-            // blanca definida por su filete, con hover/presionado en tinte azul
-            // progresivo. El glifo/rotulo se pintan en tinta via
+            // Accion de color INTEGRADA a la banda (seguimiento del mockup
+            // #180): sin caja ni filete en reposo — solo el glifo con su
+            // barra/cuadro de muestra y el rotulo, al nivel de cualquier otro
+            // comando de la banda. La retroalimentacion vive en los estados:
+            // hover/presionado en tinte azul progresivo y foco de teclado via
+            // SoproDualFocusCue. El glifo/rotulo se pintan en tinta via
             // SoproSampleGlyphColor; la barra/cuadro de muestra lleva el color
-            // elegido y deshabilitado usa su token. Los tres estados de reposo/
-            // puntero son distintos y mantienen la tinta por encima de 4.5:1.
-            btn.FlatAppearance.BorderSize = 1;
-            btn.FlatAppearance.BorderColor = SoproTheme.RibbonClaro.Separador;
+            // elegido (con su propio filete interno cuando lo necesita) y
+            // deshabilitado usa su token. Los tres estados de reposo/puntero
+            // son distintos y mantienen la tinta por encima de 4.5:1.
+            btn.FlatAppearance.BorderSize = 0;
             btn.Text = texto;
             btn.BackColor = SoproTheme.RibbonClaro.Chip;
             if (btn is SoproButton sopro)

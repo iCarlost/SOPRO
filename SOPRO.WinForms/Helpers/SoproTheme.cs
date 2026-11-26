@@ -88,7 +88,7 @@ namespace SOPRO.WinForms.Helpers
 
         /// <summary>
         /// Tokens del ribbon claro de FormProyecto (issue #180): banda de comandos
-        /// clara incrustada en el header oscuro, con iconografía azul, texto en
+        /// sobre el encabezado claro unificado, con iconografía azul, texto en
         /// tinta y estados suaves. Es un CONTEXTO específico del ribbon: no
         /// reutilizar en otras superficies (los tokens Ribbon* históricos siguen
         /// sirviendo al chrome oscuro, FormPrincipal y diálogos). La mayoría de
@@ -135,7 +135,7 @@ namespace SOPRO.WinForms.Helpers
             public static readonly Color Separador = Colors.SurfaceBorder;
 
             /// <summary>Pozo de muestra de color: ficha en reposo sobre la MISMA
-            /// superficie clara de la banda (integrada; el filete la define), con
+            /// superficie clara de la banda, sin marco exterior, con
             /// hover/presionado en tinte azul progresivo y glifo en tinta
             /// (contrato #180: nunca usar aqui el hover historico oscuro).</summary>
             public static readonly Color Chip = Superficie;
@@ -569,9 +569,9 @@ namespace SOPRO.WinForms.Helpers
 
         /// <summary>
         /// Aplica los tokens del tema al chrome del host <see cref="FormProyecto"/>:
-        /// header oscuro solido (titulo/proyecto) y banda de comandos clara del
-        /// ribbon (superficie, separadores sutiles, selectores e indicador de
-        /// destino). No modifica logica, eventos ni geometria del formulario.
+        /// banda superior clara unificada (bloque de marca + comandos sobre la
+        /// misma superficie, con hairline inferior), barra lateral y ribbon.
+        /// No modifica logica, eventos ni manejadores del formulario.
         /// </summary>
         public static void ApplyFormProyecto(FormProyecto form)
         {
@@ -742,10 +742,10 @@ namespace SOPRO.WinForms.Helpers
             var lblProyecto = form.lblProyecto;
 
             EnableDoubleBuffering(panelTop);
-            // Tema "B - Limpio neutro": header solido. RibbonBaseColor deriva de
-            // panelTop.BackColor, por lo que el ribbon sigue fundiendose con el
-            // header (ver RibbonBaseColor => panelTop.BackColor en FormProyecto.Ribbon.cs).
-            panelTop.BackColor = Colors.HeaderDark;
+            // Banda superior clara unificada (mockup #180): la marca y el ribbon
+            // comparten la MISMA superficie blanca, sin tarjeta incrustada ni
+            // header oscuro detras. El cierre inferior es un hairline neutro.
+            panelTop.BackColor = Colors.Surface;
 
             panelTop.Paint += (_, e) =>
             {
@@ -753,18 +753,20 @@ namespace SOPRO.WinForms.Helpers
                 if (rect.Width <= 0 || rect.Height <= 0) return;
 
                 // Sin gradiente ni angulo: relleno solido del header.
-                using (var brush = new SolidBrush(Colors.HeaderDark))
+                using (var brush = new SolidBrush(Colors.Surface))
                     e.Graphics.FillRectangle(brush, rect);
 
-                // Linea inferior de 1px bajo el header.
-                using var pen = new Pen(Colors.HeaderBottom);
+                // Hairline de 1px bajo la banda.
+                using var pen = new Pen(Colors.SidebarHairline);
                 e.Graphics.DrawLine(pen, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
             };
 
+            // Marca en tinta sobre la banda clara; el nombre del proyecto en
+            // tono apagado (misma jerarquia titulo/subtitulo que el mockup).
             lblTitulo.BackColor = Color.Transparent;
-            lblTitulo.ForeColor = Colors.Surface;
+            lblTitulo.ForeColor = Colors.Ink2;
             lblProyecto.BackColor = Color.Transparent;
-            lblProyecto.ForeColor = Colors.Surface;
+            lblProyecto.ForeColor = Colors.Muted;
         }
 
         private static void ApplyProyectoSidebar(FormProyecto form)

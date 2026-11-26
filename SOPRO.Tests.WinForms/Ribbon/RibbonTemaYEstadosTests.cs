@@ -40,10 +40,14 @@ namespace SOPRO.Tests.WinForms.Ribbon;
 /// Todo se evalúa sobre los controles reales del formulario (sin capturas de
 /// pantalla y sin fijar píxeles incidentales): se comparan colores efectivos,
 /// rectángulos y el resultado del propio pintado del control.
+///
+/// El contrato COMPACTO del mockup (seguimiento #180) vive en el archivo
+/// parcial <c>RibbonTemaYEstadosTests.CompactoMockup.cs</c>, sobre esta misma
+/// clase (mismos helpers STA/formulario).
 /// </summary>
 [STATestClass]
 [DoNotParallelize] // WinForms/System.Drawing requieren un hilo STA dedicado.
-public class RibbonTemaYEstadosTests
+public partial class RibbonTemaYEstadosTests
 {
     private const string ClaveDatos = "Datos";
     private const string ClaveExportar = "Exportar";
