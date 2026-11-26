@@ -826,7 +826,7 @@ namespace SOPRO.WinForms.Forms
             // lblTitulo
             // 
             lblTitulo.AutoSize = true;
-            lblTitulo.Font = new Font("Segoe UI", 13F, FontStyle.Bold);
+            lblTitulo.Font = new Font("Segoe UI", 16.2F, FontStyle.Bold, GraphicsUnit.Point, 0);
             lblTitulo.Location = new Point(18, 8);
             lblTitulo.Name = "lblTitulo";
             lblTitulo.Size = new Size(72, 26);
