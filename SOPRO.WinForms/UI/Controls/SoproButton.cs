@@ -55,14 +55,6 @@ namespace SOPRO.WinForms.UI.Controls
         private Color? _sampleGlyphColor;
         private bool _dualFocusCue;
         private bool _updatingRegion;
-        // Estado de puntero seguido POR EVENTOS (issue #186): OnPaint nunca
-        // consulta Cursor.Position ni Control.MouseButtons. Leer el estado
-        // global del ratón durante el pintado puede hacer que un repintado
-        // PARCIAL (franja expuesta por el sistema) produzca píxeles distintos
-        // a los del repintado completo para el mismo estado visible; con
-        // estado seguido, todo repintado es idempotente.
-        private bool _pointerOver;
-        private bool _pressed;
 
         [Category("SOPRO")]
         [DefaultValue(null)]
@@ -292,24 +284,13 @@ namespace SOPRO.WinForms.UI.Controls
             UseVisualStyleBackColor = false;
 
             // Las presentaciones con pintado propio necesitan redibujarse al
-            // cambiar el estado del puntero (el botón nativo ya lo hace por su
-            // cuenta). El estado se SIGUE aquí y se sincroniza en eventos
-            // discretos; nunca se lee el cursor global durante OnPaint.
-            MouseEnter += (_, __) => SetPointerOver(true);
-            MouseLeave += (_, __) => SetPointerOver(false);
-            // Red de seguridad y semántica de arrastre: con captura (botón
-            // presionado fuera del área) el movimiento sigue llegando y el
-            // estado "encima" sigue la contención real, como hacía la lectura
-            // directa del cursor. Sin lecturas globales: e.Location es cliente.
-            MouseMove += (_, e) => SetPointerOver(ClientRectangle.Contains(e.Location));
-            MouseDown += (_, e) => { if (e.Button == MouseButtons.Left) SetPressed(true); };
-            MouseUp += (_, e) => { if (e.Button == MouseButtons.Left) SetPressed(false); };
-            // Un menú/diálogo que roba la captura deja el botón en "presionado"
-            // para siempre si no se libera aquí.
-            MouseCaptureChanged += (_, __) => SetPressed(false);
+            // entrar/salir del raton (el boton nativo ya lo hace por su cuenta).
+            MouseEnter += (_, __) => InvalidateIfCustomLayout();
+            MouseLeave += (_, __) => InvalidateIfCustomLayout();
+            MouseMove += (_, __) => InvalidateIfCustomLayout();
 
             SizeChanged += (_, __) => ApplyRoundedRegion();
-            HandleCreated += (_, __) => { ApplyRoundedRegion(); UpdateIcon(); SyncPointerOverFromCursor(); };
+            HandleCreated += (_, __) => { ApplyRoundedRegion(); UpdateIcon(); };
             // Al cambiar el DPI hay que re-rasterizar el icono: su tamano logico
             // se mantiene, pero el bitmap debe crecer con la escala.
             DpiChangedAfterParent += (_, __) => { ApplyRoundedRegion(); UpdateIcon(); };
@@ -341,23 +322,8 @@ namespace SOPRO.WinForms.UI.Controls
         protected override void OnEnabledChanged(EventArgs e)
         {
             base.OnEnabledChanged(e);
-            if (!Enabled)
-                _pressed = false;
-            // Deshabilitado el control deja de recibir Leave: el estado seguido
-            // puede quedar obsoleto al re-habilitar. Sincronía discreta.
-            SyncPointerOverFromCursor();
             UpdateIcon();
             Invalidate();
-        }
-
-        protected override void OnVisibleChanged(EventArgs e)
-        {
-            base.OnVisibleChanged(e);
-            // Al (re)aparecer bajo el cursor el sistema no siempre entrega
-            // MouseEnter: se re-sincroniza el estado seguido. Es una lectura
-            // del cursor en un evento DISCRETO, nunca durante OnPaint.
-            if (Visible)
-                SyncPointerOverFromCursor();
         }
 
         protected override void OnForeColorChanged(EventArgs e)
@@ -390,11 +356,8 @@ namespace SOPRO.WinForms.UI.Controls
             Rectangle bounds = ClientRectangle;
             if (bounds.Width <= 0 || bounds.Height <= 0) return;
 
-            // Estado seguido por eventos (issue #186): el pintado no depende de
-            // entradas globales volátiles; repintado parcial y completo
-            // producen los mismos píxeles para el mismo estado visible.
-            bool over = _pointerOver && Enabled;
-            bool pressed = over && _pressed;
+            bool over = IsPointerOver();
+            bool pressed = over && (Control.MouseButtons & MouseButtons.Left) == MouseButtons.Left;
 
             using (var background = new SolidBrush(ResolveBackground(over, pressed)))
                 graphics.FillRectangle(background, bounds);
@@ -451,32 +414,6 @@ namespace SOPRO.WinForms.UI.Controls
         {
             if (_layout != SoproButtonLayout.Inline)
                 Invalidate();
-        }
-
-        private void SetPointerOver(bool valor)
-        {
-            if (_pointerOver == valor) return;
-            _pointerOver = valor;
-            InvalidateIfCustomLayout();
-        }
-
-        private void SetPressed(bool valor)
-        {
-            if (_pressed == valor) return;
-            _pressed = valor;
-            InvalidateIfCustomLayout();
-        }
-
-        /// <summary>
-        /// Re-sincroniza el estado "encima" con la posición real del cursor.
-        /// Solo se invoca desde eventos discretos (handle creado, visible,
-        /// habilitado); el pintado usa exclusivamente el estado seguido.
-        /// </summary>
-        private void SyncPointerOverFromCursor()
-        {
-            if (!IsHandleCreated) return;
-            SetPointerOver(
-                Enabled && ClientRectangle.Contains(PointToClient(MousePosition)));
         }
 
         private void UpdateVisuals()
@@ -584,6 +521,12 @@ namespace SOPRO.WinForms.UI.Controls
         // =====================================================================
         // Pintado propio (presentaciones Large / Sample)
         // =====================================================================
+
+        private bool IsPointerOver()
+        {
+            if (!Enabled) return false;
+            return ClientRectangle.Contains(PointToClient(MousePosition));
+        }
 
         private Color ResolveBackground(bool over, bool pressed)
         {
