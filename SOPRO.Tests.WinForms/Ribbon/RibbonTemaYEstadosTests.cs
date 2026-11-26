@@ -1209,10 +1209,16 @@ public partial class RibbonTemaYEstadosTests
                 WindowState = FormWindowState.Normal,
                 StartPosition = FormStartPosition.Manual,
                 Location = new Point(-4000, -4000),
+                ClientSize = new Size(1600, 796),
                 ShowInTaskbar = false,
             };
 
             form.Show();
+            // Algunos runners limitan ventanas fuera de pantalla al área de
+            // trabajo; fijar el tamaño de diseño mantiene estas pruebas
+            // deterministas. Las pruebas de overflow ajustan el ancho explícitamente.
+            form.WindowState = FormWindowState.Normal;
+            form.ClientSize = new Size(1600, 796);
             ProcesarMensajes();
 
             prueba(form);
