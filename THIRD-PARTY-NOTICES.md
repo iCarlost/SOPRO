@@ -6,6 +6,8 @@ SOPRO usa las siguientes bibliotecas de terceros. Cada una conserva su licencia 
 |---|---|---|
 | ClosedXML | 0.102.2 | MIT |
 | PDFsharp-MigraDoc-GDI | 6.2.4 | MIT |
+| System.IO.Packaging | 6.0.1 | MIT |
+| System.Security.Cryptography.Pkcs | 8.0.2 | MIT |
 | Microsoft.EntityFrameworkCore | 8.x | MIT |
 | Microsoft.EntityFrameworkCore.Design | 8.0.0 | MIT |
 | Microsoft.Extensions.* (transitivas) | 8.x | MIT |
