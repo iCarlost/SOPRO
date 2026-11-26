@@ -111,6 +111,14 @@ namespace SOPRO.WinForms.Helpers
         /// colapsos a un caracter: el ancho de cada fila es el del texto.
         /// </summary>
         internal static TableLayoutPanel CrearEncabezado(string titulo, string? subtitulo)
+            => CrearEncabezado(titulo, subtitulo, out _);
+
+        /// <summary>
+        /// Variante que expone el rótulo del título para formularios cuyo
+        /// título cambia en ejecución (p. ej. el tipo de matriz en el editor de
+        /// matrices): el formulario actualiza el rótulo y el cromo se mantiene.
+        /// </summary>
+        internal static TableLayoutPanel CrearEncabezado(string titulo, string? subtitulo, out Label rotuloTitulo)
         {
             var tabla = new TableLayoutPanel
             {
@@ -144,6 +152,7 @@ namespace SOPRO.WinForms.Helpers
                 Margin = new Padding(0, 0, 0, SeparacionVerticalEncabezado)
             };
             tabla.Controls.Add(lblTitulo, 0, 0);
+            rotuloTitulo = lblTitulo;
 
             if (!string.IsNullOrWhiteSpace(subtitulo))
             {
