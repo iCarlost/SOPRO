@@ -24,13 +24,6 @@ namespace SOPRO.WinForms.Forms
 
         private void InicializarRibbon()
         {
-            // Doble buffer de la banda (issue #186): panelRibbon pinta el fondo
-            // y separadores 1 px junto a SoproButtons transparentes; sin buffer,
-            // las pasadas de borrado y pintado parciales pueden dejar costuras
-            // de 1 px entre superficies durante las tormentas de invalidación
-            // del cambio de pestaña. Misma receta que panelTop en SoproTheme.
-            ControlRenderHelper.HabilitarDobleBuffer(panelRibbon);
-
             // Cargar fuentes del sistema
             cboFuente.Items.Clear();
             using var familias = new System.Drawing.Text.InstalledFontCollection();

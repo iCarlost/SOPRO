@@ -55,13 +55,12 @@ namespace SOPRO.WinForms.UI.Controls
         private Color? _sampleGlyphColor;
         private bool _dualFocusCue;
         private bool _updatingRegion;
-        // Estado de puntero seguido POR EVENTOS (issue #186): OnPaint NUNCA
+        // Estado de puntero seguido POR EVENTOS (issue #186): OnPaint nunca
         // consulta Cursor.Position ni Control.MouseButtons. Leer el estado
-        // global del ratón durante el pintado hace que un repintado PARCIAL
-        // (franja expuesta por el sistema) pueda usar un estado distinto al de
-        // la cara ya pintada y dejar una línea de 1 px "fantasma" — el
-        // artefacto de Recalcular/Ajustar. Con estado seguido, todo repintado
-        // (completo o parcial) produce píxeles idénticos para el mismo estado.
+        // global del ratón durante el pintado puede hacer que un repintado
+        // PARCIAL (franja expuesta por el sistema) produzca píxeles distintos
+        // a los del repintado completo para el mismo estado visible; con
+        // estado seguido, todo repintado es idempotente.
         private bool _pointerOver;
         private bool _pressed;
 
@@ -391,10 +390,9 @@ namespace SOPRO.WinForms.UI.Controls
             Rectangle bounds = ClientRectangle;
             if (bounds.Width <= 0 || bounds.Height <= 0) return;
 
-            // Estado seguido por eventos (issue #186): nunca se lee el cursor
-            // ni los botones del ratón durante el pintado, de modo que un
-            // repintado parcial produce exactamente los mismos píxeles que el
-            // repintado completo para el mismo estado visible.
+            // Estado seguido por eventos (issue #186): el pintado no depende de
+            // entradas globales volátiles; repintado parcial y completo
+            // producen los mismos píxeles para el mismo estado visible.
             bool over = _pointerOver && Enabled;
             bool pressed = over && _pressed;
 
