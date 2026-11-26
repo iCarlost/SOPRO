@@ -40,6 +40,7 @@ namespace SOPRO.WinForms.Forms
 
             ConfigurarIconosRibbon();
             AplicarTemaCompletoRibbon();
+            AplicarFocoVisibleTecladoRibbon();
             // ShowAlways permite que los comandos DESHABILITADOS también muestren
             // su tooltip: así el tooltip explica por qué el comando está inactivo.
             toolTipRibbon.ShowAlways = true;
@@ -289,6 +290,50 @@ namespace SOPRO.WinForms.Forms
             button.Location = new Point(x, y);
         }
 
+        /// <summary>
+        /// Foco de teclado visible en los Button planos del ribbon (Negrita,
+        /// Cursiva y "⋯"): doble filete anidado tinta/blanco, el mismo estilo
+        /// dual de los SoproButton del ribbon (SoproDualFocusCue), de modo que
+        /// el foco contrasta tanto sobre la banda clara como sobre el azul del
+        /// comando activo. El -= antes del += mantiene la suscripción
+        /// idempotente si el ribbon se inicializa más de una vez.
+        /// </summary>
+        private void AplicarFocoVisibleTecladoRibbon()
+        {
+            foreach (var boton in new Button?[] { btnNegrita, btnCursiva, btnRibbonMas })
+            {
+                if (boton == null) continue;
+                boton.Paint -= PintarFocoTecladoRibbon;
+                boton.Paint += PintarFocoTecladoRibbon;
+            }
+        }
+
+        private static readonly PropertyInfo? ShowFocusCuesProperty = typeof(Control).GetProperty(
+            "ShowFocusCues", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        private static void PintarFocoTecladoRibbon(object? sender, PaintEventArgs e)
+        {
+            if (sender is not Button boton || !boton.Focused)
+                return;
+
+            // ShowFocusCues es protegido en Control: se lee por reflexión para
+            // respetar la señal estándar del sistema (foco de teclado y no de
+            // ratón) sin convertirse en subclase.
+            if (ShowFocusCuesProperty?.GetValue(boton) is false)
+                return;
+
+            var grafico = e.Graphics;
+            if (grafico == null || boton.Width < 6 || boton.Height < 6) return;
+
+            // Doble filete anidado idéntico al de SoproButton: el filete de
+            // tinta contrasta sobre la banda clara y el blanco sobre el azul
+            // del comando activo (el aro azul simple caía a ~1.8:1 ahí).
+            using var oscuro = new Pen(SoproTheme.Colors.Ink2);
+            grafico.DrawRectangle(oscuro, 1, 1, boton.Width - 3, boton.Height - 3);
+            using var claro = new Pen(SoproTheme.Colors.Surface);
+            grafico.DrawRectangle(claro, 2, 2, boton.Width - 5, boton.Height - 5);
+        }
+
         private void AplicarTemaBotonOverflowRibbon()
         {
             if (btnRibbonMas == null)
@@ -297,11 +342,14 @@ namespace SOPRO.WinForms.Forms
             btnRibbonMas.UseVisualStyleBackColor = false;
             btnRibbonMas.FlatStyle = FlatStyle.Flat;
             btnRibbonMas.FlatAppearance.BorderSize = 0;
-            btnRibbonMas.FlatAppearance.BorderColor = RibbonBaseColor;
-            btnRibbonMas.BackColor = RibbonBaseColor;
-            btnRibbonMas.ForeColor = SoproTheme.Colors.RibbonText;
-            btnRibbonMas.FlatAppearance.MouseOverBackColor = SoproTheme.Colors.RibbonHover;
-            btnRibbonMas.FlatAppearance.MouseDownBackColor = SoproTheme.Colors.RibbonDown;
+            // Botón transparente sobre la banda clara: glifo "⋯" en acento de
+            // marca y estados suaves (hover/pressed) del mismo tinte que el
+            // resto de los comandos del ribbon.
+            HabilitarFondoTransparente(btnRibbonMas);
+            btnRibbonMas.BackColor = Color.Transparent;
+            btnRibbonMas.ForeColor = SoproTheme.RibbonClaro.Acento;
+            btnRibbonMas.FlatAppearance.MouseOverBackColor = SoproTheme.RibbonClaro.Hover;
+            btnRibbonMas.FlatAppearance.MouseDownBackColor = SoproTheme.RibbonClaro.Presionado;
         }
 
         // ════════════════ Overflow del ribbon (grupos semánticos) ════════════════
@@ -946,8 +994,7 @@ namespace SOPRO.WinForms.Forms
             return new RibbonButtonState(null, false, 16, null);
         }
 
-        private Color RibbonBaseColor => panelTop?.BackColor ?? SoproTheme.Colors.BrandMd;
-        private Color RibbonActiveColor => SoproTheme.Colors.RibbonActive;
+        private Color RibbonActiveColor => SoproTheme.RibbonClaro.Activo;
 
         private static readonly MethodInfo? SetStyleMethod = typeof(Control).GetMethod(
             "SetStyle", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -987,16 +1034,40 @@ namespace SOPRO.WinForms.Forms
             btn.UseVisualStyleBackColor = false;
             btn.FlatStyle = FlatStyle.Flat;
             btn.FlatAppearance.BorderSize = 0;
-            btn.FlatAppearance.BorderColor = RibbonBaseColor;
-            btn.ForeColor = activo ? Color.White : SoproTheme.Colors.RibbonText;
-            // En reposo el botón es transparente para fundirse con el header
-            // solido; activo usa el azul de marca con texto blanco. Los Button
-            // planos (p. ej. Negrita/Cursiva) necesitan SupportsTransparentBackColor
-            // vía reflexión; SoproButton ya lo habilita en su constructor.
+            btn.FlatAppearance.BorderColor = SoproTheme.RibbonClaro.Separador;
+            // En reposo el botón es transparente y se funde con la banda clara;
+            // el comando activo usa el azul de marca con primer plano claro.
+            // Los Button planos (p. ej. Negrita/Cursiva) necesitan
+            // SupportsTransparentBackColor vía reflexión; SoproButton ya lo
+            // habilita en su constructor.
             HabilitarFondoTransparente(btn);
             btn.BackColor = activo ? RibbonActiveColor : Color.Transparent;
-            btn.FlatAppearance.MouseOverBackColor = SoproTheme.Colors.RibbonHover;
-            btn.FlatAppearance.MouseDownBackColor = SoproTheme.Colors.RibbonDown;
+
+            // Primer plano: tinta para los toggles tipográficos (N/I) y acento
+            // azul para la iconografía y los comandos (los SoproButton rasterizan
+            // el icono con el ForeColor). Deshabilitado usa el token apagado.
+            btn.ForeColor = !btn.Enabled
+                ? SoproTheme.RibbonClaro.Deshabilitado
+                : activo
+                    ? Color.White
+                    : btn is SoproButton
+                        ? SoproTheme.RibbonClaro.Acento
+                        : SoproTheme.RibbonClaro.Texto;
+
+            // Estados de interacción sobre superficie clara; el comando ACTIVO
+            // profundiza la jerarquía reposo→hover→presionado con tres azules de
+            // marca distintos y el texto blanco cada vez más legible.
+            btn.FlatAppearance.MouseOverBackColor = activo
+                ? SoproTheme.RibbonClaro.AcentoProfundo
+                : SoproTheme.RibbonClaro.Hover;
+            btn.FlatAppearance.MouseDownBackColor = activo
+                ? SoproTheme.RibbonClaro.ActivoPresionado
+                : SoproTheme.RibbonClaro.Presionado;
+
+            // El foco de teclado en el comando activo (azul) exige el estilo
+            // dual opt-in; el aro azul simple cae a ~1.8:1 sobre el propio azul.
+            if (btn is SoproButton sopro)
+                sopro.SoproDualFocusCue = true;
 
             AplicarIconoBotonRibbon(btn);
         }
@@ -1007,13 +1078,24 @@ namespace SOPRO.WinForms.Forms
 
             btn.UseVisualStyleBackColor = false;
             btn.FlatStyle = FlatStyle.Flat;
-            btn.FlatAppearance.BorderSize = 0;
-            btn.FlatAppearance.BorderColor = RibbonBaseColor;
+            // Pozo de muestra integrado a la banda clara (contrato #180): ficha
+            // blanca definida por su filete, con hover/presionado en tinte azul
+            // progresivo. El glifo/rotulo se pintan en tinta via
+            // SoproSampleGlyphColor; la barra/cuadro de muestra lleva el color
+            // elegido y deshabilitado usa su token. Los tres estados de reposo/
+            // puntero son distintos y mantienen la tinta por encima de 4.5:1.
+            btn.FlatAppearance.BorderSize = 1;
+            btn.FlatAppearance.BorderColor = SoproTheme.RibbonClaro.Separador;
             btn.Text = texto;
-            btn.BackColor = RibbonBaseColor;
+            btn.BackColor = SoproTheme.RibbonClaro.Chip;
+            if (btn is SoproButton sopro)
+            {
+                sopro.SoproSampleGlyphColor = SoproTheme.RibbonClaro.Texto;
+                sopro.SoproDualFocusCue = true;
+            }
             btn.ForeColor = sampleColor;
-            btn.FlatAppearance.MouseOverBackColor = SoproTheme.Colors.RibbonHover;
-            btn.FlatAppearance.MouseDownBackColor = SoproTheme.Colors.RibbonDown;
+            btn.FlatAppearance.MouseOverBackColor = SoproTheme.RibbonClaro.Hover;
+            btn.FlatAppearance.MouseDownBackColor = SoproTheme.RibbonClaro.Presionado;
             btn.Image = null;
         }
 
@@ -1064,7 +1146,7 @@ namespace SOPRO.WinForms.Forms
             ActualizarBotonesAlinVertical(FormatoHelper.ConvertirAlineacionDgv(col.Alineacion, col.AlineacionVertical));
 
             lblColumna.Text = col.Nombre;
-            lblColumna.ForeColor = Color.White;
+            lblColumna.ForeColor = SoproTheme.RibbonClaro.Texto;
             panelRibbon.Enabled = true;
 
             _cargandoRibbon = false;
@@ -1131,7 +1213,7 @@ namespace SOPRO.WinForms.Forms
                     _formatoSeleccionCoordinator.EstiloEfectivoSeleccion,
                     _formatoSeleccionCoordinator.EstadoMixto);
                 lblColumna.Text = _formatoSeleccionCoordinator.DescripcionDestino;
-                lblColumna.ForeColor = Color.White;
+                lblColumna.ForeColor = SoproTheme.RibbonClaro.Texto;
                 _cargandoRibbon = false;
                 ActualizarOverflowRibbon();
             }

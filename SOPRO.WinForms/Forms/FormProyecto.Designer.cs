@@ -262,7 +262,9 @@ namespace SOPRO.WinForms.Forms
             // panelRibbon
             // 
             panelRibbon.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            panelRibbon.BackColor = Color.Transparent;
+            // Banda de comandos clara (issue #180): tarjeta clara incrustada en
+            // el header oscuro; los tokens del contexto viven en SoproTheme.RibbonClaro.
+            panelRibbon.BackColor = Helpers.SoproTheme.RibbonClaro.Superficie;
             panelRibbon.Controls.Add(btnRibbonMas);
             panelRibbon.Controls.Add(label2);
             panelRibbon.Controls.Add(label1);
@@ -309,7 +311,7 @@ namespace SOPRO.WinForms.Forms
             btnRibbonMas.FlatAppearance.BorderSize = 0;
             btnRibbonMas.FlatStyle = FlatStyle.Flat;
             btnRibbonMas.Font = new Font("Segoe UI Semibold", 11F);
-            btnRibbonMas.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnRibbonMas.ForeColor = Helpers.SoproTheme.RibbonClaro.Acento;
             btnRibbonMas.Location = new Point(1280, 28);
             btnRibbonMas.Name = "btnRibbonMas";
             btnRibbonMas.Size = new Size(28, 24);
@@ -341,7 +343,7 @@ namespace SOPRO.WinForms.Forms
             btnPdfRibbon.FlatAppearance.BorderSize = 0;
             btnPdfRibbon.FlatStyle = FlatStyle.Flat;
             btnPdfRibbon.Font = new Font("Segoe UI", 9F);
-            btnPdfRibbon.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnPdfRibbon.ForeColor = Helpers.SoproTheme.RibbonClaro.Acento;
             btnPdfRibbon.Location = new Point(390, 2);
             btnPdfRibbon.Name = "btnPdfRibbon";
             btnPdfRibbon.Size = new Size(72, 60);
@@ -361,7 +363,7 @@ namespace SOPRO.WinForms.Forms
             btnExcelRibbon.FlatAppearance.BorderSize = 0;
             btnExcelRibbon.FlatStyle = FlatStyle.Flat;
             btnExcelRibbon.Font = new Font("Segoe UI", 9F);
-            btnExcelRibbon.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnExcelRibbon.ForeColor = Helpers.SoproTheme.RibbonClaro.Acento;
             btnExcelRibbon.Location = new Point(316, 2);
             btnExcelRibbon.Name = "btnExcelRibbon";
             btnExcelRibbon.Size = new Size(72, 60);
@@ -381,7 +383,7 @@ namespace SOPRO.WinForms.Forms
             btnDepurarRibbon.FlatAppearance.BorderSize = 0;
             btnDepurarRibbon.FlatStyle = FlatStyle.Flat;
             btnDepurarRibbon.Font = new Font("Segoe UI", 9F);
-            btnDepurarRibbon.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnDepurarRibbon.ForeColor = Helpers.SoproTheme.RibbonClaro.Acento;
             btnDepurarRibbon.Location = new Point(82, 2);
             btnDepurarRibbon.Name = "btnDepurarRibbon";
             btnDepurarRibbon.Padding = new Padding(4, 0, 4, 0);
@@ -402,7 +404,7 @@ namespace SOPRO.WinForms.Forms
             btnRecalcularRibbon.FlatAppearance.BorderSize = 0;
             btnRecalcularRibbon.FlatStyle = FlatStyle.Flat;
             btnRecalcularRibbon.Font = new Font("Segoe UI", 9F);
-            btnRecalcularRibbon.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnRecalcularRibbon.ForeColor = Helpers.SoproTheme.RibbonClaro.Acento;
             btnRecalcularRibbon.Location = new Point(8, 2);
             btnRecalcularRibbon.Name = "btnRecalcularRibbon";
             btnRecalcularRibbon.Padding = new Padding(4, 0, 4, 0);
@@ -423,7 +425,7 @@ namespace SOPRO.WinForms.Forms
             btnBuscarRibbon.FlatAppearance.BorderSize = 0;
             btnBuscarRibbon.FlatStyle = FlatStyle.Flat;
             btnBuscarRibbon.Font = new Font("Segoe UI", 9F);
-            btnBuscarRibbon.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnBuscarRibbon.ForeColor = Helpers.SoproTheme.RibbonClaro.Acento;
             btnBuscarRibbon.Location = new Point(230, 2);
             btnBuscarRibbon.Name = "btnBuscarRibbon";
             btnBuscarRibbon.Padding = new Padding(4, 0, 4, 0);
@@ -444,7 +446,7 @@ namespace SOPRO.WinForms.Forms
             btnWrapRibbon.FlatAppearance.BorderSize = 0;
             btnWrapRibbon.FlatStyle = FlatStyle.Flat;
             btnWrapRibbon.Font = new Font("Segoe UI", 9F);
-            btnWrapRibbon.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnWrapRibbon.ForeColor = Helpers.SoproTheme.RibbonClaro.Acento;
             btnWrapRibbon.Location = new Point(898, 6);
             btnWrapRibbon.Name = "btnWrapRibbon";
             btnWrapRibbon.Padding = new Padding(8, 0, 8, 0);
@@ -473,7 +475,7 @@ namespace SOPRO.WinForms.Forms
             btnConsolidarInsumos.FlatAppearance.BorderSize = 0;
             btnConsolidarInsumos.FlatStyle = FlatStyle.Flat;
             btnConsolidarInsumos.Font = new Font("Segoe UI", 9F);
-            btnConsolidarInsumos.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnConsolidarInsumos.ForeColor = Helpers.SoproTheme.RibbonClaro.Acento;
             btnConsolidarInsumos.Location = new Point(156, 2);
             btnConsolidarInsumos.Name = "btnConsolidarInsumos";
             btnConsolidarInsumos.Padding = new Padding(4, 0, 4, 0);
@@ -494,7 +496,7 @@ namespace SOPRO.WinForms.Forms
             btnAplicarATodas.FlatAppearance.BorderSize = 0;
             btnAplicarATodas.FlatStyle = FlatStyle.Flat;
             btnAplicarATodas.Font = new Font("Segoe UI", 9F);
-            btnAplicarATodas.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnAplicarATodas.ForeColor = Helpers.SoproTheme.RibbonClaro.Acento;
             btnAplicarATodas.Location = new Point(898, 36);
             btnAplicarATodas.Name = "btnAplicarATodas";
             btnAplicarATodas.Padding = new Padding(8, 0, 8, 0);
@@ -564,7 +566,7 @@ namespace SOPRO.WinForms.Forms
             btnAlinAba.FlatAppearance.BorderSize = 0;
             btnAlinAba.FlatStyle = FlatStyle.Flat;
             btnAlinAba.Font = new Font("Segoe UI", 9F);
-            btnAlinAba.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnAlinAba.ForeColor = Helpers.SoproTheme.RibbonClaro.Acento;
             btnAlinAba.Location = new Point(758, 36);
             btnAlinAba.Name = "btnAlinAba";
             btnAlinAba.Size = new Size(28, 26);
@@ -581,7 +583,7 @@ namespace SOPRO.WinForms.Forms
             btnAlinMed.FlatAppearance.BorderSize = 0;
             btnAlinMed.FlatStyle = FlatStyle.Flat;
             btnAlinMed.Font = new Font("Segoe UI", 9F);
-            btnAlinMed.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnAlinMed.ForeColor = Helpers.SoproTheme.RibbonClaro.Acento;
             btnAlinMed.Location = new Point(728, 36);
             btnAlinMed.Name = "btnAlinMed";
             btnAlinMed.Size = new Size(28, 26);
@@ -598,7 +600,7 @@ namespace SOPRO.WinForms.Forms
             btnAlinJus.FlatAppearance.BorderSize = 0;
             btnAlinJus.FlatStyle = FlatStyle.Flat;
             btnAlinJus.Font = new Font("Segoe UI", 9F);
-            btnAlinJus.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnAlinJus.ForeColor = Helpers.SoproTheme.RibbonClaro.Acento;
             btnAlinJus.Location = new Point(698, 36);
             btnAlinJus.Name = "btnAlinJus";
             btnAlinJus.Size = new Size(28, 26);
@@ -615,7 +617,7 @@ namespace SOPRO.WinForms.Forms
             btnAlinDer.FlatAppearance.BorderSize = 0;
             btnAlinDer.FlatStyle = FlatStyle.Flat;
             btnAlinDer.Font = new Font("Segoe UI", 9F);
-            btnAlinDer.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnAlinDer.ForeColor = Helpers.SoproTheme.RibbonClaro.Acento;
             btnAlinDer.Location = new Point(758, 6);
             btnAlinDer.Name = "btnAlinDer";
             btnAlinDer.Size = new Size(28, 26);
@@ -632,7 +634,7 @@ namespace SOPRO.WinForms.Forms
             btnAlinCen.FlatAppearance.BorderSize = 0;
             btnAlinCen.FlatStyle = FlatStyle.Flat;
             btnAlinCen.Font = new Font("Segoe UI", 9F);
-            btnAlinCen.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnAlinCen.ForeColor = Helpers.SoproTheme.RibbonClaro.Acento;
             btnAlinCen.Location = new Point(728, 6);
             btnAlinCen.Name = "btnAlinCen";
             btnAlinCen.Size = new Size(28, 26);
@@ -649,7 +651,7 @@ namespace SOPRO.WinForms.Forms
             btnAlinIzq.FlatAppearance.BorderSize = 0;
             btnAlinIzq.FlatStyle = FlatStyle.Flat;
             btnAlinIzq.Font = new Font("Segoe UI", 9F);
-            btnAlinIzq.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnAlinIzq.ForeColor = Helpers.SoproTheme.RibbonClaro.Acento;
             btnAlinIzq.Location = new Point(698, 6);
             btnAlinIzq.Name = "btnAlinIzq";
             btnAlinIzq.Size = new Size(28, 26);
@@ -674,7 +676,7 @@ namespace SOPRO.WinForms.Forms
             btnCursiva.FlatAppearance.BorderSize = 0;
             btnCursiva.FlatStyle = FlatStyle.Flat;
             btnCursiva.Font = new Font("Segoe UI", 9F, FontStyle.Italic);
-            btnCursiva.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnCursiva.ForeColor = Helpers.SoproTheme.RibbonClaro.Texto;
             btnCursiva.Location = new Point(506, 36);
             btnCursiva.Name = "btnCursiva";
             btnCursiva.Size = new Size(28, 26);
@@ -689,7 +691,7 @@ namespace SOPRO.WinForms.Forms
             btnNegrita.FlatAppearance.BorderSize = 0;
             btnNegrita.FlatStyle = FlatStyle.Flat;
             btnNegrita.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            btnNegrita.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            btnNegrita.ForeColor = Helpers.SoproTheme.RibbonClaro.Texto;
             btnNegrita.Location = new Point(476, 36);
             btnNegrita.Name = "btnNegrita";
             btnNegrita.Size = new Size(28, 26);
@@ -700,9 +702,9 @@ namespace SOPRO.WinForms.Forms
             // 
             // nudTamano
             // 
-            nudTamano.BackColor = Helpers.SoproTheme.Colors.RibbonDown;
+            nudTamano.BackColor = Helpers.SoproTheme.RibbonClaro.Superficie;
             nudTamano.Font = new Font("Segoe UI", 9F);
-            nudTamano.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            nudTamano.ForeColor = Helpers.SoproTheme.RibbonClaro.Texto;
             nudTamano.Location = new Point(628, 8);
             nudTamano.Maximum = new decimal(new int[] { 24, 0, 0, 0 });
             nudTamano.Minimum = new decimal(new int[] { 6, 0, 0, 0 });
@@ -714,11 +716,11 @@ namespace SOPRO.WinForms.Forms
             // 
             // cboFuente
             // 
-            cboFuente.BackColor = Helpers.SoproTheme.Colors.RibbonDown;
+            cboFuente.BackColor = Helpers.SoproTheme.RibbonClaro.Superficie;
             cboFuente.DropDownStyle = ComboBoxStyle.DropDownList;
             cboFuente.FlatStyle = FlatStyle.Flat;
             cboFuente.Font = new Font("Segoe UI", 9F);
-            cboFuente.ForeColor = Helpers.SoproTheme.Colors.RibbonText;
+            cboFuente.ForeColor = Helpers.SoproTheme.RibbonClaro.Texto;
             cboFuente.Location = new Point(476, 6);
             cboFuente.Name = "cboFuente";
             cboFuente.Size = new Size(148, 25);
@@ -740,7 +742,7 @@ namespace SOPRO.WinForms.Forms
             // palabra; el color lo fija SoproTheme (token del tema, no gris).
             lblColumna.AutoEllipsis = true;
             lblColumna.Font = new Font("Segoe UI", 8.5F, FontStyle.Italic);
-            lblColumna.ForeColor = Helpers.SoproTheme.Colors.RibbonDisabledIcon;
+            lblColumna.ForeColor = Helpers.SoproTheme.RibbonClaro.Caption;
             lblColumna.Location = new Point(540, 36);
             lblColumna.Name = "lblColumna";
             lblColumna.Size = new Size(134, 26);
@@ -753,7 +755,7 @@ namespace SOPRO.WinForms.Forms
             //
             lblGroupDatos.AutoSize = false;
             lblGroupDatos.Font = new Font("Segoe UI", 8.5F);
-            lblGroupDatos.ForeColor = Helpers.SoproTheme.Colors.RibbonDisabledIcon;
+            lblGroupDatos.ForeColor = Helpers.SoproTheme.RibbonClaro.Caption;
             lblGroupDatos.Location = new Point(8, 63);
             lblGroupDatos.Name = "lblGroupDatos";
             lblGroupDatos.Size = new Size(294, 16);
@@ -765,7 +767,7 @@ namespace SOPRO.WinForms.Forms
             //
             lblGroupExportar.AutoSize = false;
             lblGroupExportar.Font = new Font("Segoe UI", 8.5F);
-            lblGroupExportar.ForeColor = Helpers.SoproTheme.Colors.RibbonDisabledIcon;
+            lblGroupExportar.ForeColor = Helpers.SoproTheme.RibbonClaro.Caption;
             lblGroupExportar.Location = new Point(316, 63);
             lblGroupExportar.Name = "lblGroupExportar";
             lblGroupExportar.Size = new Size(146, 16);
@@ -777,7 +779,7 @@ namespace SOPRO.WinForms.Forms
             //
             lblGroupFuente.AutoSize = false;
             lblGroupFuente.Font = new Font("Segoe UI", 8.5F);
-            lblGroupFuente.ForeColor = Helpers.SoproTheme.Colors.RibbonDisabledIcon;
+            lblGroupFuente.ForeColor = Helpers.SoproTheme.RibbonClaro.Caption;
             lblGroupFuente.Location = new Point(476, 63);
             lblGroupFuente.Name = "lblGroupFuente";
             lblGroupFuente.Size = new Size(198, 16);
@@ -789,7 +791,7 @@ namespace SOPRO.WinForms.Forms
             //
             lblGroupAlineacion.AutoSize = false;
             lblGroupAlineacion.Font = new Font("Segoe UI", 8.5F);
-            lblGroupAlineacion.ForeColor = Helpers.SoproTheme.Colors.RibbonDisabledIcon;
+            lblGroupAlineacion.ForeColor = Helpers.SoproTheme.RibbonClaro.Caption;
             lblGroupAlineacion.Location = new Point(698, 63);
             lblGroupAlineacion.Name = "lblGroupAlineacion";
             lblGroupAlineacion.Size = new Size(88, 16);
@@ -801,7 +803,7 @@ namespace SOPRO.WinForms.Forms
             //
             lblGroupColores.AutoSize = false;
             lblGroupColores.Font = new Font("Segoe UI", 8.5F);
-            lblGroupColores.ForeColor = Helpers.SoproTheme.Colors.RibbonDisabledIcon;
+            lblGroupColores.ForeColor = Helpers.SoproTheme.RibbonClaro.Caption;
             lblGroupColores.Location = new Point(804, 63);
             lblGroupColores.Name = "lblGroupColores";
             lblGroupColores.Size = new Size(78, 16);
@@ -813,7 +815,7 @@ namespace SOPRO.WinForms.Forms
             //
             lblGroupCeldas.AutoSize = false;
             lblGroupCeldas.Font = new Font("Segoe UI", 8.5F);
-            lblGroupCeldas.ForeColor = Helpers.SoproTheme.Colors.RibbonDisabledIcon;
+            lblGroupCeldas.ForeColor = Helpers.SoproTheme.RibbonClaro.Caption;
             lblGroupCeldas.Location = new Point(898, 63);
             lblGroupCeldas.Name = "lblGroupCeldas";
             lblGroupCeldas.Size = new Size(84, 16);
