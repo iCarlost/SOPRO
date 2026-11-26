@@ -316,6 +316,9 @@ namespace SOPRO.WinForms.Forms
 
             RestaurarFocoSeguro(tabActiva, formActivoAntes, controlConFocoAntes);
 
+            // Issue #186: tras el recálculo se reprograma el repintado de la banda.
+            InvalidarBandaRibbonDiferido();
+
             if (refresco.TieneFallos)
             {
                 MessageBox.Show(
