@@ -188,4 +188,3 @@ public class AlineacionMarcaRibbonTests
         FechaModificacion = new DateTime(2026, 1, 1),
     };
 }
-
