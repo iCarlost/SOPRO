@@ -81,6 +81,7 @@ namespace SOPRO.WinForms.Forms
             _productVersion = productVersion;
             InitializeComponent();
             SoproTheme.ApplyFormProyecto(this);
+            AlinearBloqueMarcaRibbon();
             // KeyPreview permite interceptar F9/F10 antes que los controles hijos
             this.KeyPreview = true;
             this.KeyDown += FormProyecto_KeyDown;
