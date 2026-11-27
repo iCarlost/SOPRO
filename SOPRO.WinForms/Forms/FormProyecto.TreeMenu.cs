@@ -551,7 +551,11 @@ namespace SOPRO.WinForms.Forms
         /// +/- nativo fuera, la fila completa es el objetivo de clic. La
         /// persistencia la siguen dando AfterExpand/AfterCollapse. Como el
         /// clic nativo seleccionaría la raíz (borrando la píldora de la hoja
-        /// activa), se restaura la última hoja seleccionada. Las hojas no se
+        /// activa), se restaura la última hoja seleccionada, pero solo si el
+        /// toggle la dejó visible: seleccionar una hoja oculta hace que el
+        /// TreeView expanda sus ancestros para revelarla y revertiría el
+        /// colapso (#197). Al colapsar la rama de esa hoja la selección
+        /// nativa se queda en la raíz, que no dibuja píldora. Las hojas no se
         /// tocan aquí: su clic lo resuelve <see cref="treeMenu_NodeMouseClick"/>.
         /// </summary>
         private void treeMenu_NodeMouseClick_ToggleRaiz(object? sender, TreeNodeMouseClickEventArgs e)
@@ -563,8 +567,27 @@ namespace SOPRO.WinForms.Forms
             else
                 e.Node.Expand();
 
-            if (_ultimaHojaSeleccionadaSidebar?.TreeView != null)
+            if (_ultimaHojaSeleccionadaSidebar?.TreeView != null
+                && TodosLosAncestrosExpandidos(_ultimaHojaSeleccionadaSidebar))
+            {
                 treeMenu.SelectedNode = _ultimaHojaSeleccionadaSidebar;
+            }
+        }
+
+        /// <summary>
+        /// Una hoja solo es restaurable si toda su cadena de ancestros está
+        /// expandida tras el toggle. No se usa <see cref="TreeNode.IsVisible"/>
+        /// porque además depende del viewport (scroll), no solo del estado.
+        /// </summary>
+        private static bool TodosLosAncestrosExpandidos(TreeNode hoja)
+        {
+            for (var nodo = hoja.Parent; nodo != null; nodo = nodo.Parent)
+            {
+                if (!nodo.IsExpanded)
+                    return false;
+            }
+
+            return true;
         }
 
         /// <summary>Recuerda la última hoja seleccionada (nunca raíces).</summary>
