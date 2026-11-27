@@ -177,6 +177,36 @@ namespace SOPRO.WinForms.Forms
             return EscalarPixelsSegunDpi(SidebarCollapsedWidth);
         }
 
+        /// <summary>
+        /// Reaplica TODA la geometría del sidebar dependiente del modo y del
+        /// DPI: ancho del panel, header, botón de colapso (tamaño/posición),
+        /// indent y alto de fila. La usan el toggle y los cambios de DPI para
+        /// no duplicar la receta ni dejar métricas desfasadas.
+        /// </summary>
+        private void AplicarGeometriaSidebar(bool colapsada)
+        {
+            var metricas = SidebarMetrics.Crear(DeviceDpi);
+            var sidebarWidth = colapsada ? ObtenerAnchoBarraLateralColapsada() : ObtenerAnchoBarraLateralExpandida();
+
+            panelLeft.MinimumSize = new Size(sidebarWidth, 0);
+            panelLeft.MaximumSize = new Size(sidebarWidth, 0);
+            panelLeft.Width = sidebarWidth;
+
+            panelSidebarHeader.Height = metricas.AltoHeader;
+            btnToggleSidebar.Dock = DockStyle.None;
+            btnToggleSidebar.Size = new Size(metricas.LadoBotonColapso, metricas.LadoBotonColapso);
+            btnToggleSidebar.Location = new Point(
+                Math.Max(0, panelSidebarHeader.Width - metricas.LadoBotonColapso - metricas.MargenBotonColapso - 1),
+                Math.Max(0, (metricas.AltoHeader - metricas.LadoBotonColapso) / 2));
+            btnToggleSidebar.BringToFront();
+            btnToggleSidebar.Visible = true;
+
+            // La indentación nativa solo alimenta el hit-testing (GetNodeAt);
+            // el dibujo usa las métricas.
+            treeMenu.Indent = metricas.SangriaNivel;
+            treeMenu.ItemHeight = colapsada ? metricas.AltoFilaColapsada : metricas.AltoFila;
+        }
+
         private int ObtenerAnchoBarraLateralExpandida()
         {
             var anchoBase = EscalarPixelsSegunDpi(SidebarExpandedWidth);
@@ -202,6 +232,7 @@ namespace SOPRO.WinForms.Forms
 
         private int MedirNodoExpandido(TreeNode nodo)
         {
+            var metricas = SidebarMetrics.Crear(DeviceDpi);
             var texto = ObtenerTextoNodoExpandido(nodo.Name);
             var anchoTexto = TextRenderer.MeasureText(
                 texto ?? string.Empty,
@@ -209,9 +240,13 @@ namespace SOPRO.WinForms.Forms
                 new Size(int.MaxValue, int.MaxValue),
                 TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
 
-            var sangria = Math.Max(0, nodo.Level) * EscalarPixelsSegunDpi(18);
-            var glifos = EscalarPixelsSegunDpi(34);
-            var anchoActual = anchoTexto + sangria + glifos;
+            // Mismo reparto de espacio que el pintado (issue #193): sangría por
+            // nivel, acolchado de la píldora y, en raíces, la zona del chevron.
+            bool esRaiz = nodo.Level == 0;
+            int accesorios = esRaiz
+                ? metricas.AnchoChevron + metricas.MargenChevron + metricas.AcolchadoPildoraHorizontal
+                : 2 * metricas.AcolchadoPildoraHorizontal;
+            int anchoActual = metricas.SangriaHoja(Math.Max(1, nodo.Level)) + accesorios + anchoTexto + metricas.MargenLateral;
 
             foreach (TreeNode hijo in nodo.Nodes)
                 anchoActual = Math.Max(anchoActual, MedirNodoExpandido(hijo));
@@ -227,9 +262,13 @@ namespace SOPRO.WinForms.Forms
 
         private void AplicarEstadoBarraLateral(bool colapsada, bool persistir = true)
         {
+            // El estado visual manda desde el primer instante: el pintado que
+            // ocurra durante este cambio ya ve el modo solicitado, sin esperar
+            // a que la persistencia actualice la entidad.
+            _sidebarColapsadoVisual = colapsada;
+
             var estadoNodos = ObtenerNodosExpandidosSerializados();
             var controlActivo = tabControl.SelectedTab?.Controls.Count > 0 ? tabControl.SelectedTab.Controls[0] : null;
-            var sidebarWidth = colapsada ? ObtenerAnchoBarraLateralColapsada() : ObtenerAnchoBarraLateralExpandida();
 
             _ajustandoBarraLateral = true;
             _restaurandoEstadoArbol = true;
@@ -248,23 +287,8 @@ namespace SOPRO.WinForms.Forms
             treeMenu.BeginUpdate();
             try
             {
-                panelLeft.MinimumSize = new Size(sidebarWidth, 0);
-                panelLeft.MaximumSize = new Size(sidebarWidth, 0);
-                panelLeft.Width = sidebarWidth;
-
-                panelSidebarHeader.Height = 34;
-                btnToggleSidebar.Dock = DockStyle.Fill;
-                btnToggleSidebar.BringToFront();
-                btnToggleSidebar.Visible = true;
-
-                treeMenu.ShowPlusMinus = true;
-                treeMenu.ShowLines = !colapsada;
-                treeMenu.ShowRootLines = !colapsada;
-                treeMenu.FullRowSelect = !colapsada;
-                btnToggleSidebar.Text = colapsada ? "☰" : "◀";
-                btnToggleSidebar.TextAlign = ContentAlignment.MiddleCenter;
-                treeMenu.Indent = colapsada ? 10 : 18;
-                treeMenu.ItemHeight = colapsada ? 22 : 26;
+                AplicarGeometriaSidebar(colapsada);
+                btnToggleSidebar.Text = colapsada ? "»" : "«";
 
                 ActualizarTextosTreeMenu(colapsada);
                 RestaurarEstadoNodosVisual(estadoNodos, expandirTodoSiVacio: false);
@@ -396,7 +420,7 @@ namespace SOPRO.WinForms.Forms
 
         private void treeMenu_MouseMove(object sender, MouseEventArgs e)
         {
-            if (!_proyecto.BarraLateralColapsada)
+            if (!SidebarColapsado)
             {
                 if (!string.IsNullOrEmpty(_ultimoTooltipNodo))
                 {
@@ -423,7 +447,7 @@ namespace SOPRO.WinForms.Forms
 
         private void btnToggleSidebar_Click(object sender, EventArgs e)
         {
-            AplicarEstadoBarraLateral(!_proyecto.BarraLateralColapsada);
+            AplicarEstadoBarraLateral(!SidebarColapsado);
         }
 
         private void treeMenu_AfterExpand(object sender, TreeViewEventArgs e)
@@ -436,6 +460,135 @@ namespace SOPRO.WinForms.Forms
         {
             if (_ajustandoBarraLateral) return;
             GuardarEstadoNodosMenu();
+        }
+
+        // =====================================================================
+        // SIDEBAR OWNER-DRAW (issue #193)
+        // =====================================================================
+
+        /// <summary>
+        /// Pinta cada fila del árbol con el lenguaje del mockup: secciones como
+        /// rótulos en mayúsculas con chevron propio y hojas como píldoras
+        /// insertadas con estados reposo/hover/activo/foco. Todo el pintado
+        /// puro vive en <see cref="SidebarRenderer"/> para poder probarlo sin UI.
+        /// </summary>
+        private void treeMenu_DrawNode(object? sender, DrawTreeNodeEventArgs e)
+        {
+            if (e.Node == null || treeMenu == null) return;
+
+            var graphics = e.Graphics;
+            if (graphics == null) return;
+
+            bool colapsado = SidebarColapsado;
+            var metricas = SidebarMetrics.Crear(DeviceDpi);
+            var fila = new Rectangle(
+                0,
+                e.Bounds.Y,
+                Math.Max(1, treeMenu.ClientSize.Width),
+                Math.Max(1, treeMenu.ItemHeight));
+
+            bool esRaiz = e.Node.Level == 0;
+            bool seleccionada = (e.State & TreeNodeStates.Selected) != 0;
+            bool conFoco = (e.State & TreeNodeStates.Focused) != 0;
+            bool enHover = ReferenceEquals(e.Node, _nodoSidebarEnHover);
+
+            SidebarRenderer.PintarFondo(graphics, fila);
+
+            if (esRaiz)
+            {
+                SidebarRenderer.PintarSeccion(
+                    graphics, fila, e.Node.Text,
+                    e.Node.NodeFont ?? SoproTheme.Fonts.SidebarSeccion,
+                    metricas, e.Node.IsExpanded, colapsado);
+            }
+            else
+            {
+                SidebarRenderer.PintarHoja(
+                    graphics, fila, e.Node.Text,
+                    e.Node.NodeFont ?? treeMenu.Font,
+                    metricas, e.Node.Level,
+                    seleccionada, conFoco, enHover, colapsado);
+            }
+
+            e.DrawDefault = false;
+        }
+
+        /// <summary>
+        /// Un clic sobre una sección (raíz) alterna su expansión: con el glifo
+        /// +/- nativo fuera, la fila completa es el objetivo de clic. La
+        /// persistencia la siguen dando AfterExpand/AfterCollapse. Como el
+        /// clic nativo seleccionaría la raíz (borrando la píldora de la hoja
+        /// activa), se restaura la última hoja seleccionada. Las hojas no se
+        /// tocan aquí: su clic lo resuelve <see cref="treeMenu_NodeMouseClick"/>.
+        /// </summary>
+        private void treeMenu_NodeMouseClick_ToggleRaiz(object? sender, TreeNodeMouseClickEventArgs e)
+        {
+            if (e.Node == null || e.Node.Level != 0) return;
+
+            if (e.Node.IsExpanded)
+                e.Node.Collapse();
+            else
+                e.Node.Expand();
+
+            if (_ultimaHojaSeleccionadaSidebar?.TreeView != null)
+                treeMenu.SelectedNode = _ultimaHojaSeleccionadaSidebar;
+        }
+
+        /// <summary>Recuerda la última hoja seleccionada (nunca raíces).</summary>
+        private void treeMenu_AfterSelect_RecordarHoja(object? sender, TreeViewEventArgs e)
+        {
+            if (e.Node?.Level > 0)
+                _ultimaHojaSeleccionadaSidebar = e.Node;
+        }
+
+        /// <summary>Hover propio del sidebar: repinta solo las filas afectadas.</summary>
+        private void treeMenu_MouseMove_Hover(object? sender, MouseEventArgs e)
+        {
+            if (treeMenu == null || !treeMenu.IsHandleCreated) return;
+
+            var nodo = treeMenu.GetNodeAt(e.Location);
+            if (ReferenceEquals(nodo, _nodoSidebarEnHover)) return;
+
+            var previo = _nodoSidebarEnHover;
+            _nodoSidebarEnHover = nodo;
+            InvalidarFilaSidebar(previo);
+            InvalidarFilaSidebar(nodo);
+        }
+
+        private void treeMenu_MouseLeave_Hover(object? sender, EventArgs e)
+        {
+            if (_nodoSidebarEnHover == null) return;
+
+            var previo = _nodoSidebarEnHover;
+            _nodoSidebarEnHover = null;
+            InvalidarFilaSidebar(previo);
+        }
+
+        /// <summary>
+        /// Ante un cambio de DPI se reaplica la receta completa de geometría
+        /// (ancho, header, botón, indent, fila) y se repinta, sin persistir.
+        /// </summary>
+        private void treeMenu_DpiCambio(object? sender, EventArgs e)
+        {
+            if (treeMenu == null || _ajustandoBarraLateral) return;
+
+            AplicarGeometriaSidebar(SidebarColapsado);
+            treeMenu.Invalidate();
+        }
+
+        private void InvalidarFilaSidebar(TreeNode? nodo)
+        {
+            if (nodo == null || treeMenu == null || !treeMenu.IsHandleCreated) return;
+
+            try
+            {
+                int y = nodo.Bounds.Top;
+                treeMenu.Invalidate(new Rectangle(0, y, treeMenu.ClientSize.Width, treeMenu.ItemHeight));
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                // La fila puede haber desaparecido entre el hover y la invalidación.
+            }
         }
     }
 }
