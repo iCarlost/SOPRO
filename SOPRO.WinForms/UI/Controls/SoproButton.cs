@@ -351,8 +351,6 @@ namespace SOPRO.WinForms.UI.Controls
             var graphics = e.Graphics;
             if (graphics == null) return;
 
-            graphics.SmoothingMode = SmoothingMode.AntiAlias;
-
             Rectangle bounds = ClientRectangle;
             if (bounds.Width <= 0 || bounds.Height <= 0) return;
 
@@ -361,6 +359,8 @@ namespace SOPRO.WinForms.UI.Controls
 
             using (var background = new SolidBrush(ResolveBackground(over, pressed)))
                 graphics.FillRectangle(background, bounds);
+
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
 
             if (FlatAppearance.BorderSize > 0)
             {

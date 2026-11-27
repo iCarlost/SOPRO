@@ -43,6 +43,10 @@ namespace SOPRO.WinForms.Forms
         private Color _colorMuestraTextoRibbon = Color.Black;
         private bool _ajusteHostTabsPendiente = false;
         private bool _actualizandoOverflowRibbon = false;
+        // Abrir() selecciona la pestaña antes de Show() y del layout final: el
+        // SelectedIndexChanged automático se ignora durante esa ventana y la
+        // sincronización única del contexto del ribbon se hace al final.
+        private bool _aperturaModuloEnCurso = false;
 
         public FormProyecto(SOPROContext context, Proyecto proyecto)
             : this(context, proyecto, diagnosticsSink: null, productVersion: null)

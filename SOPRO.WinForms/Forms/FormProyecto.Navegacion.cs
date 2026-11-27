@@ -55,8 +55,13 @@ namespace SOPRO.WinForms.Forms
             foreach (TabPage tab in tabControl.TabPages)
                 if (tab.Name == n)
                 {
-                    tabControl.SelectedTab = tab;
-                    TabControl_SelectedIndexChanged(tabControl, EventArgs.Empty);
+                    // Un módulo distinto se sincroniza con la selección natural
+                    // (SelectedIndexChanged una sola vez). Si la hoja ya está
+                    // activa no se repite la rutina ni se repinta: solo se
+                    // devuelve el foco al formulario embebido.
+                    if (!ReferenceEquals(tabControl.SelectedTab, tab))
+                        tabControl.SelectedTab = tab;
+
                     if (tab.Controls.Count > 0 && tab.Controls[0] is Form existingForm)
                     {
                         BeginInvoke(new Action(() => TransferirFocoAlFormularioAbierto(existingForm)));
@@ -256,6 +261,7 @@ namespace SOPRO.WinForms.Forms
 
             tab.SuspendLayout();
             form.SuspendLayout();
+            _aperturaModuloEnCurso = true;
             try
             {
                 tab.Controls.Add(form);
@@ -263,13 +269,12 @@ namespace SOPRO.WinForms.Forms
                 tabControl.SelectedTab = tab;
                 form.Show();
                 AjustarHostTabs();
-                // Disparar manualmente porque SelectedIndexChanged se dispara antes de Show()
-                TabControl_SelectedIndexChanged(tabControl, EventArgs.Empty);
             }
             finally
             {
                 form.ResumeLayout(true);
                 tab.ResumeLayout(true);
+                _aperturaModuloEnCurso = false;
             }
 
             BeginInvoke(new Action(() =>
@@ -278,6 +283,13 @@ namespace SOPRO.WinForms.Forms
                 tab.PerformLayout();
                 form.PerformLayout();
                 TransferirFocoAlFormularioAbierto(form);
+
+                // Única sincronización del contexto del ribbon para el alta:
+                // después del layout y de la transferencia de foco. El evento
+                // SelectedIndexChanged quedó silenciado durante la apertura
+                // porque se dispara antes de Show().
+                if (!IsDisposed && ReferenceEquals(tabControl.SelectedTab, tab))
+                    SincronizarContextoRibbonActivo();
             }));
         }
 
