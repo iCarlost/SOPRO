@@ -112,6 +112,35 @@ namespace SOPRO.WinForms.Forms
             {
                 DesactivarRibbon();
             }
+
+            // Issue #186: tras la tormenta de repintados del cambio de módulo
+            // se reprograma el repintado de la banda.
+            InvalidarBandaRibbonDiferido();
+        }
+
+        /// <summary>
+        /// Issue #186: tras la apertura de un módulo o un recálculo global, la
+        /// primera fila visible de los botones puede quedar con píxeles
+        /// obsoletos que los repintados naturales de cada botón no corrigen.
+        /// Reprograma el repintado de la banda al final de la cola
+        /// (BeginInvoke) y lo fuerza con Update: en harness, sin Update el
+        /// residuo persiste.
+        /// </summary>
+        private void InvalidarBandaRibbonDiferido()
+        {
+            if (IsDisposed || !IsHandleCreated) return;
+            BeginInvoke(new Action(() =>
+            {
+                if (IsDisposed || panelRibbon == null || !panelRibbon.IsHandleCreated) return;
+                RepintarBandaRibbon();
+            }));
+        }
+
+        /// <summary>Punto de extensión interno para verificar la programación.</summary>
+        internal virtual void RepintarBandaRibbon()
+        {
+            panelRibbon.Invalidate(true);
+            panelRibbon.Update();
         }
 
         /// <summary>
