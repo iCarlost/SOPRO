@@ -6,6 +6,11 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 
 ## [No publicado]
 
+## [1.23.1] - 2026-11-26
+
+### Corregido
+- Se repinta la banda del ribbon al cambiar de módulo y al terminar el recálculo para evitar trazos residuales en los botones.
+
 ## [1.21.0] - 2026-11-23
 
 ### Cambiado
