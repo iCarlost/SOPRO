@@ -248,8 +248,11 @@ public class SidebarFormularioTests
         var raiz = tree.Nodes["nodePresupuesto"]!;
         var hoja = raiz.Nodes["nodeHojaPresupuesto"]!;
 
-        // Selección real: el evento AfterSelect registra la hoja.
+        // Selección real + registro explícito de la hoja: sin mostrar el
+        // formulario, FormProyecto_Load no corre y el AfterSelect no está
+        // suscrito, así que el seam se activa invocando su handler.
         tree.SelectedNode = hoja;
+        RecordarHoja(hoja);
         raiz.Collapse();
 
         InvocarToggleRaiz(raiz);
@@ -257,6 +260,81 @@ public class SidebarFormularioTests
         Assert.IsTrue(raiz.IsExpanded, "La sección debe alternar expansión igualmente.");
         Assert.AreEqual(hoja, tree.SelectedNode,
             "El clic nativo sobre la raíz no debe borrar la píldora de la hoja activa.");
+    }
+
+    [TestMethod]
+    [DataRow("nodePresupuesto", "nodeHojaPresupuesto")]
+    [DataRow("nodeConfiguracion", "nodeDatosProyecto")]
+    [DataRow("nodeCatalogos", "nodeMateriales")]
+    public void ClicEnSeccionConHojaSeleccionada_ColapsaEnUnSoloToggle_SinReabrirLaRama(
+        string nombreRaiz, string nombreHoja)
+    {
+        var tree = _form!.treeMenu;
+        var raiz = tree.Nodes[nombreRaiz]!;
+        var hoja = raiz.Nodes[nombreHoja]!;
+
+        raiz.Expand();
+        tree.SelectedNode = hoja;
+        RecordarHoja(hoja);
+
+        // El clic nativo selecciona primero la raíz (nivel 0: no se recuerda).
+        tree.SelectedNode = raiz;
+
+        InvocarToggleRaiz(raiz);
+
+        Assert.IsFalse(raiz.IsExpanded,
+            "Un solo toggle debe colapsar la sección aunque contenga la hoja recordada (#197).");
+        Assert.AreSame(raiz, tree.SelectedNode,
+            "La selección nativa debe quedarse en la raíz: las raíces no dibujan píldora y así no se reabre la rama.");
+    }
+
+    [TestMethod]
+    public void ExpandirOtraSeccion_NoReabreElAncestroColapsadoDeLaHojaRecordada()
+    {
+        var tree = _form!.treeMenu;
+        var raizHoja = tree.Nodes["nodePresupuesto"]!;
+        var hoja = raizHoja.Nodes["nodeHojaPresupuesto"]!;
+
+        raizHoja.Expand();
+        tree.SelectedNode = hoja;
+        RecordarHoja(hoja);
+
+        // Primer toggle: colapsa la rama que contiene la hoja recordada.
+        InvocarToggleRaiz(raizHoja);
+        Assert.IsFalse(raizHoja.IsExpanded, "La rama de la hoja recordada debe quedar colapsada.");
+
+        // Segundo toggle sobre otra sección: expandirla no debe revelar la hoja colapsada.
+        var otra = tree.Nodes["nodeReportes"]!;
+        otra.Collapse();
+        InvocarToggleRaiz(otra);
+
+        Assert.IsTrue(otra.IsExpanded, "La sección clicada debe alternar expansión.");
+        Assert.IsFalse(raizHoja.IsExpanded,
+            "Expandir otra sección no debe reabrir el ancestro colapsado que contiene la hoja recordada.");
+    }
+
+    [TestMethod]
+    public void ExpandirOtraSeccionConLaHojaRecordadaVisible_RestauraLaHoja()
+    {
+        var tree = _form!.treeMenu;
+        var raizHoja = tree.Nodes["nodePresupuesto"]!;
+        var hoja = raizHoja.Nodes["nodeHojaPresupuesto"]!;
+
+        raizHoja.Expand();
+        tree.SelectedNode = hoja;
+        RecordarHoja(hoja);
+
+        var otra = tree.Nodes["nodeReportes"]!;
+        otra.Collapse();
+        tree.SelectedNode = otra;
+
+        InvocarToggleRaiz(otra);
+
+        Assert.IsTrue(otra.IsExpanded, "La sección clicada debe alternar expansión.");
+        Assert.IsTrue(raizHoja.IsExpanded,
+            "La rama de la hoja recordada sigue expandida: el toggle no la toca.");
+        Assert.AreSame(hoja, tree.SelectedNode,
+            "Si la hoja recordada sigue visible, su píldora activa debe restaurarse.");
     }
 
     [TestMethod]
@@ -300,6 +378,23 @@ public class SidebarFormularioTests
     private void InvocarAplicarGeometriaSidebar(bool colapsada)
         => ResolverMetodo("AplicarGeometriaSidebar", typeof(bool))
             .Invoke(_form, new object?[] { colapsada });
+
+    /// <summary>
+    /// Activa el seam de hoja recordada invocando el handler real: las pruebas
+    /// no muestran el formulario, por lo que <c>FormProyecto_Load</c> no corre
+    /// y <c>AfterSelect</c> no está suscrito.
+    /// </summary>
+    private void RecordarHoja(TreeNode hoja)
+    {
+        ResolverMetodo("treeMenu_AfterSelect_RecordarHoja", typeof(object), typeof(TreeViewEventArgs))
+            .Invoke(_form, new object?[] { _form!.treeMenu, new TreeViewEventArgs(hoja) });
+
+        var recordada = (TreeNode?)typeof(FormProyecto)
+            .GetField("_ultimaHojaSeleccionadaSidebar", PrivadoDeInstancia)
+            ?.GetValue(_form);
+        Assert.AreSame(hoja, recordada,
+            "La prueba debe activar _ultimaHojaSeleccionadaSidebar con la hoja indicada.");
+    }
 
     private void InvocarToggleRaiz(TreeNode nodo)
         => ResolverMetodo("treeMenu_NodeMouseClick_ToggleRaiz", typeof(object), typeof(TreeNodeMouseClickEventArgs))
