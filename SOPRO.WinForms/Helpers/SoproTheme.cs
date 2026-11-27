@@ -167,6 +167,12 @@ namespace SOPRO.WinForms.Helpers
 
             /// <summary>Cuerpo de mensaje de un dialogo SOPRO.</summary>
             public static readonly Font DialogBody = new Font(FontFamily, 10.5F, FontStyle.Regular, GraphicsUnit.Point);
+
+            /// <summary>
+            /// Rotulo de sección del sidebar (issue #193): rótulo compacto en
+            /// mayúsculas por encima de las hojas de su grupo.
+            /// </summary>
+            public static readonly Font SidebarSeccion = new Font(FontFamily, 8.5F, FontStyle.Bold, GraphicsUnit.Point);
         }
 
         // =====================================================================
@@ -774,23 +780,36 @@ namespace SOPRO.WinForms.Helpers
             var panelLeft = form.panelLeft;
             var treeMenu = form.treeMenu;
 
-            // Tema "B - Limpio neutro": se sustituye el borde del sistema por una
-            // hairline de 1px del tono de la paleta. Se reserva 1px a la derecha
-            // (padding, sin mover ningun control) para que el treeMenu Dock=Fill
-            // no tape la linea pintada por el panel.
+            // Hairline derecha de 1px (padding) en lugar del borde del sistema.
             panelLeft.BorderStyle = BorderStyle.None;
             panelLeft.Padding = new Padding(0, 0, 1, 0);
-            panelLeft.BackColor = Colors.SidebarBg2;
-            panelLeft.Paint += (_, e) => PaintSidebarHairline(panelLeft, e.Graphics);
+            panelLeft.BackColor = SidebarPaleta.Fondo;
+            panelLeft.Paint -= PanelLeft_Paint;
+            panelLeft.Paint += PanelLeft_Paint;
+            EnableDoubleBuffering(panelLeft);
 
-            form.panelSidebarHeader.BackColor = Colors.SidebarHeaderBg2;
-            treeMenu.BackColor = Colors.SidebarBg2;
-            treeMenu.ForeColor = Colors.SidebarText;
+            // Header integrado en la MISMA superficie fría del lateral.
+            form.panelSidebarHeader.BackColor = SidebarPaleta.Fondo;
 
-            // El arbol se dibuja a mano para usar el unico tinte azul de seleccion
-            // (SidebarActive) con barra de acento, y para distinguir grupos/padres.
-            treeMenu.DrawMode = TreeViewDrawMode.OwnerDrawText;
-            treeMenu.DrawNode += DrawProyectoTreeNode;
+            var btnToggle = form.btnToggleSidebar;
+            btnToggle.FlatStyle = FlatStyle.Flat;
+            btnToggle.FlatAppearance.BorderSize = 0;
+            btnToggle.BackColor = SidebarPaleta.Fondo;
+            btnToggle.ForeColor = SidebarPaleta.TextoSeccion;
+            btnToggle.FlatAppearance.MouseOverBackColor = SidebarPaleta.FondoHover;
+            btnToggle.FlatAppearance.MouseDownBackColor = SidebarPaleta.FondoHover;
+
+            // Owner-draw total (#193): sin líneas ni glifos nativos; el pintado
+            // (secciones/píldoras/estados) vive en FormProyecto.TreeMenu.
+            treeMenu.BackColor = SidebarPaleta.Fondo;
+            treeMenu.ForeColor = SidebarPaleta.TextoHoja;
+            treeMenu.ShowLines = false;
+            treeMenu.ShowRootLines = false;
+            treeMenu.ShowPlusMinus = false;
+            treeMenu.FullRowSelect = true;
+            treeMenu.HideSelection = false;
+            treeMenu.DrawMode = TreeViewDrawMode.OwnerDrawAll;
+            EnableDoubleBuffering(treeMenu);
         }
 
         private static void PaintSidebarHairline(Control panel, Graphics graphics)
@@ -804,56 +823,12 @@ namespace SOPRO.WinForms.Helpers
         }
 
         /// <summary>
-        /// Dibuja el texto del arbol de FormProyecto. En modo OwnerDrawText el
-        /// control nativo pinta el fondo, los glifos +/- y las lineas, mientras
-        /// que aqui solo se personaliza el texto y la banda de seleccion.
+        /// Handler estable (método con nombre) para poder des-suscribirlo antes
+        /// de suscribirlo: evita acumular pintados duplicados si el tema se
+        /// aplica más de una vez.
         /// </summary>
-        private static void DrawProyectoTreeNode(object? sender, DrawTreeNodeEventArgs e)
-        {
-            if (sender is not TreeView tree || e.Node is not TreeNode node) return;
-
-            var graphics = e.Graphics;
-            bool selected = (e.State & TreeNodeStates.Selected) != 0;
-            bool isGroup = node.Nodes.Count > 0;
-
-            if (selected)
-            {
-                var row = new Rectangle(0, e.Bounds.Top, tree.ClientSize.Width, e.Bounds.Height);
-                var state = graphics.Save();
-
-                // No pisar el glifo +/- nativo, que vive en la zona de indentacion
-                // a la izquierda de la etiqueta (solo aplica a nodos con hijos).
-                if (isGroup && node.Bounds.Left > 0)
-                {
-                    using var glyphZone = new Region(new Rectangle(0, row.Top, node.Bounds.Left, row.Height));
-                    graphics.SetClip(glyphZone, CombineMode.Exclude);
-                }
-
-                using (var brush = new SolidBrush(Colors.SidebarActive))
-                    graphics.FillRectangle(brush, row);
-
-                graphics.Restore(state);
-
-                // Barra de acento de 3px (escalada por DPI) en el borde izquierdo.
-                int accentWidth = Math.Max(2, (int)Math.Round(3 * (tree.DeviceDpi / 96.0)));
-                using var accent = new SolidBrush(Colors.RibbonActive);
-                graphics.FillRectangle(accent, new Rectangle(0, row.Top, accentWidth, row.Height));
-            }
-
-            var font = node.NodeFont ?? tree.Font;
-            var foreColor = (selected || isGroup) ? Colors.SidebarTextGroup : Colors.SidebarText;
-            // TextRenderer preserva el render de emojis y las metricas DPI igual
-            // que el TreeView nativo (GDI), evitando diferencias de DrawString.
-            TextRenderer.DrawText(
-                graphics,
-                node.Text,
-                font,
-                e.Bounds,
-                foreColor,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
-
-            e.DrawDefault = false;
-        }
+        private static void PanelLeft_Paint(object? sender, PaintEventArgs e)
+            => PaintSidebarHairline((Control)sender!, e.Graphics);
 
         private static void ApplyProyectoRibbonChrome(FormProyecto form)
         {

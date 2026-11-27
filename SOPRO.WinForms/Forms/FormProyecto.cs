@@ -37,6 +37,14 @@ namespace SOPRO.WinForms.Forms
         private const int SidebarExpandedMaxWidth = 420;
         private readonly ToolTip _treeMenuToolTip = new ToolTip();
         private string _ultimoTooltipNodo = string.Empty;
+        // Estado visual del sidebar owner-draw (#193). Es la fuente del pintado:
+        // se fija ANTES de reanudar el dibujo en el toggle, sin esperar a que
+        // la persistencia toque la entidad.
+        private bool _sidebarColapsadoVisual = false;
+        private TreeNode? _nodoSidebarEnHover = null;
+        // Última hoja seleccionada: un clic en una raíz selecciona la raíz de
+        // forma nativa y el pintado la restaura para no perder la hoja activa.
+        private TreeNode? _ultimaHojaSeleccionadaSidebar = null;
         private FormBuscarEnGrid _formBuscarEnGrid = null;
         private bool _ajustandoBarraLateral = false;
         private Color _colorMuestraFondoRibbon = Color.White;
@@ -47,6 +55,9 @@ namespace SOPRO.WinForms.Forms
         // SelectedIndexChanged automático se ignora durante esa ventana y la
         // sincronización única del contexto del ribbon se hace al final.
         private bool _aperturaModuloEnCurso = false;
+
+        /// <summary>Estado visual del sidebar que consume el pintado owner-draw.</summary>
+        internal bool SidebarColapsado => _sidebarColapsadoVisual;
 
         public FormProyecto(SOPROContext context, Proyecto proyecto)
             : this(context, proyecto, diagnosticsSink: null, productVersion: null)
@@ -130,6 +141,22 @@ namespace SOPRO.WinForms.Forms
             treeMenu.AfterCollapse += treeMenu_AfterCollapse;
             treeMenu.MouseMove += treeMenu_MouseMove;
             treeMenu.MouseLeave += treeMenu_MouseLeave;
+
+            // Sidebar owner-draw (issue #193): pintado, hover, chevron de
+            // secciones y recalculo de métricas ante cambios de DPI. Los -=/+=
+            // evitan suscripciones duplicadas si el Load volviera a ejecutarse.
+            treeMenu.DrawNode -= treeMenu_DrawNode;
+            treeMenu.DrawNode += treeMenu_DrawNode;
+            treeMenu.NodeMouseClick -= treeMenu_NodeMouseClick_ToggleRaiz;
+            treeMenu.NodeMouseClick += treeMenu_NodeMouseClick_ToggleRaiz;
+            treeMenu.MouseMove -= treeMenu_MouseMove_Hover;
+            treeMenu.MouseMove += treeMenu_MouseMove_Hover;
+            treeMenu.MouseLeave -= treeMenu_MouseLeave_Hover;
+            treeMenu.MouseLeave += treeMenu_MouseLeave_Hover;
+            treeMenu.DpiChangedAfterParent -= treeMenu_DpiCambio;
+            treeMenu.DpiChangedAfterParent += treeMenu_DpiCambio;
+            treeMenu.AfterSelect -= treeMenu_AfterSelect_RecordarHoja;
+            treeMenu.AfterSelect += treeMenu_AfterSelect_RecordarHoja;
 
             _treeMenuToolTip.InitialDelay = 150;
             _treeMenuToolTip.ReshowDelay = 100;

@@ -9,7 +9,7 @@ namespace SOPRO.WinForms.Forms
         private System.ComponentModel.IContainer components = null;
         internal System.Windows.Forms.Panel panelLeft;
         internal System.Windows.Forms.Panel panelSidebarHeader;
-        private System.Windows.Forms.Button btnToggleSidebar;
+        internal System.Windows.Forms.Button btnToggleSidebar;
         internal System.Windows.Forms.TreeView treeMenu;
         internal System.Windows.Forms.Panel panelTop;
         private System.Windows.Forms.Panel panelRibbon;
@@ -224,18 +224,21 @@ namespace SOPRO.WinForms.Forms
             // 
             // btnToggleSidebar
             // 
-            btnToggleSidebar.Dock = DockStyle.Fill;
+            // #193: botón pequeño arriba-derecha; posición/tamaño exactos los
+            // reaplica AplicarGeometriaSidebar según modo y DPI.
+            btnToggleSidebar.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnToggleSidebar.Cursor = Cursors.Hand;
             btnToggleSidebar.FlatAppearance.BorderSize = 0;
             btnToggleSidebar.FlatStyle = FlatStyle.Flat;
-            btnToggleSidebar.Font = new Font("Segoe UI Symbol", 11F, FontStyle.Bold);
-            btnToggleSidebar.Location = new Point(0, 0);
+            btnToggleSidebar.Font = new Font("Segoe UI Symbol", 10F, FontStyle.Bold);
+            btnToggleSidebar.Location = new Point(220, 7);
             btnToggleSidebar.Margin = new Padding(0);
             btnToggleSidebar.Name = "btnToggleSidebar";
-            btnToggleSidebar.Size = new Size(248, 34);
+            btnToggleSidebar.Size = new Size(22, 22);
             btnToggleSidebar.TabIndex = 0;
             btnToggleSidebar.TabStop = false;
-            btnToggleSidebar.Text = "☰";
-            btnToggleSidebar.UseVisualStyleBackColor = true;
+            btnToggleSidebar.Text = "«";
+            btnToggleSidebar.UseVisualStyleBackColor = false;
             btnToggleSidebar.Click += btnToggleSidebar_Click;
             // 
             // panelTop
