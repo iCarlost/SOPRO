@@ -132,9 +132,33 @@ namespace SOPRO.WinForms.Forms
             btnRegistros.FlatAppearance.MouseDownBackColor = SoproTheme.Colors.SelBg;
             SoproTheme.ApplyRoundedCorners(btnRegistros, SoproUiMetrics.ThemeRadiusPx);
             btnRegistros.Click += (_, _) => { using var dialog = new FormRegistrosLocales(); dialog.ShowDialog(this); };
-            var panelDiagnostics = new Panel { Dock = DockStyle.Bottom, Height = 48, Padding = new Padding(0, 5, 0, 5), TabIndex = 0 };
-            panelDiagnostics.Controls.Add(btnRegistros);
-            panelCenter.Controls.Add(panelDiagnostics);
+            // Pie de la tarjeta de recientes: la acción vive DENTRO de la
+            // tarjeta, alineada a la derecha (mismo registro que el pie de
+            // los diálogos), en lugar de flotar bajo la tarjeta. La fuente
+            // y el hairline superior los aplica SoproTheme.ApplyCenter.
+            // Controles creados en el ctor NO pasan por el escalado de
+            // AutoScaleMode del formulario: se escalan con la convención
+            // del tema (px lógicos 96 DPI → DPI real).
+            var panelFooter = new Panel
+            {
+                Name = "panelRecientesFooter",
+                Dock = DockStyle.Bottom,
+                Height = SoproTheme.EscalarSegunDpi(this, 48),
+                BackColor = SoproTheme.Colors.Surface,
+                Padding = new Padding(
+                    0,
+                    SoproTheme.EscalarSegunDpi(this, 6),
+                    SoproTheme.EscalarSegunDpi(this, 10),
+                    SoproTheme.EscalarSegunDpi(this, 6)),
+                TabIndex = 0
+            };
+            // El ancho del botón sí se escala; el ALTO NO se fija aquí porque
+            // su Dock.Right lo determina el área cliente del pie (alto del pie
+            // menos su padding vertical). Fijar Size.Height sería un valor
+            // muerto y engañoso.
+            btnRegistros.Width = SoproTheme.EscalarSegunDpi(this, 180);
+            panelFooter.Controls.Add(btnRegistros);
+            grpRecientes.Controls.Add(panelFooter);
             SoproTheme.ApplyFormPrincipal(this);
             dgvRecientes.CellToolTipTextNeeded += DgvRecientes_CellToolTipTextNeeded;
             LoadRecentProjects();

@@ -60,5 +60,11 @@ namespace SOPRO.WinForms.Helpers
 
         // Grosor (en px) del resplandor sutil pintado en las tarjetas.
         public const int CardGlowPx = 2;
+
+        // Alto de la franja de rótulo de la tarjeta de recientes de FormPrincipal.
+        public const int CardCaptionHeight = 44;
+
+        // Alto de fila de la rejilla de recientes de FormPrincipal (aire de lectura).
+        public const int GridRowHeight = 32;
     }
 }

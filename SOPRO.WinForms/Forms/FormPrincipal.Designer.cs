@@ -32,7 +32,9 @@ namespace SOPRO.WinForms.Forms
             lblSubtitle = new Label();
             lblTitle = new Label();
             panelCenter = new Panel();
-            grpRecientes = new GroupBox();
+            grpRecientes = new Panel();
+            panelRecientesCaption = new Panel();
+            lblRecientesCaption = new Label();
             dgvRecientes = new DataGridView();
             statusStrip = new StatusStrip();
             lblStatus = new ToolStripStatusLabel();
@@ -137,18 +139,35 @@ namespace SOPRO.WinForms.Forms
             panelCenter.Padding = new Padding(28, 24, 28, 24);
             panelCenter.Size = new Size(874, 432);
             panelCenter.TabIndex = 1;
-            // 
-            // grpRecientes
-            // 
+            //
+            // grpRecientes (tarjeta de recientes: borde/rótulo/pie los pinta el tema)
+            //
+            grpRecientes.AccessibleName = "PROYECTOS RECIENTES";
+            grpRecientes.AccessibleRole = System.Windows.Forms.AccessibleRole.Grouping;
             grpRecientes.Controls.Add(dgvRecientes);
+            grpRecientes.Controls.Add(panelRecientesCaption);
             grpRecientes.Dock = DockStyle.Fill;
-            grpRecientes.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
             grpRecientes.Location = new Point(28, 24);
             grpRecientes.Name = "grpRecientes";
             grpRecientes.Size = new Size(818, 384);
             grpRecientes.TabIndex = 0;
-            grpRecientes.TabStop = false;
-            grpRecientes.Text = "PROYECTOS RECIENTES";
+            //
+            // panelRecientesCaption
+            //
+            panelRecientesCaption.Controls.Add(lblRecientesCaption);
+            panelRecientesCaption.Dock = DockStyle.Top;
+            panelRecientesCaption.Height = 44;
+            panelRecientesCaption.Name = "panelRecientesCaption";
+            panelRecientesCaption.Padding = new Padding(16, 0, 16, 0);
+            panelRecientesCaption.TabIndex = 1;
+            //
+            // lblRecientesCaption (el tema aplica fuente/color; Dock.Fill +
+            // TextAlign lo centran verticalmente en la franja)
+            //
+            lblRecientesCaption.Dock = DockStyle.Fill;
+            lblRecientesCaption.Name = "lblRecientesCaption";
+            lblRecientesCaption.Text = "PROYECTOS RECIENTES";
+            lblRecientesCaption.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // dgvRecientes
             // 
@@ -225,7 +244,9 @@ namespace SOPRO.WinForms.Forms
         internal SoproButton btnAbrirProyecto;
         internal SoproButton btnApoyarKoFi;
         internal System.Windows.Forms.Panel panelCenter;
-        internal System.Windows.Forms.GroupBox grpRecientes;
+        internal System.Windows.Forms.Panel grpRecientes;
+        internal System.Windows.Forms.Panel panelRecientesCaption;
+        internal System.Windows.Forms.Label lblRecientesCaption;
         internal System.Windows.Forms.DataGridView dgvRecientes;
         internal System.Windows.Forms.StatusStrip statusStrip;
         internal System.Windows.Forms.ToolStripStatusLabel lblStatus;
