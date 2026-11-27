@@ -745,7 +745,6 @@ namespace SOPRO.WinForms.Helpers
         {
             var panelTop = form.panelTop;
             var lblTitulo = form.lblTitulo;
-            var lblProyecto = form.lblProyecto;
 
             EnableDoubleBuffering(panelTop);
             // Banda superior clara unificada (mockup #180): la marca y el ribbon
@@ -767,12 +766,9 @@ namespace SOPRO.WinForms.Helpers
                 e.Graphics.DrawLine(pen, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
             };
 
-            // Marca en tinta sobre la banda clara; el nombre del proyecto en
-            // tono apagado (misma jerarquia titulo/subtitulo que el mockup).
+            // Marca en tinta sobre la banda clara (misma jerarquia que el mockup).
             lblTitulo.BackColor = Color.Transparent;
             lblTitulo.ForeColor = Colors.Ink2;
-            lblProyecto.BackColor = Color.Transparent;
-            lblProyecto.ForeColor = Colors.Muted;
         }
 
         private static void ApplyProyectoSidebar(FormProyecto form)

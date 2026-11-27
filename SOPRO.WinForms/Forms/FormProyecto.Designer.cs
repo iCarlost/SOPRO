@@ -49,7 +49,6 @@ namespace SOPRO.WinForms.Forms
         private System.Windows.Forms.ContextMenuStrip cmsRibbonOverflow;
         private System.Windows.Forms.Button btnRibbonMas;
         internal System.Windows.Forms.Label lblTitulo;
-        internal System.Windows.Forms.Label lblProyecto;
         private System.Windows.Forms.TabControl tabControl;
 
         protected override void Dispose(bool disposing)
@@ -96,7 +95,6 @@ namespace SOPRO.WinForms.Forms
             panelSidebarHeader = new Panel();
             btnToggleSidebar = new Button();
             panelTop = new Panel();
-            lblProyecto = new Label();
             panelRibbon = new Panel();
             btnRibbonMas = new Button();
             label2 = new Label();
@@ -243,7 +241,6 @@ namespace SOPRO.WinForms.Forms
             // 
             // panelTop
             // 
-            panelTop.Controls.Add(lblProyecto);
             panelTop.Controls.Add(panelRibbon);
             panelTop.Controls.Add(lblTitulo);
             panelTop.Dock = DockStyle.Top;
@@ -251,16 +248,6 @@ namespace SOPRO.WinForms.Forms
             panelTop.Name = "panelTop";
             panelTop.Size = new Size(1600, 68);
             panelTop.TabIndex = 1;
-            // 
-            // lblProyecto
-            // 
-            lblProyecto.AutoSize = true;
-            lblProyecto.Font = new Font("Segoe UI", 9F);
-            lblProyecto.Location = new Point(20, 38);
-            lblProyecto.Name = "lblProyecto";
-            lblProyecto.Size = new Size(50, 15);
-            lblProyecto.TabIndex = 1;
-            lblProyecto.Text = "Proyecto";
             // 
             // panelRibbon
             // 
@@ -829,8 +816,8 @@ namespace SOPRO.WinForms.Forms
             // lblTitulo
             // 
             lblTitulo.AutoSize = true;
-            lblTitulo.Font = new Font("Segoe UI", 13F, FontStyle.Bold);
-            lblTitulo.Location = new Point(18, 8);
+            lblTitulo.Font = new Font("Segoe UI", 18F, FontStyle.Bold);
+            lblTitulo.Location = new Point(18, 4);
             lblTitulo.Name = "lblTitulo";
             lblTitulo.Size = new Size(72, 26);
             lblTitulo.TabIndex = 0;
