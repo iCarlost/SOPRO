@@ -205,39 +205,48 @@ namespace SOPRO.WinForms.Helpers
             var btnApoyar = form.btnApoyarKoFi;
 
             EnableDoubleBuffering(panelTop);
-            // Tema "B - Limpio neutro": header solido del mismo tono que el
-            // chrome de FormProyecto (un solo look en toda la app).
-            panelTop.BackColor = Colors.HeaderDark;
-            panelTop.Height = SoproUiMetrics.HeaderHeight;
-            // Solo esquinas inferiores redondeadas: arriba queda al ras de la
-            // ventana y el separador inferior sigue el recorte de la Región.
-            ApplyBottomRoundedCorners(panelTop, SoproUiMetrics.SurfaceRadiusPx);
+            // Banda clara unificada con FormProyecto (#180/#196): superficie
+            // blanca al ras de la ventana, marca destacada en azul profundo y
+            // cierre con hairline neutro (sin header oscuro ni recortes).
+            panelTop.BackColor = Colors.Surface;
+            panelTop.Height = EscalarSegunDpi(panelTop, SoproUiMetrics.HeaderHeight);
 
             panelTop.Paint += (_, e) =>
             {
                 var rect = panelTop.ClientRectangle;
                 if (rect.Width <= 0 || rect.Height <= 0) return;
 
-                // Sin gradiente ni angulo: relleno solido del header.
-                using (var brush = new SolidBrush(Colors.HeaderDark))
+                // Relleno sólido de la banda clara.
+                using (var brush = new SolidBrush(Colors.Surface))
                     e.Graphics.FillRectangle(brush, rect);
 
-                // Linea inferior de 1px bajo el header.
-                using var pen = new Pen(Colors.HeaderBottom);
+                // Hairline de 1px bajo la banda.
+                using var pen = new Pen(Colors.SidebarHairline);
                 e.Graphics.DrawLine(pen, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
             };
 
             lblTitle.AutoSize = true;
+            // Marca en azul de identidad, mismo registro que el encabezado de FormProyecto.
+            lblTitle.ForeColor = Colors.Brand;
+            lblTitle.Location = new Point(
+                EscalarSegunDpi(panelTop, 24),
+                EscalarSegunDpi(panelTop, 10));
             lblTitle.BackColor = Color.Transparent;
             lblTitle.Font = Fonts.Title;
-            lblTitle.ForeColor = Colors.Surface;
-            lblTitle.Location = new Point(24, 10);
 
             lblSubtitle.AutoSize = true;
             lblSubtitle.BackColor = Color.Transparent;
             lblSubtitle.Font = Fonts.Subtitle;
-            lblSubtitle.ForeColor = Colors.SubtitleText;
-            lblSubtitle.Location = new Point(26, 60);
+            lblSubtitle.ForeColor = Colors.Muted;
+
+            // El subtítulo sigue al título: el alto del título crece con la
+            // fuente y el DPI, así que un desplazamiento fijo (y=60) llegaba a
+            // solaparlo en pantallas de alto escalado.
+            void AlinearSubtitulo() => lblSubtitle.Location = new Point(
+                EscalarSegunDpi(panelTop, 26),
+                lblTitle.Bottom + EscalarSegunDpi(panelTop, 2));
+            lblTitle.SizeChanged += (_, __) => AlinearSubtitulo();
+            AlinearSubtitulo();
 
             ConfigureHeaderButton(btnNuevo, "Nuevo Proyecto", SoproIconType.Mas, primary: true);
             ConfigureHeaderButton(btnAbrir, "Abrir Proyecto", SoproIconType.Carpeta, primary: false);
@@ -254,10 +263,11 @@ namespace SOPRO.WinForms.Helpers
                 layoutInProgress = true;
                 try
                 {
-                    const int gap = 8;
-                    const int rightPadding = 24;
-                    const int safeMargin = 20;
-                    const int rowGap = 6;
+                    int gap = EscalarSegunDpi(panelTop, 8);
+                    int rightPadding = EscalarSegunDpi(panelTop, 24);
+                    int safeMargin = EscalarSegunDpi(panelTop, 20);
+                    int rowGap = EscalarSegunDpi(panelTop, 6);
+                    int headerHeight = EscalarSegunDpi(panelTop, SoproUiMetrics.HeaderHeight);
 
                     int rowHeight = Math.Max(btnNuevo.Height, Math.Max(btnAbrir.Height, btnApoyar.Height));
 
@@ -277,7 +287,7 @@ namespace SOPRO.WinForms.Helpers
 
                     if (singleRowFits)
                     {
-                        desiredHeight = SoproUiMetrics.HeaderHeight;
+                        desiredHeight = headerHeight;
                         yTop = Math.Max(0, (desiredHeight - rowHeight) / 2);
                         yBottom = yTop;
                     }
@@ -287,7 +297,7 @@ namespace SOPRO.WinForms.Helpers
                         // tres filas verticales alineadas a la derecha si el ancho es muy estrecho.
                         int rows = primaryRowFits ? 2 : 3;
                         int totalContentHeight = rows * rowHeight + (rows - 1) * rowGap;
-                        int topMargin = Math.Max(0, (SoproUiMetrics.HeaderHeight - rowHeight) / 2);
+                        int topMargin = Math.Max(0, (headerHeight - rowHeight) / 2);
                         desiredHeight = totalContentHeight + 2 * topMargin;
                         yTop = topMargin;
                         yBottom = yTop + (rows - 1) * (rowHeight + rowGap);
@@ -348,12 +358,15 @@ namespace SOPRO.WinForms.Helpers
             button.SoproIconTextSpacing = 8;
             button.SoproIconSize = 16;
             button.SoproIcon = icon;
-            button.SoproFixedHeight = 34;
+            // Alto asignado en tiempo de ejecución: se escala con la convención
+            // del tema para mantener los tres botones comparables con la acción
+            // del pie de la tarjeta en cualquier DPI.
+            button.SoproFixedHeight = EscalarSegunDpi(button, 34);
             button.SoproMinimumAutoWidth = 128;
 
             if (primary)
             {
-                // PRIMARIO: acento de marca (unico azul de accion) sobre el header oscuro.
+                // PRIMARIO: acento de marca (unico azul de accion) sobre la banda clara.
                 button.ForeColor = Colors.Surface;
                 button.BackColor = Colors.RibbonActive;
                 button.FlatAppearance.BorderSize = 0;
@@ -362,13 +375,14 @@ namespace SOPRO.WinForms.Helpers
             }
             else
             {
-                // SECUNDARIO: superficie neutra oscura con hairline slate.
-                button.ForeColor = Colors.RibbonText;
-                button.BackColor = Colors.RibbonHover;
+                // SECUNDARIO: superficie clara con hairline (mismo registro que
+                // los botones de diálogo sobre superficies claras).
+                button.ForeColor = Colors.Ink2;
+                button.BackColor = Colors.Surface;
                 button.FlatAppearance.BorderSize = 1;
-                button.FlatAppearance.BorderColor = Colors.RibbonSeparatorDark;
-                button.FlatAppearance.MouseOverBackColor = Colors.RibbonSeparatorDark;
-                button.FlatAppearance.MouseDownBackColor = Colors.RibbonDown;
+                button.FlatAppearance.BorderColor = Colors.SurfaceBorder;
+                button.FlatAppearance.MouseOverBackColor = Colors.HoverBg;
+                button.FlatAppearance.MouseDownBackColor = Colors.SelBg;
 
                 // El layout interno del Button (FlatStyle.Flat) descuenta 2*BorderSize
                 // del area de contenido. Con el borde de 1px este boton quedaba 2px mas
@@ -393,19 +407,60 @@ namespace SOPRO.WinForms.Helpers
         {
             var panelCenter = form.panelCenter;
             EnableDoubleBuffering(panelCenter);
-            panelCenter.Padding = new Padding(28, 24, 28, 24);
-            // Tema "B - Limpio neutro": fondo solido slate-50 (sin gradiente azul).
+            panelCenter.Padding = new Padding(
+                EscalarSegunDpi(panelCenter, 28),
+                EscalarSegunDpi(panelCenter, 24),
+                EscalarSegunDpi(panelCenter, 28),
+                EscalarSegunDpi(panelCenter, 24));
             panelCenter.BackColor = Colors.CenterBg;
 
-            var grp = form.grpRecientes;
-            EnableDoubleBuffering(grp);
-            grp.BackColor = Colors.Surface;
-            grp.ForeColor = Colors.Ink;
-            grp.Font = Fonts.GroupTitle;
-            grp.FlatStyle = FlatStyle.Flat;
-            // Inserta el contenido para dejar visible el borde/glow de la tarjeta.
-            grp.Padding = new Padding(SoproUiMetrics.CardGlowPx, 0, SoproUiMetrics.CardGlowPx, SoproUiMetrics.CardGlowPx);
-            grp.Paint += (_, e) => PaintRecentCard(grp, e.Graphics);
+            // Tarjeta de recientes: superficie blanca plana con borde de 1px y
+            // sombra neutra sutil. La estructura (rótulo y pie) la define el
+            // diseñador/formulario; aquí solo se viste, sin crear controles.
+            var card = form.grpRecientes;
+            EnableDoubleBuffering(card);
+            card.BackColor = Colors.Surface;
+            card.Padding = new Padding(SoproUiMetrics.CardGlowPx);
+            card.Paint += (_, e) => PaintRecentCard(card, e.Graphics);
+
+            // Rótulo de sección de la tarjeta: rótulo compacto en mayúsculas
+            // del lenguaje del sidebar (#193), con hairline inferior que lo
+            // separa de la rejilla.
+            if (card.Controls["panelRecientesCaption"] is Panel captionStrip)
+            {
+                EnableDoubleBuffering(captionStrip);
+                captionStrip.Height = EscalarSegunDpi(captionStrip, SoproUiMetrics.CardCaptionHeight);
+                captionStrip.Paint += (_, e) =>
+                {
+                    var rect = captionStrip.ClientRectangle;
+                    if (rect.Width <= 0 || rect.Height <= 0) return;
+
+                    using var pen = new Pen(Colors.GridLine);
+                    e.Graphics.DrawLine(pen, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
+                };
+
+                if (captionStrip.Controls["lblRecientesCaption"] is Label caption)
+                {
+                    caption.BackColor = Color.Transparent;
+                    caption.ForeColor = Colors.Muted;
+                    caption.Font = Fonts.SidebarSeccion;
+                }
+            }
+
+            // Pie de tarjeta: hairline superior que separa la acción de
+            // registros locales del grid.
+            if (card.Controls["panelRecientesFooter"] is Panel footer)
+            {
+                EnableDoubleBuffering(footer);
+                footer.Paint += (_, e) =>
+                {
+                    var rect = footer.ClientRectangle;
+                    if (rect.Width <= 0 || rect.Height <= 0) return;
+
+                    using var pen = new Pen(Colors.GridLine);
+                    e.Graphics.DrawLine(pen, rect.Left, rect.Top, rect.Right, rect.Top);
+                };
+            }
         }
 
         private static void ApplyRecentGrid(FormPrincipal form)
@@ -422,9 +477,11 @@ namespace SOPRO.WinForms.Helpers
             dgv.GridColor = Colors.GridLine;
             dgv.BackgroundColor = Colors.Surface;
             dgv.BorderStyle = BorderStyle.None;
+            // Filas con aire de lectura consistente con el alto de encabezado.
+            dgv.RowTemplate.Height = EscalarSegunDpi(dgv, SoproUiMetrics.GridRowHeight);
             dgv.EnableHeadersVisualStyles = false;
             dgv.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
-            dgv.ColumnHeadersHeight = SoproUiMetrics.GridHeaderHeight;
+            dgv.ColumnHeadersHeight = EscalarSegunDpi(dgv, SoproUiMetrics.GridHeaderHeight);
             dgv.ColumnHeadersDefaultCellStyle.BackColor = Colors.HeaderBg;
             dgv.ColumnHeadersDefaultCellStyle.ForeColor = Colors.Ink;
             dgv.ColumnHeadersDefaultCellStyle.SelectionBackColor = Colors.HeaderBg;
@@ -970,39 +1027,36 @@ namespace SOPRO.WinForms.Helpers
             RefreshRegion();
         }
 
-        /// <summary>
-        /// Variante de <see cref="ApplyRoundedCorners"/> para bandas acopladas
-        /// al borde superior de la ventana: redondea SOLO las dos esquinas
-        /// inferiores (las superiores quedan cuadradas y al ras) y recalcula
-        /// la Región ante cambios de tamaño, creación de handle y DPI,
-        /// liberando siempre la Región previa que sustituye.
-        /// </summary>
-        internal static void ApplyBottomRoundedCorners(Control control, int radiusPx)
-        {
-            if (control == null) return;
-
-            void RefreshRegion()
-            {
-                if (control.IsDisposed || control.Width <= 0 || control.Height <= 0) return;
-
-                int radius = ScaleRadius(control, radiusPx);
-                using var path = CreateBottomRoundedPath(new Rectangle(0, 0, control.Width, control.Height), radius);
-                var previous = control.Region;
-                control.Region = new Region(path);
-                previous?.Dispose();
-            }
-
-            control.SizeChanged += (_, __) => RefreshRegion();
-            control.HandleCreated += (_, __) => RefreshRegion();
-            control.DpiChangedAfterParent += (_, __) => RefreshRegion();
-            RefreshRegion();
-        }
-
         private static int ScaleRadius(Control control, int radiusPx)
         {
             int dpi = control.DeviceDpi > 0 ? control.DeviceDpi : 96;
             float scale = dpi / 96f;
             return Math.Max(2, (int)Math.Round(radiusPx * scale));
+        }
+
+        /// <summary>
+        /// Escala una métrica en px lógicos (96 DPI) al DPI dado. Contrato PURO
+        /// (testeable sin simulación de monitor): redondeo a la unidad y DPI
+        /// inválido o cero se trata como 96.
+        /// </summary>
+        internal static int EscalarSegunDpi(int dpi, int pxLogicos)
+        {
+            if (dpi <= 0) dpi = 96;
+            return (int)Math.Round(pxLogicos * dpi / 96f);
+        }
+
+        /// <summary>
+        /// Escala una métrica en px lógicos (96 DPI) al DPI real del control.
+        /// Las alturas y márgenes asignadas en tiempo de ejecución no pasan por
+        /// el escalado de AutoScaleMode (que solo ajusta lo definido por el
+        /// diseñador), así que se escalan aquí con la misma convención que
+        /// <see cref="ScaleRadius"/>.
+        /// </summary>
+        internal static int EscalarSegunDpi(Control? control, int pxLogicos)
+        {
+            if (control == null) return pxLogicos;
+
+            return EscalarSegunDpi(control.DeviceDpi, pxLogicos);
         }
 
         private static GraphicsPath CreateRoundedPath(Rectangle bounds, int radius)
@@ -1019,34 +1073,6 @@ namespace SOPRO.WinForms.Helpers
             path.AddArc(arc, 0, 90);
             arc.X = bounds.X;
             path.AddArc(arc, 90, 90);
-            path.CloseFigure();
-            return path;
-        }
-
-        /// <summary>
-        /// Rectángulo con las DOS esquinas inferiores redondeadas y las
-        /// superiores cuadradas (arco inferior-izquierda: 180°→90°, arco
-        /// inferior-derecha: 90°→0°, recorrido en el sentido del contorno).
-        /// </summary>
-        private static GraphicsPath CreateBottomRoundedPath(Rectangle bounds, int radius)
-        {
-            var path = new GraphicsPath();
-            int diametro = Math.Max(1, radius * 2);
-            diametro = Math.Min(diametro, Math.Min(bounds.Width, bounds.Height));
-            int radio = diametro / 2;
-            if (radio < 1)
-            {
-                path.AddRectangle(bounds);
-                return path;
-            }
-
-            int w = bounds.Width;
-            int h = bounds.Height;
-            path.AddLine(bounds.X, bounds.Y, bounds.X, h - radio);
-            path.AddArc(new Rectangle(bounds.X, h - radio * 2, radio * 2, radio * 2), 180, -90);
-            path.AddLine(bounds.X + radio, h, w - radio, h);
-            path.AddArc(new Rectangle(w - radio * 2, h - radio * 2, radio * 2, radio * 2), 90, -90);
-            path.AddLine(w, h - radio, bounds.Right, bounds.Y);
             path.CloseFigure();
             return path;
         }
