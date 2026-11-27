@@ -205,6 +205,39 @@ namespace SOPRO.WinForms.Forms
             // el dibujo usa las métricas.
             treeMenu.Indent = metricas.SangriaNivel;
             treeMenu.ItemHeight = colapsada ? metricas.AltoFilaColapsada : metricas.AltoFila;
+
+            AlinearBloqueMarcaRibbon();
+        }
+
+        private const int MargenLateralMarca = 14;
+
+        /// <summary>
+        /// Alinea el arranque del ribbon con el borde derecho real del sidebar
+        /// y centra el wordmark dentro del bloque de marca (issue #195). En
+        /// expandido el separador cae exactamente en panelLeft.Width (variaba
+        /// con el modo y el DPI; antes quedaba fijo en 180). Si el rail
+        /// colapsado no alcanza a contener el wordmark con aire propio, el
+        /// bloque conserva un ancho mínimo medido desde el texto, nunca
+        /// hardcodeado. La invoca AplicarGeometriaSidebar: toggle y cambio de
+        /// DPI no dejan la alineación desfasada.
+        /// </summary>
+        private void AlinearBloqueMarcaRibbon()
+        {
+            if (panelRibbon == null || panelLeft == null || lblTitulo == null) return;
+
+            int margenMarca = EscalarPixelsSegunDpi(MargenLateralMarca);
+            int anchoTexto = lblTitulo.PreferredWidth;
+            int anchoMinimoBloque = anchoTexto + 2 * margenMarca;
+            int inicioRibbon = Math.Max(anchoMinimoBloque, panelLeft.Width);
+
+            // Se conserva el borde derecho del ribbon: desplazar el inicio sin
+            // recortar el ancho empujaría el extremo derecho fuera del margen.
+            panelRibbon.Width = Math.Max(1, panelRibbon.Right - inicioRibbon);
+            panelRibbon.Left = inicioRibbon;
+
+            // Wordmark centrado en el bloque de marca y en el alto de la banda.
+            lblTitulo.Left = Math.Max(margenMarca, (inicioRibbon - anchoTexto) / 2);
+            lblTitulo.Top = Math.Max(0, (panelTop.Height - lblTitulo.PreferredHeight) / 2);
         }
 
         private int ObtenerAnchoBarraLateralExpandida()

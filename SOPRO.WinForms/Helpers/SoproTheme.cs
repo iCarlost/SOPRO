@@ -766,9 +766,10 @@ namespace SOPRO.WinForms.Helpers
                 e.Graphics.DrawLine(pen, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
             };
 
-            // Marca en tinta sobre la banda clara (misma jerarquia que el mockup).
+            // Marca en azul profundo de identidad (#195) sobre la banda clara:
+            // mismo registro sobrio que los comandos activos del ribbon.
             lblTitulo.BackColor = Color.Transparent;
-            lblTitulo.ForeColor = Colors.Ink2;
+            lblTitulo.ForeColor = Colors.Brand;
         }
 
         private static void ApplyProyectoSidebar(FormProyecto form)
