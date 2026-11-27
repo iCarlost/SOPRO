@@ -62,6 +62,25 @@ namespace SOPRO.WinForms.Forms
 
         private void TabControl_SelectedIndexChanged(object sender, EventArgs e)
         {
+            // Durante Abrir() la pestaña se selecciona antes de Show() y del
+            // layout/foco finales: ese cambio no debe sincronizar el ribbon (ni
+            // repintarlo) con el estado transitorio. La sincronización única se
+            // hace al final de la apertura.
+            if (_aperturaModuloEnCurso)
+                return;
+
+            SincronizarContextoRibbonActivo();
+        }
+
+        /// <summary>
+        /// Sincroniza el contexto del ribbon con la pestaña realmente activa:
+        /// desuscribe el formulario anterior, suscribe el nuevo y refresca
+        /// habilitados, formato y overflow. Es el trabajo que antes vivía dentro
+        /// del evento; separarlo permite que la navegación lo invoque una sola
+        /// vez y en el momento correcto.
+        /// </summary>
+        internal virtual void SincronizarContextoRibbonActivo()
+        {
             // Desuscribir del form anterior
             if (_formActivo != null)
             {
