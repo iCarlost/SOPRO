@@ -6,6 +6,12 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 
 ## [No publicado]
 
+## [1.23.2] - 2026-11-27
+
+### Corregido
+- Los botones del ribbon ya no conservan líneas borrosas al abrir o cambiar módulos; el fondo se pinta por completo antes de aplicar el suavizado, sin introducir parpadeo.
+- La activación de módulos sincroniza el contexto del ribbon una sola vez después del layout y el foco, y no repite el repintado al pulsar nuevamente el módulo activo.
+
 ## [1.23.1] - 2026-11-26
 
 ### Corregido
