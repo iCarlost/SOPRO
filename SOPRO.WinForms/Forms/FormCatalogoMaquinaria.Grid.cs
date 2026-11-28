@@ -111,6 +111,8 @@ namespace SOPRO.WinForms.Forms
                 });
             }
 
+            Helpers.CatalogoTema.AplicarGrid(dgvMaquinaria);
+
             _cargandoColumnas = false;
         }
 

@@ -123,6 +123,8 @@ namespace SOPRO.WinForms.Forms
                 if (col.Tag is ColumnaMaterial cm)
                     AplicarEstiloDesdeColMat((DataGridViewTextBoxColumn)col, cm);
 
+            Helpers.CatalogoTema.AplicarGrid(dgvMateriales);
+
             _cargandoColumnas = false;
         }
 
