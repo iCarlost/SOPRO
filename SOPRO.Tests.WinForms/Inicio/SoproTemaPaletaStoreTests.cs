@@ -98,6 +98,62 @@ public class SoproTemaPaletaStoreTests
         AssertColor(0xDB, 0xEA, 0xFE, paleta.RibbonPressed, nameof(paleta.RibbonPressed));
     }
 
+    /// <summary>
+    /// Baseline aprobado de Grafito (issue #209): fija EXACTAMENTE los tokens
+    /// que este rediseño modifica en el inicializador de Grafito (29 en total).
+    /// Los roles no modificados y los otros presets quedan fuera; las pruebas
+    /// de contraste y semántica existentes siguen siendo la autoridad y no se
+    /// relajan para acomodar estos valores.
+    /// </summary>
+    [TestMethod]
+    public void Grafito_ConservaElBaselineAprobadoDeTokensActualizados()
+    {
+        var paleta = SoproTheme.GetPalette(SoproTemaPreset.Grafito);
+
+        // Texto.
+        AssertTokenActualizado(0xE6, 0xE9, 0xED, paleta.Ink, nameof(paleta.Ink));
+        AssertTokenActualizado(0xC6, 0xCC, 0xD4, paleta.Ink2, nameof(paleta.Ink2));
+        AssertTokenActualizado(0xA3, 0xAE, 0xBB, paleta.Muted, nameof(paleta.Muted));
+
+        // Fondos y superficies neutras.
+        AssertTokenActualizado(0x22, 0x26, 0x2C, paleta.BgBase, nameof(paleta.BgBase));
+        AssertTokenActualizado(0x26, 0x2B, 0x32, paleta.BgTint2, nameof(paleta.BgTint2));
+        AssertTokenActualizado(0x30, 0x36, 0x3F, paleta.Surface, nameof(paleta.Surface));
+        AssertTokenActualizado(0x45, 0x4C, 0x56, paleta.SurfaceBorder, nameof(paleta.SurfaceBorder));
+
+        // Rejilla.
+        AssertTokenActualizado(0x36, 0x3C, 0x45, paleta.RowAlt, nameof(paleta.RowAlt));
+        AssertTokenActualizado(0x45, 0x4C, 0x56, paleta.GridLine, nameof(paleta.GridLine));
+
+        // Chrome: sidebar y ribbon.
+        AssertTokenActualizado(0x2A, 0x2F, 0x37, paleta.SidebarBg, nameof(paleta.SidebarBg));
+        AssertTokenActualizado(0x27, 0x2C, 0x34, paleta.SidebarHeaderBg, nameof(paleta.SidebarHeaderBg));
+        AssertTokenActualizado(0x45, 0x4C, 0x56, paleta.RibbonSeparator, nameof(paleta.RibbonSeparator));
+        AssertTokenActualizado(0x22, 0x27, 0x2E, paleta.HeaderDark, nameof(paleta.HeaderDark));
+        AssertTokenActualizado(0x1A, 0x1F, 0x25, paleta.HeaderBottom, nameof(paleta.HeaderBottom));
+        AssertTokenActualizado(0x34, 0x3A, 0x44, paleta.RibbonHover, nameof(paleta.RibbonHover));
+        AssertTokenActualizado(0x4A, 0x50, 0x5A, paleta.RibbonSeparatorDark, nameof(paleta.RibbonSeparatorDark));
+
+        // Sidebar derivada.
+        AssertTokenActualizado(0x26, 0x2B, 0x32, paleta.SidebarBg2, nameof(paleta.SidebarBg2));
+        AssertTokenActualizado(0x2A, 0x2F, 0x37, paleta.SidebarHeaderBg2, nameof(paleta.SidebarHeaderBg2));
+        AssertTokenActualizado(0x45, 0x4C, 0x56, paleta.SidebarHairline, nameof(paleta.SidebarHairline));
+        AssertTokenActualizado(0xC6, 0xCC, 0xD4, paleta.SidebarText, nameof(paleta.SidebarText));
+        AssertTokenActualizado(0xE6, 0xE9, 0xED, paleta.SidebarTextGroup, nameof(paleta.SidebarTextGroup));
+        AssertTokenActualizado(0x3A, 0x41, 0x49, paleta.SidebarActive, nameof(paleta.SidebarActive));
+
+        // Derivados del encabezado y las tarjetas.
+        AssertTokenActualizado(0x27, 0x2C, 0x34, paleta.HeaderBg, nameof(paleta.HeaderBg));
+        AssertTokenActualizado(0x26, 0x2B, 0x32, paleta.CenterBg, nameof(paleta.CenterBg));
+        AssertTokenActualizado(0x2C, 0x31, 0x3A, paleta.SecondaryBg, nameof(paleta.SecondaryBg));
+        AssertTokenActualizado(0x39, 0x3F, 0x49, paleta.SecondaryHoverBg, nameof(paleta.SecondaryHoverBg));
+        AssertTokenActualizado(0x8A, 0x93, 0x9E, paleta.GlyphIdle, nameof(paleta.GlyphIdle));
+        AssertTokenActualizado(0x39, 0x3F, 0x49, paleta.HoverBg, nameof(paleta.HoverBg));
+
+        // Estado presionado del ribbon.
+        AssertTokenActualizado(0x35, 0x3B, 0x45, paleta.RibbonPressed, nameof(paleta.RibbonPressed));
+    }
+
     [TestMethod]
     public void Paletas_TresPresetsConIdEstableYNombreVisible()
     {
@@ -308,6 +364,10 @@ public class SoproTemaPaletaStoreTests
     // =====================================================================
     // Helpers
     // =====================================================================
+
+    private static void AssertTokenActualizado(byte r, byte g, byte b, Color color, string nombre)
+        => Assert.AreEqual(Color.FromArgb(r, g, b), color,
+            $"{nombre} debe conservar el token actualizado de Grafito (issue #209)");
 
     private static void AssertColor(byte r, byte g, byte b, Color color, string nombre)
         => Assert.AreEqual(Color.FromArgb(r, g, b), color, $"{nombre} debe conservar el token histórico");
