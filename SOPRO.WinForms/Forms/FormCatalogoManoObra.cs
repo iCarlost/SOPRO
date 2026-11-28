@@ -73,6 +73,7 @@ namespace SOPRO.WinForms.Forms
             string? productVersion)
         {
             InitializeComponent();
+            CatalogoTema.AplicarChrome(this, panelTop, panelToolbar, panelFiltros, statusStrip, lblBuscar, txtBuscar, chkSoloProyecto, chkSoloMaestros);
             AplicarSuperficiesRedondeadas();
             FormRenderHelper.OptimizeForGridRendering(this);
             btnExportarExcel.Visible = false;

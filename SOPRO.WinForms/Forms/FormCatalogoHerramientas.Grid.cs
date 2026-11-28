@@ -104,6 +104,8 @@ namespace SOPRO.WinForms.Forms
             FormDatosProyecto.DecimalesActualizados += OnDecimalesActualizados_Cat;
             this.FormClosed += (s, e) => FormDatosProyecto.DecimalesActualizados -= OnDecimalesActualizados_Cat;
 
+            Helpers.CatalogoTema.AplicarGrid(dgvHerramientas);
+
             _cargandoColumnas = false;
         }
 

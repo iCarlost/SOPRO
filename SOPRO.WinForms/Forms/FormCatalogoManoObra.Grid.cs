@@ -105,6 +105,8 @@ namespace SOPRO.WinForms.Forms
                 });
             }
 
+            Helpers.CatalogoTema.AplicarGrid(dgvManoObra);
+
             _cargandoColumnas = false;
         }
 

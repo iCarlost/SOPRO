@@ -114,6 +114,7 @@ namespace SOPRO.WinForms.Forms
             string? productVersion)
         {
             InitializeComponent();
+            CatalogoTema.AplicarChrome(this, panelHeader, panelBotones, panelBusqueda, statusStrip, lblBuscar, txtBuscar, chkSoloProyecto, chkSoloMaestros);
             AplicarSuperficiesRedondeadas();
             dgvHerramientas.AplicarEstiloSOPRO();
             _context = context ?? throw new ArgumentNullException(nameof(context));
