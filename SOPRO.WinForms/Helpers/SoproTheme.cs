@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Reflection;
@@ -22,126 +23,202 @@ namespace SOPRO.WinForms.Helpers
         /// <summary>Familia tipografica unica del tema (no se empaquetan fuentes).</summary>
         private const string FontFamily = "Segoe UI";
 
+        // =====================================================================
+        // Resolucion de paleta (issue #203)
+        // =====================================================================
+
+        /// <summary>
+        /// Paleta activa del proceso. Se resuelve UNA vez en el arranque
+        /// (<see cref="InitializePalette"/>) y no cambia en caliente: los
+        /// formularios se crean siempre contra la misma paleta.
+        /// </summary>
+        private static volatile SoproTemaPaleta _paletaActual = SoproTemaPaleta.ClaroAzul;
+
+        /// <summary>Paleta activa del proceso (solo lectura para los consumidores).</summary>
+        internal static SoproTemaPaleta CurrentPalette => _paletaActual;
+
+        /// <summary>Paletas disponibles en el orden de presentacion.</summary>
+        internal static IReadOnlyList<SoproTemaPaleta> Paletas { get; } = Array.AsReadOnly(new[]
+        {
+            SoproTemaPaleta.ClaroAzul,
+            SoproTemaPaleta.Grafito,
+            SoproTemaPaleta.ClaroVerde,
+        });
+
+        /// <summary>Resuelve la paleta inmutable de un preset.</summary>
+        internal static SoproTemaPaleta GetPalette(SoproTemaPreset preset) => preset switch
+        {
+            SoproTemaPreset.Grafito => SoproTemaPaleta.Grafito,
+            SoproTemaPreset.ClaroVerde => SoproTemaPaleta.ClaroVerde,
+            _ => SoproTemaPaleta.ClaroAzul,
+        };
+
+        /// <summary>
+        /// Activa la paleta del preset. Es una operacion de ARRANQUE: llamarla
+        /// despues de crear formularios deja la UI con dos paletas mezcladas.
+        /// </summary>
+        internal static void InitializePalette(SoproTemaPreset preset)
+            => _paletaActual = GetPalette(preset);
+
+        /// <summary>ID estable del preset (persistencia).</summary>
+        internal static string GetPresetId(SoproTemaPreset preset) => GetPalette(preset).Id;
+
+        /// <summary>
+        /// Interpreta un ID persistido. Devuelve false para valores nulos,
+        /// vacios o desconocidos (el llamador decide el fallback).
+        /// </summary>
+        internal static bool TryParsePreset(string? id, out SoproTemaPreset preset)
+        {
+            foreach (var paleta in Paletas)
+            {
+                if (string.Equals(paleta.Id, id, StringComparison.Ordinal))
+                {
+                    preset = paleta.Preset;
+                    return true;
+                }
+            }
+
+            preset = SoproTemaPreset.ClaroAzul;
+            return false;
+        }
+
         /// <summary>
         /// Paleta de colores del tema SOPRO. Los valores replican los tokens de
-        /// la web (brand, ink, superficies y rejilla).
+        /// la web (brand, ink, superficies y rejilla) y se resuelven SIEMPRE
+        /// contra <see cref="CurrentPalette"/>: son propiedades, no instantaneas,
+        /// de modo que ningun consumidor captura la paleta por accidente.
         /// </summary>
         public static class Colors
         {
             // --- Marca (brand) ---
-            public static readonly Color Brand = Color.FromArgb(0x1E, 0x40, 0xAF);       // #1e40af
-            public static readonly Color BrandMd = Color.FromArgb(0x1D, 0x4E, 0xD8);     // #1d4ed8
-            public static readonly Color BrandLt = Color.FromArgb(0x3B, 0x82, 0xF6);     // #3b82f6
+            public static Color Brand => CurrentPalette.Brand;
+            public static Color BrandMd => CurrentPalette.BrandMd;
+            public static Color BrandLt => CurrentPalette.BrandLt;
+
+            /// <summary>Relleno de hover de la accion primaria (con <see cref="OnBrand"/> encima).</summary>
+            public static Color BrandHover => CurrentPalette.BrandHover;
 
             // --- Texto (ink) ---
-            public static readonly Color Ink = Color.FromArgb(0x0A, 0x0F, 0x1E);         // #0a0f1e
-            public static readonly Color Ink2 = Color.FromArgb(0x1E, 0x29, 0x3B);        // #1e293b
-            public static readonly Color Muted = Color.FromArgb(0x4B, 0x5A, 0x72);       // #4b5a72
+            public static Color Ink => CurrentPalette.Ink;
+            public static Color Ink2 => CurrentPalette.Ink2;
+            public static Color Muted => CurrentPalette.Muted;
 
             // --- Fondos (backgrounds) ---
-            public static readonly Color BgBase = Color.FromArgb(0xDB, 0xEA, 0xFE);      // #dbeafe
-            public static readonly Color BgTint2 = Color.FromArgb(0xE0, 0xE7, 0xFF);     // #e0e7ff
+            public static Color BgBase => CurrentPalette.BgBase;
+            public static Color BgTint2 => CurrentPalette.BgTint2;
 
             // --- Superficies (surfaces) ---
-            public static readonly Color Surface = Color.FromArgb(0xFF, 0xFF, 0xFF);     // #ffffff
-            public static readonly Color SurfaceBorder = Color.FromArgb(0xC7, 0xD7, 0xF0); // #c7d7f0
+            public static Color Surface => CurrentPalette.Surface;
+            public static Color SurfaceBorder => CurrentPalette.SurfaceBorder;
 
             // --- Rejilla (grid) ---
-            public static readonly Color RowAlt = Color.FromArgb(0xF8, 0xFA, 0xFC);      // #f8fafc slate-50
-            public static readonly Color GridLine = Color.FromArgb(0xE2, 0xE8, 0xF0);    // #e2e8f0 slate-200
-            public static readonly Color SelBg = Color.FromArgb(0xDB, 0xEA, 0xFE);       // #dbeafe (unico tinte azul)
+            public static Color RowAlt => CurrentPalette.RowAlt;
+            public static Color GridLine => CurrentPalette.GridLine;
+            public static Color SelBg => CurrentPalette.SelBg;
+
+            /// <summary>Primer plano sobre <see cref="SelBg"/> (no usar Surface como texto).</summary>
+            public static Color OnSelection => CurrentPalette.OnSelection;
 
             // --- Chrome del host (header, sidebar y ribbon) ---
-            public static readonly Color SidebarBg = Color.FromArgb(0xFA, 0xFA, 0xFA);       // 250,250,250
-            public static readonly Color SidebarHeaderBg = Color.FromArgb(0xF0, 0xF0, 0xF3); // 240,240,243
-            public static readonly Color RibbonSeparator = Color.FromArgb(0xC8, 0xC8, 0xC8); // 200,200,200
-            public static readonly Color Disabled = Color.FromArgb(0x78, 0x78, 0x78);        // 120,120,120
+            public static Color SidebarBg => CurrentPalette.SidebarBg;
+            public static Color SidebarHeaderBg => CurrentPalette.SidebarHeaderBg;
+            public static Color RibbonSeparator => CurrentPalette.RibbonSeparator;
+            public static Color Disabled => CurrentPalette.Disabled;
 
             // --- Tema "B - Limpio neutro" del chrome del shell ---
             // Superficies planas neutras para el header, el ribbon y la barra
             // lateral, compartidas por FormPrincipal y FormProyecto.
-            public static readonly Color HeaderDark = Color.FromArgb(0x1E, 0x29, 0x3B);        // #1e293b slate-800
-            public static readonly Color HeaderBottom = Color.FromArgb(0x0F, 0x17, 0x2A);      // #0f172a slate-900
-            public static readonly Color RibbonText = Color.FromArgb(0xE2, 0xE8, 0xF0);        // #e2e8f0 slate-200
-            public static readonly Color RibbonHover = Color.FromArgb(0x33, 0x41, 0x55);       // #334155 slate-700
-            public static readonly Color RibbonActive = Color.FromArgb(0x1D, 0x4E, 0xD8);      // #1d4ed8 marca
-            public static readonly Color RibbonDown = Color.FromArgb(0x0F, 0x17, 0x2A);        // #0f172a slate-900
-            public static readonly Color RibbonDisabledIcon = Color.FromArgb(0x94, 0xA3, 0xB8); // #94a3b8 slate-400
-            public static readonly Color RibbonSeparatorDark = Color.FromArgb(0x47, 0x55, 0x69); // #475569 slate-600
-            public static readonly Color SidebarBg2 = Color.FromArgb(0xF1, 0xF5, 0xF9);        // #f1f5f9 slate-100
-            public static readonly Color SidebarHeaderBg2 = Color.FromArgb(0xE2, 0xE8, 0xF0);  // #e2e8f0 slate-200
-            public static readonly Color SidebarHairline = Color.FromArgb(0xCB, 0xD5, 0xE1);   // #cbd5e1 slate-300
-            public static readonly Color SidebarText = Color.FromArgb(0x33, 0x41, 0x55);        // #334155 slate-700
-            public static readonly Color SidebarTextGroup = Color.FromArgb(0x0F, 0x17, 0x2A);   // #0f172a slate-900
-            public static readonly Color SidebarActive = Color.FromArgb(0xDB, 0xEA, 0xFE);      // #dbeafe (unico tinte azul)
+            public static Color HeaderDark => CurrentPalette.HeaderDark;
+            public static Color HeaderBottom => CurrentPalette.HeaderBottom;
+            public static Color RibbonText => CurrentPalette.RibbonText;
+            public static Color RibbonHover => CurrentPalette.RibbonHover;
+            public static Color RibbonActive => CurrentPalette.RibbonActive;
+            public static Color RibbonDown => CurrentPalette.RibbonDown;
+            public static Color RibbonDisabledIcon => CurrentPalette.RibbonDisabledIcon;
+            public static Color RibbonSeparatorDark => CurrentPalette.RibbonSeparatorDark;
+            public static Color SidebarBg2 => CurrentPalette.SidebarBg2;
+            public static Color SidebarHeaderBg2 => CurrentPalette.SidebarHeaderBg2;
+            public static Color SidebarHairline => CurrentPalette.SidebarHairline;
+            public static Color SidebarText => CurrentPalette.SidebarText;
+            public static Color SidebarTextGroup => CurrentPalette.SidebarTextGroup;
+            public static Color SidebarActive => CurrentPalette.SidebarActive;
 
             // --- Derivados usados por el encabezado y las tarjetas de FormPrincipal ---
-            public static readonly Color SubtitleText = Color.FromArgb(0xCB, 0xD5, 0xE1); // #cbd5e1 slate-300
-            public static readonly Color HeaderBg = Color.FromArgb(0xF1, 0xF5, 0xF9);     // #f1f5f9 slate-100
-            public static readonly Color CenterBg = Color.FromArgb(0xF8, 0xFA, 0xFC);     // #f8fafc slate-50 (fondo del centro)
-            public static readonly Color SecondaryBg = Color.FromArgb(0xF1, 0xF5, 0xF9);  // #f1f5f9 slate-100
-            public static readonly Color SecondaryHoverBg = Color.FromArgb(0xE2, 0xE8, 0xF0); // #e2e8f0 slate-200
-            public static readonly Color GlyphIdle = Color.FromArgb(0x8A, 0x94, 0xA6);    // gris icono papelera
-            public static readonly Color HoverBg = Color.FromArgb(0xEA, 0xF2, 0xFF);      // hover suave en rejilla
-            public static readonly Color Glow = Color.FromArgb(0x18, 0x0F, 0x17, 0x2A);   // #0f172a @ 9% sombra neutra sutil
+            public static Color SubtitleText => CurrentPalette.SubtitleText;
+            public static Color HeaderBg => CurrentPalette.HeaderBg;
+            public static Color CenterBg => CurrentPalette.CenterBg;
+            public static Color SecondaryBg => CurrentPalette.SecondaryBg;
+            public static Color SecondaryHoverBg => CurrentPalette.SecondaryHoverBg;
+            public static Color GlyphIdle => CurrentPalette.GlyphIdle;
+            public static Color HoverBg => CurrentPalette.HoverBg;
+            public static Color Glow => CurrentPalette.Glow;
+
+            // --- Roles semanticos de primer plano ---
+            /// <summary>Primer plano sobre rellenos de marca. No usar Surface como texto.</summary>
+            public static Color OnBrand => CurrentPalette.OnBrand;
+
+            /// <summary>Primer plano sobre la banda de encabezado de dialogo.</summary>
+            public static Color OnHeader => CurrentPalette.OnHeader;
+
+            /// <summary>Color semantico de error (texto y glifos), legible sobre las superficies del dialogo.</summary>
+            public static Color Error => CurrentPalette.Error;
         }
 
         /// <summary>
         /// Tokens del ribbon claro de FormProyecto (issue #180): banda de comandos
-        /// sobre el encabezado claro unificado, con iconografía azul, texto en
+        /// sobre el encabezado claro unificado, con iconografía de marca, texto en
         /// tinta y estados suaves. Es un CONTEXTO específico del ribbon: no
         /// reutilizar en otras superficies (los tokens Ribbon* históricos siguen
-        /// sirviendo al chrome oscuro, FormPrincipal y diálogos). La mayoría de
-        /// los valores derivan de la paleta existente; la excepción documentada
-        /// es <see cref="ActivoPresionado"/>, el paso azul-900 de la misma
-        /// familia de marca para distinguir presionado de hover.
+        /// sirviendo al chrome oscuro, FormPrincipal y diálogos). Todos los
+        /// valores son propiedades resueltas contra la paleta activa; el
+        /// presionado del comando activo lo aporta la propia paleta
+        /// (<c>RibbonActivePressed</c>) para que cada preset tenga su escalón.
         /// </summary>
         public static class RibbonClaro
         {
-            /// <summary>Superficie de la banda de comandos (tarjeta clara).</summary>
-            public static readonly Color Superficie = Colors.Surface;
+            /// <summary>Superficie de la banda de comandos (tarjeta del preset).</summary>
+            public static Color Superficie => Colors.Surface;
 
             /// <summary>Texto neutro (toggles tipográficos, indicador con destino activo).</summary>
-            public static readonly Color Texto = Colors.Ink2;
+            public static Color Texto => Colors.Ink2;
 
             /// <summary>Caption de grupo e indicador sin destino: apagado pero legible.</summary>
-            public static readonly Color Caption = Colors.Muted;
+            public static Color Caption => Colors.Muted;
 
             /// <summary>Acento de marca: iconografía y comandos del ribbon.</summary>
-            public static readonly Color Acento = Colors.BrandMd;
+            public static Color Acento => Colors.BrandMd;
 
-            /// <summary>Acento profundo: hover del comando activo (un paso bajo el azul de marca).</summary>
-            public static readonly Color AcentoProfundo = Colors.Brand;
+            /// <summary>Acento profundo: hover del comando activo (un paso bajo el acento).</summary>
+            public static Color AcentoProfundo => CurrentPalette.RibbonActiveHover;
 
-            /// <summary>Fondo del comando activo (azul de marca, texto claro).</summary>
-            public static readonly Color Activo = Colors.RibbonActive;
+            /// <summary>Fondo del comando activo (acento de marca, texto claro).</summary>
+            public static Color Activo => Colors.RibbonActive;
 
             /// <summary>
-            /// Presionado del comando ACTIVO: el paso azul-900 de la familia de
-            /// marca (#1e3a8a). Es el único valor no tomado tal cual de la paleta
-            /// global; distingue presionado de hover (que usa
-            /// <see cref="AcentoProfundo"/>) y profundiza la jerarquía
-            /// reposo→hover→presionado con el texto blanco cada vez más legible.
+            /// Presionado del comando ACTIVO: un paso más profundo que
+            /// <see cref="Activo"/> en la misma familia de marca. Distingue
+            /// presionado de hover y mantiene el texto claro en el escalón más
+            /// exigente de la jerarquía reposo→hover→presionado.
             /// </summary>
-            public static readonly Color ActivoPresionado = Color.FromArgb(0x1E, 0x3A, 0x8A);
+            public static Color ActivoPresionado => CurrentPalette.RibbonActivePressed;
 
-            /// <summary>Hover suave sobre la superficie clara.</summary>
-            public static readonly Color Hover = Colors.HoverBg;
+            /// <summary>Hover suave sobre la superficie del ribbon.</summary>
+            public static Color Hover => Colors.HoverBg;
 
-            /// <summary>Presionado sobre la superficie clara (un paso más profundo que el hover).</summary>
-            public static readonly Color Presionado = Colors.SelBg;
+            /// <summary>Presionado sobre la superficie del ribbon (legible con <see cref="Texto"/>).</summary>
+            public static Color Presionado => CurrentPalette.RibbonPressed;
 
             /// <summary>Separador discreto entre grupos y borde del pozo de color.</summary>
-            public static readonly Color Separador = Colors.SurfaceBorder;
+            public static Color Separador => Colors.SurfaceBorder;
 
             /// <summary>Pozo de muestra de color: ficha en reposo sobre la MISMA
-            /// superficie clara de la banda, sin marco exterior, con
-            /// hover/presionado en tinte azul progresivo y glifo en tinta
+            /// superficie de la banda, sin marco exterior, con
+            /// hover/presionado en el tinte de la paleta y glifo en tinta
             /// (contrato #180: nunca usar aqui el hover historico oscuro).</summary>
-            public static readonly Color Chip = Superficie;
+            public static Color Chip => Superficie;
 
-            /// <summary>Estado deshabilitado sobre la superficie clara (≥3:1 no textual).</summary>
-            public static readonly Color Deshabilitado = Colors.Muted;
+            /// <summary>Estado deshabilitado sobre la superficie del ribbon (≥3:1 no textual).</summary>
+            public static Color Deshabilitado => Colors.Muted;
         }
 
         /// <summary>
@@ -367,10 +444,10 @@ namespace SOPRO.WinForms.Helpers
             if (primary)
             {
                 // PRIMARIO: acento de marca (unico azul de accion) sobre la banda clara.
-                button.ForeColor = Colors.Surface;
+                button.ForeColor = Colors.OnBrand;
                 button.BackColor = Colors.RibbonActive;
                 button.FlatAppearance.BorderSize = 0;
-                button.FlatAppearance.MouseOverBackColor = Colors.Brand;
+                button.FlatAppearance.MouseOverBackColor = Colors.BrandHover;
                 button.FlatAppearance.MouseDownBackColor = Colors.RibbonDown;
             }
             else
@@ -495,13 +572,13 @@ namespace SOPRO.WinForms.Helpers
             baseStyle.ForeColor = Colors.Ink2;
             baseStyle.BackColor = Colors.Surface;
             baseStyle.SelectionBackColor = Colors.SelBg;
-            baseStyle.SelectionForeColor = Colors.Ink;
+            baseStyle.SelectionForeColor = Colors.OnSelection;
             dgv.DefaultCellStyle = baseStyle;
 
             var altStyle = dgv.AlternatingRowsDefaultCellStyle;
             altStyle.BackColor = Colors.RowAlt;
             altStyle.SelectionBackColor = Colors.SelBg;
-            altStyle.SelectionForeColor = Colors.Ink;
+            altStyle.SelectionForeColor = Colors.OnSelection;
             dgv.AlternatingRowsDefaultCellStyle = altStyle;
             dgv.RowHeadersVisible = false;
 
