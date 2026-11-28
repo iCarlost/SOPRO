@@ -38,6 +38,7 @@ namespace SOPRO.WinForms.Forms
             dgvRecientes = new DataGridView();
             statusStrip = new StatusStrip();
             lblStatus = new ToolStripStatusLabel();
+            lblApariencia = new ToolStripStatusLabel();
             panelTop.SuspendLayout();
             panelCenter.SuspendLayout();
             grpRecientes.SuspendLayout();
@@ -196,18 +197,31 @@ namespace SOPRO.WinForms.Forms
             // statusStrip
             // 
             statusStrip.ImageScalingSize = new Size(20, 20);
-            statusStrip.Items.AddRange(new ToolStripItem[] { lblStatus });
+            statusStrip.Items.AddRange(new ToolStripItem[] { lblStatus, lblApariencia });
             statusStrip.Location = new Point(0, 520);
             statusStrip.Name = "statusStrip";
+            statusStrip.ShowItemToolTips = true;
             statusStrip.Size = new Size(874, 22);
+            statusStrip.TabStop = true;
             statusStrip.TabIndex = 2;
             // 
             // lblStatus
             // 
             lblStatus.Name = "lblStatus";
             lblStatus.Size = new Size(32, 17);
+            lblStatus.Spring = true;
             lblStatus.Text = "Listo";
-            // 
+            //
+            // lblApariencia
+            //
+            lblApariencia.AccessibleDescription = "Abre la configuración de Apariencia. El tema guardado se aplicará al reiniciar SOPRO.";
+            lblApariencia.AccessibleName = "Cambiar tema visual";
+            lblApariencia.IsLink = true;
+            lblApariencia.Name = "lblApariencia";
+            lblApariencia.Padding = new Padding(0, 0, 4, 0);
+            lblApariencia.Text = "Apariencia";
+            lblApariencia.ToolTipText = "Cambiar el tema de la interfaz";
+            //
             // FormPrincipal
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -250,5 +264,6 @@ namespace SOPRO.WinForms.Forms
         internal System.Windows.Forms.DataGridView dgvRecientes;
         internal System.Windows.Forms.StatusStrip statusStrip;
         internal System.Windows.Forms.ToolStripStatusLabel lblStatus;
+        internal System.Windows.Forms.ToolStripStatusLabel lblApariencia;
     }
 }

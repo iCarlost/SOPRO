@@ -2,6 +2,8 @@ using SOPRO.Application.Contracts;
 using SOPRO.Application.Services;
 using SOPRO.WinForms.Diagnostics;
 using SOPRO.WinForms.Forms;
+using SOPRO.WinForms.Helpers;
+using SOPRO.WinForms.Services;
 using System;
 using System.IO;
 using System.Windows.Forms;
@@ -33,6 +35,24 @@ namespace SOPRO.WinForms
                 ApplicationConfiguration.Initialize();
                 System.Windows.Forms.Application.EnableVisualStyles();
                 System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
+
+                // Issue #203: la paleta del tema es fija durante todo el proceso.
+                // Se resuelve antes de cualquier ventana (aviso de privacidad,
+                // FormPrincipal, apertura directa de proyecto) para que todos los
+                // formularios se construyan contra la misma paleta. Un fallo al
+                // leer la preferencia jamas bloquea el arranque: cae al azul
+                // historico.
+                SoproTemaPreset presetInicial;
+                try
+                {
+                    presetInicial = new SoproTemaStore().Load();
+                }
+                catch (Exception)
+                {
+                    presetInicial = SoproTemaPreset.ClaroAzul;
+                }
+
+                SoproTheme.InitializePalette(presetInicial);
 
                 // Fase 2 de diagnóstico: los logs viven junto a los datos locales,
                 // nunca junto al proyecto ni en la carpeta de instalación.

@@ -107,6 +107,19 @@ namespace SOPRO.WinForms.Forms
             _initialProjectPath = initialProjectPath;
 
             InitializeComponent();
+
+            // Entrada compacta de Apariencia en la barra de estado (issue #203,
+            // fase 1): enlace accesible que abre el diálogo de tema sin alterar
+            // la geometría del encabezado. Solo guarda la preferencia para el
+            // próximo inicio; no muta la paleta activa del proceso. El strip
+            // admite Tab (TabStop) y la versión usa Spring para que el enlace
+            // quede a la derecha incluso en ventanas estrechas.
+            lblApariencia.LinkColor = SoproTheme.Colors.BrandMd;
+            lblApariencia.ActiveLinkColor = SoproTheme.Colors.Brand;
+            lblApariencia.VisitedLinkColor = SoproTheme.Colors.Brand;
+            lblApariencia.LinkBehavior = LinkBehavior.HoverUnderline;
+            lblApariencia.Click += (_, _) => { using var dialog = new FormApariencia(); dialog.ShowDialog(this); };
+
             var btnRegistros = new SoproButton
             {
                 Name = "btnRegistrosLocales",

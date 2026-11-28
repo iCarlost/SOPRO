@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SOPRO.WinForms.Forms;
+using SOPRO.WinForms.Helpers;
 
 namespace SOPRO.Tests.WinForms.Diagnostics;
 
@@ -36,6 +37,31 @@ public class FormDiagnosticoFatalTests
         StringAssert.Contains(dialogo.MensajePrincipal, "problema grave");
         StringAssert.Contains(dialogo.MensajePrincipal, "debe cerrarse");
         StringAssert.Contains(dialogo.MensajeAyuda, "registros locales");
+    }
+
+    [TestMethod]
+    public void Dialogo_PrimerPlanoDelHeaderYAccionPrimariaUsanRolesSemanticos()
+    {
+        using var dialogo = new FormDiagnosticoFatal(CodigoPrueba, CarpetaPrueba, AbrirCarpetaSinEfecto);
+
+        // El cromo del diálogo fatal debe consumir los ROLES de primer plano
+        // (no Surface como texto): en el preset Grafito Surface es oscuro y el
+        // rótulo/acción quedarían ilegibles si se volviera a usar como color de
+        // texto. Con la paleta por omisión ambos pares coinciden, así que la
+        // prueba queda anclada al token y se vuelve discriminante en cualquier
+        // otro preset activo.
+        var titulo = ObtenerControles<Label>(dialogo)
+            .Single(etiqueta => ReferenceEquals(etiqueta.Font, SoproTheme.Fonts.DialogTitle));
+        Assert.AreEqual(SoproTheme.Colors.OnHeader, titulo.ForeColor,
+            "El título del encabezado debe usar el rol OnHeader.");
+
+        var cerrar = ObtenerBoton(dialogo, "Cerrar aplicación");
+        Assert.AreEqual(SoproTheme.Colors.OnBrand, cerrar.ForeColor,
+            "La acción primaria debe usar el rol OnBrand.");
+        Assert.AreEqual(SoproTheme.Colors.RibbonActive, cerrar.BackColor);
+        Assert.AreEqual(SoproTheme.Colors.BrandHover, cerrar.FlatAppearance.MouseOverBackColor,
+            "El hover de la acción primaria debe usar el relleno de marca, no un color de texto.");
+        Assert.AreEqual(SoproTheme.Colors.RibbonDown, cerrar.FlatAppearance.MouseDownBackColor);
     }
 
     [TestMethod]
@@ -121,6 +147,22 @@ public class FormDiagnosticoFatalTests
             }
 
             foreach (var anidado in ObtenerBotones(hijo))
+            {
+                yield return anidado;
+            }
+        }
+    }
+
+    private static IEnumerable<T> ObtenerControles<T>(Control raiz) where T : Control
+    {
+        foreach (Control hijo in raiz.Controls)
+        {
+            if (hijo is T control)
+            {
+                yield return control;
+            }
+
+            foreach (var anidado in ObtenerControles<T>(hijo))
             {
                 yield return anidado;
             }

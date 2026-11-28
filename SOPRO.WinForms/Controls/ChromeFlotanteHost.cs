@@ -58,8 +58,8 @@ namespace SOPRO.WinForms.Controls
         /// <summary>Tono neutro de la sombra (slate-900, el mismo del tema).</summary>
         internal static readonly Color ColorSombra = Color.FromArgb(0x0F, 0x17, 0x2A);
 
-        /// <summary>Borde de 1px de las superficies (token del tema).</summary>
-        internal static readonly Color ColorBorde = SoproTheme.Colors.SurfaceBorder;
+        /// <summary>Borde de 1px de las superficies (token de la paleta activa).</summary>
+        internal static Color ColorBorde => SoproTheme.Colors.SurfaceBorder;
 
         private readonly Control _superficie;
         private readonly int _radioLogico;

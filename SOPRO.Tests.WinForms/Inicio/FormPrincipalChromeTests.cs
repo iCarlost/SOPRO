@@ -278,6 +278,60 @@ public class FormPrincipalChromeTests
         Assert.AreEqual(typeof(SoproButton), escenario.Boton("btnApoyarKoFi").GetType());
     }
 
+    [TestMethod]
+    public void BarraEstado_EnlaceApariencia_AccesibleConTecladoYColoresDePaleta()
+    {
+        using var escenario = new EscenarioInicio();
+        var form = escenario.Form;
+        var status = form.statusStrip;
+        var enlace = form.lblApariencia;
+
+        // Selección por teclado: el ToolStrip necesita su propio TabStop para
+        // que sus items entren en el orden de tabulación.
+        Assert.IsTrue(status.TabStop, "El StatusStrip debe admitir Tab para alcanzar la entrada.");
+        Assert.IsTrue(enlace.IsLink, "La entrada de Apariencia es un enlace (Enter dispara Click).");
+        Assert.IsTrue(enlace.CanSelect, "El enlace de Apariencia debe poder seleccionarse con el teclado.");
+
+        // Semántica de rol y rótulos: rol de ENLACE (no PushButton: el objeto
+        // accesible de la etiqueta reporta ReadOnly) y descripción del efecto
+        // de próximo inicio.
+        Assert.AreEqual("Cambiar tema visual", enlace.AccessibleName);
+        StringAssert.Contains(enlace.AccessibleDescription, "reiniciar");
+        Assert.AreEqual(AccessibleRole.Link, enlace.AccessibilityObject.Role);
+
+        // Colores EXPLÍCITOS de la paleta activa: reposo más claro, hover y
+        // visitado en el azul profundo de marca, subrayado solo al pasar.
+        Assert.AreEqual(SoproTheme.Colors.BrandMd, enlace.LinkColor);
+        Assert.AreEqual(SoproTheme.Colors.Brand, enlace.ActiveLinkColor);
+        Assert.AreEqual(SoproTheme.Colors.Brand, enlace.VisitedLinkColor);
+        Assert.AreEqual(LinkBehavior.HoverUnderline, enlace.LinkBehavior);
+
+        // Spring en la versión: el enlace permanece pegado al borde derecho
+        // y visible en anchos extremos, sin invadir el sizing grip.
+        Assert.IsTrue(form.lblStatus.Spring, "La versión usa Spring; el enlace queda a la derecha.");
+        var clienteOriginal = form.ClientSize;
+        try
+        {
+            form.MinimumSize = Size.Empty;
+            form.ClientSize = new Size(480, clienteOriginal.Height);
+            System.Windows.Forms.Application.DoEvents();
+
+            Assert.IsTrue(enlace.Visible && enlace.Bounds.Width > 0,
+                "El enlace de Apariencia sigue visible en ventana estrecha.");
+            Assert.IsTrue(enlace.Bounds.Right <= status.ClientSize.Width,
+                "El enlace no debe salir del área cliente del strip.");
+            Assert.IsFalse(enlace.Bounds.IntersectsWith(status.GripRectangle),
+                "El enlace no debe invadir el sizing grip.");
+            Assert.IsTrue(enlace.Bounds.Left >= form.lblStatus.Bounds.Left,
+                "La versión queda a la izquierda del enlace.");
+        }
+        finally
+        {
+            form.MinimumSize = new Size(750, 420);
+            form.ClientSize = clienteOriginal;
+        }
+    }
+
     private sealed class EscenarioInicio : IDisposable
     {
         private readonly string _root = Path.Combine(

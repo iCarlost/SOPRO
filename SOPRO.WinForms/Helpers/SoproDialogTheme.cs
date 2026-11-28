@@ -146,7 +146,7 @@ namespace SOPRO.WinForms.Helpers
             {
                 AutoSize = true,
                 BackColor = Color.Transparent,
-                ForeColor = SoproTheme.Colors.Surface,
+                ForeColor = SoproTheme.Colors.OnHeader,
                 Font = SoproTheme.Fonts.DialogTitle,
                 Text = titulo,
                 Margin = new Padding(0, 0, 0, SeparacionVerticalEncabezado)
@@ -269,10 +269,10 @@ namespace SOPRO.WinForms.Helpers
 
             if (primario)
             {
-                button.ForeColor = SoproTheme.Colors.Surface;
+                button.ForeColor = SoproTheme.Colors.OnBrand;
                 button.BackColor = SoproTheme.Colors.RibbonActive;
                 button.FlatAppearance.BorderSize = 0;
-                button.FlatAppearance.MouseOverBackColor = SoproTheme.Colors.Brand;
+                button.FlatAppearance.MouseOverBackColor = SoproTheme.Colors.BrandHover;
                 button.FlatAppearance.MouseDownBackColor = SoproTheme.Colors.RibbonDown;
             }
             else
