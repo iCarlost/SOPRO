@@ -9,9 +9,12 @@ namespace SOPRO.WinForms.Helpers
     /// estado y chrome a nivel de rejilla (fondo, líneas, encabezados).
     ///
     /// Solo viste: no crea controles, no cambia geometría, ítems ni ToolTips, y
-    /// nunca toca el formato por columna (<c>TryColor</c>/<c>Columna*</c>) ni
-    /// los estilos compartidos de gran impacto (<c>DataGridViewStyleHelper</c>,
-    /// <c>DgvCeldaHelper</c>). El color del título lo gestiona
+    /// nunca toca el formato del usuario por columna (<c>TryColor</c>/
+    /// <c>Columna*</c>) ni los estilos compartidos de gran impacto
+    /// (<c>DataGridViewStyleHelper</c>, <c>DgvCeldaHelper</c>). La única columna
+    /// que estila además de los estilos a nivel de rejilla es la de relleno
+    /// vacía (<c>colDummy</c>, sin datos ni encabezado), que es chrome y no
+    /// formato. El color del título lo gestiona
     /// <see cref="EditableReportTitleHelper"/> desde la configuración del
     /// usuario, así que aquí no se recolorea.
     ///
@@ -31,6 +34,18 @@ namespace SOPRO.WinForms.Helpers
         private static Color Presionado => SoproTheme.RibbonClaro.Presionado;
         private static Color Deshabilitado => SoproTheme.Colors.Disabled;
         private static Color Borde => SoproTheme.Colors.SurfaceBorder;
+
+        /// <summary>
+        /// Fondo legacy de la hoja de datos del catálogo: es el MISMO blanco que
+        /// <c>AplicarEstiloDesdeCol*</c> usa como fallback al volcar el color
+        /// persistido del usuario (<c>TryColor(col.ColorFondo, Color.White)</c>)
+        /// y sobre el que alterna el zebra histórico <c>#F5F5F5</c> de
+        /// <c>ConfigurarGrid</c>. NO es un token del tema: es la constante
+        /// legacy que mantiene la hoja coherente en los tres presets (los
+        /// claros ya son blancos; en Grafito la hoja de datos permanece clara
+        /// porque el formato persistido se respeta tal cual).
+        /// </summary>
+        private static readonly Color FondoHojaLegacy = Color.White;
 
         /// <summary>
         /// Chrome completo del catálogo. Debe llamarse ANTES de
@@ -64,11 +79,19 @@ namespace SOPRO.WinForms.Helpers
         /// cada <c>ConfigurarGrid</c> porque las operaciones de CRUD pueden
         /// reconfigurar el grid y devolverle los colores duros.
         ///
-        /// Solo estilo a nivel de rejilla. El zebra de filas alternas NO se
-        /// toca: conserva el color y la semántica legacy de
+        /// Casi todo es estilo a nivel de rejilla. El zebra de filas alternas
+        /// NO se toca: conserva el color y la semántica legacy de
         /// <c>ConfigurarGrid</c> (fila impar impone fondo sobre el formato por
         /// columna). El <see cref="DataGridViewCellStyle"/> por columna
         /// (formato del usuario) conserva su precedencia sobre el estilo base.
+        ///
+        /// Única excepción por columna: la columna de relleno vacía
+        /// (<c>colDummy</c>, chrome sin formato de usuario) se viste en
+        /// <see cref="AplicarColumnaRelleno"/>. Sus filas impares siguen
+        /// heredando el zebra histórico <c>#F5F5F5</c> de
+        /// <c>ConfigurarGrid</c> (la precedencia del estilo de filas alternas
+        /// gana al estilo por columna); solo se alinea el fondo de las pares,
+        /// que sin ello caería al fondo de superficie oscuro.
         /// </summary>
         internal static void AplicarGrid(DataGridView dgv)
         {
@@ -97,6 +120,39 @@ namespace SOPRO.WinForms.Helpers
             celdas.BackColor = Superficie;
             celdas.ForeColor = Texto;
             dgv.DefaultCellStyle = celdas;
+
+            AplicarColumnaRelleno(dgv);
+        }
+
+        /// <summary>
+        /// Viste la columna de relleno (Fill sin datos, <c>colDummy</c>) que
+        /// cierra el ancho sobrante de la rejilla.
+        ///
+        /// Sin estilo propio, sus filas pares heredan el fondo de superficie
+        /// (oscuro en Grafito) mientras el zebra claro de <c>ConfigurarGrid</c>
+        /// impone el suyo en las impares: tablero de ajedrez en toda la zona
+        /// vacía. Se le da el fondo base legacy
+        /// (<see cref="FondoHojaLegacy"/>) para que el zebra alterne sobre él y
+        /// el relleno continúe la hoja de datos con el mismo ritmo de franjas.
+        /// No toca las columnas de datos ni su formato persistido.
+        /// </summary>
+        private static void AplicarColumnaRelleno(DataGridView dgv)
+        {
+            foreach (DataGridViewColumn columna in dgv.Columns)
+            {
+                if (columna.AutoSizeMode != DataGridViewAutoSizeColumnMode.Fill) continue;
+                if (!string.IsNullOrEmpty(columna.DataPropertyName)) continue;
+                if (!string.IsNullOrEmpty(columna.HeaderText)) continue;
+                // Las columnas reales del catálogo llevan la Columna* persistida
+                // en Tag (fuente del formato del usuario); el relleno no lleva
+                // ninguno. Cuarto filtro defensivo contra vestir una columna
+                // de datos si algún día cambiara el patrón del relleno.
+                if (columna.Tag != null) continue;
+
+                var estiloRelleno = columna.DefaultCellStyle;
+                estiloRelleno.BackColor = FondoHojaLegacy;
+                columna.DefaultCellStyle = estiloRelleno;
+            }
         }
 
         private static void AplicarBarraBotones(ToolStrip barra)

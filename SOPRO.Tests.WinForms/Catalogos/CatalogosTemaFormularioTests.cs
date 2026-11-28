@@ -77,6 +77,28 @@ public class CatalogosTemaFormularioTests
     [DataRow("claro-azul")]
     [DataRow("grafito")]
     [DataRow("claro-verde")]
+    public void ColumnaRelleno_ContinuaElZebraDeLaHoja_TrasConstruirYReconfigurar(string presetId)
+    {
+        Assert.IsTrue(SoproTheme.TryParsePreset(presetId, out SoproTemaPreset preset));
+        using var escenario = new CatalogosTemaEscenario(preset);
+
+        foreach (CatalogoBajoTema catalogo in CatalogoBajoTema.Todos)
+        {
+            Form form = escenario.Crear(catalogo);
+            AssertarColumnaRelleno(form, catalogo, $"{preset}: {catalogo.Nombre} tras construir");
+
+            // El chrome de rejilla se reaplica al final de ConfigurarGrid(); la
+            // columna de relleno debe seguir el mismo fondo que la hoja de datos.
+            CatalogosTemaEntorno.InvocarConfigurarGrid(form, catalogo.TipoFormulario);
+            AssertarColumnaRelleno(
+                form, catalogo, $"{preset}: {catalogo.Nombre} tras ConfigurarGrid()");
+        }
+    }
+
+    [TestMethod]
+    [DataRow("claro-azul")]
+    [DataRow("grafito")]
+    [DataRow("claro-verde")]
     public void HostsFlotantes_ConCadaPreset_CapturanElFondoTematizado(string presetId)
     {
         Assert.IsTrue(SoproTheme.TryParsePreset(presetId, out SoproTemaPreset preset));
@@ -217,5 +239,55 @@ public class CatalogosTemaFormularioTests
             $"{etiqueta}: selección del encabezado de fila.");
         Assert.AreEqual(paleta.OnSelection, encabezadoFila.SelectionForeColor,
             $"{etiqueta}: texto seleccionado del encabezado de fila.");
+    }
+
+    /// <summary>
+    /// Regresión del tablero de ajedrez en la zona de relleno: <c>colDummy</c>
+    /// es la columna Fill sin datos ni encabezado que cierra el ancho. Sin su
+    /// propio fondo hereda el <c>DefaultCellStyle</c> del tema (oscuro en
+    /// Grafito) en las filas pares mientras el zebra legacy pinta las impares,
+    /// dejando una franja ajedrezada a la derecha de la hoja. Debe continuar el
+    /// mismo ritmo que las columnas de datos: blanco en filas pares y #F5F5F5
+    /// en impares. No se valida geometría ni formato persistido del usuario.
+    /// </summary>
+    private static void AssertarColumnaRelleno(
+        Form form, CatalogoBajoTema catalogo, string contexto)
+    {
+        var grid = (DataGridView)CatalogosTemaEntorno.Buscar(form, catalogo.Grid);
+
+        Assert.IsTrue(grid.Columns.Contains("colDummy"),
+            $"{contexto}: debe existir la columna de relleno 'colDummy'.");
+
+        DataGridViewColumn relleno = grid.Columns["colDummy"]
+            ?? throw new AssertFailedException($"{contexto}: no se encontró 'colDummy'.");
+
+        DataGridViewColumn datos = grid.Columns
+            .Cast<DataGridViewColumn>()
+            .FirstOrDefault(c => !ReferenceEquals(c, relleno)
+                                 && !string.IsNullOrEmpty(c.DataPropertyName))
+            ?? throw new AssertFailedException(
+                $"{contexto}: debe existir al menos una columna de datos.");
+
+        while (grid.Rows.Count < 4)
+            grid.Rows.Add();
+
+        for (int fila = 0; fila < 4; fila++)
+        {
+            int esperado = (fila % 2 == 0 ? Color.White : Color.FromArgb(245, 245, 245)).ToArgb();
+
+            Assert.AreEqual(
+                esperado,
+                grid.Rows[fila].Cells[relleno.Index].InheritedStyle.BackColor.ToArgb(),
+                $"{contexto}: fila {fila} de 'colDummy' debe continuar el zebra de la hoja " +
+                "(blanco en pares, #F5F5F5 en impares) y no exponer el fondo del tema.");
+
+            // La corrección del relleno no debe alterar el fondo/zebra de las
+            // columnas de datos (su formato persistido lo cubren las pruebas de
+            // preservación de formato).
+            Assert.AreEqual(
+                esperado,
+                grid.Rows[fila].Cells[datos.Index].InheritedStyle.BackColor.ToArgb(),
+                $"{contexto}: fila {fila} de la columna de datos '{datos.Name}' no debe cambiar.");
+        }
     }
 }
