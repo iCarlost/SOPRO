@@ -60,12 +60,16 @@ namespace SOPRO.WinForms.Forms
             FormatoHelper.EstablecerProyecto(_proyecto);
 
             InitializeComponent();
+            AplicarTema();
             AplicarSuperficiesRedondeadas();
             new EditableReportTitleHelper(_context, panelTop, lblTitulo, () => _proyecto.Id, ReportTitleModuleKeys.Indirectos).Attach();
 
             // Aplicar estilo consistente
             dgvCampo.AplicarEstiloSOPRO();
             dgvOficinaCentral.AplicarEstiloSOPRO();
+            // Chrome de rejilla DESPUÉS del helper genérico: AplicarEstiloSOPRO
+            // pisa BackgroundColor/GridColor/encabezados con valores fijos.
+            AplicarTemaGrids();
 
             ConfigurarGrids();
         }

@@ -54,7 +54,7 @@ namespace SOPRO.WinForms.Forms
             // siguen disponibles vía menú contextual / botones.
             dgv.SelectionMode = DataGridViewSelectionMode.CellSelect;
             Helpers.DgvCeldaHelper.Aplicar(dgv, conMenuCopia: false, SoproTheme.Colors.SelBg,
-                Color.FromArgb(0, 120, 215), mostrarRowHeaders: false);
+                SoproTheme.Colors.BrandMd, mostrarRowHeaders: false);
 
             // Distinguir interacción de cuerpo (=> destino CELDAS) de encabezado
             // (=> destino COLUMNA). CellMouseDown se dispara ANTES del cambio de selección.
