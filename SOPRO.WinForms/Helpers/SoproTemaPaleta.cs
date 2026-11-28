@@ -12,7 +12,7 @@ namespace SOPRO.WinForms.Helpers
         /// <summary>Azul SOPRO histórico. Es la paleta por omisión y la referencia exacta de regresión.</summary>
         ClaroAzul,
 
-        /// <summary>Grafito oscuro con acentos de azul profundo.</summary>
+        /// <summary>Grafito neutro suavizado con acentos de azul profundo (issue #209).</summary>
         Grafito,
 
         /// <summary>Claro con acentos verde/teal.</summary>
@@ -217,10 +217,11 @@ namespace SOPRO.WinForms.Helpers
         };
 
         /// <summary>
-        /// Grafito: superficies oscuras neutras con acentos de azul profundo. El
-        /// texto de cuerpo es claro; las selecciones de rejilla conservan un
-        /// tinte claro para que el primer plano negro heredado de las pantallas
-        /// legacy siga siendo legible.
+        /// Grafito (issue #209): grafito neutro suavizado. Superficies en grises
+        /// neutros (Surface #30363F) que acercan el chrome al blanco de las hojas
+        /// de datos sin superar el techo de contraste de los colores semánticos
+        /// fijos de Indirectos; acentos de marca, SelBg claro (negro impuesto por
+        /// DgvCeldaHelper) y primer plano claro se conservan.
         /// </summary>
         internal static readonly SoproTemaPaleta Grafito = new()
         {
@@ -233,56 +234,56 @@ namespace SOPRO.WinForms.Helpers
             BrandLt = Color.FromArgb(0xA9, 0xC8, 0xF5),
             BrandHover = Color.FromArgb(0x35, 0x68, 0xCF),
 
-            Ink = Color.FromArgb(0xE8, 0xEE, 0xF7),
-            Ink2 = Color.FromArgb(0xC9, 0xD5, 0xE4),
-            Muted = Color.FromArgb(0x9A, 0xAB, 0xC0),
+            Ink = Color.FromArgb(0xE6, 0xE9, 0xED),
+            Ink2 = Color.FromArgb(0xC6, 0xCC, 0xD4),
+            Muted = Color.FromArgb(0xA3, 0xAE, 0xBB),
 
-            BgBase = Color.FromArgb(0x16, 0x24, 0x3A),
-            BgTint2 = Color.FromArgb(0x1A, 0x2A, 0x42),
+            BgBase = Color.FromArgb(0x22, 0x26, 0x2C),
+            BgTint2 = Color.FromArgb(0x26, 0x2B, 0x32),
 
-            Surface = Color.FromArgb(0x15, 0x1C, 0x27),
-            SurfaceBorder = Color.FromArgb(0x2C, 0x3A, 0x4E),
+            Surface = Color.FromArgb(0x30, 0x36, 0x3F),
+            SurfaceBorder = Color.FromArgb(0x45, 0x4C, 0x56),
 
-            RowAlt = Color.FromArgb(0x1A, 0x22, 0x2F),
-            GridLine = Color.FromArgb(0x2A, 0x36, 0x48),
+            RowAlt = Color.FromArgb(0x36, 0x3C, 0x45),
+            GridLine = Color.FromArgb(0x45, 0x4C, 0x56),
             SelBg = Color.FromArgb(0x9C, 0xC2, 0xF0),
             OnSelection = Color.FromArgb(0x0B, 0x12, 0x20),
 
-            SidebarBg = Color.FromArgb(0x15, 0x1C, 0x27),
-            SidebarHeaderBg = Color.FromArgb(0x1B, 0x25, 0x34),
-            RibbonSeparator = Color.FromArgb(0x37, 0x47, 0x5E),
+            SidebarBg = Color.FromArgb(0x2A, 0x2F, 0x37),
+            SidebarHeaderBg = Color.FromArgb(0x27, 0x2C, 0x34),
+            RibbonSeparator = Color.FromArgb(0x45, 0x4C, 0x56),
             Disabled = Color.FromArgb(0x8A, 0x97, 0xA8),
 
-            HeaderDark = Color.FromArgb(0x1E, 0x29, 0x3B),
-            HeaderBottom = Color.FromArgb(0x0D, 0x16, 0x26),
+            HeaderDark = Color.FromArgb(0x22, 0x27, 0x2E),
+            HeaderBottom = Color.FromArgb(0x1A, 0x1F, 0x25),
             RibbonText = Color.FromArgb(0xE2, 0xE8, 0xF0),
-            RibbonHover = Color.FromArgb(0x2C, 0x3A, 0x4E),
+            RibbonHover = Color.FromArgb(0x34, 0x3A, 0x44),
             RibbonActive = Color.FromArgb(0x2C, 0x5B, 0xC4),
             RibbonActiveHover = Color.FromArgb(0x24, 0x48, 0x9B),
             RibbonDown = Color.FromArgb(0x1E, 0x3A, 0x8A),
             RibbonActivePressed = Color.FromArgb(0x18, 0x2F, 0x6E),
             RibbonDisabledIcon = Color.FromArgb(0x7C, 0x8F, 0xA8),
-            RibbonSeparatorDark = Color.FromArgb(0x47, 0x55, 0x69),
-            SidebarBg2 = Color.FromArgb(0x10, 0x17, 0x22),
-            SidebarHeaderBg2 = Color.FromArgb(0x1B, 0x25, 0x34),
-            SidebarHairline = Color.FromArgb(0x2C, 0x3A, 0x4E),
-            SidebarText = Color.FromArgb(0xC9, 0xD5, 0xE4),
-            SidebarTextGroup = Color.FromArgb(0xE8, 0xEE, 0xF7),
-            SidebarActive = Color.FromArgb(0x24, 0x40, 0x5F),
+            RibbonSeparatorDark = Color.FromArgb(0x4A, 0x50, 0x5A),
+            SidebarBg2 = Color.FromArgb(0x26, 0x2B, 0x32),
+            SidebarHeaderBg2 = Color.FromArgb(0x2A, 0x2F, 0x37),
+            SidebarHairline = Color.FromArgb(0x45, 0x4C, 0x56),
+            SidebarText = Color.FromArgb(0xC6, 0xCC, 0xD4),
+            SidebarTextGroup = Color.FromArgb(0xE6, 0xE9, 0xED),
+            SidebarActive = Color.FromArgb(0x3A, 0x41, 0x49),
 
             SubtitleText = Color.FromArgb(0xB7, 0xC6, 0xD8),
-            HeaderBg = Color.FromArgb(0x1B, 0x25, 0x34),
-            CenterBg = Color.FromArgb(0x10, 0x17, 0x22),
-            SecondaryBg = Color.FromArgb(0x1B, 0x25, 0x34),
-            SecondaryHoverBg = Color.FromArgb(0x22, 0x30, 0x45),
-            GlyphIdle = Color.FromArgb(0x84, 0x96, 0xAD),
-            HoverBg = Color.FromArgb(0x1F, 0x2C, 0x3E),
+            HeaderBg = Color.FromArgb(0x27, 0x2C, 0x34),
+            CenterBg = Color.FromArgb(0x26, 0x2B, 0x32),
+            SecondaryBg = Color.FromArgb(0x2C, 0x31, 0x3A),
+            SecondaryHoverBg = Color.FromArgb(0x39, 0x3F, 0x49),
+            GlyphIdle = Color.FromArgb(0x8A, 0x93, 0x9E),
+            HoverBg = Color.FromArgb(0x39, 0x3F, 0x49),
             Glow = Color.FromArgb(0x30, 0x00, 0x00, 0x00),
 
             OnBrand = Color.FromArgb(0xF8, 0xFA, 0xFC),
             OnHeader = Color.FromArgb(0xF8, 0xFA, 0xFC),
             Error = Color.FromArgb(0xFF, 0x9B, 0x93),
-            RibbonPressed = Color.FromArgb(0x22, 0x30, 0x4A),
+            RibbonPressed = Color.FromArgb(0x35, 0x3B, 0x45),
         };
 
         /// <summary>
